@@ -1,0 +1,94 @@
+---
+title: "Plan Lookup"
+format: html
+editor: source
+---
+
+```{r}
+library(sf)
+library(dplyr)
+library(leaflet)
+```
+
+
+```{r}
+plan_search <- "39198"
+
+matched <- st_read(
+  "D:/Dropbox/Appraisal/Maps/Winnipeg/OpenData/SurveyParcels_20260406.geojson",
+  query = paste0("SELECT * FROM SurveyParcels_20260406 WHERE plan = '", plan_search, "'")
+)
+
+leaflet(matched) %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  addPolygons(
+    fillColor = "steelblue",
+    fillOpacity = 0.4,
+    weight = 2,
+    color = "navy",
+    label = ~paste("Lot", lot, "Block", block)
+  )
+```
+
+```{r}
+library(shiny)
+library(sf)
+library(dplyr)
+library(leaflet)
+
+geojson_path <- "D:/Dropbox/Appraisal/Maps/Winnipeg/OpenData/SurveyParcels_20260406.geojson"
+
+ui <- fluidPage(
+  titlePanel("Winnipeg Survey Parcel Search"),
+  fluidRow(
+    column(3, textInput("plan", "Plan")),
+    column(3, textInput("lot", "Lot")),
+    column(3, textInput("block", "Block")),
+    column(3, textInput("desc", "Description (contains)"))
+  ),
+  actionButton("search", "Search"),
+  textOutput("count"),
+  leafletOutput("map", height = "600px")
+)
+
+server <- function(input, output, session) {
+  results <- eventReactive(input$search, {
+    clauses <- c()
+    if (nzchar(input$plan))  clauses <- c(clauses, paste0("plan = '", input$plan, "'"))
+    if (nzchar(input$lot))   clauses <- c(clauses, paste0("lot = '", input$lot, "'"))
+    if (nzchar(input$block)) clauses <- c(clauses, paste0("block = '", input$block, "'"))
+    if (nzchar(input$desc))  clauses <- c(clauses, paste0("description LIKE '%", input$desc, "%'"))
+
+    if (length(clauses) == 0) return(NULL)
+
+    where <- paste(clauses, collapse = " AND ")
+    sql <- paste0("SELECT * FROM SurveyParcels_20260406 WHERE ", where)
+
+    st_read(geojson_path, query = sql, quiet = TRUE)
+  })
+
+  output$count <- renderText({
+    r <- results()
+    if (is.null(r)) return("Enter at least one search field.")
+    paste(nrow(r), "parcels found")
+  })
+
+  output$map <- renderLeaflet({
+    r <- results()
+    if (is.null(r) || nrow(r) == 0) return(leaflet() %>% addProviderTiles("CartoDB.Positron"))
+
+    leaflet(r) %>%
+      addProviderTiles("CartoDB.Positron") %>%
+      addPolygons(
+        fillColor = "steelblue",
+        fillOpacity = 0.4,
+        weight = 2,
+        color = "navy",
+        label = ~paste("Lot", lot, "Blk", block, "Plan", plan, "-", description)
+      )
+  })
+}
+
+shinyApp(ui, server)
+```
+

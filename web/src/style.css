@@ -1,0 +1,132 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  color: #1a1a1a;
+  background: #f7f7f8;
+}
+
+header {
+  padding: 12px 20px;
+  background: #1a2a4a;
+  color: #fff;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+header small {
+  color: #b6c4e0;
+  font-size: 12px;
+}
+
+header small a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e2e4e9;
+  align-items: center;
+}
+
+.controls input[type="text"] {
+  flex: 1 1 160px;
+  min-width: 140px;
+  padding: 7px 10px;
+  border: 1px solid #c2c5cc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.controls input[type="text"]:focus {
+  outline: 2px solid #4a6cb3;
+  outline-offset: -1px;
+  border-color: #4a6cb3;
+}
+
+.controls button {
+  padding: 8px 18px;
+  background: #1a2a4a;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.controls button:hover {
+  background: #2b3e68;
+}
+
+.controls button:disabled {
+  background: #7a8299;
+  cursor: default;
+}
+
+.count {
+  margin-left: 4px;
+  font-size: 13px;
+  color: #555c6e;
+}
+
+#map {
+  width: 100%;
+  height: 480px;
+  background: #eaeaec;
+}
+
+#results-wrap {
+  padding: 12px 20px 32px;
+  overflow-x: auto;
+}
+
+#results {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: #fff;
+  border: 1px solid #e2e4e9;
+}
+
+#results th,
+#results td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid #eceef2;
+  white-space: nowrap;
+}
+
+#results th {
+  background: #f2f4f8;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+#results tbody tr:hover {
+  background: #f6f9ff;
+}
+
+#results td.empty {
+  color: #a0a6b3;
+  font-style: italic;
+}

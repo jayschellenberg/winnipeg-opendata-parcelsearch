@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Winnipeg Parcel Search</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+    />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Winnipeg Parcel Search</h1>
+      <small>Live data from <a href="https://data.winnipeg.ca" target="_blank" rel="noreferrer">data.winnipeg.ca</a></small>
+    </header>
+
+    <section class="controls">
+      <input id="plan"  type="text" placeholder="Plan (contains)" />
+      <input id="lot"   type="text" placeholder="Lot (contains)" />
+      <input id="block" type="text" placeholder="Block (contains)" />
+      <input id="desc"  type="text" placeholder="Description (contains)" />
+      <button id="search" type="button">Search</button>
+      <span id="count" class="count"></span>
+    </section>
+
+    <div id="map"></div>
+
+    <div id="results-wrap">
+      <table id="results">
+        <thead>
+          <tr>
+            <th>Lot</th>
+            <th>Block</th>
+            <th>Plan</th>
+            <th>Description</th>
+            <th>Roll Number</th>
+            <th>Full Address</th>
+            <th>Zoning</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
