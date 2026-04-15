@@ -198,3 +198,18 @@ header small a {
   color: #a0a6b3;
   font-style: italic;
 }
+
+.disclaimer {
+  margin: 0;
+  padding: 14px 20px 22px;
+  background: #fff8e6;
+  border-top: 1px solid #e6d7a3;
+  color: #5a4a1a;
+  font-size: 12px;
+  line-height: 1.55;
+  scroll-margin-top: 12px;
+}
+
+.disclaimer strong {
+  color: #3b2d00;
+}

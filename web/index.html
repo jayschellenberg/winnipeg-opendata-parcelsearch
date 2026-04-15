@@ -13,7 +13,11 @@
   <body>
     <header>
       <h1>Winnipeg Parcel Search</h1>
-      <small>Live data from <a href="https://data.winnipeg.ca" target="_blank" rel="noreferrer">data.winnipeg.ca</a></small>
+      <small>
+        Live data from
+        <a href="https://data.winnipeg.ca" target="_blank" rel="noreferrer">data.winnipeg.ca</a>
+        · <a href="#disclaimer">Disclaimer</a>
+      </small>
     </header>
 
     <section class="controls">
@@ -79,6 +83,20 @@
         <tbody></tbody>
       </table>
     </div>
+
+    <footer id="disclaimer" class="disclaimer">
+      <strong>Disclaimer:</strong> This site is provided without warranty
+      and is for general information only. Data is queried live from the
+      City of Winnipeg Open Data portal and may be incomplete, out of date,
+      or inaccurate. Survey-parcel and assessment-parcel boundaries do not
+      always align exactly — when a roll number, address, or zoning search
+      fills in the Lot / Block / Plan / Description columns, those legal
+      descriptions are matched to the assessment parcel by geographic
+      overlap only and may be partial or incorrect. Do not rely on these
+      results without independent verification from Land Titles, the City
+      of Winnipeg Assessment &amp; Taxation department, or a qualified
+      professional.
+    </footer>
 
     <script type="module" src="./src/main.js"></script>
   </body>
