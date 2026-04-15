@@ -14,8 +14,8 @@
 //      then joinSurveyWithAssessment() for the results table.
 //      The Survey Parcels geometry is what is drawn on the map.
 //
-//   B) Roll-number search (Roll # field):
-//      1. searchAssessmentByRoll({ roll })
+//   B) Assessment-first search (Roll #, Address, and/or Zoning fields):
+//      1. searchAssessmentParcels({ roll, address, zoning })
 //      2. fetchSurveyOverlap(assessFc)       — within_box(location, ...)
 //      then joinAssessmentWithSurvey() for the results table.
 //      The Assessment Parcels geometry is what is drawn on the map.
@@ -109,18 +109,26 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
   return rows;
 }
 
-// ---------- Roll-number search flow (mirror of the above) ----------
+// ---------- Assessment-first search flow (mirror of the above) ----------
 
 /**
- * Query Assessment Parcels by roll number (partial `like` match). Returns
- * a FeatureCollection with assessment-parcel geometry suitable for
- * rendering directly on the map.
+ * Query Assessment Parcels by any combination of attribute filters:
+ * roll number, full address, and/or zoning. Each provided field is
+ * partial-matched with SoQL `like '%x%'` and all provided fields are
+ * ANDed together. Returns a FeatureCollection with assessment-parcel
+ * geometry suitable for rendering directly on the map.
  */
-export async function searchAssessmentByRoll({ roll }) {
-  if (!roll) return { type: 'FeatureCollection', features: [] };
+export async function searchAssessmentParcels({ roll, address, zoning }) {
+  const clauses = [];
+  if (roll)    clauses.push(`roll_number like '%${escapeSoql(roll)}%'`);
+  if (address) clauses.push(`full_address like '%${escapeSoql(address)}%'`);
+  if (zoning)  clauses.push(`zoning like '%${escapeSoql(zoning)}%'`);
+  if (clauses.length === 0) {
+    return { type: 'FeatureCollection', features: [] };
+  }
 
   const params = new URLSearchParams({
-    $where: `roll_number like '%${escapeSoql(roll)}%'`,
+    $where: clauses.join(' AND '),
     $select: 'roll_number,full_address,zoning,geometry',
     $limit: '500',
   });

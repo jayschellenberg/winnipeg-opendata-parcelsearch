@@ -1,44 +1,51 @@
-// Entry point. Wires the five search inputs, the map, and the results table.
+// Entry point. Wires the seven search inputs, the map, and the results table.
 //
 // Two search flows:
 //
-//   Legal-description flow (default — any of plan/lot/block/desc filled):
-//     1. Read input values.
-//     2. Live query Survey Parcels (soda.searchSurveyParcels).
-//     3. Immediately render survey results to the map and a placeholder table
-//        so the user sees something right away.
-//     4. In parallel, fetch Assessment Parcels inside the result bbox and
+//   Legal-description flow (any of Lot/Block/Plan/Description filled,
+//   and no assessment-side field filled):
+//     1. Live query Survey Parcels (soda.searchSurveyParcels).
+//     2. Immediately render survey results to the map and a placeholder
+//        table so the user sees something right away.
+//     3. In parallel, fetch Assessment Parcels inside the result bbox and
 //        join them to the survey parcels via turf.js.
-//     5. Re-render the table with the enriched columns (Roll / Address / Zoning).
+//     4. Re-render the table with the enriched columns (Roll / Address /
+//        Zoning).
 //     → Map shows Survey Parcels geometry.
 //
-//   Roll-number flow (Roll # field is filled):
-//     1. Live query Assessment Parcels (soda.searchAssessmentByRoll).
-//     2. Immediately render assessment results to the map and a table with
-//        the roll/address/zoning columns filled in.
-//     3. In parallel, fetch Survey Parcels inside the result bbox and join
-//        them so the lot/block/plan/description columns can be back-filled.
+//   Assessment-first flow (any of Roll # / Address / Zoning filled):
+//     1. Live query Assessment Parcels (soda.searchAssessmentParcels) —
+//        any provided roll/address/zoning filters are ANDed together.
+//     2. Immediately render assessment results to the map and a table
+//        with the roll/address/zoning columns filled in.
+//     3. In parallel, fetch Survey Parcels inside the result bbox and
+//        join them so the lot/block/plan/description columns can be
+//        back-filled.
 //     4. Re-render the table.
-//     → Map shows Assessment Parcels geometry (per Jason's requirement).
+//     → Map shows Assessment Parcels geometry.
 //
-// If both a Roll # and a legal field are filled, Roll # wins and the legal
-// fields are ignored — it's the more specific query.
+// If any assessment-side field is filled, the assessment-first flow wins
+// and the legal-description fields are ignored — it's the more specific
+// query and the two datasets don't share attribute columns so they can't
+// be combined in one SoQL where-clause.
 
 import {
   searchSurveyParcels,
   fetchAssessmentOverlap,
   joinSurveyWithAssessment,
-  searchAssessmentByRoll,
+  searchAssessmentParcels,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
 } from './soda.js';
 import { initMap, showResults } from './map.js';
 
-const $plan = document.getElementById('plan');
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
+const $plan = document.getElementById('plan');
 const $desc = document.getElementById('desc');
 const $roll = document.getElementById('roll');
+const $address = document.getElementById('address');
+const $zoning = document.getElementById('zoning');
 const $search = document.getElementById('search');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
@@ -49,7 +56,7 @@ const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 const { map, ready: mapReady } = initMap($mapEl);
 
 $search.addEventListener('click', runSearch);
-for (const el of [$plan, $lot, $block, $desc, $roll]) {
+for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
   });
@@ -57,14 +64,19 @@ for (const el of [$plan, $lot, $block, $desc, $roll]) {
 
 async function runSearch() {
   const inputs = {
-    plan: $plan.value.trim(),
     lot: $lot.value.trim(),
     block: $block.value.trim(),
+    plan: $plan.value.trim(),
     desc: $desc.value.trim(),
     roll: $roll.value.trim(),
+    address: $address.value.trim(),
+    zoning: $zoning.value.trim(),
   };
 
-  if (!inputs.plan && !inputs.lot && !inputs.block && !inputs.desc && !inputs.roll) {
+  const anyLegal = inputs.lot || inputs.block || inputs.plan || inputs.desc;
+  const anyAssess = inputs.roll || inputs.address || inputs.zoning;
+
+  if (!anyLegal && !anyAssess) {
     setCount('Enter at least one search field.');
     clearTable();
     mapReady.then(() => showResults(map, EMPTY_FC));
@@ -76,8 +88,8 @@ async function runSearch() {
   clearTable();
 
   try {
-    if (inputs.roll) {
-      await runRollSearch(inputs);
+    if (anyAssess) {
+      await runAssessmentSearch(inputs);
     } else {
       await runLegalSearch(inputs);
     }
@@ -128,12 +140,12 @@ async function runLegalSearch(inputs) {
   setCount(countMsg);
 }
 
-// ---------- Roll-number flow ----------
+// ---------- Assessment-first flow (Roll # / Address / Zoning) ----------
 
-async function runRollSearch(inputs) {
+async function runAssessmentSearch(inputs) {
   let assessFc;
   try {
-    assessFc = await searchAssessmentByRoll(inputs);
+    assessFc = await searchAssessmentParcels(inputs);
   } catch (err) {
     console.error(err);
     setCount(`Search failed: ${err.message}`);
@@ -142,14 +154,14 @@ async function runRollSearch(inputs) {
 
   const n = assessFc.features.length;
   if (n === 0) {
-    setCount('No parcels found for that roll #.');
+    setCount('No parcels found.');
     mapReady.then(() => showResults(map, assessFc));
     return;
   }
 
   const countMsg = n === 500
-    ? '500 parcels found (limit reached — enter more digits of the roll #)'
-    : `${n} parcels found by roll #`;
+    ? '500 parcels found (limit reached — refine your search)'
+    : `${n} parcels found`;
   setCount(`${countMsg} · loading legal descriptions…`);
 
   // Show assessment-only rows in the table immediately. Map renders the
