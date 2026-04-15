@@ -66,7 +66,7 @@ export async function fetchAssessmentOverlap(surveyFc) {
   return fetchPerFeatureBboxUnion({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
-    select: 'roll_number,full_address,zoning,geometry',
+    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,geometry',
     dedupeKey: 'roll_number',
     fc: surveyFc,
   });
@@ -120,7 +120,7 @@ export async function searchAssessmentParcels({ roll, address, zoning }) {
 
   const params = new URLSearchParams({
     $where: clauses.join(' AND '),
-    $select: 'roll_number,full_address,zoning,geometry',
+    $select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,geometry',
     $limit: '500',
   });
   return fetchSoda(`${ASSESS_URL}?${params}`);

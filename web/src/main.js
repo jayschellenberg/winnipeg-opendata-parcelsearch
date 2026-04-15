@@ -255,6 +255,9 @@ function renderTable(rows) {
     tr.appendChild(td(a.roll_number));
     tr.appendChild(td(a.full_address));
     tr.appendChild(td(a.zoning));
+    tr.appendChild(td(formatArea(a.assessed_land_area), 'num'));
+    tr.appendChild(td(formatCoord(a.centroid_lat), 'num'));
+    tr.appendChild(td(formatCoord(a.centroid_lon), 'num'));
     frag.appendChild(tr);
   }
   $tbody.appendChild(frag);
@@ -314,6 +317,7 @@ function exportCsv() {
   const header = [
     'Lot', 'Block', 'Plan', 'Description',
     'Roll Number', 'Full Address', 'Zoning',
+    'Size (sf)', 'Lat', 'Lon',
   ];
   const lines = [header.map(csvCell).join(',')];
   for (const row of currentRows) {
@@ -322,6 +326,11 @@ function exportCsv() {
     lines.push([
       s.lot, s.block, s.plan, s.description,
       a.roll_number, a.full_address, a.zoning,
+      // Unformatted numeric values in CSV so spreadsheets can treat them
+      // as numbers rather than text. Empty cells stay empty.
+      a.assessed_land_area ?? '',
+      a.centroid_lat ?? '',
+      a.centroid_lon ?? '',
     ].map(csvCell).join(','));
   }
   // BOM so Excel picks up UTF-8 correctly.
@@ -355,7 +364,7 @@ function today() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function td(value) {
+function td(value, className) {
   const el = document.createElement('td');
   if (value == null || value === '') {
     el.textContent = '—';
@@ -363,5 +372,24 @@ function td(value) {
   } else {
     el.textContent = value;
   }
+  if (className) el.classList.add(className);
   return el;
+}
+
+// Assessment land area comes in as a stringified integer of square feet.
+// Render with thousands separators; hide junk values.
+function formatArea(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n).toLocaleString('en-US');
+}
+
+// Winnipeg serves centroid_lat / centroid_lon as strings with way more
+// precision than anyone needs. 6 decimals is ~10 cm at this latitude.
+function formatCoord(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return n.toFixed(6);
 }

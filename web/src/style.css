@@ -274,6 +274,12 @@ header small a {
   font-style: italic;
 }
 
+/* Right-align numeric columns (Size, Lat, Lon) so the digits line up. */
+#results td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .disclaimer {
   margin: 0;
   padding: 14px 20px 22px;
