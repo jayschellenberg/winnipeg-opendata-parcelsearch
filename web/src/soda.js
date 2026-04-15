@@ -40,10 +40,10 @@ const APP_TOKEN = import.meta.env.VITE_SODA_APP_TOKEN;
  */
 export async function searchSurveyParcels({ plan, lot, block, desc }) {
   const clauses = [];
-  if (plan)  clauses.push(`plan like '%${escapeSoql(plan)}%'`);
-  if (lot)   clauses.push(`lot like '%${escapeSoql(lot)}%'`);
-  if (block) clauses.push(`block like '%${escapeSoql(block)}%'`);
-  if (desc)  clauses.push(`description like '%${escapeSoql(desc)}%'`);
+  if (plan)  clauses.push(likeClause('plan', plan));
+  if (lot)   clauses.push(likeClause('lot', lot));
+  if (block) clauses.push(likeClause('block', block));
+  if (desc)  clauses.push(likeClause('description', desc));
   if (clauses.length === 0) {
     return { type: 'FeatureCollection', features: [] };
   }
@@ -120,9 +120,9 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
  */
 export async function searchAssessmentParcels({ roll, address, zoning }) {
   const clauses = [];
-  if (roll)    clauses.push(`roll_number like '%${escapeSoql(roll)}%'`);
-  if (address) clauses.push(`full_address like '%${escapeSoql(address)}%'`);
-  if (zoning)  clauses.push(`zoning like '%${escapeSoql(zoning)}%'`);
+  if (roll)    clauses.push(likeClause('roll_number', roll));
+  if (address) clauses.push(likeClause('full_address', address));
+  if (zoning)  clauses.push(likeClause('zoning', zoning));
   if (clauses.length === 0) {
     return { type: 'FeatureCollection', features: [] };
   }
@@ -197,4 +197,12 @@ async function fetchSoda(url) {
 // SoQL string literal escape: double any single quotes.
 function escapeSoql(s) {
   return String(s).replace(/'/g, "''");
+}
+
+// SoQL `LIKE` is case-sensitive and Winnipeg's data is stored in mixed
+// case (e.g. `10 MONARCH MEWS`, `R1M - RES - S F - MEDIUM`). Wrap both
+// the column and the search term in upper() so searches are
+// case-insensitive — typing "monarch" matches "10 MONARCH MEWS".
+function likeClause(column, value) {
+  return `upper(${column}) like '%${escapeSoql(String(value).toUpperCase())}%'`;
 }
