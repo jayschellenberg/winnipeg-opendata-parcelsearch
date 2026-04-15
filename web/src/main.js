@@ -47,6 +47,7 @@ const $roll = document.getElementById('roll');
 const $address = document.getElementById('address');
 const $zoning = document.getElementById('zoning');
 const $search = document.getElementById('search');
+const $clear = document.getElementById('clear');
 const $export = document.getElementById('export');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
@@ -62,6 +63,7 @@ const { map, ready: mapReady } = initMap($mapEl, {
 });
 
 $search.addEventListener('click', runSearch);
+$clear.addEventListener('click', clearAll);
 $export.addEventListener('click', exportCsv);
 for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning]) {
   el.addEventListener('keydown', (e) => {
@@ -212,6 +214,19 @@ function setCount(text) {
 function setBusy(busy) {
   $search.disabled = busy;
   $search.textContent = busy ? 'Searching…' : 'Search';
+}
+
+/** Wipe every search input, the count, the table, and the map overlay,
+ *  returning the page to its initial state so the user can start a new
+ *  search without manually emptying seven fields. */
+function clearAll() {
+  for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning]) {
+    el.value = '';
+  }
+  setCount('');
+  clearTable();
+  mapReady.then(() => showResults(map, EMPTY_FC));
+  $lot.focus();
 }
 
 function clearTable() {

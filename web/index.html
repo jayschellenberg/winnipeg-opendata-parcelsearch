@@ -21,14 +21,15 @@
     </header>
 
     <section class="controls">
-      <input id="lot"     type="text" placeholder="Lot (contains)" />
-      <input id="block"   type="text" placeholder="Block (contains)" />
-      <input id="plan"    type="text" placeholder="Plan (contains)" />
-      <input id="desc"    type="text" placeholder="Description (contains)" />
-      <input id="roll"    type="text" placeholder="Roll # (contains)" />
-      <input id="address" type="text" placeholder="Address (contains)" />
-      <input id="zoning"  type="text" placeholder="Zoning (contains)" />
+      <input id="lot"     type="text" size="8"  placeholder="Lot (or River Lot or Section)" />
+      <input id="block"   type="text" size="6"  placeholder="Block (or RL or OT)" />
+      <input id="plan"    type="text" size="8"  placeholder="Plan (or Parish Code - JA, CH, BO, NO, etc)" />
+      <input id="desc"    type="text" size="12" placeholder="Description (contains)" />
+      <input id="roll"    type="text" size="14" placeholder="Roll # (contains)" />
+      <input id="address" type="text" size="18" placeholder="Address (contains)" />
+      <input id="zoning"  type="text" size="12" placeholder="Zoning (contains)" />
       <button id="search" type="button">Search</button>
+      <button id="clear"  type="button" class="secondary">Clear</button>
       <button id="export" type="button" class="secondary">Export CSV</button>
       <span id="count" class="count"></span>
     </section>

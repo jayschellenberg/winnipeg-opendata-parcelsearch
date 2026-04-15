@@ -48,12 +48,16 @@ header small a {
 }
 
 .controls input[type="text"] {
-  flex: 1 1 160px;
-  min-width: 140px;
+  /* Natural width comes from each input's `size` attribute in index.html,
+     so fields are tight and don't stretch across the row. Long placeholders
+     will clip visually; the full hint is restored when the user focuses or
+     hovers the field. */
+  flex: 0 0 auto;
   padding: 7px 10px;
   border: 1px solid #c2c5cc;
   border-radius: 4px;
   font-size: 14px;
+  min-width: 0;
 }
 
 .controls input[type="text"]:focus {
