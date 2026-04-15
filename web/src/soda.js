@@ -2,16 +2,26 @@
 //
 // Two datasets:
 //   Survey Parcels     sjjm-nj47   (id, lot, block, plan, description, location)
+//      geometry column name in SoQL: `location`  (multipolygon)
 //   Assessment Parcels d4mq-wa44   (roll_number, full_address, zoning, geometry, ...)
+//      geometry column name in SoQL: `geometry`  (multipolygon)
 //
-// The search flow is two live SODA calls per user query:
-//   1. searchSurveyParcels({ plan, lot, block, desc })
-//      -> attribute filter on Survey Parcels, returns matching GeoJSON features
-//   2. fetchAssessmentOverlap(surveyFc)
-//      -> spatial within_box filter on Assessment Parcels using the union
-//         bounding box of the matched survey parcels
-// Then joinSurveyWithAssessment() does the exact polygon-overlap join
-// client-side using turf.js.
+// Two search flows, both exactly two SODA calls per user query:
+//
+//   A) Legal-description search (plan/lot/block/description):
+//      1. searchSurveyParcels({ plan, lot, block, desc })
+//      2. fetchAssessmentOverlap(surveyFc)   — within_box(geometry, ...)
+//      then joinSurveyWithAssessment() for the results table.
+//      The Survey Parcels geometry is what is drawn on the map.
+//
+//   B) Roll-number search (Roll # field):
+//      1. searchAssessmentByRoll({ roll })
+//      2. fetchSurveyOverlap(assessFc)       — within_box(location, ...)
+//      then joinAssessmentWithSurvey() for the results table.
+//      The Assessment Parcels geometry is what is drawn on the map.
+//
+// In both flows the final polygon-overlap join is done client-side with
+// turf.js so matching is exact, not just bbox containment.
 
 import bbox from '@turf/bbox';
 import booleanIntersects from '@turf/boolean-intersects';
@@ -94,6 +104,73 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
       rows.push({ survey: s, assess: null });
     } else {
       for (const a of matches) rows.push({ survey: s, assess: a });
+    }
+  }
+  return rows;
+}
+
+// ---------- Roll-number search flow (mirror of the above) ----------
+
+/**
+ * Query Assessment Parcels by roll number (partial `like` match). Returns
+ * a FeatureCollection with assessment-parcel geometry suitable for
+ * rendering directly on the map.
+ */
+export async function searchAssessmentByRoll({ roll }) {
+  if (!roll) return { type: 'FeatureCollection', features: [] };
+
+  const params = new URLSearchParams({
+    $where: `roll_number like '%${escapeSoql(roll)}%'`,
+    $select: 'roll_number,full_address,zoning,geometry',
+    $limit: '500',
+  });
+  return fetchSoda(`${ASSESS_URL}?${params}`);
+}
+
+/**
+ * Fetch Survey Parcels that lie within the bounding box of the supplied
+ * Assessment Parcels FeatureCollection. Used to back-fill legal-description
+ * columns (lot/block/plan/description) for a roll-number search. The
+ * Survey Parcels geometry column is `location`, not `geometry`.
+ */
+export async function fetchSurveyOverlap(assessFc) {
+  if (!assessFc.features.length) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  const [minLon, minLat, maxLon, maxLat] = bbox(assessFc);
+  const whereClause =
+    `within_box(location, ${maxLat}, ${minLon}, ${minLat}, ${maxLon})`;
+
+  const params = new URLSearchParams({
+    $where: whereClause,
+    $limit: '2000',
+  });
+  return fetchSoda(`${SURVEY_URL}?${params}`);
+}
+
+/**
+ * For each assessment parcel, find every survey parcel whose geometry
+ * actually intersects it. Returns rows shaped the same as
+ * joinSurveyWithAssessment, so the table renderer can stay schema-agnostic:
+ *   { survey: <Feature>|null, assess: <Feature> }
+ * An assessment parcel with no legal-description match still produces one
+ * row (with survey=null) so it isn't dropped from the table.
+ */
+export function joinAssessmentWithSurvey(assessFc, surveyFc) {
+  const rows = [];
+  for (const a of assessFc.features) {
+    let matches;
+    try {
+      matches = surveyFc.features.filter((s) => booleanIntersects(a, s));
+    } catch (err) {
+      console.warn('booleanIntersects error; falling back to unmatched row', err);
+      matches = [];
+    }
+    if (matches.length === 0) {
+      rows.push({ survey: null, assess: a });
+    } else {
+      for (const s of matches) rows.push({ survey: s, assess: a });
     }
   }
   return rows;

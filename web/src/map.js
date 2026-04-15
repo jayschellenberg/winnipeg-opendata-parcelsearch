@@ -1,5 +1,10 @@
-// MapLibre GL JS map setup with a free OpenFreeMap Positron basemap.
+// MapLibre GL JS map setup with a free CartoDB Positron basemap.
 // No API key required.
+//
+// One GeoJSON source (`parcel-results`) is used for both search flows:
+//   - Legal-description search pushes Survey Parcels geometry into it
+//   - Roll-number search pushes Assessment Parcels geometry into it
+// The hover popup figures out which schema the feature is carrying.
 
 import maplibregl from 'maplibre-gl';
 import bbox from '@turf/bbox';
@@ -58,44 +63,45 @@ export function initMap(container) {
 
   const ready = new Promise((resolve) => {
     map.on('load', () => {
-      map.addSource('survey-results', {
+      map.addSource('parcel-results', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
       map.addLayer({
-        id: 'survey-fill',
+        id: 'parcel-fill',
         type: 'fill',
-        source: 'survey-results',
+        source: 'parcel-results',
         paint: {
           'fill-color': '#4682b4',
           'fill-opacity': 0.4,
         },
       });
       map.addLayer({
-        id: 'survey-line',
+        id: 'parcel-line',
         type: 'line',
-        source: 'survey-results',
+        source: 'parcel-results',
         paint: {
           'line-color': '#0b2566',
           'line-width': 2,
         },
       });
 
-      // Hover popup — mirrors the Shiny app's label with lot/block/plan.
+      // Hover popup — labels depend on which dataset the feature came from.
+      // Survey Parcels carry lot/block/plan/description; Assessment Parcels
+      // carry roll_number/full_address/zoning. We detect which by looking
+      // at the available properties.
       const popup = new maplibregl.Popup({
         closeButton: false,
         closeOnClick: false,
       });
-      map.on('mousemove', 'survey-fill', (e) => {
+      map.on('mousemove', 'parcel-fill', (e) => {
         map.getCanvas().style.cursor = 'pointer';
-        const p = e.features[0].properties;
-        const html = `<strong>Lot</strong> ${p.lot ?? ''}
-          &nbsp;<strong>Block</strong> ${p.block ?? ''}
-          &nbsp;<strong>Plan</strong> ${p.plan ?? ''}
-          ${p.description ? `<br>${p.description}` : ''}`;
-        popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        popup
+          .setLngLat(e.lngLat)
+          .setHTML(popupHtml(e.features[0].properties))
+          .addTo(map);
       });
-      map.on('mouseleave', 'survey-fill', () => {
+      map.on('mouseleave', 'parcel-fill', () => {
         map.getCanvas().style.cursor = '';
         popup.remove();
       });
@@ -110,9 +116,11 @@ export function initMap(container) {
 /**
  * Replace the map's highlighted parcels with the given FeatureCollection
  * and fit the viewport to them. If the FC is empty, reset to Winnipeg.
+ * Accepts either Survey Parcels or Assessment Parcels features — the
+ * single `parcel-results` source handles both.
  */
 export function showResults(map, fc) {
-  map.getSource('survey-results').setData(fc);
+  map.getSource('parcel-results').setData(fc);
   if (fc.features.length === 0) {
     map.flyTo({ center: WINNIPEG_CENTER, zoom: 11 });
     return;
@@ -122,4 +130,32 @@ export function showResults(map, fc) {
     [[minX, minY], [maxX, maxY]],
     { padding: 60, maxZoom: 18, duration: 800 }
   );
+}
+
+// Render a hover-popup HTML block from whichever schema is present.
+// Survey Parcels feature: has lot/block/plan/description.
+// Assessment Parcels feature: has roll_number/full_address/zoning.
+function popupHtml(p) {
+  if (p.roll_number != null || p.full_address != null) {
+    const lines = [];
+    if (p.roll_number) lines.push(`<strong>Roll #</strong> ${escapeHtml(p.roll_number)}`);
+    if (p.full_address) lines.push(escapeHtml(p.full_address));
+    if (p.zoning) lines.push(`<em>${escapeHtml(p.zoning)}</em>`);
+    return lines.join('<br>');
+  }
+  // Survey Parcels schema.
+  const head = `<strong>Lot</strong> ${escapeHtml(p.lot ?? '')}`
+    + `&nbsp;<strong>Block</strong> ${escapeHtml(p.block ?? '')}`
+    + `&nbsp;<strong>Plan</strong> ${escapeHtml(p.plan ?? '')}`;
+  return p.description
+    ? `${head}<br>${escapeHtml(p.description)}`
+    : head;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
