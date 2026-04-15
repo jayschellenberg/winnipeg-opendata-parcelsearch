@@ -82,6 +82,23 @@ header small a {
   cursor: default;
 }
 
+.controls button.secondary {
+  background: #fff;
+  color: #1a2a4a;
+  border: 1px solid #1a2a4a;
+}
+
+.controls button.secondary:hover:not(:disabled) {
+  background: #eef2fb;
+}
+
+.controls button.secondary:disabled {
+  background: #fff;
+  color: #a0a6b3;
+  border-color: #c2c5cc;
+  cursor: default;
+}
+
 .count {
   margin-left: 4px;
   font-size: 13px;
@@ -192,6 +209,17 @@ header small a {
 
 #results tbody tr:hover {
   background: #f6f9ff;
+}
+
+/* Flash the row that matches the parcel the user just clicked on the map.
+   A short keyframe fade makes it obvious without being annoying. */
+#results tbody tr.row-highlight {
+  animation: row-flash 1.6s ease-out;
+}
+
+@keyframes row-flash {
+  0%   { background: #ffe58a; }
+  100% { background: transparent; }
 }
 
 #results td.empty {

@@ -56,29 +56,20 @@ export async function searchSurveyParcels({ plan, lot, block, desc }) {
 }
 
 /**
- * Fetch Assessment Parcels that lie within the bounding box of the supplied
- * Survey Parcels FeatureCollection. Single SODA call regardless of result
- * count. Returns only the fields needed for enrichment.
+ * Fetch Assessment Parcels that overlap the supplied Survey Parcels. Uses
+ * one small within_box clause per survey parcel, OR'd together and batched,
+ * so geographically-spread results don't collapse into a single city-wide
+ * bbox that hits the row limit before reaching the relevant parcels.
+ * Returns only the fields needed for enrichment.
  */
 export async function fetchAssessmentOverlap(surveyFc) {
-  if (!surveyFc.features.length) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-
-  // turf bbox returns [minX, minY, maxX, maxY] = [minLon, minLat, maxLon, maxLat]
-  const [minLon, minLat, maxLon, maxLat] = bbox(surveyFc);
-
-  // SoQL within_box(geom, nwLat, nwLon, seLat, seLon):
-  //   NW corner = (maxLat, minLon),  SE corner = (minLat, maxLon)
-  const whereClause =
-    `within_box(geometry, ${maxLat}, ${minLon}, ${minLat}, ${maxLon})`;
-
-  const params = new URLSearchParams({
-    $where: whereClause,
-    $select: 'roll_number,full_address,zoning,geometry',
-    $limit: '2000',
+  return fetchPerFeatureBboxUnion({
+    baseUrl: ASSESS_URL,
+    geomColumn: 'geometry',
+    select: 'roll_number,full_address,zoning,geometry',
+    dedupeKey: 'roll_number',
+    fc: surveyFc,
   });
-  return fetchSoda(`${ASSESS_URL}?${params}`);
 }
 
 /**
@@ -136,25 +127,21 @@ export async function searchAssessmentParcels({ roll, address, zoning }) {
 }
 
 /**
- * Fetch Survey Parcels that lie within the bounding box of the supplied
- * Assessment Parcels FeatureCollection. Used to back-fill legal-description
- * columns (lot/block/plan/description) for a roll-number search. The
- * Survey Parcels geometry column is `location`, not `geometry`.
+ * Fetch Survey Parcels that overlap the supplied Assessment Parcels. Used
+ * to back-fill legal-description columns (lot/block/plan/description) for
+ * an assessment-first search. Per-parcel within_box clauses keep each
+ * query tight even when the assessment results are spread across the city
+ * (e.g. an address search for "stock" matching both Woodstock and Stockdale).
+ * The Survey Parcels geometry column is `location`, not `geometry`.
  */
 export async function fetchSurveyOverlap(assessFc) {
-  if (!assessFc.features.length) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-
-  const [minLon, minLat, maxLon, maxLat] = bbox(assessFc);
-  const whereClause =
-    `within_box(location, ${maxLat}, ${minLon}, ${minLat}, ${maxLon})`;
-
-  const params = new URLSearchParams({
-    $where: whereClause,
-    $limit: '2000',
+  return fetchPerFeatureBboxUnion({
+    baseUrl: SURVEY_URL,
+    geomColumn: 'location',
+    select: null,
+    dedupeKey: 'id',
+    fc: assessFc,
   });
-  return fetchSoda(`${SURVEY_URL}?${params}`);
 }
 
 /**
@@ -182,6 +169,66 @@ export function joinAssessmentWithSurvey(assessFc, surveyFc) {
     }
   }
   return rows;
+}
+
+/**
+ * Build one small within_box clause per feature in `fc`, OR them together,
+ * batch the clauses so URLs stay well under typical length limits, fire the
+ * batches in parallel, and merge+dedupe the responses. Returns a single
+ * FeatureCollection.
+ *
+ * Why per-feature instead of one union bbox:
+ *   A union bbox across geographically spread inputs (e.g. two neighbourhoods
+ *   on opposite sides of the city) expands into a huge rectangle covering
+ *   most of Winnipeg. The SODA $limit then gets consumed by intervening
+ *   parcels and the ones we actually care about never come back. Per-feature
+ *   clauses keep each polygon's search window tight.
+ */
+async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey, fc }) {
+  if (!fc.features.length) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  const round = (n) => n.toFixed(6);
+  const clauses = fc.features.map((f) => {
+    const [minLon, minLat, maxLon, maxLat] = bbox(f);
+    // within_box(geom, nwLat, nwLon, seLat, seLon)
+    return `within_box(${geomColumn},${round(maxLat)},${round(minLon)},${round(minLat)},${round(maxLon)})`;
+  });
+
+  // 50 clauses per request keeps the URL comfortably under 8 KB even with
+  // the longest coordinate strings. Batches run in parallel so wall-clock
+  // time is bounded by the slowest single call, not the sum.
+  const BATCH = 50;
+  const batches = [];
+  for (let i = 0; i < clauses.length; i += BATCH) {
+    batches.push(clauses.slice(i, i + BATCH));
+  }
+
+  const responses = await Promise.all(
+    batches.map((group) => {
+      const params = new URLSearchParams({
+        $where: group.join(' OR '),
+        $limit: '5000',
+      });
+      if (select) params.set('$select', select);
+      return fetchSoda(`${baseUrl}?${params}`);
+    })
+  );
+
+  // Dedupe: the same feature can appear in multiple batches if its bbox
+  // happens to straddle two input parcels near a batch boundary.
+  const seen = new Set();
+  const merged = [];
+  for (const r of responses) {
+    for (const feat of r.features) {
+      const key = feat.properties?.[dedupeKey];
+      if (key != null && seen.has(key)) continue;
+      if (key != null) seen.add(key);
+      merged.push(feat);
+    }
+  }
+  return { type: 'FeatureCollection', features: merged };
 }
 
 async function fetchSoda(url) {

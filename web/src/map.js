@@ -41,7 +41,7 @@ const BASEMAP_STYLE = {
   ],
 };
 
-export function initMap(container) {
+export function initMap(container, { onFeatureClick } = {}) {
   const map = new maplibregl.Map({
     container,
     style: BASEMAP_STYLE,
@@ -105,6 +105,16 @@ export function initMap(container) {
         map.getCanvas().style.cursor = '';
         popup.remove();
       });
+
+      // Click a parcel → let main.js scroll the results table to the
+      // matching row. The clicked feature's `_rowKey` property is stamped
+      // on by main.js before the FC is handed to showResults().
+      if (onFeatureClick) {
+        map.on('click', 'parcel-fill', (e) => {
+          const key = e.features?.[0]?.properties?._rowKey;
+          if (key != null) onFeatureClick(key);
+        });
+      }
 
       resolve();
     });

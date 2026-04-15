@@ -47,20 +47,29 @@ const $roll = document.getElementById('roll');
 const $address = document.getElementById('address');
 const $zoning = document.getElementById('zoning');
 const $search = document.getElementById('search');
+const $export = document.getElementById('export');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
-const { map, ready: mapReady } = initMap($mapEl);
+// Most recent table rows, kept around for CSV export.
+let currentRows = [];
+
+const { map, ready: mapReady } = initMap($mapEl, {
+  onFeatureClick: scrollToRow,
+});
 
 $search.addEventListener('click', runSearch);
+$export.addEventListener('click', exportCsv);
 for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
   });
 }
+
+setExportEnabled(false);
 
 async function runSearch() {
   const inputs = {
@@ -117,6 +126,11 @@ async function runLegalSearch(inputs) {
     return;
   }
 
+  // Stamp a row key onto each feature so clicking on the map can jump
+  // straight to the corresponding row in the table. In this flow the map
+  // is drawn from Survey Parcels, so we key on survey.id.
+  tagFeatures(surveyFc, 'survey');
+
   const countMsg = n === 500
     ? '500 parcels found (limit reached — refine your search)'
     : `${n} parcels found`;
@@ -159,6 +173,11 @@ async function runAssessmentSearch(inputs) {
     return;
   }
 
+  // Stamp a row key onto each feature so clicking on the map can jump
+  // straight to the matching row. In this flow the map is drawn from
+  // Assessment Parcels, so we key on assess.roll_number.
+  tagFeatures(assessFc, 'assess');
+
   const countMsg = n === 500
     ? '500 parcels found (limit reached — refine your search)'
     : `${n} parcels found`;
@@ -197,16 +216,23 @@ function setBusy(busy) {
 
 function clearTable() {
   $tbody.innerHTML = '';
+  currentRows = [];
+  setExportEnabled(false);
 }
 
 function renderTable(rows) {
-  clearTable();
+  $tbody.innerHTML = '';
+  currentRows = rows;
   const frag = document.createDocumentFragment();
   for (const row of rows) {
     // Either side can be null depending on the flow, so optional-chain both.
     const s = row.survey?.properties || {};
     const a = row.assess?.properties || {};
     const tr = document.createElement('tr');
+    // Link the row back to whichever feature is drawn on the map in the
+    // current flow. `_rowKey` is stamped on by tagFeatures() before render.
+    const key = s._rowKey ?? a._rowKey;
+    if (key != null) tr.dataset.rowKey = String(key);
     tr.appendChild(td(s.lot));
     tr.appendChild(td(s.block));
     tr.appendChild(td(s.plan));
@@ -217,6 +243,101 @@ function renderTable(rows) {
     frag.appendChild(tr);
   }
   $tbody.appendChild(frag);
+  setExportEnabled(rows.length > 0);
+}
+
+/**
+ * Stamp a stable `_rowKey` property onto each feature in `fc`, so that:
+ *  - the map layer carries it through to mouse events (vector tiles flatten
+ *    properties, but GeoJSON sources preserve them as-is)
+ *  - renderTable() can read it off the same property objects and wire a
+ *    matching `data-row-key` onto each <tr>
+ *
+ * `side` is 'survey' or 'assess' depending on which dataset is being drawn.
+ */
+function tagFeatures(fc, side) {
+  for (const f of fc.features) {
+    const p = f.properties || (f.properties = {});
+    if (side === 'survey') {
+      p._rowKey = p.id != null ? `s:${p.id}` : null;
+    } else {
+      p._rowKey = p.roll_number != null ? `a:${p.roll_number}` : null;
+    }
+  }
+}
+
+/** Click-on-map handler: scroll the matching row into view and flash it. */
+function scrollToRow(key) {
+  const tr = $tbody.querySelector(`tr[data-row-key="${cssEscape(String(key))}"]`);
+  if (!tr) return;
+  tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  for (const prev of $tbody.querySelectorAll('tr.row-highlight')) {
+    prev.classList.remove('row-highlight');
+  }
+  // Force-restart the CSS animation if the same row is re-clicked: remove
+  // the class, force a reflow, then add it again.
+  tr.classList.remove('row-highlight');
+  void tr.offsetWidth;
+  tr.classList.add('row-highlight');
+}
+
+// Minimal CSS.escape polyfill — just enough to handle the characters we
+// put into row keys (digits, colons, hyphens).
+function cssEscape(s) {
+  if (window.CSS && CSS.escape) return CSS.escape(s);
+  return s.replace(/["\\]/g, '\\$&');
+}
+
+// ---------- CSV export ----------
+
+function setExportEnabled(enabled) {
+  $export.disabled = !enabled;
+}
+
+function exportCsv() {
+  if (!currentRows.length) return;
+  const header = [
+    'Lot', 'Block', 'Plan', 'Description',
+    'Roll Number', 'Full Address', 'Zoning',
+  ];
+  const lines = [header.map(csvCell).join(',')];
+  for (const row of currentRows) {
+    const s = row.survey?.properties || {};
+    const a = row.assess?.properties || {};
+    lines.push([
+      s.lot, s.block, s.plan, s.description,
+      a.roll_number, a.full_address, a.zoning,
+    ].map(csvCell).join(','));
+  }
+  // BOM so Excel picks up UTF-8 correctly.
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], {
+    type: 'text/csv;charset=utf-8;',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `winnipeg-parcels-${today()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value) {
+  if (value == null) return '';
+  const s = String(value);
+  // Quote if the value contains a comma, quote, CR, or LF. Inside quotes,
+  // double any embedded quotes per RFC 4180.
+  if (/[",\r\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function today() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function td(value) {
