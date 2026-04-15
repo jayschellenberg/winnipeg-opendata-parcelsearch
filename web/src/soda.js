@@ -190,10 +190,17 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
   }
 
   const round = (n) => n.toFixed(6);
+  // SoQL within_box requires the target geometry to be *fully contained*
+  // in the query box — not just to intersect it. Survey and assessment
+  // parcels rarely share edges to the millimeter (river lots are the worst
+  // offenders), so we pad each per-feature bbox by about 150 m in every
+  // direction. The client-side booleanIntersects join still makes the
+  // final call on actual overlap, so the extra rows fetched are harmless.
+  const PAD_DEG = 0.002;
   const clauses = fc.features.map((f) => {
     const [minLon, minLat, maxLon, maxLat] = bbox(f);
     // within_box(geom, nwLat, nwLon, seLat, seLon)
-    return `within_box(${geomColumn},${round(maxLat)},${round(minLon)},${round(minLat)},${round(maxLon)})`;
+    return `within_box(${geomColumn},${round(maxLat + PAD_DEG)},${round(minLon - PAD_DEG)},${round(minLat - PAD_DEG)},${round(maxLon + PAD_DEG)})`;
   });
 
   // 50 clauses per request keeps the URL comfortably under 8 KB even with
