@@ -47,17 +47,60 @@ header small a {
   align-items: center;
 }
 
+.controls .field {
+  /* Wrapper around each input so the focus-triggered .tip tooltip can be
+     absolutely positioned relative to the field without being pushed off
+     by the flex layout. */
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
 .controls input[type="text"] {
   /* Natural width comes from each input's `size` attribute in index.html,
      so fields are tight and don't stretch across the row. Long placeholders
-     will clip visually; the full hint is restored when the user focuses or
-     hovers the field. */
+     clip visually; clicking into the field shows the full hint in the tip. */
   flex: 0 0 auto;
   padding: 7px 10px;
   border: 1px solid #c2c5cc;
   border-radius: 4px;
   font-size: 14px;
   min-width: 0;
+}
+
+/* Focus-triggered tooltip showing the full placeholder text even when the
+   input is too narrow to render it fully. Pops below the field when the
+   user clicks in, vanishes on blur. Pure CSS, no JS. */
+.controls .field .tip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #1a2a4a;
+  color: #fff;
+  padding: 5px 9px;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 20;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.controls .field .tip::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 12px;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 4px solid #1a2a4a;
+}
+
+.controls .field input:focus ~ .tip {
+  display: block;
 }
 
 .controls input[type="text"]:focus {

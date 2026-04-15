@@ -21,13 +21,34 @@
     </header>
 
     <section class="controls">
-      <input id="lot"     type="text" size="8"  placeholder="Lot (or River Lot or Section)" />
-      <input id="block"   type="text" size="6"  placeholder="Block (or RL or OT)" />
-      <input id="plan"    type="text" size="8"  placeholder="Plan (or Parish Code - JA, CH, BO, NO, etc)" />
-      <input id="desc"    type="text" size="12" placeholder="Description (contains)" />
-      <input id="roll"    type="text" size="14" placeholder="Roll # (contains)" />
-      <input id="address" type="text" size="18" placeholder="Address (contains)" />
-      <input id="zoning"  type="text" size="12" placeholder="Zoning (contains)" />
+      <span class="field">
+        <input id="lot"     type="text" size="12" placeholder="Lot (or River Lot or Section)" />
+        <span class="tip">Lot (or River Lot or Section)</span>
+      </span>
+      <span class="field">
+        <input id="block"   type="text" size="9"  placeholder="Block (or RL or OT)" />
+        <span class="tip">Block (or RL or OT)</span>
+      </span>
+      <span class="field">
+        <input id="plan"    type="text" size="12" placeholder="Plan (or Parish Code - JA, CH, BO, NO, etc)" />
+        <span class="tip">Plan (or Parish Code — JA, CH, BO, NO, etc)</span>
+      </span>
+      <span class="field">
+        <input id="desc"    type="text" size="18" placeholder="Description (contains)" />
+        <span class="tip">Description (contains)</span>
+      </span>
+      <span class="field">
+        <input id="roll"    type="text" size="14" placeholder="Roll # (contains)" />
+        <span class="tip">Roll # (contains)</span>
+      </span>
+      <span class="field">
+        <input id="address" type="text" size="18" placeholder="Address (contains)" />
+        <span class="tip">Address (contains)</span>
+      </span>
+      <span class="field">
+        <input id="zoning"  type="text" size="12" placeholder="Zoning (contains)" />
+        <span class="tip">Zoning (contains)</span>
+      </span>
       <button id="search" type="button">Search</button>
       <button id="clear"  type="button" class="secondary">Clear</button>
       <button id="export" type="button" class="secondary">Export CSV</button>
