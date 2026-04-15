@@ -242,9 +242,20 @@ header small a {
 #results th,
 #results td {
   padding: 7px 10px;
-  text-align: left;
+  text-align: center;
   border-bottom: 1px solid #eceef2;
   white-space: nowrap;
+}
+
+/* Description (4th), Full Address (6th), and Zoning (7th) stay left-aligned
+   because they contain free-form text that reads better ragged-right. */
+#results th:nth-child(4),
+#results td:nth-child(4),
+#results th:nth-child(6),
+#results td:nth-child(6),
+#results th:nth-child(7),
+#results td:nth-child(7) {
+  text-align: left;
 }
 
 #results th {
@@ -274,9 +285,8 @@ header small a {
   font-style: italic;
 }
 
-/* Right-align numeric columns (Size, Lat, Lon) so the digits line up. */
+/* Tabular figures so digits line up in numeric columns (Size, Lat, Lon). */
 #results td.num {
-  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
