@@ -265,6 +265,35 @@ header small a {
   top: 0;
 }
 
+/* Sortable column headers */
+#results th[data-col] {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+#results th[data-col]:hover {
+  background: #e6e9f0;
+}
+
+/* Sort direction indicator appended after the header text */
+#results th[data-col]::after {
+  content: " ⇅";
+  font-size: 11px;
+  color: #9aa0b0;
+  display: inline-block;
+}
+
+#results th[data-col][aria-sort="ascending"]::after {
+  content: " ▲";
+  color: #1a2a4a;
+}
+
+#results th[data-col][aria-sort="descending"]::after {
+  content: " ▼";
+  color: #1a2a4a;
+}
+
 #results tbody tr:hover {
   background: #f6f9ff;
 }

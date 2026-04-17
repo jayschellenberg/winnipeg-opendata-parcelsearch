@@ -58,6 +58,73 @@ const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 // Most recent table rows, kept around for CSV export.
 let currentRows = [];
 
+// ---------- Column sort ----------
+
+let currentSort = { col: 'roll', dir: 'asc' };
+
+// Maps each data-col key to a function that extracts a comparable value from
+// a row. Strings lower-cased; numbers use -Infinity so nulls sort last.
+const SORT_KEYS = {
+  lot:     (r) => numOrStr(r.survey?.properties?.lot),
+  block:   (r) => strKey(r.survey?.properties?.block),
+  plan:    (r) => numOrStr(r.survey?.properties?.plan),
+  desc:    (r) => strKey(r.survey?.properties?.description),
+  roll:    (r) => strKey(r.assess?.properties?.roll_number),
+  address: (r) => strKey(r.assess?.properties?.full_address),
+  zoning:  (r) => strKey(r.assess?.properties?.zoning),
+  area:    (r) => finiteOrNeg(r.assess?.properties?.assessed_land_area),
+  lat:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lat),
+  lon:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lon),
+};
+
+// Numeric-smart string key: if the value looks like a number, compare it
+// numerically so "9" < "10" instead of "9" > "10" (lexicographic pitfall).
+function numOrStr(v) {
+  if (v == null || v === '') return '\uffff'; // sort blanks last
+  const n = Number(v);
+  return Number.isFinite(n) ? n : String(v).toLowerCase();
+}
+
+function strKey(v) {
+  return (v == null || v === '') ? '\uffff' : String(v).toLowerCase();
+}
+
+function finiteOrNeg(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : -Infinity;
+}
+
+function sortRows(rows) {
+  const { col, dir } = currentSort;
+  const key = SORT_KEYS[col];
+  if (!key) return rows;
+  const mul = dir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    // Always push blanks/nulls to the end regardless of sort direction.
+    const aBlank = ka === '\uffff' || ka === -Infinity;
+    const bBlank = kb === '\uffff' || kb === -Infinity;
+    if (aBlank && bBlank) return 0;
+    if (aBlank) return 1;
+    if (bBlank) return -1;
+    if (ka < kb) return -mul;
+    if (ka > kb) return mul;
+    return 0;
+  });
+}
+
+// Update aria-sort and visual indicator on all sortable headers.
+function updateSortIndicators() {
+  for (const th of document.querySelectorAll('#results th[data-col]')) {
+    if (th.dataset.col === currentSort.col) {
+      th.setAttribute('aria-sort', currentSort.dir === 'asc' ? 'ascending' : 'descending');
+    } else {
+      th.removeAttribute('aria-sort');
+    }
+  }
+}
+
 const { map, ready: mapReady } = initMap($mapEl, {
   onFeatureClick: scrollToRow,
 });
@@ -72,6 +139,21 @@ for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning]) {
 }
 
 setExportEnabled(false);
+updateSortIndicators();
+
+// Wire sortable column headers.
+for (const th of document.querySelectorAll('#results th[data-col]')) {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (currentSort.col === col) {
+      currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      currentSort = { col, dir: 'asc' };
+    }
+    updateSortIndicators();
+    if (currentRows.length > 0) renderTable(currentRows);
+  });
+}
 
 async function runSearch() {
   const inputs = {
@@ -238,8 +320,9 @@ function clearTable() {
 function renderTable(rows) {
   $tbody.innerHTML = '';
   currentRows = rows;
+  const sorted = sortRows(rows);
   const frag = document.createDocumentFragment();
-  for (const row of rows) {
+  for (const row of sorted) {
     // Either side can be null depending on the flow, so optional-chain both.
     const s = row.survey?.properties || {};
     const a = row.assess?.properties || {};
