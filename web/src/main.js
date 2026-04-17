@@ -400,7 +400,7 @@ function exportCsv() {
   const header = [
     'Lot', 'Block', 'Plan', 'Description',
     'Roll Number', 'Full Address', 'Zoning',
-    'Size (sf)', 'Lat', 'Lon',
+    'Lot Size (sf)', 'Lat', 'Lon',
   ];
   const lines = [header.map(csvCell).join(',')];
   for (const row of currentRows) {
