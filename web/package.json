@@ -11,6 +11,7 @@
   "dependencies": {
     "@turf/bbox": "^7.1.0",
     "@turf/boolean-intersects": "^7.1.0",
+    "@turf/boolean-point-in-polygon": "^7.3.4",
     "maplibre-gl": "^4.7.1"
   },
   "devDependencies": {

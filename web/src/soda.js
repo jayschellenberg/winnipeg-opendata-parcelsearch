@@ -25,6 +25,7 @@
 
 import bbox from '@turf/bbox';
 import booleanIntersects from '@turf/boolean-intersects';
+import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 
 const SURVEY_URL = 'https://data.winnipeg.ca/resource/sjjm-nj47.geojson';
 const ASSESS_URL = 'https://data.winnipeg.ca/resource/d4mq-wa44.geojson';
@@ -73,22 +74,26 @@ export async function fetchAssessmentOverlap(surveyFc) {
 }
 
 /**
- * For each survey parcel, find every assessment parcel whose geometry
- * actually intersects it (not just the bbox). Returns an array of rows:
+ * For each survey parcel, find every assessment parcel whose centroid lies
+ * inside it. Returns an array of rows:
  *   { survey: <Feature>, assess: <Feature>|null }
  * A survey parcel with no matches produces a single row with assess=null.
+ *
+ * Why centroid-in-polygon instead of booleanIntersects:
+ *   Adjacent parcels share a boundary edge. booleanIntersects returns true
+ *   for any shared point — including edge touches — so neighbouring lots
+ *   incorrectly appear as matches. Checking the assessment centroid keeps
+ *   only the parcel whose interior sits inside the survey polygon.
+ *   Falls back to booleanIntersects when centroid coords are missing.
  */
 export function joinSurveyWithAssessment(surveyFc, assessFc) {
   const rows = [];
   for (const s of surveyFc.features) {
     let matches;
     try {
-      matches = assessFc.features.filter((a) => booleanIntersects(s, a));
+      matches = assessFc.features.filter((a) => assessCentroidInSurvey(a, s));
     } catch (err) {
-      // Some parcel geometries in the wild have topology issues that crash
-      // boolean-intersects. Fall back to "no match" rather than dropping the
-      // whole row.
-      console.warn('booleanIntersects error; falling back to unmatched row', err);
+      console.warn('join error; falling back to unmatched row', err);
       matches = [];
     }
     if (matches.length === 0) {
@@ -157,9 +162,9 @@ export function joinAssessmentWithSurvey(assessFc, surveyFc) {
   for (const a of assessFc.features) {
     let matches;
     try {
-      matches = surveyFc.features.filter((s) => booleanIntersects(a, s));
+      matches = surveyFc.features.filter((s) => assessCentroidInSurvey(a, s));
     } catch (err) {
-      console.warn('booleanIntersects error; falling back to unmatched row', err);
+      console.warn('join error; falling back to unmatched row', err);
       matches = [];
     }
     if (matches.length === 0) {
@@ -184,6 +189,22 @@ export function joinAssessmentWithSurvey(assessFc, surveyFc) {
  *   parcels and the ones we actually care about never come back. Per-feature
  *   clauses keep each polygon's search window tight.
  */
+/**
+ * Returns true if the assessment parcel's centroid (from its
+ * centroid_lat / centroid_lon properties) lies inside the survey polygon.
+ * Falls back to booleanIntersects when centroid coords are unavailable
+ * so no row is silently dropped.
+ */
+function assessCentroidInSurvey(assessFeature, surveyFeature) {
+  const lat = parseFloat(assessFeature.properties?.centroid_lat);
+  const lon = parseFloat(assessFeature.properties?.centroid_lon);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    return booleanPointInPolygon([lon, lat], surveyFeature);
+  }
+  // No centroid — fall back to full polygon intersection.
+  return booleanIntersects(assessFeature, surveyFeature);
+}
+
 async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey, fc }) {
   if (!fc.features.length) {
     return { type: 'FeatureCollection', features: [] };
