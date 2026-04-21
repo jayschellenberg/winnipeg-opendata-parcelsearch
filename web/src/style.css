@@ -147,9 +147,19 @@ header small a {
 }
 
 .count {
-  margin-left: 4px;
-  font-size: 13px;
-  color: #555c6e;
+  margin-left: auto;
+  padding: 6px 12px;
+  background: #eef2fb;
+  border: 1px solid #c7d2ec;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a2a4a;
+  min-height: 20px;
+}
+
+.count:empty {
+  display: none;
 }
 
 .hint {

@@ -215,8 +215,8 @@ async function runLegalSearch(inputs) {
   // is drawn from Survey Parcels, so we key on survey.id.
   tagFeatures(surveyFc, 'survey');
 
-  const countMsg = n === 500
-    ? '500 parcels found (limit reached — refine your search)'
+  const countMsg = n === 1000
+    ? '1000 parcels found (limit reached — refine your search)'
     : `${n} parcels found`;
   setCount(`${countMsg} · loading roll numbers…`);
 
@@ -262,8 +262,8 @@ async function runAssessmentSearch(inputs) {
   // Assessment Parcels, so we key on assess.roll_number.
   tagFeatures(assessFc, 'assess');
 
-  const countMsg = n === 500
-    ? '500 parcels found (limit reached — refine your search)'
+  const countMsg = n === 1000
+    ? '1000 parcels found (limit reached — refine your search)'
     : `${n} parcels found`;
   setCount(`${countMsg} · loading legal descriptions…`);
 

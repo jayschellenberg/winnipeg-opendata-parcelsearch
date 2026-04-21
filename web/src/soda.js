@@ -51,7 +51,7 @@ export async function searchSurveyParcels({ plan, lot, block, desc }) {
 
   const params = new URLSearchParams({
     $where: clauses.join(' AND '),
-    $limit: '500',
+    $limit: '1000',
   });
   return fetchSoda(`${SURVEY_URL}?${params}`);
 }
@@ -127,7 +127,7 @@ export async function searchAssessmentParcels({ roll, address, zoning }) {
     $where: clauses.join(' AND '),
     $select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,geometry',
     $order: 'full_address',
-    $limit: '500',
+    $limit: '1000',
   });
   return fetchSoda(`${ASSESS_URL}?${params}`);
 }
