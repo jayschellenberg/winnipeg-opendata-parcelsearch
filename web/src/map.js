@@ -36,6 +36,10 @@ const ZONING_PALETTE = [
 // single raster layer. This avoids flakiness with hosted vector styles.
 const BASEMAP_STYLE = {
   version: 8,
+  // Public glyph server for symbol-layer text (zoning code labels).
+  // demotiles.maplibre.org is MapLibre's official demo CDN and is the most
+  // reliable free option. Available stacks include "Open Sans Semibold".
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     'carto-positron': {
       type: 'raster',
@@ -115,6 +119,34 @@ export function initMap(container, { onFeatureClick } = {}) {
           'line-color': '#444',
           'line-width': 0.6,
           'line-opacity': 0.6,
+        },
+      });
+      // Zoning code label, placed at the polygon centroid by default.
+      // Filtered to codes ≤5 chars so long edge-cases (e.g. an unusual
+      // overlay-district name) don't overflow the polygon. White halo
+      // keeps the code legible regardless of the underlying fill colour.
+      map.addLayer({
+        id: 'zoning-label',
+        type: 'symbol',
+        source: 'zoning',
+        layout: {
+          visibility: 'none',
+          'text-field': [
+            'case',
+            ['<=', ['length', ['coalesce', ['get', 'zoning'], '']], 5],
+            ['get', 'zoning'],
+            '',
+          ],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 11,
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+          'symbol-placement': 'point',
+        },
+        paint: {
+          'text-color': '#1a1a1a',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.5,
         },
       });
 
@@ -240,6 +272,7 @@ export function setZoningVisible(map, visible) {
   const v = visible ? 'visible' : 'none';
   if (map.getLayer('zoning-fill')) map.setLayoutProperty('zoning-fill', 'visibility', v);
   if (map.getLayer('zoning-line')) map.setLayoutProperty('zoning-line', 'visibility', v);
+  if (map.getLayer('zoning-label')) map.setLayoutProperty('zoning-label', 'visibility', v);
 }
 
 // Click-popup body for zoning polygons. Shows the zone code, the short

@@ -98,7 +98,7 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
   for (const s of surveyFc.features) {
     let matches;
     try {
-      matches = assessFc.features.filter((a) => assessCentroidInSurvey(a, s));
+      matches = assessFc.features.filter((a) => parcelsOverlap(s, a));
     } catch (err) {
       console.warn('join error; falling back to unmatched row', err);
       matches = [];
@@ -307,7 +307,7 @@ export function joinAssessmentWithSurvey(assessFc, surveyFc) {
   for (const a of assessFc.features) {
     let matches;
     try {
-      matches = surveyFc.features.filter((s) => assessCentroidInSurvey(a, s));
+      matches = surveyFc.features.filter((s) => parcelsOverlap(s, a));
     } catch (err) {
       console.warn('join error; falling back to unmatched row', err);
       matches = [];
@@ -348,6 +348,40 @@ function assessCentroidInSurvey(assessFeature, surveyFeature) {
   }
   // No centroid — fall back to full polygon intersection.
   return booleanIntersects(assessFeature, surveyFeature);
+}
+
+/**
+ * Bbox-center fallback for survey polygons. The survey dataset has no
+ * pre-computed centroid, but for the urban grid lots that fill most of the
+ * city, the bbox center sits inside the polygon and is good enough for an
+ * interior-overlap check. Used in the bidirectional join below.
+ */
+function surveyCenterInAssess(surveyFeature, assessFeature) {
+  const [minX, minY, maxX, maxY] = bbox(surveyFeature);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  return booleanPointInPolygon([cx, cy], assessFeature);
+}
+
+/**
+ * Bidirectional containment check used by both joins. A pair matches if
+ * either side's interior point sits inside the other polygon:
+ *
+ *   - Assessment centroid inside survey: handles the "many assessments per
+ *     survey lot" case (e.g. duplex with two roll numbers on one lot).
+ *   - Survey bbox center inside assessment: handles the "one assessment
+ *     over many survey lots" case (e.g. 400 Hargrave is a single roll
+ *     covering ~20 downtown lots — only one survey contains the assessment
+ *     centroid, so the directional check used to lose the other 19).
+ *
+ * Symmetric check still rejects neighbouring-lot false matches because
+ * neither centroid sits inside the *adjacent* parcel — the original bug
+ * `booleanIntersects` triggered on shared edges, which both centroid checks
+ * correctly avoid.
+ */
+function parcelsOverlap(surveyFeature, assessFeature) {
+  return assessCentroidInSurvey(assessFeature, surveyFeature)
+      || surveyCenterInAssess(surveyFeature, assessFeature);
 }
 
 async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey, fc, extraWhere = null }) {
