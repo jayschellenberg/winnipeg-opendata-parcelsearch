@@ -33,6 +33,9 @@ const ASSESS_URL = 'https://data.winnipeg.ca/resource/d4mq-wa44.geojson';
 // `point` geometry. No roll_number link — addresses join to assessment
 // parcels geometrically (point-in-polygon).
 const ADDRESSES_URL = 'https://data.winnipeg.ca/resource/cam2-ii3u.json';
+// Zoning By-law Parcels dataset (~18K polygons). Geometry column: `location`.
+// Used to render a toggleable zoning overlay scoped to the search-result area.
+const ZONING_URL = 'https://data.winnipeg.ca/resource/dxrp-w6re.geojson';
 
 // Optional Socrata app token. Raises the anonymous rate limit.
 // Set via Vercel env var VITE_SODA_APP_TOKEN; undefined in anonymous mode.
@@ -255,6 +258,22 @@ function mergeFcByKey(fcs, key) {
     }
   }
   return { type: 'FeatureCollection', features };
+}
+
+/**
+ * Fetch Zoning By-law Parcels that overlap the supplied search results.
+ * Scoped to the result area only (per-feature within_box, same pattern as
+ * the survey/assessment overlap helpers) so we never pull all 18K zones
+ * citywide. Returns a FeatureCollection of zoning polygons keyed by `id`.
+ */
+export async function fetchZoningOverlap(parcelFc) {
+  return fetchPerFeatureBboxUnion({
+    baseUrl: ZONING_URL,
+    geomColumn: 'location',
+    select: 'id,zoning,short_description,long_description,map_colour,location',
+    dedupeKey: 'id',
+    fc: parcelFc,
+  });
 }
 
 /**

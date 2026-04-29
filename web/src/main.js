@@ -36,8 +36,9 @@ import {
   searchAssessmentParcelsExpanded,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
+  fetchZoningOverlap,
 } from './soda.js';
-import { initMap, showResults } from './map.js';
+import { initMap, showResults, setZoningData, setZoningVisible } from './map.js';
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
@@ -49,6 +50,7 @@ const $zoning = document.getElementById('zoning');
 const $search = document.getElementById('search');
 const $clear = document.getElementById('clear');
 const $export = document.getElementById('export');
+const $zoningToggle = document.getElementById('zoning-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
@@ -57,6 +59,12 @@ const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
 // Most recent table rows, kept around for CSV export.
 let currentRows = [];
+
+// Zoning overlay state. `enabled` reflects the toggle button; `parcelFc`
+// is the most recent parcel FC drawn on the map, kept so the toggle can
+// fetch zones for the current results without re-running the search.
+let zoningEnabled = false;
+let lastParcelFc = null;
 
 // ---------- Column sort ----------
 
@@ -132,6 +140,7 @@ const { map, ready: mapReady } = initMap($mapEl, {
 $search.addEventListener('click', runSearch);
 $clear.addEventListener('click', clearAll);
 $export.addEventListener('click', exportCsv);
+$zoningToggle.addEventListener('click', toggleZoning);
 for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
@@ -172,7 +181,7 @@ async function runSearch() {
   if (!anyLegal && !anyAssess) {
     setCount('Enter at least one search field.');
     clearTable();
-    mapReady.then(() => showResults(map, EMPTY_FC));
+    setParcels(EMPTY_FC);
     return;
   }
 
@@ -191,6 +200,57 @@ async function runSearch() {
   }
 }
 
+// ---------- Map / zoning helpers ----------
+
+/**
+ * Push a parcel FC onto the map and remember it. The remembered FC lets
+ * the zoning toggle refresh without re-running the search. Triggers a
+ * zoning refresh if the layer is currently enabled.
+ */
+function setParcels(fc) {
+  lastParcelFc = fc;
+  mapReady.then(() => {
+    showResults(map, fc);
+    refreshZoning();
+  });
+}
+
+/**
+ * Toggle handler. Flips state, updates button text + aria-pressed, then
+ * either fetches zoning for the current results (turning on) or hides
+ * the layer (turning off). The data sticks around when hidden so a
+ * re-toggle is instant if the parcel set hasn't changed.
+ */
+async function toggleZoning() {
+  zoningEnabled = !zoningEnabled;
+  $zoningToggle.textContent = zoningEnabled ? 'Hide Zoning' : 'Show Zoning';
+  $zoningToggle.setAttribute('aria-pressed', String(zoningEnabled));
+  $zoningToggle.classList.toggle('active', zoningEnabled);
+  await mapReady;
+  setZoningVisible(map, zoningEnabled);
+  if (zoningEnabled) await refreshZoning();
+}
+
+/**
+ * Fetch zoning polygons covering the current search results and load them
+ * into the zoning source. No-op when the layer is disabled or there are no
+ * results. Failures are logged but non-fatal — the parcel results still
+ * render normally.
+ */
+async function refreshZoning() {
+  if (!zoningEnabled) return;
+  if (!lastParcelFc || lastParcelFc.features.length === 0) {
+    setZoningData(map, { type: 'FeatureCollection', features: [] });
+    return;
+  }
+  try {
+    const zoningFc = await fetchZoningOverlap(lastParcelFc);
+    setZoningData(map, zoningFc);
+  } catch (err) {
+    console.warn('zoning fetch failed', err);
+  }
+}
+
 // ---------- Legal-description flow ----------
 
 async function runLegalSearch(inputs) {
@@ -206,7 +266,7 @@ async function runLegalSearch(inputs) {
   const n = surveyFc.features.length;
   if (n === 0) {
     setCount('No parcels found.');
-    mapReady.then(() => showResults(map, surveyFc));
+    setParcels(surveyFc);
     return;
   }
 
@@ -222,7 +282,7 @@ async function runLegalSearch(inputs) {
 
   // Show survey-only rows in the table immediately.
   renderTable(surveyFc.features.map((f) => ({ survey: f, assess: null })));
-  mapReady.then(() => showResults(map, surveyFc));
+  setParcels(surveyFc);
 
   // Enrichment: Assessment Parcels inside the survey bbox.
   let assessFc;
@@ -253,7 +313,7 @@ async function runAssessmentSearch(inputs) {
   const n = assessFc.features.length;
   if (n === 0) {
     setCount('No parcels found.');
-    mapReady.then(() => showResults(map, assessFc));
+    setParcels(assessFc);
     return;
   }
 
@@ -270,7 +330,7 @@ async function runAssessmentSearch(inputs) {
   // Show assessment-only rows in the table immediately. Map renders the
   // assessment geometry directly — no survey polygon is drawn in this flow.
   renderTable(assessFc.features.map((f) => ({ survey: null, assess: f })));
-  mapReady.then(() => showResults(map, assessFc));
+  setParcels(assessFc);
 
   // Enrichment: Survey Parcels inside the assessment bbox, back-filling
   // the lot/block/plan/description columns.

@@ -11,6 +11,26 @@ import bbox from '@turf/bbox';
 
 const WINNIPEG_CENTER = [-97.14, 49.89];
 
+// Categorical fill colors keyed off the dataset's `map_colour` field. Values
+// taken from a $group=map_colour query against dxrp-w6re — 13 categories
+// covering ~99% of city zones, with a neutral grey fallback for anything
+// that gets added later. Tuned to read clearly under a 0.4 alpha overlay.
+const ZONING_PALETTE = [
+  'Single Family Residential',  '#fff4a3',
+  'Two Family Residential',     '#ffd9a0',
+  'Multi-Family Residential',   '#f5b97d',
+  'Commercial',                 '#f08d8d',
+  'Parks and Recreation',       '#9ccc9c',
+  'Industrial',                 '#b5b0cc',
+  'Agricultural',               '#e0d596',
+  'Rural Residential',          '#d9c8a3',
+  'Multi-Use Sector',           '#c8a2c8',
+  'Character Sector',           '#d2b5dc',
+  'Downtown Living Sector',     '#ffab80',
+  'Educational & Institutional','#a3c4e8',
+  'Riverbank Sector',           '#99c5c5',
+];
+
 // Inline style using CartoDB Positron raster tiles. No external style.json
 // to fetch, no vector glyphs/sprites/hillshade sources to resolve — just a
 // single raster layer. This avoids flakiness with hosted vector styles.
@@ -63,6 +83,41 @@ export function initMap(container, { onFeatureClick } = {}) {
 
   const ready = new Promise((resolve) => {
     map.on('load', () => {
+      // Zoning layer goes in first so it draws *under* the parcel highlight.
+      // Source starts empty; main.js populates it when the user toggles
+      // zoning on. `visibility: none` keeps it hidden until then.
+      map.addSource('zoning', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'zoning-fill',
+        type: 'fill',
+        source: 'zoning',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': [
+            'match',
+            ['get', 'map_colour'],
+            ...ZONING_PALETTE,
+            '#cccccc',
+          ],
+          'fill-opacity': 0.45,
+          'fill-outline-color': '#666',
+        },
+      });
+      map.addLayer({
+        id: 'zoning-line',
+        type: 'line',
+        source: 'zoning',
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#444',
+          'line-width': 0.6,
+          'line-opacity': 0.6,
+        },
+      });
+
       map.addSource('parcel-results', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -116,6 +171,31 @@ export function initMap(container, { onFeatureClick } = {}) {
         });
       }
 
+      // Click a zoning polygon → show a popup with the zone code and
+      // description. Skipped when the zoning layer is hidden (clicks pass
+      // through to whatever's underneath, including parcel-fill above it).
+      const zoningPopup = new maplibregl.Popup({ closeButton: true });
+      map.on('click', 'zoning-fill', (e) => {
+        // Don't intercept the click if a parcel was also under it — let the
+        // parcel handler win since that's the user's primary interest.
+        const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
+        if (parcelHit.length > 0) return;
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        zoningPopup
+          .setLngLat(e.lngLat)
+          .setHTML(zoningPopupHtml(p))
+          .addTo(map);
+      });
+      map.on('mouseenter', 'zoning-fill', () => {
+        if (map.getLayoutProperty('zoning-fill', 'visibility') === 'visible') {
+          map.getCanvas().style.cursor = 'help';
+        }
+      });
+      map.on('mouseleave', 'zoning-fill', () => {
+        map.getCanvas().style.cursor = '';
+      });
+
       resolve();
     });
   });
@@ -140,6 +220,37 @@ export function showResults(map, fc) {
     [[minX, minY], [maxX, maxY]],
     { padding: 60, maxZoom: 18, duration: 800 }
   );
+}
+
+/**
+ * Replace the zoning layer's source data. Pass an empty FC to clear it.
+ * Visibility is controlled separately by setZoningVisible() so callers can
+ * preload data while the layer is still hidden.
+ */
+export function setZoningData(map, fc) {
+  const src = map.getSource('zoning');
+  if (src) src.setData(fc);
+}
+
+/**
+ * Toggle the zoning fill+line layers on or off without touching the data.
+ * Cheap to call repeatedly — MapLibre rerenders only the layout property.
+ */
+export function setZoningVisible(map, visible) {
+  const v = visible ? 'visible' : 'none';
+  if (map.getLayer('zoning-fill')) map.setLayoutProperty('zoning-fill', 'visibility', v);
+  if (map.getLayer('zoning-line')) map.setLayoutProperty('zoning-line', 'visibility', v);
+}
+
+// Click-popup body for zoning polygons. Shows the zone code, the short
+// category, and the long description (which is sometimes a useful sentence
+// or two about what the district allows).
+function zoningPopupHtml(p) {
+  const lines = [];
+  if (p.zoning) lines.push(`<strong>${escapeHtml(p.zoning)}</strong>`);
+  if (p.short_description) lines.push(`<em>${escapeHtml(p.short_description)}</em>`);
+  if (p.long_description) lines.push(escapeHtml(p.long_description));
+  return `<div style="max-width:300px;line-height:1.35">${lines.join('<br>')}</div>`;
 }
 
 // Render a hover-popup HTML block from whichever schema is present.

@@ -139,6 +139,19 @@ header small a {
   background: #eef2fb;
 }
 
+/* Toggled-on state for the zoning button — reuses the primary-button look
+   so it's visually obvious the layer is active. */
+.controls button.secondary.active {
+  background: #1a2a4a;
+  color: #fff;
+  border-color: #1a2a4a;
+}
+
+.controls button.secondary.active:hover:not(:disabled) {
+  background: #2b3e68;
+  border-color: #2b3e68;
+}
+
 .controls button.secondary:disabled {
   background: #fff;
   color: #a0a6b3;
