@@ -29,6 +29,10 @@ import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 
 const SURVEY_URL = 'https://data.winnipeg.ca/resource/sjjm-nj47.geojson';
 const ASSESS_URL = 'https://data.winnipeg.ca/resource/d4mq-wa44.geojson';
+// Civic addresses dataset. One row per officially recognized address with a
+// `point` geometry. No roll_number link — addresses join to assessment
+// parcels geometrically (point-in-polygon).
+const ADDRESSES_URL = 'https://data.winnipeg.ca/resource/cam2-ii3u.json';
 
 // Optional Socrata app token. Raises the anonymous rate limit.
 // Set via Vercel env var VITE_SODA_APP_TOKEN; undefined in anonymous mode.
@@ -133,6 +137,127 @@ export async function searchAssessmentParcels({ roll, address, zoning }) {
 }
 
 /**
+ * Expanded assessment-parcel search. Always runs the direct attribute query
+ * (roll/address/zoning ANDed against d4mq-wa44.full_address). When `address`
+ * is provided, also cross-references the civic-Addresses dataset
+ * (cam2-ii3u): every matching address is a point that may sit on a parcel
+ * whose *primary* full_address differs (e.g. "440 Hargrave" is a side door
+ * of a parcel listed in assessment as "400 Hargrave"). Those extra parcels
+ * are pulled in via per-point within_box and merged into the result, deduped
+ * by roll_number.
+ *
+ * Roll/zoning filters carry through to the cross-reference path so the
+ * combined intent — "parcel must match all the filters the user typed" —
+ * stays consistent regardless of which path surfaced it.
+ */
+export async function searchAssessmentParcelsExpanded({ roll, address, zoning }) {
+  const directPromise = searchAssessmentParcels({ roll, address, zoning });
+  const xrefPromise = address
+    ? searchAddressesAndFindParcels(address, { roll, zoning })
+    : Promise.resolve({ type: 'FeatureCollection', features: [] });
+  const [directFc, xrefFc] = await Promise.all([directPromise, xrefPromise]);
+  return mergeFcByKey([directFc, xrefFc], 'roll_number');
+}
+
+/**
+ * Query the Addresses dataset for every civic address whose full_address
+ * matches `like '%X%'`. Returns a FeatureCollection of Point features —
+ * one per matching civic address. Schema preserved for debugging only;
+ * downstream code only cares about geometry.
+ *
+ * Uses the .json endpoint (not .geojson) because the dataset has two
+ * geometry-typed columns and explicit conversion is more predictable than
+ * letting Socrata pick one.
+ */
+export async function searchAddresses({ address }) {
+  if (!address) return { type: 'FeatureCollection', features: [] };
+  const params = new URLSearchParams({
+    $where: likeClause('full_address', address),
+    $select: 'full_address,point',
+    $order: 'full_address',
+    $limit: '1000',
+  });
+  const url = `${ADDRESSES_URL}?${params}`;
+  const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const rows = await res.json();
+  const features = rows
+    .filter((r) => r.point?.coordinates?.length === 2)
+    .map((r) => ({
+      type: 'Feature',
+      geometry: r.point,
+      properties: { full_address: r.full_address },
+    }));
+  return { type: 'FeatureCollection', features };
+}
+
+/**
+ * Cross-reference path for the assessment-first flow: take every civic
+ * address matching the user's text, find the assessment parcel that
+ * contains each point, and return those parcels.
+ *
+ * `extraFilters` re-applies the user's roll / zoning constraints so the
+ * cross-reference path can't surface parcels that wouldn't have matched
+ * the direct query for unrelated reasons.
+ */
+async function searchAddressesAndFindParcels(address, extraFilters) {
+  const addressFc = await searchAddresses({ address });
+  if (!addressFc.features.length) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  const candidates = await fetchAssessmentByAddressPoints(addressFc, extraFilters);
+  // The within_box query is bbox-based and returns neighbouring parcels too
+  // (the same 150m pad we use everywhere). Filter to only parcels that
+  // actually contain at least one matched address point.
+  const features = candidates.features.filter((parcel) =>
+    addressFc.features.some((addr) => booleanPointInPolygon(addr, parcel))
+  );
+  return { type: 'FeatureCollection', features };
+}
+
+/**
+ * Per-point within_box lookup against the assessment dataset. `extraFilters`
+ * (roll, zoning) get ANDed with the OR'd within_box clauses so the user's
+ * non-address filters still apply on this path.
+ */
+async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
+  const extras = [];
+  if (extraFilters.roll)   extras.push(likeClause('roll_number', extraFilters.roll));
+  if (extraFilters.zoning) extras.push(likeClause('zoning', extraFilters.zoning));
+  return fetchPerFeatureBboxUnion({
+    baseUrl: ASSESS_URL,
+    geomColumn: 'geometry',
+    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,geometry',
+    dedupeKey: 'roll_number',
+    fc: addressFc,
+    extraWhere: extras.length ? extras.join(' AND ') : null,
+  });
+}
+
+/**
+ * Merge several FeatureCollections, dropping duplicates by a property key.
+ * First-seen wins, so callers can order inputs by preference (e.g. direct
+ * matches before cross-reference matches).
+ */
+function mergeFcByKey(fcs, key) {
+  const seen = new Set();
+  const features = [];
+  for (const fc of fcs) {
+    for (const feat of fc.features) {
+      const k = feat.properties?.[key];
+      if (k != null && seen.has(k)) continue;
+      if (k != null) seen.add(k);
+      features.push(feat);
+    }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+/**
  * Fetch Survey Parcels that overlap the supplied Assessment Parcels. Used
  * to back-fill legal-description columns (lot/block/plan/description) for
  * an assessment-first search. Per-parcel within_box clauses keep each
@@ -206,7 +331,7 @@ function assessCentroidInSurvey(assessFeature, surveyFeature) {
   return booleanIntersects(assessFeature, surveyFeature);
 }
 
-async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey, fc }) {
+async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey, fc, extraWhere = null }) {
   if (!fc.features.length) {
     return { type: 'FeatureCollection', features: [] };
   }
@@ -236,8 +361,17 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
 
   const responses = await Promise.all(
     batches.map((group) => {
+      const groupClause = group.join(' OR ');
+      // When a caller supplies extra filters (e.g. roll/zoning constraints
+      // riding along on an address-points lookup), AND them with the OR'd
+      // within_box clauses so the spatial result is still narrowed by the
+      // user's other filters. Parens around the OR group keep precedence
+      // explicit.
+      const where = extraWhere
+        ? `(${groupClause}) AND ${extraWhere}`
+        : groupClause;
       const params = new URLSearchParams({
-        $where: group.join(' OR '),
+        $where: where,
         $limit: '5000',
       });
       if (select) params.set('$select', select);

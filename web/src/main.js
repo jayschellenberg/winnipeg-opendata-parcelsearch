@@ -33,7 +33,7 @@ import {
   searchSurveyParcels,
   fetchAssessmentOverlap,
   joinSurveyWithAssessment,
-  searchAssessmentParcels,
+  searchAssessmentParcelsExpanded,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
 } from './soda.js';
@@ -243,7 +243,7 @@ async function runLegalSearch(inputs) {
 async function runAssessmentSearch(inputs) {
   let assessFc;
   try {
-    assessFc = await searchAssessmentParcels(inputs);
+    assessFc = await searchAssessmentParcelsExpanded(inputs);
   } catch (err) {
     console.error(err);
     setCount(`Search failed: ${err.message}`);
