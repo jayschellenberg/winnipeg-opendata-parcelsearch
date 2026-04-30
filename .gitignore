@@ -7,6 +7,10 @@ ParcelCrossRef_*.csv
 web/node_modules/
 web/dist/
 
+# Editor / Vite scratch files (created during dev, not part of the source)
+*.tmp.*
+vite.config.*.timestamp-*.mjs
+
 # RStudio / R session state
 .Rproj.user/
 .Rhistory
