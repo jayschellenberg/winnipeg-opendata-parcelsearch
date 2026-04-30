@@ -318,6 +318,13 @@ async function runLegalSearch(inputs) {
   // a Plan 24208 search shows tiny survey lots scattered downtown but
   // no recognizable parcel outlines.
   const matchedAssessFc = buildMatchedAssessFc(rows);
+  // Diagnostic: log every assessment that gets pushed to the context
+  // overlay so we can confirm specific parcels (e.g. 400 Hargrave's
+  // roll 13052686500) are present. Keep it short.
+  console.info(
+    `[assess-context] ${matchedAssessFc.features.length} parcels:`,
+    matchedAssessFc.features.map((f) => f.properties?.roll_number).slice(0, 30)
+  );
   mapReady.then(() => setAssessContext(map, matchedAssessFc));
   setCount(countMsg);
 }

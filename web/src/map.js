@@ -168,8 +168,8 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'fill',
         source: 'assess-context',
         paint: {
-          'fill-color': '#ff8c42',
-          'fill-opacity': 0.12,
+          'fill-color': '#ff7a3a',
+          'fill-opacity': 0.28,
         },
       });
       map.addLayer({
@@ -177,9 +177,9 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'line',
         source: 'assess-context',
         paint: {
-          'line-color': '#c4581c',
-          'line-width': 1.5,
-          'line-dasharray': [2, 2],
+          'line-color': '#a83e0c',
+          'line-width': 3,
+          'line-opacity': 0.95,
         },
       });
 
