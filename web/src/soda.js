@@ -103,11 +103,10 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
       console.warn('join error; falling back to unmatched row', err);
       matches = [];
     }
-    if (matches.length === 0) {
-      rows.push({ survey: s, assess: null });
-    } else {
-      for (const a of matches) rows.push({ survey: s, assess: a });
-    }
+    // One row per survey parcel. When multiple assessment rolls fall on the
+    // same survey lot (duplex / condo splits), their fields are merged into
+    // a single synthetic feature so the table stays one-row-per-parcel.
+    rows.push({ survey: s, assess: mergeAssessFeatures(matches) });
   }
   return rows;
 }
@@ -312,11 +311,11 @@ export function joinAssessmentWithSurvey(assessFc, surveyFc) {
       console.warn('join error; falling back to unmatched row', err);
       matches = [];
     }
-    if (matches.length === 0) {
-      rows.push({ survey: null, assess: a });
-    } else {
-      for (const s of matches) rows.push({ survey: s, assess: a });
-    }
+    // One row per assessment parcel. When the assessment covers multiple
+    // survey lots (400 Hargrave, big downtown buildings, schools, etc.)
+    // the lot/block/plan/description fields collapse into distinct sorted
+    // comma-lists rather than fanning out into 20 near-duplicate rows.
+    rows.push({ survey: mergeSurveyFeatures(matches), assess: a });
   }
   return rows;
 }
@@ -382,6 +381,86 @@ function surveyCenterInAssess(surveyFeature, assessFeature) {
 function parcelsOverlap(surveyFeature, assessFeature) {
   return assessCentroidInSurvey(assessFeature, surveyFeature)
       || surveyCenterInAssess(surveyFeature, assessFeature);
+}
+
+/**
+ * Collapse N survey features into a single synthetic feature whose property
+ * fields hold the distinct, sorted, comma-joined values from the inputs.
+ * Used when one assessment parcel covers many survey lots (400 Hargrave is
+ * a single roll covering ~20 downtown lots in Plan 129 + a few in Plan
+ * 24208) — far more readable as one row than 20.
+ *
+ * Preserves the first feature's geometry and `_rowKey` so the existing map
+ * click → row scroll plumbing keeps working unchanged.
+ */
+function mergeSurveyFeatures(features) {
+  if (features.length === 0) return null;
+  if (features.length === 1) return features[0];
+  const ps = features.map((f) => f.properties || {});
+  return {
+    type: 'Feature',
+    geometry: features[0].geometry,
+    properties: {
+      id: ps[0].id,
+      lot:         joinSortedDistinct(ps.map((p) => p.lot)),
+      block:       joinSortedDistinct(ps.map((p) => p.block)),
+      plan:        joinSortedDistinct(ps.map((p) => p.plan)),
+      description: joinSortedDistinct(ps.map((p) => p.description)),
+      _rowKey: ps[0]._rowKey,
+    },
+  };
+}
+
+/**
+ * Mirror of mergeSurveyFeatures for the assessment side, used by the
+ * legal-description flow when one survey lot has multiple assessment
+ * rolls on it (duplexes, condo splits). String fields are concatenated;
+ * `assessed_land_area` is summed; centroid coords use the first parcel's
+ * since an averaged centroid wouldn't be meaningful.
+ */
+function mergeAssessFeatures(features) {
+  if (features.length === 0) return null;
+  if (features.length === 1) return features[0];
+  const ps = features.map((f) => f.properties || {});
+  const totalArea = ps
+    .map((p) => Number(p.assessed_land_area))
+    .filter((n) => Number.isFinite(n))
+    .reduce((a, b) => a + b, 0);
+  return {
+    type: 'Feature',
+    geometry: features[0].geometry,
+    properties: {
+      roll_number:  joinDistinct(ps.map((p) => p.roll_number)),
+      full_address: joinDistinct(ps.map((p) => p.full_address)),
+      zoning:       joinSortedDistinct(ps.map((p) => p.zoning)),
+      assessed_land_area: totalArea > 0 ? String(totalArea) : null,
+      centroid_lat: ps[0].centroid_lat,
+      centroid_lon: ps[0].centroid_lon,
+      _rowKey: ps[0]._rowKey,
+    },
+  };
+}
+
+/** Distinct, sorted (numeric where possible), comma-joined. */
+function joinSortedDistinct(values) {
+  const cleaned = values
+    .map((v) => (v == null ? '' : String(v).trim()))
+    .filter((v) => v !== '');
+  const distinct = [...new Set(cleaned)];
+  const allNumeric = distinct.length > 0 && distinct.every((v) => /^-?\d+(\.\d+)?$/.test(v));
+  distinct.sort(allNumeric
+    ? (a, b) => Number(a) - Number(b)
+    : (a, b) => a.localeCompare(b));
+  return distinct.join(', ');
+}
+
+/** Distinct, original-order, comma-joined. Used when sort order has no
+ *  natural meaning (e.g. roll numbers from different rolls of one lot). */
+function joinDistinct(values) {
+  const cleaned = values
+    .map((v) => (v == null ? '' : String(v).trim()))
+    .filter((v) => v !== '');
+  return [...new Set(cleaned)].join(', ');
 }
 
 async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey, fc, extraWhere = null }) {
