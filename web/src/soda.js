@@ -170,7 +170,13 @@ export async function searchAssessmentParcelsExpanded({ roll, address, zoning })
     ? searchAddressesAndFindParcels(address, { roll, zoning })
     : Promise.resolve({ type: 'FeatureCollection', features: [] });
   const [directFc, xrefFc] = await Promise.all([directPromise, xrefPromise]);
-  return mergeFcByKey([directFc, xrefFc], 'roll_number');
+  const merged = mergeFcByKey([directFc, xrefFc], 'roll_number');
+  // Enrich each parcel's full_address with all civic addresses that fall
+  // inside it, so multi-address parcels read e.g. "400 HARGRAVE STREET,
+  // 440 HARGRAVE ST" — recognizable from any search direction. Non-fatal:
+  // if cam2-ii3u is unavailable, parcels keep their primary address only.
+  await enrichAssessmentAddresses(merged);
+  return merged;
 }
 
 /**
@@ -206,6 +212,107 @@ export async function searchAddresses({ address }) {
       geometry: r.point,
       properties: { full_address: r.full_address },
     }));
+  return { type: 'FeatureCollection', features };
+}
+
+/**
+ * Enrich every parcel's `full_address` with the complete set of civic
+ * addresses from cam2-ii3u that fall inside its polygon. The assessment
+ * dataset stores only the primary address per parcel, but a single parcel
+ * can have many official civic addresses (corner buildings, large
+ * commercial sites — 400 Hargrave is also 440 Hargrave). Without this,
+ * searching by Plan / Roll / etc. shows only the primary address and the
+ * user can't tell that the parcel is the same one they found earlier
+ * via a secondary-address search.
+ *
+ * Returns the same `assessFc` object with `full_address` mutated in-place
+ * to a comma-joined list (primary first, then alphabetical). Distinct only
+ * — duplicates between primary and civic-dataset entries collapse.
+ */
+export async function enrichAssessmentAddresses(assessFc) {
+  if (!assessFc.features.length) return assessFc;
+  let addressesFc;
+  try {
+    addressesFc = await fetchAddressPointsForParcels(assessFc);
+  } catch (err) {
+    console.warn('civic address enrichment failed', err);
+    return assessFc;
+  }
+  for (const parcel of assessFc.features) {
+    const matches = addressesFc.features
+      .filter((addr) => booleanPointInPolygon(addr, parcel))
+      .map((addr) => addr.properties?.full_address)
+      .filter(Boolean);
+    if (matches.length === 0) continue;
+    const primary = parcel.properties?.full_address || '';
+    const distinct = [...new Set(matches.map((a) => a.trim()))];
+    distinct.sort((a, b) => {
+      // Keep the primary first; everything else alphabetical.
+      if (a === primary) return -1;
+      if (b === primary) return 1;
+      return a.localeCompare(b);
+    });
+    if (primary && !distinct.includes(primary)) distinct.unshift(primary);
+    parcel.properties.full_address = distinct.join(', ');
+  }
+  return assessFc;
+}
+
+/**
+ * Per-parcel within_box query against cam2-ii3u to fetch civic-address
+ * points covering the parcel set. The dataset has both `location` and
+ * `point` geometry-typed columns; `point` is the GeoJSON Point we want.
+ * Uses .json (not .geojson) so the column choice is explicit and the
+ * conversion to features happens in code.
+ */
+async function fetchAddressPointsForParcels(parcelFc) {
+  if (!parcelFc.features.length) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  const round = (n) => n.toFixed(6);
+  const PAD = 0.002;
+  const clauses = parcelFc.features.map((f) => {
+    const [minLon, minLat, maxLon, maxLat] = bbox(f);
+    return `within_box(point,${round(maxLat + PAD)},${round(minLon - PAD)},${round(minLat - PAD)},${round(maxLon + PAD)})`;
+  });
+
+  const BATCH = 50;
+  const batches = [];
+  for (let i = 0; i < clauses.length; i += BATCH) {
+    batches.push(clauses.slice(i, i + BATCH));
+  }
+
+  const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
+  const responses = await Promise.all(
+    batches.map(async (group) => {
+      const params = new URLSearchParams({
+        $where: group.join(' OR '),
+        $select: 'full_address,point',
+        $limit: '5000',
+      });
+      const res = await fetch(`${ADDRESSES_URL}?${params}`, { headers });
+      if (!res.ok) {
+        throw new Error(`SODA ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      }
+      return res.json();
+    })
+  );
+
+  const features = [];
+  const seen = new Set();
+  for (const rows of responses) {
+    for (const row of rows) {
+      if (!row.point?.coordinates || row.point.coordinates.length !== 2) continue;
+      const key = `${row.full_address}|${row.point.coordinates.join(',')}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      features.push({
+        type: 'Feature',
+        geometry: row.point,
+        properties: { full_address: row.full_address },
+      });
+    }
+  }
   return { type: 'FeatureCollection', features };
 }
 

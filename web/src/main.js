@@ -38,6 +38,7 @@ import {
   joinAssessmentWithSurvey,
   fetchZoningOverlap,
   computePartialSurveyIds,
+  enrichAssessmentAddresses,
 } from './soda.js';
 import { initMap, showResults, setZoningData, setZoningVisible } from './map.js';
 
@@ -294,6 +295,12 @@ async function runLegalSearch(inputs) {
     setCount(`${countMsg} · enrichment failed: ${err.message}`);
     return;
   }
+
+  // Enrich each assessment with its full civic-address list (e.g. so a
+  // multi-address parcel reads "400 HARGRAVE STREET, 440 HARGRAVE ST"
+  // and is recognizable from any direction the user might search).
+  // Non-fatal — on failure parcels keep their primary address only.
+  await enrichAssessmentAddresses(assessFc);
 
   renderTable(joinSurveyWithAssessment(surveyFc, assessFc));
   setCount(countMsg);
