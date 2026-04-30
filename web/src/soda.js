@@ -173,9 +173,14 @@ export async function searchAssessmentParcelsExpanded({ roll, address, zoning })
   const merged = mergeFcByKey([directFc, xrefFc], 'roll_number');
   // Enrich each parcel's full_address with all civic addresses that fall
   // inside it, so multi-address parcels read e.g. "400 HARGRAVE STREET,
-  // 440 HARGRAVE ST" — recognizable from any search direction. Non-fatal:
-  // if cam2-ii3u is unavailable, parcels keep their primary address only.
-  await enrichAssessmentAddresses(merged);
+  // 440 HARGRAVE ST" — recognizable from any search direction. Wrapped
+  // so any unexpected failure (cam2-ii3u down, malformed geometry, etc.)
+  // never blocks the primary search results from rendering.
+  try {
+    await enrichAssessmentAddresses(merged);
+  } catch (err) {
+    console.warn('address enrichment threw, continuing without it', err);
+  }
   return merged;
 }
 
@@ -239,21 +244,29 @@ export async function enrichAssessmentAddresses(assessFc) {
     return assessFc;
   }
   for (const parcel of assessFc.features) {
-    const matches = addressesFc.features
-      .filter((addr) => booleanPointInPolygon(addr, parcel))
-      .map((addr) => addr.properties?.full_address)
-      .filter(Boolean);
-    if (matches.length === 0) continue;
-    const primary = parcel.properties?.full_address || '';
-    const distinct = [...new Set(matches.map((a) => a.trim()))];
-    distinct.sort((a, b) => {
-      // Keep the primary first; everything else alphabetical.
-      if (a === primary) return -1;
-      if (b === primary) return 1;
-      return a.localeCompare(b);
-    });
-    if (primary && !distinct.includes(primary)) distinct.unshift(primary);
-    parcel.properties.full_address = distinct.join(', ');
+    // Guard each parcel individually so one bad/odd geometry doesn't
+    // abort the whole pass and leave the rest of the table without
+    // address enrichment. (booleanPointInPolygon can throw on edge-
+    // case geometries; better to skip the parcel than the batch.)
+    try {
+      const matches = addressesFc.features
+        .filter((addr) => booleanPointInPolygon(addr, parcel))
+        .map((addr) => addr.properties?.full_address)
+        .filter(Boolean);
+      if (matches.length === 0) continue;
+      const primary = parcel.properties?.full_address || '';
+      const distinct = [...new Set(matches.map((a) => a.trim()))];
+      distinct.sort((a, b) => {
+        // Keep the primary first; everything else alphabetical.
+        if (a === primary) return -1;
+        if (b === primary) return 1;
+        return a.localeCompare(b);
+      });
+      if (primary && !distinct.includes(primary)) distinct.unshift(primary);
+      parcel.properties.full_address = distinct.join(', ');
+    } catch (err) {
+      console.warn('parcel address enrichment skipped for', parcel.properties?.roll_number, err);
+    }
   }
   return assessFc;
 }

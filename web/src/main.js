@@ -299,8 +299,13 @@ async function runLegalSearch(inputs) {
   // Enrich each assessment with its full civic-address list (e.g. so a
   // multi-address parcel reads "400 HARGRAVE STREET, 440 HARGRAVE ST"
   // and is recognizable from any direction the user might search).
-  // Non-fatal — on failure parcels keep their primary address only.
-  await enrichAssessmentAddresses(assessFc);
+  // Wrapped so any unexpected failure is non-fatal — on failure parcels
+  // keep their primary address only, but the join + render still runs.
+  try {
+    await enrichAssessmentAddresses(assessFc);
+  } catch (err) {
+    console.warn('address enrichment threw, continuing without it', err);
+  }
 
   renderTable(joinSurveyWithAssessment(surveyFc, assessFc));
   setCount(countMsg);
