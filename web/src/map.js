@@ -74,10 +74,11 @@ export function initMap(container, { onFeatureClick } = {}) {
     attributionControl: { compact: true },
   });
 
-  // Expose for debugging in the dev console.
-  if (import.meta.env.DEV) {
-    window._map = map;
-  }
+  // Expose for debugging in any environment. Lets the dev console (or
+  // the Chrome MCP) inspect the map source data, layers, and viewport
+  // when troubleshooting why a search isn't highlighting expected
+  // parcels. Harmless side effect — just a global reference.
+  window._map = map;
 
   map.on('error', (e) => {
     console.error('[map error]', e?.error?.message || e, e);
