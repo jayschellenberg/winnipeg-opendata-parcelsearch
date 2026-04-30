@@ -118,7 +118,7 @@ source("r/cross_reference_parcels.R")   # builds ParcelCrossRef_*.csv
 shiny::runApp("r/parcel_search_app.R")  # interactive search on the local archive
 ```
 
-The Shiny app reads the most recent `SurveyParcels_YYYYMMDD.gpkg` in the project directory, so it lets you search against whichever snapshot you have locally — including older ones for pre-subdivision lookups that the live web app cannot do.
+The Shiny app discovers every `SurveyParcels_YYYYMMDD.gpkg` in the project directory and exposes a snapshot picker dropdown — pick any dated snapshot to run searches against it. This is the one thing the live web app *cannot* do: search how parcels looked before later subdivisions or consolidations. To build the archive, re-run `download_parcels.R` periodically (e.g. quarterly); each run produces a fresh dated `.gpkg` pair without overwriting the older ones. Each snapshot adds about 590 MB of disk; older ones can be pruned manually if storage gets tight.
 
 ## Known caveats
 

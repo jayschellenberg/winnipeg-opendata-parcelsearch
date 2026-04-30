@@ -2,8 +2,12 @@
 # Shiny app to search Winnipeg Survey Parcels by partial legal description
 # and display results on an interactive map.
 #
-# Reads the most recent SurveyParcels .gpkg file and (if available) the
-# matching ParcelCrossRef .csv to show assessment roll numbers.
+# Reads any SurveyParcels_YYYYMMDD.gpkg file in `data_dir` and (when
+# available) the matching ParcelCrossRef_YYYYMMDD.csv. A snapshot picker
+# in the UI lets the user choose which dated archive to search — the
+# point of keeping multiple snapshots is to look up parcels as they
+# existed before later subdivisions/consolidations, which the live web
+# tool can't do (it only knows the present).
 #
 # Requires: shiny, sf, leaflet, DT
 
@@ -14,43 +18,55 @@ library(DT)
 
 data_dir <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
 
-# --- Find the most recent Survey Parcels .gpkg ---
+# --- Discover every snapshot in the folder, sorted newest-first ---
 gpkg_files <- sort(
   list.files(data_dir, pattern = "^SurveyParcels_\\d{8}\\.gpkg$", full.names = TRUE),
   decreasing = TRUE
 )
-if (length(gpkg_files) == 0) stop("No SurveyParcels .gpkg found in ", data_dir)
-gpkg_path <- gpkg_files[1]
-gpkg_date <- regmatches(basename(gpkg_path), regexpr("\\d{8}", basename(gpkg_path)))
-layer_name <- st_layers(gpkg_path)$name[1]
-
-# --- Load cross-reference CSV if available ---
-xref_file <- file.path(data_dir, paste0("ParcelCrossRef_", gpkg_date, ".csv"))
-if (!file.exists(xref_file)) {
-  # Try any cross-reference file
-  xref_files <- sort(
-    list.files(data_dir, pattern = "^ParcelCrossRef_\\d{8}\\.csv$", full.names = TRUE),
-    decreasing = TRUE
+if (length(gpkg_files) == 0) {
+  stop(
+    "No SurveyParcels_YYYYMMDD.gpkg found in ", data_dir,
+    "\nRun r/download_parcels.R to fetch one."
   )
-  if (length(xref_files) > 0) xref_file <- xref_files[1]
-}
-has_xref <- file.exists(xref_file)
-if (has_xref) {
-  xref <- read.csv(xref_file, stringsAsFactors = FALSE)
-  cat("Loaded cross-reference:", basename(xref_file), "-", nrow(xref), "rows\n")
 }
 
-cat("Using:", basename(gpkg_path), "- layer:", layer_name, "\n")
+# Build the "date -> full path" lookup that drives the picker.
+snapshot_dates <- regmatches(
+  basename(gpkg_files),
+  regexpr("\\d{8}", basename(gpkg_files))
+)
+# Format the dropdown labels: most-recent gets "(latest)" appended.
+snapshot_labels <- snapshot_dates
+snapshot_labels[1] <- paste0(snapshot_labels[1], " (latest)")
+snapshot_choices <- setNames(gpkg_files, snapshot_labels)
+
+cat(
+  "Found", length(gpkg_files), "snapshot(s):",
+  paste(snapshot_dates, collapse = ", "), "\n"
+)
 
 # --- UI ---
 ui <- fluidPage(
-  titlePanel(paste("Winnipeg Survey Parcel Search -", gpkg_date)),
+  titlePanel("Winnipeg Survey Parcel Search"),
 
   fluidRow(
-    column(3, textInput("plan", "Plan (contains)")),
-    column(3, textInput("lot", "Lot (contains)")),
+    column(
+      4,
+      selectInput(
+        "snapshot",
+        label = "Snapshot date:",
+        choices = snapshot_choices,
+        selected = gpkg_files[1]
+      )
+    ),
+    column(8, htmlOutput("snapshot_info"))
+  ),
+
+  fluidRow(
+    column(3, textInput("plan",  "Plan (contains)")),
+    column(3, textInput("lot",   "Lot (contains)")),
     column(3, textInput("block", "Block (contains)")),
-    column(3, textInput("desc", "Description (contains)"))
+    column(3, textInput("desc",  "Description (contains)"))
   ),
 
   fluidRow(
@@ -67,20 +83,68 @@ ui <- fluidPage(
 # --- Server ---
 server <- function(input, output, session) {
 
+  # current_gpkg() switches whenever the user picks a different snapshot.
+  # Returns: list(path, date, layer). The layer name comes from the file
+  # itself — different snapshots can in principle have different layer
+  # names if the source schema ever changes.
+  current_gpkg <- reactive({
+    req(input$snapshot)
+    path <- input$snapshot
+    date <- regmatches(basename(path), regexpr("\\d{8}", basename(path)))
+    list(
+      path  = path,
+      date  = date,
+      layer = st_layers(path)$name[1]
+    )
+  })
+
+  # current_xref() loads the ParcelCrossRef_YYYYMMDD.csv that matches the
+  # selected snapshot. Falls back to NULL silently when no cross-ref CSV
+  # exists for that date — search still works, just without roll numbers.
+  current_xref <- reactive({
+    date <- current_gpkg()$date
+    xref_path <- file.path(data_dir, paste0("ParcelCrossRef_", date, ".csv"))
+    if (!file.exists(xref_path)) return(NULL)
+    list(
+      data = read.csv(xref_path, stringsAsFactors = FALSE),
+      path = xref_path
+    )
+  })
+
+  # Tiny status banner under the picker so the user can see at a glance
+  # which snapshot is loaded and whether a cross-ref CSV is available.
+  output$snapshot_info <- renderUI({
+    g <- current_gpkg()
+    xr <- current_xref()
+    pieces <- c(
+      paste0("<b>Loaded:</b> ", basename(g$path)),
+      if (!is.null(xr)) {
+        paste0("<b>Cross-ref:</b> ", basename(xr$path),
+               " (", nrow(xr$data), " rows)")
+      } else {
+        "<i>No cross-reference CSV for this date - roll numbers will be blank.</i>"
+      }
+    )
+    HTML(paste(pieces, collapse = "<br>"))
+  })
+
+  # Re-running the query is gated on the Search button so changing the
+  # snapshot picker alone doesn't fire a search. The user picks a date,
+  # types criteria, then clicks Search.
   results <- eventReactive(input$search, {
     clauses <- c()
-    if (nzchar(input$plan))  clauses <- c(clauses, paste0("plan LIKE '%", input$plan, "%'"))
-    if (nzchar(input$lot))   clauses <- c(clauses, paste0("lot LIKE '%", input$lot, "%'"))
+    if (nzchar(input$plan))  clauses <- c(clauses, paste0("plan LIKE '%",  input$plan,  "%'"))
+    if (nzchar(input$lot))   clauses <- c(clauses, paste0("lot LIKE '%",   input$lot,   "%'"))
     if (nzchar(input$block)) clauses <- c(clauses, paste0("block LIKE '%", input$block, "%'"))
     if (nzchar(input$desc))  clauses <- c(clauses, paste0("description LIKE '%", input$desc, "%'"))
-
     if (length(clauses) == 0) return(NULL)
 
     where <- paste(clauses, collapse = " AND ")
-    sql <- paste0("SELECT * FROM \"", layer_name, "\" WHERE ", where, " LIMIT 500")
+    g <- current_gpkg()
+    sql <- paste0("SELECT * FROM \"", g$layer, "\" WHERE ", where, " LIMIT 500")
 
     tryCatch(
-      st_read(gpkg_path, query = sql, quiet = TRUE),
+      st_read(g$path, query = sql, quiet = TRUE),
       error = function(e) {
         showNotification(paste("Query error:", e$message), type = "error")
         NULL
@@ -88,22 +152,22 @@ server <- function(input, output, session) {
     )
   })
 
-  # Join cross-reference data to results
+  # Attach roll/address/zoning from the cross-ref CSV when one's loaded
+  # for the current snapshot.
   results_with_xref <- reactive({
     r <- results()
-    if (is.null(r) || nrow(r) == 0 || !has_xref) return(r)
+    xr <- current_xref()
+    if (is.null(r) || nrow(r) == 0 || is.null(xr)) return(r)
 
-    # Match on lot/block/plan
     r_df <- st_drop_geometry(r)
     merged <- merge(
-      r_df, xref[, c("Lot", "Block", "Plan", "Roll_Number", "Full_Address", "Zoning")],
+      r_df,
+      xr$data[, c("Lot", "Block", "Plan", "Roll_Number", "Full_Address", "Zoning")],
       by.x = c("lot", "block", "plan"),
       by.y = c("Lot", "Block", "Plan"),
       all.x = TRUE
     )
-    # Remove duplicate rows
-    merged <- unique(merged)
-    merged
+    unique(merged)
   })
 
   output$count <- renderText({
@@ -125,7 +189,6 @@ server <- function(input, output, session) {
       )
     }
 
-    # Build labels
     labels <- paste0(
       "<b>Lot </b>", r$lot,
       " <b>Block </b>", r$block,
@@ -143,9 +206,9 @@ server <- function(input, output, session) {
         color       = "navy",
         label       = lapply(labels, htmltools::HTML),
         highlightOptions = highlightOptions(
-          weight      = 4,
-          color       = "red",
-          fillOpacity = 0.6,
+          weight       = 4,
+          color        = "red",
+          fillOpacity  = 0.6,
           bringToFront = TRUE
         )
       )
@@ -155,9 +218,8 @@ server <- function(input, output, session) {
     rx <- results_with_xref()
     if (is.null(rx) || nrow(rx) == 0) return(NULL)
 
-    # Select display columns
     cols <- c("lot", "block", "plan", "description")
-    if (has_xref && "Roll_Number" %in% names(rx)) {
+    if ("Roll_Number" %in% names(rx)) {
       cols <- c(cols, "Roll_Number", "Full_Address", "Zoning")
     }
     display <- rx[, intersect(cols, names(rx)), drop = FALSE]
