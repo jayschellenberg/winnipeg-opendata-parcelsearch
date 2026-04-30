@@ -122,7 +122,7 @@ The Shiny app reads the most recent `SurveyParcels_YYYYMMDD.gpkg` in the project
 
 ## Known caveats
 
-- The R scripts hardcode an absolute path (`D:/Dropbox/Appraisal/Maps/Winnipeg/OpenData`). To run elsewhere, update the `data_dir` variable at the top of each script.
+- The R scripts hardcode an absolute path (`D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch`). To run elsewhere, update the `data_dir` / `output_dir` variable at the top of each script.
 - `.gpkg` and `ParcelCrossRef_*.csv` files are gitignored — too large for GitHub (the full Survey Parcels GeoPackage is ~485 MB) and trivially regenerable.
 - The web app requires internet access and shows current data only. For offline use or historical snapshots, use the R Shiny app against the local archive.
 - The `LIKE` operator in SoQL is case-sensitive; the web app wraps every search column and search term in `upper()` so typing "monarch" matches "10 MONARCH MEWS". Document this if you ever swap to a different SoQL dialect.

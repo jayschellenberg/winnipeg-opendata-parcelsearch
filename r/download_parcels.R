@@ -13,7 +13,7 @@ library(sf)
 options(timeout = 1800)
 
 # Save files in the same folder as this script
-output_dir <- "D:/Dropbox/Appraisal/Maps/Winnipeg/OpenData"
+output_dir <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
 
 # Date stamp for filenames
 date_stamp <- format(Sys.Date(), "%Y%m%d")

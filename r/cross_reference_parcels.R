@@ -14,7 +14,7 @@
 library(sf)
 
 # --- Configuration ---
-data_dir <- "D:/Dropbox/Appraisal/Maps/Winnipeg/OpenData"
+data_dir <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
 
 # --- Find the most recent pair of .gpkg files ---
 survey_files <- sort(

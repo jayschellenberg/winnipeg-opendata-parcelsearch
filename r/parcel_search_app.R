@@ -12,7 +12,7 @@ library(sf)
 library(leaflet)
 library(DT)
 
-data_dir <- "D:/Dropbox/Appraisal/Maps/Winnipeg/OpenData"
+data_dir <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
 
 # --- Find the most recent Survey Parcels .gpkg ---
 gpkg_files <- sort(
