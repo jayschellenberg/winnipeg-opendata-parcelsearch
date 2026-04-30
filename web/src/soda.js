@@ -665,6 +665,46 @@ function naturalLotCompare(a, b) {
  * counts will under-report partials whose other half lives outside the
  * search.
  */
+/**
+ * Keep only the surveys whose polygon overlaps at least one assessment in
+ * `assessFc`, AND stamp each kept survey's `_rowKey` to match the first
+ * matching assessment's _rowKey. The row-key copy lets a map click on a
+ * blue lot in the assessment-first flow scroll to the right (assessment-
+ * keyed) row in the table. Mutates each kept feature's properties.
+ */
+export function filterMatchedSurveys(surveyFc, assessFc) {
+  const features = [];
+  for (const s of surveyFc.features) {
+    const match = assessFc.features.find((a) => parcelsOverlap(s, a));
+    if (!match) continue;
+    s.properties = s.properties || {};
+    if (match.properties?._rowKey != null) {
+      s.properties._rowKey = match.properties._rowKey;
+    }
+    features.push(s);
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+/**
+ * Mirror of filterMatchedSurveys for the legal flow. Each kept assessment
+ * gets the first matching survey's `_rowKey` so clicking a red building
+ * outline in legal flow scrolls to the (survey-keyed) row.
+ */
+export function filterMatchedAssessments(assessFc, surveyFc) {
+  const features = [];
+  for (const a of assessFc.features) {
+    const match = surveyFc.features.find((s) => parcelsOverlap(s, a));
+    if (!match) continue;
+    a.properties = a.properties || {};
+    if (match.properties?._rowKey != null) {
+      a.properties._rowKey = match.properties._rowKey;
+    }
+    features.push(a);
+  }
+  return { type: 'FeatureCollection', features };
+}
+
 export function computePartialSurveyIds(surveyFc, assessFc) {
   const partials = new Set();
   for (const s of surveyFc.features) {

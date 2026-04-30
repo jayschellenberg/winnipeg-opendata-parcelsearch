@@ -242,13 +242,15 @@ export function initMap(container, { onFeatureClick } = {}) {
       });
 
       // Click a parcel → let main.js scroll the results table to the
-      // matching row. The clicked feature's `_rowKey` property is stamped
-      // on by main.js before the FC is handed to showResults().
+      // matching row. Both layers participate so a click on either the
+      // blue lot or the red building outline lands on the row.
       if (onFeatureClick) {
-        map.on('click', 'parcel-fill', (e) => {
+        const handle = (e) => {
           const key = e.features?.[0]?.properties?._rowKey;
           if (key != null) onFeatureClick(key);
-        });
+        };
+        map.on('click', 'parcel-fill', handle);
+        map.on('click', 'assess-context-fill', handle);
       }
 
 // Click a zoning polygon → show a popup with the zone code and
@@ -289,16 +291,23 @@ export function initMap(container, { onFeatureClick } = {}) {
  * Accepts either Survey Parcels or Assessment Parcels features — the
  * single `parcel-results` source handles both.
  */
-export function showResults(map, fc) {
-  map.getSource('parcel-results').setData(fc);
-  if (fc.features.length === 0) {
-    setAssessContext(map, { type: 'FeatureCollection', features: [] });
+/**
+ * Push both layers' data onto the map and fit to the union. Either FC can
+ * be empty (e.g. a survey-by-plan search where nothing assessment-side
+ * matched), in which case only the populated layer drives the bbox.
+ */
+export function showResults(map, surveyFc, assessFc = { type: 'FeatureCollection', features: [] }) {
+  map.getSource('parcel-results').setData(surveyFc);
+  map.getSource('assess-context').setData(assessFc);
+  const allFeatures = [...surveyFc.features, ...assessFc.features];
+  if (allFeatures.length === 0) {
     map.flyTo({ center: WINNIPEG_CENTER, zoom: 11 });
     return;
   }
-  const [minX, minY, maxX, maxY] = bbox(fc);
+  const combined = { type: 'FeatureCollection', features: allFeatures };
+  const [minLon, minLat, maxLon, maxLat] = bbox(combined);
   map.fitBounds(
-    [[minX, minY], [maxX, maxY]],
+    [[minLon, minLat], [maxLon, maxLat]],
     { padding: 60, maxZoom: 18, duration: 800 }
   );
 }

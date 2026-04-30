@@ -39,8 +39,10 @@ import {
   fetchZoningOverlap,
   computePartialSurveyIds,
   enrichAssessmentAddresses,
+  filterMatchedSurveys,
+  filterMatchedAssessments,
 } from './soda.js';
-import { initMap, showResults, setZoningData, setZoningVisible, setAssessContext, flyToFeature } from './map.js';
+import { initMap, showResults, setZoningData, setZoningVisible, flyToFeature } from './map.js';
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
@@ -201,9 +203,9 @@ async function runSearch() {
   setBusy(true);
   setCount('Searching…');
   clearTable();
-  // Clear any leftover assessment-context overlay from a previous search
-  // (legal flow populates it after the join; assessment flow never does).
-  mapReady.then(() => setAssessContext(map, EMPTY_FC));
+  // Clear both layers from any previous search; each flow repopulates
+  // them as data arrives.
+  setParcels(EMPTY_FC, EMPTY_FC);
 
   try {
     if (anyAssess) {
@@ -223,13 +225,15 @@ async function runSearch() {
  * the zoning toggle refresh without re-running the search. Triggers a
  * zoning refresh if the layer is currently enabled.
  */
-function setParcels(fc) {
-  lastParcelFc = fc;
-  // Toggle the floating colour legend with the parcel data — hidden on
-  // an empty map, visible whenever there are highlights to interpret.
-  if ($legend) $legend.hidden = fc.features.length === 0;
+function setParcels(surveyFc, assessFc = EMPTY_FC) {
+  lastParcelFc = {
+    type: 'FeatureCollection',
+    features: [...surveyFc.features, ...assessFc.features],
+  };
+  // Toggle the floating colour legend — hidden on an empty map.
+  if ($legend) $legend.hidden = lastParcelFc.features.length === 0;
   mapReady.then(() => {
-    showResults(map, fc);
+    showResults(map, surveyFc, assessFc);
     refreshZoning();
   });
 }
@@ -311,7 +315,7 @@ async function runLegalSearch(inputs) {
   const n = surveyFc.features.length;
   if (n === 0) {
     setCount('No parcels found.');
-    setParcels(surveyFc);
+    setParcels(EMPTY_FC, EMPTY_FC);
     return;
   }
 
@@ -325,9 +329,10 @@ async function runLegalSearch(inputs) {
     : `${n} parcels found`;
   setCount(`${countMsg} · loading roll numbers…`);
 
-  // Show survey-only rows in the table immediately.
+  // Show survey-only rows in the table immediately. Assessment overlay
+  // is empty until the next async step fetches it.
   renderTable(surveyFc.features.map((f) => ({ survey: f, assess: null })));
-  setParcels(surveyFc);
+  setParcels(surveyFc, EMPTY_FC);
 
   // Enrichment: Assessment Parcels inside the survey bbox.
   let assessFc;
@@ -352,37 +357,13 @@ async function runLegalSearch(inputs) {
 
   const rows = joinSurveyWithAssessment(surveyFc, assessFc);
   renderTable(rows);
-  // Show the matched assessment-parcel outlines as a secondary overlay
-  // so the user can see the building footprints (e.g. 400 Hargrave's
-  // full polygon) that contain their small lot matches. Without this,
-  // a Plan 24208 search shows tiny survey lots scattered downtown but
-  // no recognizable parcel outlines.
-  const matchedAssessFc = buildMatchedAssessFc(rows);
-  // Diagnostic: log every assessment that gets pushed to the context
-  // overlay so we can confirm specific parcels (e.g. 400 Hargrave's
-  // roll 13052686500) are present. Keep it short.
-  console.info(
-    `[assess-context] ${matchedAssessFc.features.length} parcels:`,
-    matchedAssessFc.features.map((f) => f.properties?.roll_number).slice(0, 30)
-  );
-  mapReady.then(() => setAssessContext(map, matchedAssessFc));
+  // Push BOTH layers to the map so the user sees survey lots (blue) AND
+  // the assessment parcels (red) that contain them. Assess side is
+  // narrowed to those actually overlapping the survey results — the
+  // raw assessFc from fetchAssessmentOverlap is a bbox-padded superset.
+  const matchedAssessFc = filterMatchedAssessments(assessFc, surveyFc);
+  setParcels(surveyFc, matchedAssessFc);
   setCount(countMsg);
-}
-
-/** Collect every distinct assessment feature appearing in the joined rows
- *  so the legal flow can render their outlines as a context overlay. */
-function buildMatchedAssessFc(rows) {
-  const seen = new Set();
-  const features = [];
-  for (const row of rows) {
-    const a = row.assess;
-    if (!a || !a.geometry) continue;
-    const key = a.properties?.roll_number ?? a.properties?._rowKey;
-    if (key != null && seen.has(key)) continue;
-    if (key != null) seen.add(key);
-    features.push(a);
-  }
-  return { type: 'FeatureCollection', features };
 }
 
 // ---------- Assessment-first flow (Roll # / Address / Zoning) ----------
@@ -400,7 +381,7 @@ async function runAssessmentSearch(inputs) {
   const n = assessFc.features.length;
   if (n === 0) {
     setCount('No parcels found.');
-    setParcels(assessFc);
+    setParcels(EMPTY_FC, EMPTY_FC);
     return;
   }
 
@@ -415,9 +396,10 @@ async function runAssessmentSearch(inputs) {
   setCount(`${countMsg} · loading legal descriptions…`);
 
   // Show assessment-only rows in the table immediately. Map renders the
-  // assessment geometry directly — no survey polygon is drawn in this flow.
+  // assessment polygons in red; survey overlay (blue) populates after the
+  // back-fill fetch finishes below.
   renderTable(assessFc.features.map((f) => ({ survey: null, assess: f })));
-  setParcels(assessFc);
+  setParcels(EMPTY_FC, assessFc);
 
   // Enrichment: Survey Parcels inside the assessment bbox, back-filling
   // the lot/block/plan/description columns.
@@ -432,6 +414,11 @@ async function runAssessmentSearch(inputs) {
 
   // First render: legal descriptions filled in, partial markers not yet.
   renderTable(joinAssessmentWithSurvey(assessFc, surveyFc));
+  // Now that we have surveyFc, push the matched survey polygons onto
+  // the blue layer so the user sees every legal lot that falls inside
+  // the address/roll/zoning result — not just the assessment polygon.
+  const matchedSurveyFc = filterMatchedSurveys(surveyFc, assessFc);
+  setParcels(matchedSurveyFc, assessFc);
   setCount(`${countMsg} · checking partial lots…`);
 
   // Partial detection: a survey lot is "partial" if its polygon overlaps
