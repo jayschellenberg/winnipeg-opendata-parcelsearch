@@ -95,6 +95,11 @@ export async function fetchAssessmentOverlap(surveyFc) {
  */
 export function joinSurveyWithAssessment(surveyFc, assessFc) {
   const rows = [];
+  // In the legal flow, `assessFc` is the result of fetchAssessmentOverlap
+  // keyed off `surveyFc` — i.e. it already contains every assessment that
+  // touches each survey. So `matches.length > 1` for a survey is a true
+  // partial signal, no extra fetch needed.
+  const partialSurveyIds = new Set();
   for (const s of surveyFc.features) {
     let matches;
     try {
@@ -103,10 +108,17 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
       console.warn('join error; falling back to unmatched row', err);
       matches = [];
     }
+    if (matches.length > 1) {
+      const id = s.properties?.id;
+      if (id != null) partialSurveyIds.add(id);
+    }
     // One row per survey parcel. When multiple assessment rolls fall on the
     // same survey lot (duplex / condo splits), their fields are merged into
-    // a single synthetic feature so the table stays one-row-per-parcel.
-    rows.push({ survey: s, assess: mergeAssessFeatures(matches) });
+    // a single synthetic feature so the table stays one-row-per-parcel. The
+    // survey side is wrapped in mergeSurveyFeatures purely to apply the
+    // partial marker to the lot value when applicable.
+    const sMerged = mergeSurveyFeatures([s], partialSurveyIds);
+    rows.push({ survey: sMerged, assess: mergeAssessFeatures(matches) });
   }
   return rows;
 }
@@ -301,7 +313,7 @@ export async function fetchSurveyOverlap(assessFc) {
  * An assessment parcel with no legal-description match still produces one
  * row (with survey=null) so it isn't dropped from the table.
  */
-export function joinAssessmentWithSurvey(assessFc, surveyFc) {
+export function joinAssessmentWithSurvey(assessFc, surveyFc, partialSurveyIds = null) {
   const rows = [];
   for (const a of assessFc.features) {
     let matches;
@@ -312,10 +324,14 @@ export function joinAssessmentWithSurvey(assessFc, surveyFc) {
       matches = [];
     }
     // One row per assessment parcel. When the assessment covers multiple
-    // survey lots (400 Hargrave, big downtown buildings, schools, etc.)
-    // the lot/block/plan/description fields collapse into distinct sorted
-    // comma-lists rather than fanning out into 20 near-duplicate rows.
-    rows.push({ survey: mergeSurveyFeatures(matches), assess: a });
+    // survey lots (400 Hargrave, schools, big commercial buildings) the
+    // lot column collapses into ranges grouped by plan, with any partial
+    // lots — those that span into another roll — broken out individually
+    // and suffixed "(partial)".
+    rows.push({
+      survey: mergeSurveyFeatures(matches, partialSurveyIds),
+      assess: a,
+    });
   }
   return rows;
 }
@@ -384,31 +400,167 @@ function parcelsOverlap(surveyFeature, assessFeature) {
 }
 
 /**
- * Collapse N survey features into a single synthetic feature whose property
- * fields hold the distinct, sorted, comma-joined values from the inputs.
- * Used when one assessment parcel covers many survey lots (400 Hargrave is
- * a single roll covering ~20 downtown lots in Plan 129 + a few in Plan
- * 24208) — far more readable as one row than 20.
+ * Collapse N survey features into a single synthetic feature. The Lot
+ * column is the interesting one: surveys are grouped by (plan, block),
+ * lots within a group are collapsed into numeric ranges where possible,
+ * and when the merge spans multiple plans each group is annotated with
+ * its plan code so the user can tell which lots belong where.
  *
- * Preserves the first feature's geometry and `_rowKey` so the existing map
- * click → row scroll plumbing keeps working unchanged.
+ * Example output for 400 Hargrave (20 lots across two plans):
+ *   "21-25, 68-75, 120-121 (Pl 129); 39, 41, 44-46 (Pl 24208)"
+ *
+ * `partialSurveyIds` is an optional Set of survey ids whose polygons span
+ * multiple assessment parcels. Lots whose ids are in that Set are pulled
+ * out of the range-collapsing step and listed individually with a
+ * "(partial)" suffix so the appraiser can see at a glance that the lot is
+ * split between rolls.
+ *
+ * Preserves the first feature's geometry and `_rowKey` so map-click →
+ * row-scroll plumbing keeps working unchanged.
  */
-function mergeSurveyFeatures(features) {
+function mergeSurveyFeatures(features, partialSurveyIds = null) {
   if (features.length === 0) return null;
-  if (features.length === 1) return features[0];
+  const isPartial = (f) =>
+    partialSurveyIds && partialSurveyIds.has(f.properties?.id);
+
+  if (features.length === 1) {
+    const f = features[0];
+    if (!isPartial(f)) return f;
+    // Single survey, but still partial (lot extends into another roll
+    // outside this assessment). Suffix the lot value so it's marked.
+    const p = f.properties || {};
+    return {
+      ...f,
+      properties: {
+        ...p,
+        lot: p.lot != null && p.lot !== '' ? `${p.lot} (partial)` : p.lot,
+      },
+    };
+  }
+
+  // Group by (plan, block). Most multi-lot parcels are within one plan
+  // (downtown buildings on Plan 129); cross-plan is rare but real
+  // (400 Hargrave: Plan 129 + 24208).
+  const groups = new Map();
+  for (const f of features) {
+    const p = f.properties || {};
+    const key = `${p.plan || ''}|${p.block || ''}`;
+    if (!groups.has(key)) {
+      groups.set(key, { plan: p.plan || '', block: p.block || '', items: [] });
+    }
+    groups.get(key).items.push({ lot: p.lot, partial: isPartial(f) });
+  }
+
+  // Format each group, sort groups by plan for stable output.
+  const sortedGroups = [...groups.values()].sort((a, b) =>
+    String(a.plan).localeCompare(String(b.plan)));
+  const groupStrings = [];
+  for (const g of sortedGroups) {
+    const fullLots    = g.items.filter((i) => !i.partial).map((i) => i.lot);
+    const partialLots = g.items.filter((i) =>  i.partial).map((i) => i.lot);
+
+    const parts = [];
+    if (fullLots.length > 0) parts.push(formatLotList(fullLots));
+    if (partialLots.length > 0) {
+      const partialFmt = [...new Set(
+        partialLots.filter((l) => l != null && l !== '').map(String)
+      )]
+        .sort(naturalLotCompare)
+        .map((l) => `${l} (partial)`)
+        .join(', ');
+      parts.push(partialFmt);
+    }
+    let groupStr = parts.filter(Boolean).join(', ');
+    // Annotate with plan code when the merge spans multiple plans.
+    if (groups.size > 1 && g.plan) {
+      groupStr = `${groupStr} (Pl ${g.plan})`;
+    }
+    if (groupStr) groupStrings.push(groupStr);
+  }
+
   const ps = features.map((f) => f.properties || {});
   return {
     type: 'Feature',
     geometry: features[0].geometry,
     properties: {
       id: ps[0].id,
-      lot:         joinSortedDistinct(ps.map((p) => p.lot)),
+      lot:         groupStrings.join('; '),
       block:       joinSortedDistinct(ps.map((p) => p.block)),
       plan:        joinSortedDistinct(ps.map((p) => p.plan)),
       description: joinSortedDistinct(ps.map((p) => p.description)),
-      _rowKey: ps[0]._rowKey,
+      _rowKey:     ps[0]._rowKey,
     },
   };
+}
+
+/**
+ * Numeric range collapse for an array of lot values. "21,22,23,24,25" →
+ * "21-25". "21,22,25,26" → "21-22, 25-26". Falls back to a sorted comma-
+ * list if any lot is non-numeric (e.g. "RL10", "1/2"), since ranges
+ * wouldn't be meaningful for those.
+ */
+function formatLotList(lots) {
+  const cleaned = lots
+    .filter((l) => l != null && l !== '')
+    .map((l) => String(l));
+  if (cleaned.length === 0) return '';
+  const distinct = [...new Set(cleaned)];
+  const allNumeric = distinct.every((l) => /^\d+$/.test(l));
+  if (!allNumeric) {
+    return distinct.sort(naturalLotCompare).join(', ');
+  }
+  const sorted = distinct.map(Number).sort((a, b) => a - b);
+  const parts = [];
+  let start = sorted[0];
+  let end = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === end + 1) {
+      end = sorted[i];
+    } else {
+      parts.push(start === end ? `${start}` : `${start}-${end}`);
+      start = sorted[i];
+      end = sorted[i];
+    }
+  }
+  parts.push(start === end ? `${start}` : `${start}-${end}`);
+  return parts.join(', ');
+}
+
+/** Numeric-aware comparator: "9" < "10" < "9A". */
+function naturalLotCompare(a, b) {
+  const na = Number(a);
+  const nb = Number(b);
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+  return String(a).localeCompare(String(b));
+}
+
+/**
+ * For each survey in `surveyFc`, count how many assessments in `assessFc`
+ * its polygon overlaps. Returns the Set of survey ids whose count is >1
+ * — those are surveys split across multiple assessment rolls.
+ *
+ * Caller is responsible for handing in an `assessFc` that's a complete
+ * superset of overlapping assessments (e.g. via `fetchAssessmentOverlap`
+ * keyed off `surveyFc`). If `assessFc` is just the search-result set, the
+ * counts will under-report partials whose other half lives outside the
+ * search.
+ */
+export function computePartialSurveyIds(surveyFc, assessFc) {
+  const partials = new Set();
+  for (const s of surveyFc.features) {
+    let count = 0;
+    for (const a of assessFc.features) {
+      if (parcelsOverlap(s, a)) {
+        count++;
+        if (count > 1) break;
+      }
+    }
+    if (count > 1) {
+      const id = s.properties?.id;
+      if (id != null) partials.add(id);
+    }
+  }
+  return partials;
 }
 
 /**

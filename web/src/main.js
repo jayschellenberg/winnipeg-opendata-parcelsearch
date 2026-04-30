@@ -37,6 +37,7 @@ import {
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
   fetchZoningOverlap,
+  computePartialSurveyIds,
 } from './soda.js';
 import { initMap, showResults, setZoningData, setZoningVisible } from './map.js';
 
@@ -343,7 +344,23 @@ async function runAssessmentSearch(inputs) {
     return;
   }
 
+  // First render: legal descriptions filled in, partial markers not yet.
   renderTable(joinAssessmentWithSurvey(assessFc, surveyFc));
+  setCount(`${countMsg} · checking partial lots…`);
+
+  // Partial detection: a survey lot is "partial" if its polygon overlaps
+  // multiple assessment parcels. The search results only contain parcels
+  // matching the user's text — so to detect partials whose other half
+  // lives outside the search, we need a separate fetch of every assessment
+  // overlapping each survey. Non-fatal: on failure, the table just stays
+  // unmarked and the user still sees the legal descriptions.
+  try {
+    const allOverlapAssess = await fetchAssessmentOverlap(surveyFc);
+    const partialSurveyIds = computePartialSurveyIds(surveyFc, allOverlapAssess);
+    renderTable(joinAssessmentWithSurvey(assessFc, surveyFc, partialSurveyIds));
+  } catch (err) {
+    console.warn('partial-lot detection failed', err);
+  }
   setCount(countMsg);
 }
 
@@ -361,14 +378,13 @@ function setBusy(busy) {
 /** Wipe every search input, the count, the table, and the map overlay,
  *  returning the page to its initial state so the user can start a new
  *  search without manually emptying seven fields. */
+/** Hard-reset the page. A full reload guarantees every piece of state —
+ *  inputs, table, sort, map zoom, zoning toggle/data, partial markers,
+ *  pending in-flight requests — goes back to first-load. Soft resets had
+ *  drift bugs where stale state could leak through; a reload sidesteps
+ *  the whole class of issue. */
 function clearAll() {
-  for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning]) {
-    el.value = '';
-  }
-  setCount('');
-  clearTable();
-  mapReady.then(() => showResults(map, EMPTY_FC));
-  $lot.focus();
+  window.location.reload();
 }
 
 function clearTable() {
