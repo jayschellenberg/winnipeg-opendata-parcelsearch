@@ -40,7 +40,7 @@ import {
   computePartialSurveyIds,
   enrichAssessmentAddresses,
 } from './soda.js';
-import { initMap, showResults, setZoningData, setZoningVisible, setAssessContext } from './map.js';
+import { initMap, showResults, setZoningData, setZoningVisible, setAssessContext, flyToFeature } from './map.js';
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
@@ -56,11 +56,18 @@ const $zoningToggle = document.getElementById('zoning-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
+const $legend = document.getElementById('map-legend');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
 // Most recent table rows, kept around for CSV export.
 let currentRows = [];
+
+// Map of row key -> feature for the table-row → map-fly handler. The key
+// is the same string we put on data-row-key (e.g. "a:13052686500"); the
+// feature we fly to is whichever side has geometry that's most useful
+// (assessment if available, else survey). Cleared on every renderTable.
+const rowFeatureMap = new Map();
 
 // Zoning overlay state. `enabled` reflects the toggle button; `parcelFc`
 // is the most recent parcel FC drawn on the map, kept so the toggle can
@@ -214,6 +221,9 @@ async function runSearch() {
  */
 function setParcels(fc) {
   lastParcelFc = fc;
+  // Toggle the floating colour legend with the parcel data — hidden on
+  // an empty map, visible whenever there are highlights to interpret.
+  if ($legend) $legend.hidden = fc.features.length === 0;
   mapReady.then(() => {
     showResults(map, fc);
     refreshZoning();
@@ -442,6 +452,7 @@ function clearTable() {
 function renderTable(rows) {
   $tbody.innerHTML = '';
   currentRows = rows;
+  rowFeatureMap.clear();
   const sorted = sortRows(rows);
   const frag = document.createDocumentFragment();
   for (const row of sorted) {
@@ -452,7 +463,22 @@ function renderTable(rows) {
     // Link the row back to whichever feature is drawn on the map in the
     // current flow. `_rowKey` is stamped on by tagFeatures() before render.
     const key = s._rowKey ?? a._rowKey;
-    if (key != null) tr.dataset.rowKey = String(key);
+    if (key != null) {
+      tr.dataset.rowKey = String(key);
+      // Track the geometry-bearing feature for this row so a click can
+      // fly the map there. Prefer the assessment feature (the building
+      // outline is more recognizable than a small survey lot).
+      const flyFeature = (row.assess && row.assess.geometry)
+        ? row.assess
+        : (row.survey && row.survey.geometry ? row.survey : null);
+      if (flyFeature) rowFeatureMap.set(String(key), flyFeature);
+    }
+    tr.classList.add('clickable');
+    tr.title = 'Click to zoom map to this parcel';
+    tr.addEventListener('click', () => {
+      const f = rowFeatureMap.get(tr.dataset.rowKey);
+      if (f) mapReady.then(() => flyToFeature(map, f));
+    });
     tr.appendChild(td(s.lot));
     tr.appendChild(td(s.block));
     tr.appendChild(td(s.plan));

@@ -236,6 +236,28 @@ export function initMap(container, { onFeatureClick } = {}) {
         });
       }
 
+      // Hover over an assessment-context outline → popup with roll/address.
+      // The context overlay can have 30+ outlines side-by-side downtown,
+      // and without identifiers there's no way to tell which one is the
+      // parcel the user is looking for. Roll number + address makes each
+      // one identifiable on hover.
+      const ctxPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+      map.on('mousemove', 'assess-context-fill', (e) => {
+        if (!e.features?.length) return;
+        // If a primary parcel is also under the cursor, defer to its popup.
+        const primaryHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
+        if (primaryHit.length > 0) return;
+        map.getCanvas().style.cursor = 'pointer';
+        ctxPopup
+          .setLngLat(e.lngLat)
+          .setHTML(popupHtml(e.features[0].properties))
+          .addTo(map);
+      });
+      map.on('mouseleave', 'assess-context-fill', () => {
+        map.getCanvas().style.cursor = '';
+        ctxPopup.remove();
+      });
+
       // Click a zoning polygon → show a popup with the zone code and
       // description. Skipped when the zoning layer is hidden (clicks pass
       // through to whatever's underneath, including parcel-fill above it).
@@ -286,6 +308,24 @@ export function showResults(map, fc) {
     [[minX, minY], [maxX, maxY]],
     { padding: 60, maxZoom: 18, duration: 800 }
   );
+}
+
+/**
+ * Zoom + center the map on a single feature's bounds. Used when the user
+ * clicks a row in the results table — the map flies to that parcel so
+ * they can see exactly which highlight corresponds to the row.
+ */
+export function flyToFeature(map, feature) {
+  if (!feature?.geometry) return;
+  try {
+    const [minLon, minLat, maxLon, maxLat] = bbox(feature);
+    map.fitBounds(
+      [[minLon, minLat], [maxLon, maxLat]],
+      { padding: 80, maxZoom: 19, duration: 700 }
+    );
+  } catch (err) {
+    console.warn('flyToFeature: bbox failed', err);
+  }
 }
 
 /**
