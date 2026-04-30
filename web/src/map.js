@@ -151,6 +151,38 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Secondary overlay for the legal-flow context: when the user
+      // searches by lot/block/plan, the primary highlight is the small
+      // survey polygons, but the *containing* assessment parcels (the
+      // building footprints) are useful to show too — otherwise a
+      // 30m-wide lot inside a 130m-wide downtown building looks
+      // disconnected from the building itself. Drawn as a faint orange
+      // outline + light fill *under* the parcel-results layer so the
+      // primary highlight stays on top.
+      map.addSource('assess-context', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'assess-context-fill',
+        type: 'fill',
+        source: 'assess-context',
+        paint: {
+          'fill-color': '#ff8c42',
+          'fill-opacity': 0.12,
+        },
+      });
+      map.addLayer({
+        id: 'assess-context-line',
+        type: 'line',
+        source: 'assess-context',
+        paint: {
+          'line-color': '#c4581c',
+          'line-width': 1.5,
+          'line-dasharray': [2, 2],
+        },
+      });
+
       map.addSource('parcel-results', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -245,6 +277,7 @@ export function initMap(container, { onFeatureClick } = {}) {
 export function showResults(map, fc) {
   map.getSource('parcel-results').setData(fc);
   if (fc.features.length === 0) {
+    setAssessContext(map, { type: 'FeatureCollection', features: [] });
     map.flyTo({ center: WINNIPEG_CENTER, zoom: 11 });
     return;
   }
@@ -253,6 +286,16 @@ export function showResults(map, fc) {
     [[minX, minY], [maxX, maxY]],
     { padding: 60, maxZoom: 18, duration: 800 }
   );
+}
+
+/**
+ * Push assessment-parcel polygons onto the secondary outline layer.
+ * Used by the legal flow to show the building footprints that contain
+ * the user's lot matches. Pass an empty FC to clear it.
+ */
+export function setAssessContext(map, fc) {
+  const src = map.getSource('assess-context');
+  if (src) src.setData(fc);
 }
 
 /**

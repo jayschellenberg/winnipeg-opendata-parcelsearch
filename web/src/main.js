@@ -40,7 +40,7 @@ import {
   computePartialSurveyIds,
   enrichAssessmentAddresses,
 } from './soda.js';
-import { initMap, showResults, setZoningData, setZoningVisible } from './map.js';
+import { initMap, showResults, setZoningData, setZoningVisible, setAssessContext } from './map.js';
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
@@ -190,6 +190,9 @@ async function runSearch() {
   setBusy(true);
   setCount('Searching…');
   clearTable();
+  // Clear any leftover assessment-context overlay from a previous search
+  // (legal flow populates it after the join; assessment flow never does).
+  mapReady.then(() => setAssessContext(map, EMPTY_FC));
 
   try {
     if (anyAssess) {
@@ -307,8 +310,32 @@ async function runLegalSearch(inputs) {
     console.warn('address enrichment threw, continuing without it', err);
   }
 
-  renderTable(joinSurveyWithAssessment(surveyFc, assessFc));
+  const rows = joinSurveyWithAssessment(surveyFc, assessFc);
+  renderTable(rows);
+  // Show the matched assessment-parcel outlines as a secondary overlay
+  // so the user can see the building footprints (e.g. 400 Hargrave's
+  // full polygon) that contain their small lot matches. Without this,
+  // a Plan 24208 search shows tiny survey lots scattered downtown but
+  // no recognizable parcel outlines.
+  const matchedAssessFc = buildMatchedAssessFc(rows);
+  mapReady.then(() => setAssessContext(map, matchedAssessFc));
   setCount(countMsg);
+}
+
+/** Collect every distinct assessment feature appearing in the joined rows
+ *  so the legal flow can render their outlines as a context overlay. */
+function buildMatchedAssessFc(rows) {
+  const seen = new Set();
+  const features = [];
+  for (const row of rows) {
+    const a = row.assess;
+    if (!a || !a.geometry) continue;
+    const key = a.properties?.roll_number ?? a.properties?._rowKey;
+    if (key != null && seen.has(key)) continue;
+    if (key != null) seen.add(key);
+    features.push(a);
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 // ---------- Assessment-first flow (Roll # / Address / Zoning) ----------
