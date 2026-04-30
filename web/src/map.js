@@ -168,8 +168,8 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'fill',
         source: 'assess-context',
         paint: {
-          'fill-color': '#ff7a3a',
-          'fill-opacity': 0.28,
+          'fill-color': '#b22222',
+          'fill-opacity': 0.22,
         },
       });
       map.addLayer({
@@ -177,7 +177,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'line',
         source: 'assess-context',
         paint: {
-          'line-color': '#a83e0c',
+          'line-color': '#690000',
           'line-width': 3,
           'line-opacity': 0.95,
         },
@@ -206,24 +206,39 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
-      // Hover popup — labels depend on which dataset the feature came from.
-      // Survey Parcels carry lot/block/plan/description; Assessment Parcels
-      // carry roll_number/full_address/zoning. We detect which by looking
-      // at the available properties.
+      // Combined hover popup. Wherever the cursor is on the map, query
+      // both the primary (parcel-fill) and the assessment-context layers
+      // and build a single popup that shows whichever one(s) are under
+      // the cursor. This way, when a small survey lot sits inside a
+      // larger assessment parcel (legal flow), hovering anywhere on the
+      // overlap area shows both blocks of info side-by-side — no more
+      // guessing which colour is which.
       const popup = new maplibregl.Popup({
         closeButton: false,
         closeOnClick: false,
       });
-      map.on('mousemove', 'parcel-fill', (e) => {
+      map.on('mousemove', (e) => {
+        if (!map.isStyleLoaded()) return;
+        const primaryHits = map.getLayer('parcel-fill')
+          ? map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] })
+          : [];
+        const contextHits = map.getLayer('assess-context-fill')
+          ? map.queryRenderedFeatures(e.point, { layers: ['assess-context-fill'] })
+          : [];
+        if (!primaryHits.length && !contextHits.length) {
+          popup.remove();
+          map.getCanvas().style.cursor = '';
+          return;
+        }
         map.getCanvas().style.cursor = 'pointer';
         popup
           .setLngLat(e.lngLat)
-          .setHTML(popupHtml(e.features[0].properties))
+          .setHTML(combinedPopupHtml(primaryHits[0]?.properties, contextHits[0]?.properties))
           .addTo(map);
       });
-      map.on('mouseleave', 'parcel-fill', () => {
-        map.getCanvas().style.cursor = '';
+      map.on('mouseout', () => {
         popup.remove();
+        map.getCanvas().style.cursor = '';
       });
 
       // Click a parcel → let main.js scroll the results table to the
@@ -236,29 +251,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         });
       }
 
-      // Hover over an assessment-context outline → popup with roll/address.
-      // The context overlay can have 30+ outlines side-by-side downtown,
-      // and without identifiers there's no way to tell which one is the
-      // parcel the user is looking for. Roll number + address makes each
-      // one identifiable on hover.
-      const ctxPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
-      map.on('mousemove', 'assess-context-fill', (e) => {
-        if (!e.features?.length) return;
-        // If a primary parcel is also under the cursor, defer to its popup.
-        const primaryHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
-        if (primaryHit.length > 0) return;
-        map.getCanvas().style.cursor = 'pointer';
-        ctxPopup
-          .setLngLat(e.lngLat)
-          .setHTML(popupHtml(e.features[0].properties))
-          .addTo(map);
-      });
-      map.on('mouseleave', 'assess-context-fill', () => {
-        map.getCanvas().style.cursor = '';
-        ctxPopup.remove();
-      });
-
-      // Click a zoning polygon → show a popup with the zone code and
+// Click a zoning polygon → show a popup with the zone code and
       // description. Skipped when the zoning layer is hidden (clicks pass
       // through to whatever's underneath, including parcel-fill above it).
       const zoningPopup = new maplibregl.Popup({ closeButton: true });
@@ -368,6 +361,37 @@ function zoningPopupHtml(p) {
   if (p.short_description) lines.push(`<em>${escapeHtml(p.short_description)}</em>`);
   if (p.long_description) lines.push(escapeHtml(p.long_description));
   return `<div style="max-width:300px;line-height:1.35">${lines.join('<br>')}</div>`;
+}
+
+/**
+ * Combined hover popup. Either or both of the property objects can be
+ * undefined; whatever's present gets rendered with a "Survey" or
+ * "Assessment" header so the user can always tell which colour they're
+ * looking at — addresses the "I got mixed up which is which" feedback.
+ *
+ * `primary` is the feature on the parcel-fill layer (blue) — could be
+ * either a survey or assessment depending on flow. We detect by looking
+ * for a roll_number on the props.
+ * `context` is the assess-context layer (red) — always assessment data.
+ */
+function combinedPopupHtml(primary, context) {
+  const blocks = [];
+  // Determine which schema `primary` is carrying.
+  const primaryIsAssess = primary && (primary.roll_number != null || primary.full_address != null);
+  const primaryIsSurvey = primary && !primaryIsAssess;
+
+  if (primaryIsSurvey) {
+    blocks.push(`<div><strong style="color:#0b2566">Survey Parcel</strong><br>${popupHtml(primary)}</div>`);
+  }
+  if (primaryIsAssess) {
+    blocks.push(`<div><strong style="color:#690000">Assessment Parcel</strong><br>${popupHtml(primary)}</div>`);
+  }
+  // The context layer is always assessment-side. Only show separately
+  // from primary to avoid duplicating the same parcel.
+  if (context && (!primaryIsAssess || context.roll_number !== primary?.roll_number)) {
+    blocks.push(`<div><strong style="color:#690000">Assessment Parcel</strong><br>${popupHtml(context)}</div>`);
+  }
+  return blocks.join('<hr style="margin:6px 0;border:none;border-top:1px solid #ddd">');
 }
 
 // Render a hover-popup HTML block from whichever schema is present.

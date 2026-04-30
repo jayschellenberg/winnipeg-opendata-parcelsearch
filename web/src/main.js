@@ -53,6 +53,8 @@ const $search = document.getElementById('search');
 const $clear = document.getElementById('clear');
 const $export = document.getElementById('export');
 const $zoningToggle = document.getElementById('zoning-toggle');
+const $surveyToggle = document.getElementById('survey-toggle');
+const $assessToggle = document.getElementById('assess-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
@@ -150,6 +152,8 @@ $search.addEventListener('click', runSearch);
 $clear.addEventListener('click', clearAll);
 $export.addEventListener('click', exportCsv);
 $zoningToggle.addEventListener('click', toggleZoning);
+$surveyToggle.addEventListener('click', () => toggleLayer('survey'));
+$assessToggle.addEventListener('click', () => toggleLayer('assess'));
 for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
@@ -227,6 +231,32 @@ function setParcels(fc) {
   mapReady.then(() => {
     showResults(map, fc);
     refreshZoning();
+  });
+}
+
+/**
+ * Toggle the survey-blue or assessment-red highlights on the map.
+ * Lets the user simplify the view when both layers are too busy
+ * (especially downtown where 50+ parcels overlap).
+ *
+ * `which` is 'survey' or 'assess'. Each toggle flips the corresponding
+ * pair of fill+line layers on the underlying map source.
+ */
+function toggleLayer(which) {
+  const btn = which === 'survey' ? $surveyToggle : $assessToggle;
+  const fillId = which === 'survey' ? 'parcel-fill' : 'assess-context-fill';
+  const lineId = which === 'survey' ? 'parcel-line' : 'assess-context-line';
+  const labelOn = which === 'survey' ? 'Hide Survey' : 'Hide Assessment';
+  const labelOff = which === 'survey' ? 'Show Survey' : 'Show Assessment';
+  const wasActive = btn.classList.contains('active');
+  const nowVisible = !wasActive;
+  btn.classList.toggle('active', nowVisible);
+  btn.setAttribute('aria-pressed', String(nowVisible));
+  btn.textContent = nowVisible ? labelOn : labelOff;
+  mapReady.then(() => {
+    const v = nowVisible ? 'visible' : 'none';
+    if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', v);
+    if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', v);
   });
 }
 

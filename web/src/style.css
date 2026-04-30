@@ -300,8 +300,68 @@ header small a {
 }
 
 .map-legend .swatch.assess {
-  background: rgba(255, 122, 58, 0.28);
-  border: 2px solid #a83e0c;
+  background: rgba(178, 34, 34, 0.22);
+  border: 2px solid #690000;
+}
+
+/* Top-of-page explainer block. Default open on first visit; collapsible
+   so it gets out of the way once the user knows the difference. */
+.explainer {
+  margin: 0;
+  padding: 8px 20px;
+  background: #f4f6fb;
+  border-bottom: 1px solid #e2e4e9;
+  font-size: 13px;
+  color: #2e3a55;
+}
+
+.explainer > summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  user-select: none;
+}
+
+.explainer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.explainer > summary::before {
+  content: "\f0eb";
+  display: inline-block;
+  margin-right: 6px;
+  color: #4a6cb3;
+}
+
+.explainer-body {
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.explainer-body p {
+  margin: 6px 0;
+}
+
+.legend-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 1px;
+  margin-right: 2px;
+}
+
+.legend-pill.survey {
+  background: rgba(70, 130, 180, 0.4);
+  border: 1.5px solid #0b2566;
+  color: #0b2566;
+}
+
+.legend-pill.assess {
+  background: rgba(178, 34, 34, 0.22);
+  border: 1.5px solid #690000;
+  color: #690000;
 }
 
 #results-wrap {

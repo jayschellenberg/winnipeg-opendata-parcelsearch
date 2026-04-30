@@ -20,6 +20,29 @@
       </small>
     </header>
 
+    <details class="explainer" open>
+      <summary>What's the difference between Survey and Assessment parcels?</summary>
+      <div class="explainer-body">
+        <p>
+          <span class="legend-pill survey">Survey</span>
+          parcels (blue on the map) are the legal lots from the Land Titles
+          register — the <em>Lot / Block / Plan</em> you'd see on a deed.
+        </p>
+        <p>
+          <span class="legend-pill assess">Assessment</span>
+          parcels (red on the map) are the City's tax-assessed properties
+          — one per <em>Roll Number / civic address</em>.
+        </p>
+        <p>
+          The two layers don't always align. One assessment parcel can
+          cover many survey lots (a big building on multiple original lots),
+          and one survey lot can be split between multiple assessment rolls
+          (a duplex with two roll numbers). Hover anywhere on the map to
+          see both at once.
+        </p>
+      </div>
+    </details>
+
     <section class="controls">
       <span class="field">
         <input id="lot"     type="text" size="12" placeholder="Lot" />
@@ -52,6 +75,8 @@
       <button id="search" type="button">Search</button>
       <button id="clear"  type="button" class="secondary">Clear</button>
       <button id="export" type="button" class="secondary">Export CSV</button>
+      <button id="survey-toggle" type="button" class="secondary active" aria-pressed="true">Hide Survey</button>
+      <button id="assess-toggle" type="button" class="secondary active" aria-pressed="true">Hide Assessment</button>
       <button id="zoning-toggle" type="button" class="secondary" aria-pressed="false">Show Zoning</button>
       <span id="count" class="count"></span>
     </section>
