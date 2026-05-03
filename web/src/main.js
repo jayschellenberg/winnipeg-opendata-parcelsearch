@@ -62,6 +62,8 @@ const $assessToggle = document.getElementById('assess-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
+const $staticMapBtn = document.getElementById('static-map-btn');
+const $staticMapOutput = document.getElementById('static-map-output');
 const $legend = document.getElementById('map-legend');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
@@ -162,6 +164,7 @@ $export.addEventListener('click', exportCsv);
 $zoningToggle.addEventListener('click', toggleZoning);
 $surveyToggle.addEventListener('click', () => toggleLayer('survey'));
 $assessToggle.addEventListener('click', () => toggleLayer('assess'));
+if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning, $duMin]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
@@ -648,6 +651,116 @@ function td(value, className) {
   }
   if (className) el.classList.add(className);
   return el;
+}
+
+/**
+ * Capture the current interactive-map view as a static <img> embedded
+ * below the table. Forces a synchronous repaint first (waits for the
+ * `idle` event) so the snapshot captures every layer in its final
+ * state — without that, mid-loading tiles or a half-finished animation
+ * frame can show up in the PNG.
+ *
+ * The map was created with preserveDrawingBuffer:true so that
+ * canvas.toDataURL() returns real bytes; without that flag the buffer
+ * is cleared between frames and the read returns transparent black.
+ */
+async function generateStaticMap() {
+  if (!$staticMapOutput) return;
+  await mapReady;
+  $staticMapBtn.disabled = true;
+  const originalLabel = $staticMapBtn.textContent;
+  $staticMapBtn.textContent = 'Capturing…';
+  try {
+    await new Promise((resolve) => {
+      const onIdle = () => { map.off('idle', onIdle); resolve(); };
+      map.on('idle', onIdle);
+      map.triggerRepaint();
+    });
+    const canvas = map.getCanvas();
+    const dataUrl = composeWithAttribution(canvas);
+    $staticMapOutput.hidden = false;
+    $staticMapOutput.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    img.alt = 'Static snapshot of the current map view';
+    img.title = 'Right-click → Save Image As… to drop into a report';
+    $staticMapOutput.appendChild(img);
+    $staticMapOutput.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    console.error('static map capture failed', err);
+    $staticMapOutput.hidden = false;
+    $staticMapOutput.innerHTML = '<p style="color:#c0392b">Capture failed — try toggling the satellite basemap and re-trying. If it persists, check the browser console.</p>';
+  } finally {
+    $staticMapBtn.disabled = false;
+    $staticMapBtn.textContent = originalLabel;
+  }
+}
+
+/**
+ * Compose a new canvas with the map canvas content + a credit pill in
+ * the bottom-right. Pulls the live MapLibre attribution string so the
+ * pill stays in sync with whichever sources/overlays are visible
+ * (basemap + zoning + survey + assess) without us having to enumerate
+ * them. Returns a PNG data URL ready for an <img>.src.
+ */
+function composeWithAttribution(srcCanvas) {
+  const w = srcCanvas.width;
+  const h = srcCanvas.height;
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(srcCanvas, 0, 0);
+
+  const attribEl = $mapEl.querySelector('.maplibregl-ctrl-attrib-inner') ||
+                   $mapEl.querySelector('.maplibregl-ctrl-attrib');
+  let text = attribEl ? attribEl.innerText.replace(/\s+/g, ' ').trim() : '';
+  if (!text) text = '© OpenStreetMap © CARTO';
+
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const fontSize = Math.max(11, Math.round(11 * dpr * 0.9));
+  ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+  ctx.textBaseline = 'middle';
+  const maxWidth = Math.floor(w * 0.85);
+  const lines = wrapToWidth(ctx, text, maxWidth);
+  const padX = 8;
+  const padY = 5;
+  const lineHeight = Math.round(fontSize * 1.25);
+  const blockH = lines.length * lineHeight + padY * 2 - (lineHeight - fontSize);
+  let blockW = 0;
+  for (const line of lines) blockW = Math.max(blockW, ctx.measureText(line).width);
+  blockW = Math.ceil(blockW + padX * 2);
+  const x0 = w - blockW - 6;
+  const y0 = h - blockH - 6;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillRect(x0, y0, blockW, blockH);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, blockW - 1, blockH - 1);
+  ctx.fillStyle = '#1a1a1a';
+  for (let i = 0; i < lines.length; i++) {
+    const yMid = y0 + padY + i * lineHeight + Math.round(fontSize / 2);
+    ctx.fillText(lines[i], x0 + padX, yMid);
+  }
+  return out.toDataURL('image/png');
+}
+
+/** Greedy word-wrap on a 2D canvas context. */
+function wrapToWidth(ctx, text, maxWidth) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      line = candidate;
+    } else {
+      if (line) lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 /**

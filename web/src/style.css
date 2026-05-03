@@ -487,6 +487,41 @@ header small a {
   font-variant-numeric: tabular-nums;
 }
 
+/* Static-map capture section sits between the results table and the
+   disclaimer. Header is one row (button + helper text); the output box
+   is initially hidden and reveals after the user clicks Generate. */
+.static-map-section {
+  padding: 12px 20px 0;
+}
+
+.static-map-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.static-map-hint {
+  font-size: 12px;
+  color: #555c6e;
+  flex: 1 1 320px;
+}
+
+.static-map-output {
+  margin-top: 10px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #e2e4e9;
+  border-radius: 4px;
+}
+
+.static-map-output img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  cursor: zoom-in;
+}
+
 .disclaimer {
   margin: 0;
   padding: 14px 20px 22px;
