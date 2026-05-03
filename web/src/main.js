@@ -41,8 +41,14 @@ import {
   enrichAssessmentAddresses,
   filterMatchedSurveys,
   filterMatchedAssessments,
+  fetchSecondaryPlans,
+  fetchInfillGuidelineArea,
+  fetchMallsAndCorridors,
 } from './soda.js';
-import { initMap, showResults, setZoningData, setZoningVisible, flyToFeature } from './map.js';
+import {
+  initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
+  setOverlayData, setOverlayVisible,
+} from './map.js';
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
@@ -59,6 +65,9 @@ const $export = document.getElementById('export');
 const $zoningToggle = document.getElementById('zoning-toggle');
 const $surveyToggle = document.getElementById('survey-toggle');
 const $assessToggle = document.getElementById('assess-toggle');
+const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
+const $infillToggle         = document.getElementById('infill-toggle');
+const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
@@ -164,6 +173,9 @@ $export.addEventListener('click', exportCsv);
 $zoningToggle.addEventListener('click', toggleZoning);
 $surveyToggle.addEventListener('click', () => toggleLayer('survey'));
 $assessToggle.addEventListener('click', () => toggleLayer('assess'));
+$secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secondaryPlans'));
+$infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
+$mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning, $duMin]) {
   el.addEventListener('keydown', (e) => {
@@ -321,6 +333,75 @@ async function refreshZoning() {
     setZoningData(map, zoningFc);
   } catch (err) {
     console.warn('zoning fetch failed', err);
+  }
+}
+
+/**
+ * Generic toggle for the OurWinnipeg policy-area overlays. Each is a
+ * small whole-citywide dataset fetched once and cached for the
+ * session — see fetchAllAndCache in soda.js — so toggling on/off after
+ * the first hit is instant.
+ *
+ * `name` is one of 'secondaryPlans' / 'infill' / 'mallsCorridors'.
+ */
+const POLICY_OVERLAY_CONFIG = {
+  secondaryPlans: {
+    btn:    () => $secondaryPlansToggle,
+    src:    'secondary-plans',
+    fetch:  fetchSecondaryPlans,
+    onLabel:  'Hide Secondary Plans',
+    offLabel: 'Show Secondary Plans',
+  },
+  infill: {
+    btn:    () => $infillToggle,
+    src:    'infill-guideline',
+    fetch:  fetchInfillGuidelineArea,
+    onLabel:  'Hide Infill Area',
+    offLabel: 'Show Infill Area',
+  },
+  mallsCorridors: {
+    btn:    () => $mallsCorridorsToggle,
+    src:    'malls-corridors',
+    fetch:  fetchMallsAndCorridors,
+    onLabel:  'Hide Malls/Corridors',
+    offLabel: 'Show Malls/Corridors',
+  },
+};
+
+const policyOverlayState = {
+  secondaryPlans: { enabled: false, loaded: false },
+  infill:         { enabled: false, loaded: false },
+  mallsCorridors: { enabled: false, loaded: false },
+};
+
+async function togglePolicyOverlay(name) {
+  const cfg = POLICY_OVERLAY_CONFIG[name];
+  const state = policyOverlayState[name];
+  if (!cfg || !state) return;
+  state.enabled = !state.enabled;
+  const btn = cfg.btn();
+  btn.textContent = state.enabled ? cfg.onLabel : cfg.offLabel;
+  btn.setAttribute('aria-pressed', String(state.enabled));
+  btn.classList.toggle('active', state.enabled);
+  await mapReady;
+  setOverlayVisible(map, cfg.src, state.enabled);
+  if (state.enabled && !state.loaded) {
+    btn.disabled = true;
+    try {
+      const fc = await cfg.fetch();
+      setOverlayData(map, cfg.src, fc);
+      state.loaded = true;
+    } catch (err) {
+      console.warn(`${name} fetch failed`, err);
+      // Roll back the toggle so the user can retry.
+      state.enabled = false;
+      btn.textContent = cfg.offLabel;
+      btn.setAttribute('aria-pressed', 'false');
+      btn.classList.remove('active');
+      setOverlayVisible(map, cfg.src, false);
+    } finally {
+      btn.disabled = false;
+    }
   }
 }
 

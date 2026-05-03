@@ -112,6 +112,84 @@ export function initMap(container, { onFeatureClick } = {}) {
   const ready = new Promise((resolve) => {
     map.on('load', () => {
       // Zoning layer goes in first so it draws *under* the parcel highlight.
+      // OurWinnipeg policy-area overlays — three independent toggleable
+      // layers stacked beneath the parcel highlights. Each is a single
+      // small dataset (5-24 polygons), fetched whole and cached on first
+      // toggle. Drawn in this order: Secondary Plans → Infill →
+      // Malls/Corridors so the most-specific (Malls/Corridors PDO) sits
+      // on top of the broader policy areas underneath.
+
+      // Secondary Plans (OurWPG Precinct) — 5 polygons, soft purple fill.
+      map.addSource('secondary-plans', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'secondary-plans-fill', type: 'fill', source: 'secondary-plans',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#8e6cb3', 'fill-opacity': 0.18 },
+      });
+      map.addLayer({
+        id: 'secondary-plans-line', type: 'line', source: 'secondary-plans',
+        layout: { visibility: 'none' },
+        paint: { 'line-color': '#5a3d8a', 'line-width': 2.5 },
+      });
+      map.addLayer({
+        id: 'secondary-plans-label', type: 'symbol', source: 'secondary-plans',
+        layout: {
+          visibility: 'none',
+          'text-field': ['coalesce', ['get', 'precinct_name'], ''],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 14,
+          'symbol-placement': 'point',
+        },
+        paint: {
+          'text-color': '#3d255e',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.8,
+        },
+      });
+
+      // Infill Guideline Area (OurWPG Mature Community) — 5 polygons,
+      // green outline only (no fill — these are big neighbourhoods and
+      // a fill would obscure everything underneath).
+      map.addSource('infill-guideline', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'infill-guideline-fill', type: 'fill', source: 'infill-guideline',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#5aa05a', 'fill-opacity': 0.10 },
+      });
+      map.addLayer({
+        id: 'infill-guideline-line', type: 'line', source: 'infill-guideline',
+        layout: { visibility: 'none' },
+        paint: { 'line-color': '#2e5e2e', 'line-width': 2.5, 'line-dasharray': [2, 2] },
+      });
+
+      // Malls and Corridors PDO (combined: Regional Mixed Use Centre +
+      // Urban Mixed Use Corridor + Regional Mixed Use Corridor). Each
+      // sub-kind gets its own colour via a `pdo_kind` match expression.
+      map.addSource('malls-corridors', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'malls-corridors-fill', type: 'fill', source: 'malls-corridors',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': [
+            'match',
+            ['get', 'pdo_kind'],
+            'Mall',              '#2c8aa8',
+            'Urban Corridor',    '#4fb3c7',
+            'Regional Corridor', '#1f6680',
+            '#5fa8b8',
+          ],
+          'fill-opacity': 0.22,
+        },
+      });
+      map.addLayer({
+        id: 'malls-corridors-line', type: 'line', source: 'malls-corridors',
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#0e3848',
+          'line-width': 2,
+        },
+      });
+
       // Source starts empty; main.js populates it when the user toggles
       // zoning on. `visibility: none` keeps it hidden until then.
       map.addSource('zoning', {
@@ -301,6 +379,33 @@ export function initMap(container, { onFeatureClick } = {}) {
         map.getCanvas().style.cursor = '';
       });
 
+      // Click popups for the OurWinnipeg overlays. Each defers to the
+      // parcel-fill click first so a click that lands on both a parcel
+      // and an overlay still scrolls the table to the parcel's row.
+      const policyPopup = new maplibregl.Popup({ closeButton: true });
+      const policyClick = (htmlBuilder) => (e) => {
+        const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
+        if (parcelHit.length > 0) return;
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        policyPopup.setLngLat(e.lngLat).setHTML(htmlBuilder(p)).addTo(map);
+      };
+      map.on('click', 'secondary-plans-fill', policyClick((p) => `
+        <div style="line-height:1.4">
+          <strong>Secondary Plan</strong><br>
+          Precinct: <strong>${escapeHtml(p.precinct_name ?? '')}</strong>
+        </div>`));
+      map.on('click', 'infill-guideline-fill', policyClick(() => `
+        <div style="line-height:1.4">
+          <strong>Mature Community</strong><br>
+          <em>Infill Guidelines apply</em>
+        </div>`));
+      map.on('click', 'malls-corridors-fill', policyClick((p) => `
+        <div style="line-height:1.4">
+          <strong>${escapeHtml(p.pdo_kind ?? 'Malls and Corridors PDO')}</strong>
+          ${p.feature_name ? `<br>${escapeHtml(p.feature_name)}` : ''}
+        </div>`));
+
       resolve();
     });
   });
@@ -382,6 +487,29 @@ export function setZoningVisible(map, visible) {
   if (map.getLayer('zoning-fill')) map.setLayoutProperty('zoning-fill', 'visibility', v);
   if (map.getLayer('zoning-line')) map.setLayoutProperty('zoning-line', 'visibility', v);
   if (map.getLayer('zoning-label')) map.setLayoutProperty('zoning-label', 'visibility', v);
+}
+
+/** Push data into the named OurWinnipeg overlay source. */
+export function setOverlayData(map, sourceId, fc) {
+  const src = map.getSource(sourceId);
+  if (src) src.setData(fc);
+}
+
+/**
+ * Toggle visibility on every layer that draws from the named overlay
+ * source. Generic enough to handle the secondary-plans (3 layers:
+ * fill/line/label), infill-guideline (2 layers), and malls-corridors
+ * (2 layers) groups. Pass the source id; this finds every layer using
+ * it and flips them in lockstep.
+ */
+export function setOverlayVisible(map, sourceId, visible) {
+  const v = visible ? 'visible' : 'none';
+  const layers = map.getStyle()?.layers || [];
+  for (const layer of layers) {
+    if (layer.source === sourceId) {
+      map.setLayoutProperty(layer.id, 'visibility', v);
+    }
+  }
 }
 
 // Click-popup body for zoning polygons. Shows the zone code, the short

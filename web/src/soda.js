@@ -37,6 +37,16 @@ const ADDRESSES_URL = 'https://data.winnipeg.ca/resource/cam2-ii3u.json';
 // Used to render a toggleable zoning overlay scoped to the search-result area.
 const ZONING_URL = 'https://data.winnipeg.ca/resource/dxrp-w6re.geojson';
 
+// Three OurWinnipeg policy-area datasets used as toggleable overlays.
+// All small (5-24 polygons each), citywide — fetched whole and cached
+// for the session, no per-search filtering. Geometry column: `location`
+// for all three.
+const SECONDARY_PLANS_URL          = 'https://data.winnipeg.ca/resource/xh28-4smq.geojson';  // OurWPG Precinct
+const INFILL_GUIDELINE_URL         = 'https://data.winnipeg.ca/resource/5guk-f7xw.geojson';  // OurWPG Mature Community
+const MALLS_REGIONAL_CENTRE_URL    = 'https://data.winnipeg.ca/resource/wv32-jdtk.geojson';  // OurWPG Regional Mixed Use Centre
+const CORRIDORS_URBAN_URL          = 'https://data.winnipeg.ca/resource/t4kh-5gtd.geojson';  // OurWPG Urban Mixed Use Corridor
+const CORRIDORS_REGIONAL_URL       = 'https://data.winnipeg.ca/resource/ahzi-uwu2.geojson';  // OurWPG Regional Mixed Use Corridor
+
 // Optional Socrata app token. Raises the anonymous rate limit.
 // Set via Vercel env var VITE_SODA_APP_TOKEN; undefined in anonymous mode.
 const APP_TOKEN = import.meta.env.VITE_SODA_APP_TOKEN;
@@ -475,6 +485,85 @@ function parcelSetCacheKey(fc) {
   }
   parts.sort();
   return parts.join('|');
+}
+
+/**
+ * Fetch the OurWinnipeg "Precinct" dataset (xh28-4smq). Each precinct is
+ * the boundary of a Secondary Plan area. Tiny dataset — only 5 polygons
+ * citywide — so we fetch the whole thing and cache it. Result FC carries
+ * `precinct_name` ("A", "B", "C", etc.) for popups and labels.
+ */
+export async function fetchSecondaryPlans() {
+  return fetchAllAndCache('secondaryPlans', SECONDARY_PLANS_URL);
+}
+
+/**
+ * Fetch the OurWinnipeg "Mature Community" dataset (5guk-f7xw). These
+ * are the pre-1950 neighbourhoods where the City's Mature Community
+ * Infill Guidelines apply. Boundary-only — no useful per-polygon name.
+ */
+export async function fetchInfillGuidelineArea() {
+  return fetchAllAndCache('infillGuideline', INFILL_GUIDELINE_URL);
+}
+
+/**
+ * Fetch the combined "Malls and Corridors" PDO overlay — the union of
+ * three OurWinnipeg datasets:
+ *
+ *   - Regional Mixed Use Centre (wv32-jdtk) — the "Malls" half (e.g.
+ *     Kenaston and McGillivray, Polo Park, etc.)
+ *   - Urban Mixed Use Corridor (t4kh-5gtd) — neighbourhood-scale corridors
+ *   - Regional Mixed Use Corridor (ahzi-uwu2) — citywide corridors
+ *
+ * Each feature is tagged with a `pdo_kind` property so popups + labels
+ * can distinguish "Mall" / "Urban Corridor" / "Regional Corridor".
+ */
+export async function fetchMallsAndCorridors() {
+  const [malls, urbanCorr, regionalCorr] = await Promise.all([
+    fetchAllAndCache('mallsRegionalCentre',  MALLS_REGIONAL_CENTRE_URL),
+    fetchAllAndCache('corridorsUrban',       CORRIDORS_URBAN_URL),
+    fetchAllAndCache('corridorsRegional',    CORRIDORS_REGIONAL_URL),
+  ]);
+  const features = [];
+  for (const f of malls.features)        features.push(tagPdoKind(f, 'Mall'));
+  for (const f of urbanCorr.features)    features.push(tagPdoKind(f, 'Urban Corridor'));
+  for (const f of regionalCorr.features) features.push(tagPdoKind(f, 'Regional Corridor'));
+  return { type: 'FeatureCollection', features };
+}
+
+/**
+ * Stamp a `pdo_kind` discriminator on a feature so the combined Malls
+ * and Corridors layer can render different colours / popup labels per
+ * sub-dataset. Mutates the properties in place.
+ */
+function tagPdoKind(feature, kind) {
+  feature.properties = feature.properties || {};
+  feature.properties.pdo_kind = kind;
+  return feature;
+}
+
+// Session cache for the small whole-dataset overlay fetches above.
+// Keyed by a short logical name so each helper above hits the same
+// cache slot every call. Promises (not resolved FCs) are stored so
+// concurrent callers share one in-flight request — important when a
+// user mashes a toggle button before the first fetch completes.
+const OVERLAY_CACHE = new Map();
+
+async function fetchAllAndCache(key, url) {
+  if (OVERLAY_CACHE.has(key)) return OVERLAY_CACHE.get(key);
+  const promise = (async () => {
+    const params = new URLSearchParams({ $limit: '5000' });
+    return fetchSoda(`${url}?${params}`);
+  })();
+  OVERLAY_CACHE.set(key, promise);
+  try {
+    return await promise;
+  } catch (err) {
+    // Don't poison the cache with a rejected promise — let the next
+    // toggle attempt re-fire the request.
+    OVERLAY_CACHE.delete(key);
+    throw err;
+  }
 }
 
 /**
