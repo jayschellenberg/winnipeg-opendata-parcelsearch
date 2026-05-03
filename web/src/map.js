@@ -119,26 +119,53 @@ export function initMap(container, { onFeatureClick } = {}) {
       // Malls/Corridors so the most-specific (Malls/Corridors PDO) sits
       // on top of the broader policy areas underneath.
 
-      // Secondary Plans (OurWPG Precinct) — 5 polygons, soft purple fill.
+      // Secondary Plans — combined Precincts (5) + Major Redevelopment
+      // Sites (11). Two `plan_kind` shades so the user can distinguish
+      // new-community precincts from major-infill redevelopment areas.
+      // Labels use precinct_name when present (Precincts), else
+      // feature_name (Major Redev sites).
       map.addSource('secondary-plans', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({
         id: 'secondary-plans-fill', type: 'fill', source: 'secondary-plans',
         layout: { visibility: 'none' },
-        paint: { 'fill-color': '#8e6cb3', 'fill-opacity': 0.18 },
+        paint: {
+          'fill-color': [
+            'match', ['get', 'plan_kind'],
+            'Precinct',            '#8e6cb3',
+            'Major Redevelopment', '#c47bd6',
+            '#a07ec5',
+          ],
+          'fill-opacity': 0.18,
+        },
       });
       map.addLayer({
         id: 'secondary-plans-line', type: 'line', source: 'secondary-plans',
         layout: { visibility: 'none' },
-        paint: { 'line-color': '#5a3d8a', 'line-width': 2.5 },
+        paint: {
+          'line-color': [
+            'match', ['get', 'plan_kind'],
+            'Precinct',            '#5a3d8a',
+            'Major Redevelopment', '#7a3a92',
+            '#5a3d8a',
+          ],
+          'line-width': 2.5,
+        },
       });
       map.addLayer({
         id: 'secondary-plans-label', type: 'symbol', source: 'secondary-plans',
         layout: {
           visibility: 'none',
-          'text-field': ['coalesce', ['get', 'precinct_name'], ''],
+          'text-field': [
+            'coalesce',
+            ['get', 'precinct_name'],
+            ['get', 'feature_name'],
+            '',
+          ],
           'text-font': ['Open Sans Semibold'],
-          'text-size': 14,
+          'text-size': 13,
           'symbol-placement': 'point',
+          'text-max-width': 9,
+          'text-allow-overlap': false,
         },
         paint: {
           'text-color': '#3d255e',
@@ -390,11 +417,15 @@ export function initMap(container, { onFeatureClick } = {}) {
         if (!p) return;
         policyPopup.setLngLat(e.lngLat).setHTML(htmlBuilder(p)).addTo(map);
       };
-      map.on('click', 'secondary-plans-fill', policyClick((p) => `
-        <div style="line-height:1.4">
-          <strong>Secondary Plan</strong><br>
-          Precinct: <strong>${escapeHtml(p.precinct_name ?? '')}</strong>
-        </div>`));
+      map.on('click', 'secondary-plans-fill', policyClick((p) => {
+        const kind = p.plan_kind ?? 'Secondary Plan';
+        const name = p.precinct_name ?? p.feature_name ?? '';
+        return `
+          <div style="line-height:1.4">
+            <strong>Secondary Plan</strong> — ${escapeHtml(kind)}
+            ${name ? `<br>${escapeHtml(name)}` : ''}
+          </div>`;
+      }));
       map.on('click', 'infill-guideline-fill', policyClick(() => `
         <div style="line-height:1.4">
           <strong>Mature Community</strong><br>

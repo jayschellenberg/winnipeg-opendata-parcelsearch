@@ -39,11 +39,18 @@ const ADDRESSES_URL = 'https://data.winnipeg.ca/resource/cam2-ii3u.json';
 // Used to render a toggleable zoning overlay scoped to the search-result area.
 const ZONING_URL = 'https://data.winnipeg.ca/resource/dxrp-w6re.geojson';
 
-// Three OurWinnipeg policy-area datasets used as toggleable overlays.
-// All small (5-24 polygons each), citywide — fetched whole and cached
-// for the session, no per-search filtering. Geometry column: `location`
-// for all three.
-const SECONDARY_PLANS_URL          = 'https://data.winnipeg.ca/resource/xh28-4smq.geojson';  // OurWPG Precinct
+// OurWinnipeg policy-area datasets used as toggleable overlays. All
+// small, citywide — fetched whole and cached for the session, no
+// per-search filtering. Geometry column: `location` for all of them.
+//
+// "Secondary Plans" is the union of two datasets per the City's metadata:
+//   xh28-4smq Precinct: "Precincts define the geographic boundaries of
+//     [secondary] plans" — for new-community development.
+//   piz6-n3at Major Redevelopment Site: "Secondary plans to guide the
+//     area's transformation must be adopted by Council prior to
+//     development" — for major infill/intensification sites.
+const SECONDARY_PLAN_PRECINCT_URL  = 'https://data.winnipeg.ca/resource/xh28-4smq.geojson';  // OurWPG Precinct (5)
+const SECONDARY_PLAN_REDEV_URL     = 'https://data.winnipeg.ca/resource/piz6-n3at.geojson';  // OurWPG Major Redev Site (11)
 const INFILL_GUIDELINE_URL         = 'https://data.winnipeg.ca/resource/5guk-f7xw.geojson';  // OurWPG Mature Community
 const MALLS_REGIONAL_CENTRE_URL    = 'https://data.winnipeg.ca/resource/wv32-jdtk.geojson';  // OurWPG Regional Mixed Use Centre
 const CORRIDORS_URBAN_URL          = 'https://data.winnipeg.ca/resource/t4kh-5gtd.geojson';  // OurWPG Urban Mixed Use Corridor
@@ -314,7 +321,13 @@ export async function enrichAssessmentZoning(assessFc) {
 
       for (const zone of candidates) {
         try {
-          const inter = intersect(parcel, zone);
+          // @turf/intersect v7 takes a FeatureCollection of two features,
+          // not two separate args (v6 signature). Wrapping here so we don't
+          // silently fall through to the zone-as-options misinterpretation.
+          const inter = intersect({
+            type: 'FeatureCollection',
+            features: [parcel, zone],
+          });
           if (!inter) continue;
           const a = area(inter);
           if (!Number.isFinite(a) || a <= 0) continue;
@@ -584,13 +597,37 @@ function parcelSetCacheKey(fc) {
 }
 
 /**
- * Fetch the OurWinnipeg "Precinct" dataset (xh28-4smq). Each precinct is
- * the boundary of a Secondary Plan area. Tiny dataset — only 5 polygons
- * citywide — so we fetch the whole thing and cache it. Result FC carries
- * `precinct_name` ("A", "B", "C", etc.) for popups and labels.
+ * Fetch the combined "Secondary Plans" overlay — the union of two
+ * OurWinnipeg datasets per the City's own metadata definitions:
+ *
+ *   - OurWPG Precinct (xh28-4smq, 5 polygons) — "Precincts define the
+ *     geographic boundaries of these plans" for new-community development.
+ *     Each carries `precinct_name` ("B", "D", "S", "U", "V").
+ *   - OurWPG Major Redevelopment Site (piz6-n3at, 11 polygons) —
+ *     "Secondary plans to guide the area's transformation must be
+ *     adopted by Council prior to development." Each carries
+ *     `feature_name` (e.g. "Ravelston and Plessis", "Public Markets").
+ *
+ * Each feature is tagged with a `plan_kind` discriminator so popups +
+ * labels can distinguish Precinct vs Major Redevelopment.
  */
 export async function fetchSecondaryPlans() {
-  return fetchAllAndCache('secondaryPlans', SECONDARY_PLANS_URL);
+  const [precincts, redev] = await Promise.all([
+    fetchAllAndCache('secondaryPlanPrecincts', SECONDARY_PLAN_PRECINCT_URL),
+    fetchAllAndCache('secondaryPlanRedev',     SECONDARY_PLAN_REDEV_URL),
+  ]);
+  const features = [];
+  for (const f of precincts.features) features.push(tagPlanKind(f, 'Precinct'));
+  for (const f of redev.features)     features.push(tagPlanKind(f, 'Major Redevelopment'));
+  return { type: 'FeatureCollection', features };
+}
+
+/** Stamp a `plan_kind` on each Secondary Plans feature so the layer
+ *  paint expression can pick a colour and the popup can label it. */
+function tagPlanKind(feature, kind) {
+  feature.properties = feature.properties || {};
+  feature.properties.plan_kind = kind;
+  return feature;
 }
 
 /**
