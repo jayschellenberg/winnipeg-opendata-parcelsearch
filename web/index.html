@@ -72,6 +72,18 @@
         <input id="zoning"  type="text" size="12" placeholder="Zoning (contains)" />
         <span class="tip">Zoning (contains)</span>
       </span>
+      <span class="field du-mode-field">
+        <select id="du-mode">
+          <option value="">Any DU</option>
+          <option value="zero">0 DU only</option>
+          <option value="min">Min DU</option>
+        </select>
+        <span class="tip">Dwelling units filter (Any · 0 · Min N)</span>
+      </span>
+      <span class="field du-min-field">
+        <input id="du-min" type="number" min="1" step="1" size="3" placeholder="#" disabled />
+        <span class="tip">Minimum dwelling units (when 'Min DU' is selected)</span>
+      </span>
       <button id="search" type="button">Search</button>
       <button id="clear"  type="button" class="secondary">Clear</button>
       <button id="export" type="button" class="secondary">Export CSV</button>

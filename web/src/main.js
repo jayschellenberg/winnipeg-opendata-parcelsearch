@@ -51,6 +51,8 @@ const $desc = document.getElementById('desc');
 const $roll = document.getElementById('roll');
 const $address = document.getElementById('address');
 const $zoning = document.getElementById('zoning');
+const $duMode = document.getElementById('du-mode');
+const $duMin = document.getElementById('du-min');
 const $search = document.getElementById('search');
 const $clear = document.getElementById('clear');
 const $export = document.getElementById('export');
@@ -160,11 +162,21 @@ $export.addEventListener('click', exportCsv);
 $zoningToggle.addEventListener('click', toggleZoning);
 $surveyToggle.addEventListener('click', () => toggleLayer('survey'));
 $assessToggle.addEventListener('click', () => toggleLayer('assess'));
-for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning]) {
+for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning, $duMin]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
   });
 }
+
+// The "Min #" input only matters when Min DU is selected. Disable it
+// otherwise so users can't type a value that has no effect, and
+// pre-fill 1 when switching to Min DU so the filter activates immediately.
+$duMode.addEventListener('change', () => {
+  const enableMin = $duMode.value === 'min';
+  $duMin.disabled = !enableMin;
+  if (!enableMin) $duMin.value = '';
+  if (enableMin && !$duMin.value) $duMin.value = '1';
+});
 
 setExportEnabled(false);
 updateSortIndicators();
@@ -192,10 +204,15 @@ async function runSearch() {
     roll: $roll.value.trim(),
     address: $address.value.trim(),
     zoning: $zoning.value.trim(),
+    // DU filter: 'zero' = vacant lots only, 'min' = ≥ N units, '' = no filter.
+    // The minimum is captured separately so it persists across mode swaps.
+    duMode: $duMode.value,
+    duMin: parseInt($duMin.value, 10) || null,
   };
 
   const anyLegal = inputs.lot || inputs.block || inputs.plan || inputs.desc;
-  const anyAssess = inputs.roll || inputs.address || inputs.zoning;
+  const anyDu = inputs.duMode === 'zero' || (inputs.duMode === 'min' && inputs.duMin > 0);
+  const anyAssess = inputs.roll || inputs.address || inputs.zoning || anyDu;
 
   if (!anyLegal && !anyAssess) {
     setCount('Enter at least one search field.');

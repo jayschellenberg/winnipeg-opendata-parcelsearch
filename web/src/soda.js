@@ -132,22 +132,42 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
  * ANDed together. Returns a FeatureCollection with assessment-parcel
  * geometry suitable for rendering directly on the map.
  */
-export async function searchAssessmentParcels({ roll, address, zoning }) {
+export async function searchAssessmentParcels({ roll, address, zoning, duMode, duMin }) {
   const clauses = [];
   if (roll)    clauses.push(likeClause('roll_number', roll));
   if (address) clauses.push(likeClause('full_address', address));
   if (zoning)  clauses.push(likeClause('zoning', zoning));
+  const duClause = buildDuClause(duMode, duMin);
+  if (duClause) clauses.push(duClause);
   if (clauses.length === 0) {
     return { type: 'FeatureCollection', features: [] };
   }
 
   const params = new URLSearchParams({
     $where: clauses.join(' AND '),
-    $select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,geometry',
+    $select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,geometry',
     $order: 'full_address',
     $limit: '1000',
   });
   return fetchSoda(`${ASSESS_URL}?${params}`);
+}
+
+/**
+ * Build a SoQL clause for the dwelling-units filter. The `dwelling_units`
+ * column on d4mq-wa44 is stored as text, so we cast with ::number to compare
+ * numerically (otherwise "9" > "10" lexicographically, which is wrong).
+ *
+ *   duMode = 'zero' -> "dwelling_units::number = 0"  (vacant lots only)
+ *   duMode = 'min'  -> "dwelling_units::number >= N" (≥ N dwelling units)
+ *   anything else   -> null (no filter)
+ */
+function buildDuClause(duMode, duMin) {
+  if (duMode === 'zero') return 'dwelling_units::number = 0';
+  if (duMode === 'min') {
+    const n = parseInt(duMin, 10);
+    if (Number.isFinite(n) && n > 0) return `dwelling_units::number >= ${n}`;
+  }
+  return null;
 }
 
 /**
@@ -164,10 +184,10 @@ export async function searchAssessmentParcels({ roll, address, zoning }) {
  * combined intent — "parcel must match all the filters the user typed" —
  * stays consistent regardless of which path surfaced it.
  */
-export async function searchAssessmentParcelsExpanded({ roll, address, zoning }) {
-  const directPromise = searchAssessmentParcels({ roll, address, zoning });
+export async function searchAssessmentParcelsExpanded({ roll, address, zoning, duMode, duMin }) {
+  const directPromise = searchAssessmentParcels({ roll, address, zoning, duMode, duMin });
   const xrefPromise = address
-    ? searchAddressesAndFindParcels(address, { roll, zoning })
+    ? searchAddressesAndFindParcels(address, { roll, zoning, duMode, duMin })
     : Promise.resolve({ type: 'FeatureCollection', features: [] });
   const [directFc, xrefFc] = await Promise.all([directPromise, xrefPromise]);
   const merged = mergeFcByKey([directFc, xrefFc], 'roll_number');
@@ -362,10 +382,12 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
   const extras = [];
   if (extraFilters.roll)   extras.push(likeClause('roll_number', extraFilters.roll));
   if (extraFilters.zoning) extras.push(likeClause('zoning', extraFilters.zoning));
+  const duClause = buildDuClause(extraFilters.duMode, extraFilters.duMin);
+  if (duClause) extras.push(duClause);
   return fetchPerFeatureBboxUnion({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
-    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,geometry',
+    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,geometry',
     dedupeKey: 'roll_number',
     fc: addressFc,
     extraWhere: extras.length ? extras.join(' AND ') : null,
