@@ -39,6 +39,7 @@ import {
   fetchZoningOverlap,
   computePartialSurveyIds,
   enrichAssessmentAddresses,
+  enrichAssessmentZoning,
   filterMatchedSurveys,
   filterMatchedAssessments,
   fetchSecondaryPlans,
@@ -105,7 +106,9 @@ const SORT_KEYS = {
   desc:    (r) => strKey(r.survey?.properties?.description),
   roll:    (r) => strKey(r.assess?.properties?.roll_number),
   address: (r) => strKey(r.assess?.properties?.full_address),
-  zoning:  (r) => strKey(r.assess?.properties?.zoning),
+  zoning:    (r) => strKey(r.assess?.properties?.zoning_top1 ?? r.assess?.properties?.zoning),
+  zoningPct: (r) => finiteOrNeg(r.assess?.properties?.zoning_top1_pct),
+  zoning2:   (r) => strKey(r.assess?.properties?.zoning_top2),
   area:    (r) => finiteOrNeg(r.assess?.properties?.assessed_land_area),
   lat:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lat),
   lon:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lon),
@@ -459,6 +462,14 @@ async function runLegalSearch(inputs) {
   } catch (err) {
     console.warn('address enrichment threw, continuing without it', err);
   }
+  // Area-weighted top-2 zoning fills zoning_top1 / zoning_top2 +
+  // their coverage %s. Non-fatal — on failure parcels keep their
+  // original `zoning` text only.
+  try {
+    await enrichAssessmentZoning(assessFc);
+  } catch (err) {
+    console.warn('zoning enrichment threw, continuing without it', err);
+  }
 
   const rows = joinSurveyWithAssessment(surveyFc, assessFc);
   renderTable(rows);
@@ -607,7 +618,12 @@ function renderTable(rows) {
     tr.appendChild(td(s.description));
     tr.appendChild(td(a.roll_number));
     tr.appendChild(td(a.full_address));
-    tr.appendChild(td(a.zoning));
+    // Prefer the area-weighted top-1 zoning code; fall back to the
+    // assessment dataset's primary `zoning` text if enrichment hasn't
+    // populated zoning_top1 (no overlap, fetch failed, etc.).
+    tr.appendChild(td(a.zoning_top1 ?? a.zoning));
+    tr.appendChild(td(formatPct(a.zoning_top1_pct), 'num'));
+    tr.appendChild(td(formatZone2(a.zoning_top2, a.zoning_top2_pct)));
     tr.appendChild(td(formatArea(a.assessed_land_area), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lat), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lon), 'num'));
@@ -671,7 +687,8 @@ function exportCsv() {
   if (!currentRows.length) return;
   const header = [
     'Lot', 'Block', 'Plan', 'Description',
-    'Roll Number', 'Full Address', 'Zoning',
+    'Roll Number', 'Full Address',
+    'Zoning', 'Zoning %', 'Zoning 2', 'Zoning 2 %',
     'Lot Size (sf)', 'Lat', 'Lon',
     'Walkscore URL', 'Flood URL',
   ];
@@ -681,7 +698,11 @@ function exportCsv() {
     const a = row.assess?.properties || {};
     lines.push([
       s.lot, s.block, s.plan, s.description,
-      a.roll_number, a.full_address, a.zoning,
+      a.roll_number, a.full_address,
+      a.zoning_top1 ?? a.zoning ?? '',
+      a.zoning_top1_pct ?? '',
+      a.zoning_top2 ?? '',
+      a.zoning_top2_pct ?? '',
       // Unformatted numeric values in CSV so spreadsheets can treat them
       // as numbers rather than text. Empty cells stay empty.
       a.assessed_land_area ?? '',
@@ -901,6 +922,26 @@ function floodToolUrl(props) {
   if (address) params.set('label', address);
   if (![...params.keys()].length) return null;
   return `https://mb-flood-mapping.vercel.app/?${params.toString()}`;
+}
+
+// Format an area-weighted-zoning coverage % for the table cell. Whole
+// percent precision keeps the column narrow; sub-1% values are
+// suppressed (those are digitization slivers, not real coverage).
+function formatPct(v) {
+  if (v == null) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return `${Math.round(n)}%`;
+}
+
+// Build the "Zoning 2" cell value. Combines code + % so the user can
+// see both at a glance without an extra column dedicated to the
+// secondary %. Returns null when there's no top-2 (suppressed at the
+// soda.js level when < 1% coverage).
+function formatZone2(code, pct) {
+  if (!code) return null;
+  if (pct == null) return code;
+  return `${code} (${Math.round(pct)}%)`;
 }
 
 // Assessment land area comes in as a stringified integer of square feet.

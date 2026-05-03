@@ -26,6 +26,8 @@
 import bbox from '@turf/bbox';
 import booleanIntersects from '@turf/boolean-intersects';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+import { intersect } from '@turf/intersect';
+import { area } from '@turf/area';
 
 const SURVEY_URL = 'https://data.winnipeg.ca/resource/sjjm-nj47.geojson';
 const ASSESS_URL = 'https://data.winnipeg.ca/resource/d4mq-wa44.geojson';
@@ -211,6 +213,11 @@ export async function searchAssessmentParcelsExpanded({ roll, address, zoning, d
   } catch (err) {
     console.warn('address enrichment threw, continuing without it', err);
   }
+  try {
+    await enrichAssessmentZoning(merged);
+  } catch (err) {
+    console.warn('zoning enrichment threw, continuing without it', err);
+  }
   return merged;
 }
 
@@ -264,6 +271,95 @@ export async function searchAddresses({ address }) {
  * to a comma-joined list (primary first, then alphabetical). Distinct only
  * — duplicates between primary and civic-dataset entries collapse.
  */
+/**
+ * Compute the area-weighted top-2 zoning districts for each assessment
+ * parcel by intersecting the parcel polygon with every overlapping
+ * zoning polygon. The Zoning column on d4mq-wa44 carries a single
+ * primary code (the City's tax-assessment classification); area-weighted
+ * computation reveals splits — e.g. a corner lot that's 70% R2 and 30%
+ * C1, or where the assessment dataset's primary disagrees with the
+ * actual mapped zone.
+ *
+ * Mutates each parcel's properties in place to add:
+ *   zoning_top1, zoning_top1_pct  — the highest-coverage zone code + %
+ *   zoning_top2, zoning_top2_pct  — second highest, or null if < 1%
+ * The original `zoning` field is left untouched.
+ *
+ * Non-fatal: failures (turf throwing on bad geometry, zoning fetch
+ * timing out) leave the parcel with its original zoning only.
+ */
+export async function enrichAssessmentZoning(assessFc) {
+  if (!assessFc?.features?.length) return assessFc;
+  let zoningFc;
+  try {
+    zoningFc = await fetchZoningOverlap(assessFc);
+  } catch (err) {
+    console.warn('zoning enrichment fetch failed', err);
+    return assessFc;
+  }
+  if (!zoningFc?.features?.length) return assessFc;
+
+  for (const parcel of assessFc.features) {
+    try {
+      // Quick bbox prefilter so we only run @turf/intersect against
+      // zone polygons whose bbox actually overlaps this parcel.
+      const candidates = zoningFc.features.filter((z) =>
+        bboxesOverlap(parcel, z)
+      );
+      if (!candidates.length) continue;
+
+      const totals = new Map();   // zone code -> total intersected area in m²
+      let parcelArea = 0;
+      try { parcelArea = area(parcel); } catch { /* ignore — fallback below */ }
+
+      for (const zone of candidates) {
+        try {
+          const inter = intersect(parcel, zone);
+          if (!inter) continue;
+          const a = area(inter);
+          if (!Number.isFinite(a) || a <= 0) continue;
+          const code = zone.properties?.zoning ?? '?';
+          totals.set(code, (totals.get(code) || 0) + a);
+        } catch { /* one zone polygon failed; keep going */ }
+      }
+      if (totals.size === 0) continue;
+
+      const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+      const denom = parcelArea > 0
+        ? parcelArea
+        : sorted.reduce((s, [, v]) => s + v, 0);
+      const pct = (m2) => denom > 0 ? Math.round((m2 / denom) * 1000) / 10 : null;
+
+      const [top1Code, top1Area] = sorted[0];
+      parcel.properties.zoning_top1 = top1Code;
+      parcel.properties.zoning_top1_pct = pct(top1Area);
+      if (sorted.length > 1) {
+        const [top2Code, top2Area] = sorted[1];
+        const top2Pct = pct(top2Area);
+        // Suppress digitization-sliver entries < 1% — they're noise.
+        if (top2Pct != null && top2Pct >= 1) {
+          parcel.properties.zoning_top2 = top2Code;
+          parcel.properties.zoning_top2_pct = top2Pct;
+        }
+      }
+    } catch (err) {
+      console.warn('zoning intersect skipped for', parcel.properties?.roll_number, err);
+    }
+  }
+  return assessFc;
+}
+
+/** Quick bbox-overlap check used as a prefilter before @turf/intersect.
+ *  Cheap; eliminates the obvious non-overlaps so we don't pay the
+ *  intersection cost for every parcel × every zone in the result set. */
+function bboxesOverlap(a, b) {
+  try {
+    const [a1, a2, a3, a4] = bbox(a);
+    const [b1, b2, b3, b4] = bbox(b);
+    return !(a3 < b1 || b3 < a1 || a4 < b2 || b4 < a2);
+  } catch { return true; /* on error, fall through and let intersect decide */ }
+}
+
 export async function enrichAssessmentAddresses(assessFc) {
   if (!assessFc.features.length) return assessFc;
   let addressesFc;
