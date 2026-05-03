@@ -419,14 +419,62 @@ function mergeFcByKey(fcs, key) {
  * the survey/assessment overlap helpers) so we never pull all 18K zones
  * citywide. Returns a FeatureCollection of zoning polygons keyed by `id`.
  */
+// Session-lived cache keyed by a stable hash of the parcel set's bboxes.
+// Lets the user toggle Show Zoning off and on for the same search without
+// re-running the same per-parcel within_box batch. In-memory only —
+// resets on page reload, which is fine because every page-load runs a
+// fresh search anyway. Bounded to the most recent few entries so the
+// cache can't grow unbounded if the user runs many different searches in
+// one session.
+const ZONING_CACHE = new Map();
+const ZONING_CACHE_MAX = 8;
+
 export async function fetchZoningOverlap(parcelFc) {
-  return fetchPerFeatureBboxUnion({
+  const key = parcelSetCacheKey(parcelFc);
+  if (key && ZONING_CACHE.has(key)) {
+    // Cache hit — return a shallow clone so callers can freely mutate
+    // the FC without poisoning the cache.
+    const cached = ZONING_CACHE.get(key);
+    return { type: 'FeatureCollection', features: [...cached.features] };
+  }
+  const fc = await fetchPerFeatureBboxUnion({
     baseUrl: ZONING_URL,
     geomColumn: 'location',
     select: 'id,zoning,short_description,long_description,map_colour,location',
     dedupeKey: 'id',
     fc: parcelFc,
   });
+  if (key) {
+    ZONING_CACHE.set(key, fc);
+    // Trim the oldest entries when over the cap. JS Maps preserve
+    // insertion order so .keys().next() is the oldest.
+    while (ZONING_CACHE.size > ZONING_CACHE_MAX) {
+      ZONING_CACHE.delete(ZONING_CACHE.keys().next().value);
+    }
+  }
+  return fc;
+}
+
+/**
+ * Build a stable cache key for a parcel set: the sorted, rounded bboxes
+ * of every feature joined into one string. Two searches that produce the
+ * same parcel polygons (in any order) generate the same key.
+ *
+ * Returns null for empty input — callers skip the cache entirely.
+ */
+function parcelSetCacheKey(fc) {
+  if (!fc?.features?.length) return null;
+  const parts = [];
+  for (const f of fc.features) {
+    try {
+      const [a, b, c, d] = bbox(f);
+      // 5 decimal places ≈ ~1m at this latitude — far tighter than any
+      // realistic difference between two "same-ness" parcel sets.
+      parts.push(`${a.toFixed(5)},${b.toFixed(5)},${c.toFixed(5)},${d.toFixed(5)}`);
+    } catch { /* skip a single bad feature; remaining set still keys stably */ }
+  }
+  parts.sort();
+  return parts.join('|');
 }
 
 /**
