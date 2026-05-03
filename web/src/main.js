@@ -112,6 +112,7 @@ const SORT_KEYS = {
   area:    (r) => finiteOrNeg(r.assess?.properties?.assessed_land_area),
   lat:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lat),
   lon:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lon),
+  value:   (r) => finiteOrNeg(r.assess?.properties?.total_assessed_value),
   // Walkscore + Flood are link-only columns; they don't sort meaningfully.
   // Use the raw address as a placeholder key so click-to-sort doesn't error.
   walk:    (r) => strKey(r.assess?.properties?.full_address),
@@ -587,6 +588,23 @@ function renderTable(rows) {
   currentRows = rows;
   rowFeatureMap.clear();
   const sorted = sortRows(rows);
+  // Stamp the dominant assessment year onto the column header so it
+  // reads "Assess-2026" (or whatever year the source data carries).
+  // Falls back to plain "Assessment" when the data lacks the field.
+  const valueHeader = document.getElementById('value-header');
+  if (valueHeader) {
+    const years = rows
+      .map((r) => r.assess?.properties?.current_assessment_year)
+      .filter(Boolean);
+    if (years.length) {
+      const counts = new Map();
+      for (const y of years) counts.set(y, (counts.get(y) || 0) + 1);
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      valueHeader.textContent = top ? `Assess-${top}` : 'Assessment';
+    } else {
+      valueHeader.textContent = 'Assessment';
+    }
+  }
   const frag = document.createDocumentFragment();
   for (const row of sorted) {
     // Either side can be null depending on the flow, so optional-chain both.
@@ -627,6 +645,7 @@ function renderTable(rows) {
     tr.appendChild(td(formatArea(a.assessed_land_area), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lat), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lon), 'num'));
+    tr.appendChild(assessmentTd(a));
     tr.appendChild(linkTd(walkscoreUrl(a.full_address), 'Walk'));
     tr.appendChild(linkTd(floodToolUrl(a), 'Flood'));
     frag.appendChild(tr);
@@ -690,6 +709,7 @@ function exportCsv() {
     'Roll Number', 'Full Address',
     'Zoning', 'Zoning %', 'Zoning 2', 'Zoning 2 %',
     'Lot Size (sf)', 'Lat', 'Lon',
+    'Total Assessed Value', 'Assessment Year', 'Assessment URL',
     'Walkscore URL', 'Flood URL',
   ];
   const lines = [header.map(csvCell).join(',')];
@@ -708,6 +728,9 @@ function exportCsv() {
       a.assessed_land_area ?? '',
       a.centroid_lat ?? '',
       a.centroid_lon ?? '',
+      a.total_assessed_value ?? '',
+      a.current_assessment_year ?? '',
+      assessmentUrl(a) ?? '',
       walkscoreUrl(a.full_address) ?? '',
       floodToolUrl(a) ?? '',
     ].map(csvCell).join(','));
@@ -887,6 +910,65 @@ function linkTd(url, label) {
   a.addEventListener('click', (e) => e.stopPropagation());
   el.appendChild(a);
   return el;
+}
+
+/**
+ * Pull the City's assessment-page URL out of the parcel's `detail_url`
+ * field. Socrata exposes this as a "url" type column wrapped in a
+ * `{ url: "..." }` object on the JSON side; the .geojson endpoint
+ * preserves the same shape. Falls back to building the URL from the
+ * roll number when detail_url is absent or malformed.
+ */
+function assessmentUrl(props) {
+  if (!props) return null;
+  const raw = props.detail_url?.url || props.detail_url;
+  if (typeof raw === 'string' && /^https?:\/\//i.test(raw)) return raw;
+  const roll = props.roll_number;
+  if (roll) {
+    return `https://www.winnipegassessment.com/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
+  }
+  return null;
+}
+
+/**
+ * Build a `<td>` for the Assessment column: shows the formatted dollar
+ * total as a clickable link to the parcel's record on
+ * winnipegassessment.com. Falls back to the dollar amount as plain
+ * text when no link can be built; em-dash when even the dollar amount
+ * is missing.
+ */
+function assessmentTd(props) {
+  const el = document.createElement('td');
+  el.classList.add('num');
+  const value = props?.total_assessed_value;
+  const formatted = formatDollars(value);
+  if (!formatted) {
+    el.textContent = '—';
+    el.classList.add('empty');
+    return el;
+  }
+  const url = assessmentUrl(props);
+  if (!url) {
+    el.textContent = formatted;
+    return el;
+  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.textContent = formatted;
+  a.title = `Open Roll ${props.roll_number} on winnipegassessment.com`;
+  a.addEventListener('click', (e) => e.stopPropagation());
+  el.appendChild(a);
+  return el;
+}
+
+/** Format a numeric dollar amount like "$723,000". null on bad input. */
+function formatDollars(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return '$' + Math.round(n).toLocaleString('en-US');
 }
 
 /**

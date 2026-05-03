@@ -420,10 +420,19 @@ export function initMap(container, { onFeatureClick } = {}) {
       map.on('click', 'secondary-plans-fill', policyClick((p) => {
         const kind = p.plan_kind ?? 'Secondary Plan';
         const name = p.precinct_name ?? p.feature_name ?? '';
+        // Open Data only publishes 16 of the City's ~42 adopted secondary
+        // plans (5 Precincts + 11 Major Redev Sites). The remaining
+        // neighbourhood-area plans (Corydon-Osborne, CentrePlan 2050,
+        // Osborne Village, etc.) aren't on Open Data as boundary data.
+        // The popup links to the City's Long Range Planning index so
+        // the user has a path to look up plans we can't render here.
         return `
-          <div style="line-height:1.4">
+          <div style="line-height:1.4;max-width:280px">
             <strong>Secondary Plan</strong> — ${escapeHtml(kind)}
             ${name ? `<br>${escapeHtml(name)}` : ''}
+            <hr style="margin:6px 0;border:none;border-top:1px solid #ddd">
+            <small>Open Data only publishes 16 of the City's ~42 adopted
+            plans. <a href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer">See full list →</a></small>
           </div>`;
       }));
       map.on('click', 'infill-guideline-fill', policyClick(() => `

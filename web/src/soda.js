@@ -93,7 +93,7 @@ export async function fetchAssessmentOverlap(surveyFc) {
   return fetchPerFeatureBboxUnion({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
-    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,geometry',
+    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
     dedupeKey: 'roll_number',
     fc: surveyFc,
   });
@@ -164,7 +164,7 @@ export async function searchAssessmentParcels({ roll, address, zoning, duMode, d
 
   const params = new URLSearchParams({
     $where: clauses.join(' AND '),
-    $select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,geometry',
+    $select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
     $order: 'full_address',
     $limit: '1000',
   });
@@ -506,7 +506,7 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
   return fetchPerFeatureBboxUnion({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
-    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,geometry',
+    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
     dedupeKey: 'roll_number',
     fc: addressFc,
     extraWhere: extras.length ? extras.join(' AND ') : null,
