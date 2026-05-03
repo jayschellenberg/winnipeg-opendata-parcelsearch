@@ -31,9 +31,10 @@ const ZONING_PALETTE = [
   'Riverbank Sector',           '#99c5c5',
 ];
 
-// Inline style using CartoDB Positron raster tiles. No external style.json
-// to fetch, no vector glyphs/sprites/hillshade sources to resolve — just a
-// single raster layer. This avoids flakiness with hosted vector styles.
+// Two basemap sources stacked under one style — only one is visible at a
+// time. Lets the user flip between the default light street map and an
+// Esri-hosted aerial without re-creating the map. Esri World Imagery is
+// free for non-commercial / appraisal-research use and requires no key.
 const BASEMAP_STYLE = {
   version: 8,
   // Public glyph server for symbol-layer text (zoning code labels).
@@ -53,6 +54,15 @@ const BASEMAP_STYLE = {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
     },
+    'esri-imagery': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      attribution:
+        'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    },
   },
   layers: [
     {
@@ -61,6 +71,14 @@ const BASEMAP_STYLE = {
       source: 'carto-positron',
       minzoom: 0,
       maxzoom: 20,
+    },
+    {
+      id: 'esri-imagery',
+      type: 'raster',
+      source: 'esri-imagery',
+      minzoom: 0,
+      maxzoom: 20,
+      layout: { visibility: 'none' },
     },
   ],
 };
@@ -72,6 +90,10 @@ export function initMap(container, { onFeatureClick } = {}) {
     center: WINNIPEG_CENTER,
     zoom: 11,
     attributionControl: { compact: true },
+    // Keep the WebGL framebuffer readable so canvas.toDataURL() works
+    // for the "Generate Static Map" feature. Small perf cost on
+    // continuous interaction; fine for our scale.
+    preserveDrawingBuffer: true,
   });
 
   // Expose for debugging in any environment. Lets the dev console (or
@@ -85,6 +107,7 @@ export function initMap(container, { onFeatureClick } = {}) {
   });
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+  map.addControl(new BasemapToggleControl(), 'top-right');
 
   const ready = new Promise((resolve) => {
     map.on('load', () => {
@@ -429,4 +452,40 @@ function escapeHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * Custom MapLibre control: a single button that flips the basemap between
+ * CARTO Positron (streets) and Esri World Imagery (satellite). Sits in the
+ * top-right gutter just under the zoom buttons. Stateless — reads the
+ * current visibility off the layers each click so we don't have to track
+ * a separate flag.
+ */
+class BasemapToggleControl {
+  onAdd(map) {
+    this._map = map;
+    this._container = document.createElement('div');
+    this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group basemap-toggle';
+    this._btn = document.createElement('button');
+    this._btn.type = 'button';
+    this._btn.title = 'Toggle satellite basemap';
+    this._btn.setAttribute('aria-label', 'Toggle satellite basemap');
+    this._btn.textContent = 'Satellite';
+    this._btn.addEventListener('click', () => this._toggle());
+    this._container.appendChild(this._btn);
+    return this._container;
+  }
+  _toggle() {
+    const map = this._map;
+    const imageryVisible = map.getLayoutProperty('esri-imagery', 'visibility') === 'visible';
+    const next = !imageryVisible;
+    map.setLayoutProperty('esri-imagery',   'visibility', next ? 'visible' : 'none');
+    map.setLayoutProperty('carto-positron', 'visibility', next ? 'none' : 'visible');
+    this._btn.textContent = next ? 'Streets' : 'Satellite';
+    this._btn.classList.toggle('active', next);
+  }
+  onRemove() {
+    this._container.parentNode?.removeChild(this._container);
+    this._map = null;
+  }
 }

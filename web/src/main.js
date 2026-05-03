@@ -96,6 +96,10 @@ const SORT_KEYS = {
   area:    (r) => finiteOrNeg(r.assess?.properties?.assessed_land_area),
   lat:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lat),
   lon:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lon),
+  // Walkscore + Flood are link-only columns; they don't sort meaningfully.
+  // Use the raw address as a placeholder key so click-to-sort doesn't error.
+  walk:    (r) => strKey(r.assess?.properties?.full_address),
+  flood:   (r) => strKey(r.assess?.properties?.full_address),
 };
 
 // Numeric-smart string key: if the value looks like a number, compare it
@@ -506,6 +510,8 @@ function renderTable(rows) {
     tr.appendChild(td(formatArea(a.assessed_land_area), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lat), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lon), 'num'));
+    tr.appendChild(linkTd(walkscoreUrl(a.full_address), 'Walk'));
+    tr.appendChild(linkTd(floodToolUrl(a), 'Flood'));
     frag.appendChild(tr);
   }
   $tbody.appendChild(frag);
@@ -566,6 +572,7 @@ function exportCsv() {
     'Lot', 'Block', 'Plan', 'Description',
     'Roll Number', 'Full Address', 'Zoning',
     'Lot Size (sf)', 'Lat', 'Lon',
+    'Walkscore URL', 'Flood URL',
   ];
   const lines = [header.map(csvCell).join(',')];
   for (const row of currentRows) {
@@ -579,6 +586,8 @@ function exportCsv() {
       a.assessed_land_area ?? '',
       a.centroid_lat ?? '',
       a.centroid_lon ?? '',
+      walkscoreUrl(a.full_address) ?? '',
+      floodToolUrl(a) ?? '',
     ].map(csvCell).join(','));
   }
   // BOM so Excel picks up UTF-8 correctly.
@@ -622,6 +631,65 @@ function td(value, className) {
   }
   if (className) el.classList.add(className);
   return el;
+}
+
+/**
+ * Build a `<td>` containing an external link. `url` is the full URL;
+ * `label` is the visible link text. Falls back to an em-dash when no
+ * URL can be built (e.g. parcel has no address). Click bubbles up to
+ * the row's click-to-fly handler — `stopPropagation` on the anchor
+ * prevents that so the user's link click doesn't also fly the map.
+ */
+function linkTd(url, label) {
+  const el = document.createElement('td');
+  if (!url) {
+    el.textContent = '—';
+    el.classList.add('empty');
+    return el;
+  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.textContent = label;
+  a.addEventListener('click', (e) => e.stopPropagation());
+  el.appendChild(a);
+  return el;
+}
+
+/**
+ * Build a Walk Score URL from a civic address. Walk Score's web page at
+ * /score/<address> renders Walk / Transit / Bike scores on arrival, no
+ * API key needed. Returns null when the address is missing or only
+ * contains the multi-address comma-list — we use just the primary
+ * address (text before the first comma) for cleanliness.
+ */
+function walkscoreUrl(fullAddress) {
+  if (!fullAddress) return null;
+  // Take only the primary address before any comma-joined extras.
+  const primary = String(fullAddress).split(',')[0].trim();
+  if (!primary) return null;
+  return `https://www.walkscore.com/score/${encodeURIComponent(primary + ', Winnipeg, MB')}`;
+}
+
+/**
+ * Build a deep-link into the sister Manitoba flood-mapping tool with the
+ * parcel's centroid and address pre-filled. Falls back to address-only
+ * when centroid is unavailable.
+ */
+function floodToolUrl(props) {
+  if (!props) return null;
+  const lat = Number(props.centroid_lat);
+  const lon = Number(props.centroid_lon);
+  const address = (props.full_address || '').split(',')[0].trim();
+  const params = new URLSearchParams();
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    params.set('lat', lat.toFixed(6));
+    params.set('lon', lon.toFixed(6));
+  }
+  if (address) params.set('label', address);
+  if (![...params.keys()].length) return null;
+  return `https://mb-flood-mapping.vercel.app/?${params.toString()}`;
 }
 
 // Assessment land area comes in as a stringified integer of square feet.

@@ -403,6 +403,30 @@ header small a {
   top: 0;
 }
 
+/* MapLibre control button for the Streets/Satellite basemap toggle.
+   Inherits the maplibregl-ctrl-group styling for the dark border + group
+   look; we just style the inner button to be wider with a label. */
+.maplibregl-ctrl.basemap-toggle button {
+  width: auto;
+  min-width: 76px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #fff;
+  color: #1a2a4a;
+  border: none;
+  cursor: pointer;
+}
+
+.maplibregl-ctrl.basemap-toggle button:hover {
+  background: #eef2fb;
+}
+
+.maplibregl-ctrl.basemap-toggle button.active {
+  background: #1a2a4a;
+  color: #fff;
+}
+
 /* Sortable column headers */
 #results th[data-col] {
   cursor: pointer;
