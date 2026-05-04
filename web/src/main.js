@@ -50,6 +50,7 @@ import {
 import {
   initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
   setOverlayData, setOverlayVisible, setCivicAddresses,
+  setDimensions, setDimensionsVisible,
 } from './map.js';
 
 const $lot = document.getElementById('lot');
@@ -70,6 +71,7 @@ const $assessToggle = document.getElementById('assess-toggle');
 const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
 const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
+const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
@@ -181,6 +183,7 @@ $assessToggle.addEventListener('click', () => toggleLayer('assess'));
 $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secondaryPlans'));
 $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
+$dimensionsToggle.addEventListener('click', toggleDimensions);
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning, $duMin]) {
   el.addEventListener('keydown', (e) => {
@@ -277,6 +280,7 @@ function setParcels(surveyFc, assessFc = EMPTY_FC) {
   mapReady.then(() => {
     showResults(map, surveyFc, assessFc);
     refreshZoning();
+    refreshDimensions();
   });
 }
 
@@ -392,6 +396,90 @@ const policyOverlayState = {
   infill:         { enabled: false, loaded: false },
   mallsCorridors: { enabled: false, loaded: false },
 };
+
+// ---------- Parcel-edge dimensions toggle ----------
+
+let dimensionsEnabled = false;
+
+/**
+ * Flip the dimension-label layer on or off. When enabling, recompute
+ * labels from the current parcel set (survey + assess) and push them
+ * into the dimensions source. The labels are LineStrings — one per
+ * polygon edge — so MapLibre's symbol-placement:'line' rotates each
+ * label along its edge automatically (looks like a survey plat).
+ */
+async function toggleDimensions() {
+  dimensionsEnabled = !dimensionsEnabled;
+  $dimensionsToggle.setAttribute('aria-pressed', String(dimensionsEnabled));
+  $dimensionsToggle.classList.toggle('active', dimensionsEnabled);
+  $dimensionsToggle.textContent = dimensionsEnabled ? 'Hide Dimensions' : 'Show Dimensions';
+  await mapReady;
+  setDimensionsVisible(map, dimensionsEnabled);
+  if (dimensionsEnabled) refreshDimensions();
+}
+
+/** Recompute and push the dimension-label FC. Called when the toggle
+ *  flips on AND whenever the parcel set changes (via setParcels). */
+function refreshDimensions() {
+  if (!dimensionsEnabled) return;
+  const fc = buildDimensionLabels(lastParcelFc);
+  mapReady.then(() => setDimensions(map, fc));
+}
+
+/**
+ * For each polygon in `parcelFc`, emit one LineString feature per outer-
+ * ring edge with `length_label` already pre-formatted ("98 ft", "1,240
+ * ft", etc). Skips edges shorter than 5 ft to avoid stamping near-
+ * duplicate labels at digitization waypoints.
+ */
+function buildDimensionLabels(parcelFc) {
+  if (!parcelFc?.features?.length) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  const features = [];
+  for (const f of parcelFc.features) {
+    try {
+      const geom = f.geometry;
+      const rings = [];
+      if (geom.type === 'Polygon') {
+        rings.push(geom.coordinates[0]);
+      } else if (geom.type === 'MultiPolygon') {
+        for (const p of geom.coordinates) rings.push(p[0]);
+      } else {
+        continue;
+      }
+      for (const ring of rings) {
+        for (let i = 0; i < ring.length - 1; i++) {
+          const a = ring[i];
+          const b = ring[i + 1];
+          const lenFt = haversineFt(a, b);
+          if (lenFt < 5) continue;
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [a, b] },
+            properties: { length_label: `${Math.round(lenFt).toLocaleString('en-US')} ft` },
+          });
+        }
+      }
+    } catch { /* skip a single malformed feature; rest of set still labels */ }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+/** Haversine great-circle distance between two [lon, lat] points,
+ *  returned in feet. Cheap inline implementation; avoids a turf dep. */
+function haversineFt(a, b) {
+  const R_M = 6371000;
+  const toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(b[1] - a[1]);
+  const dLon = toRad(b[0] - a[0]);
+  const lat1 = toRad(a[1]);
+  const lat2 = toRad(b[1]);
+  const x = Math.sin(dLat / 2) ** 2
+          + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  return R_M * c * 3.28084;
+}
 
 async function togglePolicyOverlay(name) {
   const cfg = POLICY_OVERLAY_CONFIG[name];

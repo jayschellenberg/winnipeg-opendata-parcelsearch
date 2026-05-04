@@ -334,6 +334,37 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Parcel-edge dimension labels. Source carries one LineString per
+      // polygon edge with `length_label` already pre-formatted. The
+      // symbol layer uses `symbol-placement: 'line'` so each label
+      // auto-rotates along the edge it describes (looks like a survey
+      // plat). minzoom 17 keeps the labels suppressed at city-wide
+      // views where they'd just clutter the map.
+      map.addSource('dimensions', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'dimensions-label',
+        type: 'symbol',
+        source: 'dimensions',
+        minzoom: 17,
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'length_label'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 10,
+          'symbol-placement': 'line',
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+        },
+        paint: {
+          'text-color': '#003322',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.6,
+        },
+      });
+
       // Civic-address labels — every official address point inside a
       // result parcel, rendered as just the street number ("440",
       // "400 1/2") at the address's coordinates. Layered on top of
@@ -570,6 +601,19 @@ export function setOverlayData(map, sourceId, fc) {
 export function setCivicAddresses(map, fc) {
   const src = map.getSource('civic-addresses');
   if (src) src.setData(fc);
+}
+
+/** Set / clear the dimension-label LineString feature collection. */
+export function setDimensions(map, fc) {
+  const src = map.getSource('dimensions');
+  if (src) src.setData(fc);
+}
+
+/** Toggle the dimension-label layer's visibility. */
+export function setDimensionsVisible(map, visible) {
+  if (map.getLayer('dimensions-label')) {
+    map.setLayoutProperty('dimensions-label', 'visibility', visible ? 'visible' : 'none');
+  }
 }
 
 /**
