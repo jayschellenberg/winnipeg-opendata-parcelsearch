@@ -195,6 +195,16 @@ header small a {
   font-size: 12.5px;
 }
 
+/* Small italic caveat under the overlay grid — currently used to flag
+   that dimension labels are approximate. Plain text, not a button. */
+.sidebar .overlay-note {
+  margin: 8px 2px 0;
+  font-size: 11.5px;
+  font-style: italic;
+  color: #5a6478;
+  line-height: 1.35;
+}
+
 /* External-link entries in the overlay grid look identical to the
    secondary-button toggles but are anchors that open a new tab. */
 .sidebar .overlay-grid .overlay-link {
@@ -460,24 +470,14 @@ header small a {
   border-radius: 2px;
 }
 
-.map-legend .swatch.survey {
-  background: rgba(70, 130, 180, 0.4);
-  border: 2px solid #0b2566;
-}
-
-.map-legend .swatch.assess {
-  background: rgba(178, 34, 34, 0.22);
-  border: 2px solid #690000;
-}
-
-/* Zoning legend mirrors the structure of .map-legend but lives in the
-   bottom-left so it doesn't overlap the survey/assess swatch box at
-   bottom-right. Built dynamically by main.js from ZONING_PALETTE so
-   colour swatches stay in lock-step with the layer fill expression. */
+/* Zoning legend in the bottom-right of the map. Visible only when the
+   user toggles Show Zoning on. Built dynamically by main.js from
+   ZONING_PALETTE so colour swatches stay in lock-step with the layer
+   fill expression. */
 .zoning-legend {
   bottom: 12px;
-  left: 12px;
-  right: auto;
+  right: 12px;
+  left: auto;
   max-width: 220px;
 }
 

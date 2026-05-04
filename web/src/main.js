@@ -77,7 +77,6 @@ const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
 const $staticMapBtn = document.getElementById('static-map-btn');
 const $staticMapOutput = document.getElementById('static-map-output');
-const $legend = document.getElementById('map-legend');
 const $zoningLegend = document.getElementById('zoning-legend');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
@@ -283,8 +282,6 @@ function setParcels(surveyFc, assessFc = EMPTY_FC) {
   // edges describe building footprints, which aren't useful as "lot
   // dimensions" in the appraisal sense.
   lastSurveyFc = surveyFc;
-  // Toggle the floating colour legend — hidden on an empty map.
-  if ($legend) $legend.hidden = lastParcelFc.features.length === 0;
   mapReady.then(() => {
     showResults(map, surveyFc, assessFc);
     refreshZoning();
@@ -1081,21 +1078,18 @@ function linkTd(url, label) {
 }
 
 /**
- * Pull the City's assessment-page URL out of the parcel's `detail_url`
- * field. Socrata exposes this as a "url" type column wrapped in a
- * `{ url: "..." }` object on the JSON side; the .geojson endpoint
- * preserves the same shape. Falls back to building the URL from the
- * roll number when detail_url is absent or malformed.
+ * Build the City's assessment-page URL for a parcel. The d4mq-wa44
+ * dataset has a `detail_url` field but it points at
+ * `http://www.winnipegassessment.com/...` whose HTTPS redirect lands
+ * on a host whose cert has a CN mismatch — Chrome shows a "Your
+ * connection is not private" warning (ERR_CERT_COMMON_NAME_INVALID).
+ * The City's canonical working host is `assessment.winnipeg.ca` —
+ * same AsmtPub path, valid cert. We ignore the dataset's URL and
+ * build from `roll_number` directly.
  */
 function assessmentUrl(props) {
-  if (!props) return null;
-  const raw = props.detail_url?.url || props.detail_url;
-  if (typeof raw === 'string' && /^https?:\/\//i.test(raw)) return raw;
-  const roll = props.roll_number;
-  if (roll) {
-    return `https://www.winnipegassessment.com/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
-  }
-  return null;
+  if (!props?.roll_number) return null;
+  return `https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(props.roll_number)}`;
 }
 
 /**
