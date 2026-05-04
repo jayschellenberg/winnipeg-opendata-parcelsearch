@@ -355,11 +355,14 @@ export function initMap(container, { onFeatureClick } = {}) {
           'text-font': ['Open Sans Semibold'],
           'text-size': 10,
           // line-center: exactly one label at each LineString's midpoint,
-          // auto-rotated along the edge. The default 'line' placement
-          // puts variable-spaced labels and skips short edges altogether.
+          // auto-rotated along the edge. text-allow-overlap forces the
+          // label to render even when the edge is shorter than the
+          // label width (typical for 40-50 ft residential lot fronts at
+          // zoom 18). text-ignore-placement keeps these labels from
+          // being suppressed by other symbol layers (civic addresses).
           'symbol-placement': 'line-center',
-          'text-allow-overlap': false,
-          'text-ignore-placement': false,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
         },
         paint: {
           'text-color': '#003322',

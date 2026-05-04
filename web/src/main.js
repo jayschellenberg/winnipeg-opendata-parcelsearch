@@ -447,6 +447,13 @@ function buildDimensionLabels(parcelFc) {
     return { type: 'FeatureCollection', features: [] };
   }
   const features = [];
+  // Adjacent survey lots share their side edges — without dedupe, each
+  // shared edge would emit two labels at the same midpoint and
+  // MapLibre's collision detection would render them as a smeared
+  // double-text or drop one arbitrarily. Canonicalising endpoint
+  // coordinates so [a,b] keys the same as [b,a] gives us one label
+  // per unique geometric edge.
+  const seenEdges = new Set();
   for (const f of parcelFc.features) {
     try {
       const geom = f.geometry;
@@ -464,6 +471,9 @@ function buildDimensionLabels(parcelFc) {
           const b = ring[i + 1];
           const lenFt = haversineFt(a, b);
           if (lenFt < 5) continue;
+          const key = canonicalEdgeKey(a, b);
+          if (seenEdges.has(key)) continue;
+          seenEdges.add(key);
           features.push({
             type: 'Feature',
             geometry: { type: 'LineString', coordinates: [a, b] },
@@ -474,6 +484,16 @@ function buildDimensionLabels(parcelFc) {
     } catch { /* skip a single malformed feature; rest of set still labels */ }
   }
   return { type: 'FeatureCollection', features };
+}
+
+/** Canonical key for an undirected edge between two [lon, lat] points.
+ *  Rounding to 6 dp (~10 cm) collapses near-identical endpoints from
+ *  digitization noise; sorting ensures [a,b] and [b,a] produce the
+ *  same key. */
+function canonicalEdgeKey(a, b) {
+  const aStr = `${a[0].toFixed(6)},${a[1].toFixed(6)}`;
+  const bStr = `${b[0].toFixed(6)},${b[1].toFixed(6)}`;
+  return aStr < bStr ? `${aStr}|${bStr}` : `${bStr}|${aStr}`;
 }
 
 /** Haversine great-circle distance between two [lon, lat] points,
