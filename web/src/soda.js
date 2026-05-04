@@ -215,8 +215,9 @@ export async function searchAssessmentParcelsExpanded({ roll, address, zoning, d
   // 440 HARGRAVE ST" — recognizable from any search direction. Wrapped
   // so any unexpected failure (cam2-ii3u down, malformed geometry, etc.)
   // never blocks the primary search results from rendering.
+  let civicAddresses = { type: 'FeatureCollection', features: [] };
   try {
-    await enrichAssessmentAddresses(merged);
+    ({ addresses: civicAddresses } = await enrichAssessmentAddresses(merged));
   } catch (err) {
     console.warn('address enrichment threw, continuing without it', err);
   }
@@ -225,7 +226,7 @@ export async function searchAssessmentParcelsExpanded({ roll, address, zoning, d
   } catch (err) {
     console.warn('zoning enrichment threw, continuing without it', err);
   }
-  return merged;
+  return { parcels: merged, addresses: civicAddresses };
 }
 
 /**
@@ -374,22 +375,34 @@ function bboxesOverlap(a, b) {
 }
 
 export async function enrichAssessmentAddresses(assessFc) {
-  if (!assessFc.features.length) return assessFc;
+  const emptyAddrs = { type: 'FeatureCollection', features: [] };
+  if (!assessFc.features.length) {
+    return { parcels: assessFc, addresses: emptyAddrs };
+  }
   let addressesFc;
   try {
     addressesFc = await fetchAddressPointsForParcels(assessFc);
   } catch (err) {
     console.warn('civic address enrichment failed', err);
-    return assessFc;
+    return { parcels: assessFc, addresses: emptyAddrs };
   }
+
+  // We mutate parcel.full_address in-place AND collect the address
+  // points that fall inside any result parcel, deduped by their
+  // full_address text. The collected points are returned for the
+  // map's civic-address label layer.
+  const matchedAddresses = new Map();  // full_address -> Feature
+
   for (const parcel of assessFc.features) {
     // Guard each parcel individually so one bad/odd geometry doesn't
     // abort the whole pass and leave the rest of the table without
     // address enrichment. (booleanPointInPolygon can throw on edge-
     // case geometries; better to skip the parcel than the batch.)
     try {
-      const matches = addressesFc.features
-        .filter((addr) => booleanPointInPolygon(addr, parcel))
+      const insideAddrs = addressesFc.features.filter(
+        (addr) => booleanPointInPolygon(addr, parcel)
+      );
+      const matches = insideAddrs
         .map((addr) => addr.properties?.full_address)
         .filter(Boolean);
       if (matches.length === 0) continue;
@@ -403,11 +416,29 @@ export async function enrichAssessmentAddresses(assessFc) {
       });
       if (primary && !distinct.includes(primary)) distinct.unshift(primary);
       parcel.properties.full_address = distinct.join(', ');
+
+      // Stash each address point for the map layer, deduped on the
+      // full_address string. Stamp a `street_num` (digits before the
+      // first space) so the label layer can render just the number.
+      for (const addr of insideAddrs) {
+        const fa = (addr.properties?.full_address || '').trim();
+        if (!fa || matchedAddresses.has(fa)) continue;
+        const numMatch = fa.match(/^(\d+(?:[A-Za-z]|\s?1\/2)?)/);
+        const street_num = numMatch ? numMatch[1] : '';
+        matchedAddresses.set(fa, {
+          type: 'Feature',
+          geometry: addr.geometry,
+          properties: { full_address: fa, street_num },
+        });
+      }
     } catch (err) {
       console.warn('parcel address enrichment skipped for', parcel.properties?.roll_number, err);
     }
   }
-  return assessFc;
+  return {
+    parcels: assessFc,
+    addresses: { type: 'FeatureCollection', features: [...matchedAddresses.values()] },
+  };
 }
 
 /**

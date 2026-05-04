@@ -49,7 +49,7 @@ import {
 } from './soda.js';
 import {
   initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
-  setOverlayData, setOverlayVisible,
+  setOverlayData, setOverlayVisible, setCivicAddresses,
 } from './map.js';
 
 const $lot = document.getElementById('lot');
@@ -244,9 +244,10 @@ async function runSearch() {
   setBusy(true);
   setCount('Searching…');
   clearTable();
-  // Clear both layers from any previous search; each flow repopulates
-  // them as data arrives.
+  // Clear both layers + civic-address labels from any previous search;
+  // each flow repopulates them as data arrives.
   setParcels(EMPTY_FC, EMPTY_FC);
+  mapReady.then(() => setCivicAddresses(map, EMPTY_FC));
 
   try {
     if (anyAssess) {
@@ -472,8 +473,9 @@ async function runLegalSearch(inputs) {
   // and is recognizable from any direction the user might search).
   // Wrapped so any unexpected failure is non-fatal — on failure parcels
   // keep their primary address only, but the join + render still runs.
+  let civicAddresses = EMPTY_FC;
   try {
-    await enrichAssessmentAddresses(assessFc);
+    ({ addresses: civicAddresses } = await enrichAssessmentAddresses(assessFc));
   } catch (err) {
     console.warn('address enrichment threw, continuing without it', err);
   }
@@ -488,6 +490,7 @@ async function runLegalSearch(inputs) {
 
   const rows = joinSurveyWithAssessment(surveyFc, assessFc);
   renderTable(rows);
+  mapReady.then(() => setCivicAddresses(map, civicAddresses));
   // Push BOTH layers to the map so the user sees survey lots (blue) AND
   // the assessment parcels (red) that contain them. Assess side is
   // narrowed to those actually overlapping the survey results — the
@@ -500,9 +503,10 @@ async function runLegalSearch(inputs) {
 // ---------- Assessment-first flow (Roll # / Address / Zoning) ----------
 
 async function runAssessmentSearch(inputs) {
-  let assessFc;
+  let assessFc, civicAddresses = EMPTY_FC;
   try {
-    assessFc = await searchAssessmentParcelsExpanded(inputs);
+    ({ parcels: assessFc, addresses: civicAddresses } =
+      await searchAssessmentParcelsExpanded(inputs));
   } catch (err) {
     console.error(err);
     setCount(`Search failed: ${err.message}`);
@@ -550,6 +554,7 @@ async function runAssessmentSearch(inputs) {
   // the address/roll/zoning result — not just the assessment polygon.
   const matchedSurveyFc = filterMatchedSurveys(surveyFc, assessFc);
   setParcels(matchedSurveyFc, assessFc);
+  mapReady.then(() => setCivicAddresses(map, civicAddresses));
   setCount(`${countMsg} · checking partial lots…`);
 
   // Partial detection: a survey lot is "partial" if its polygon overlaps

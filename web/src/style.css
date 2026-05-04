@@ -188,10 +188,38 @@ header small a {
   gap: 6px;
 }
 
-.sidebar .overlay-grid button {
+.sidebar .overlay-grid button,
+.sidebar .overlay-grid .overlay-link {
   width: 100%;
   padding: 8px 6px;
   font-size: 12.5px;
+}
+
+/* External-link entries in the overlay grid look identical to the
+   secondary-button toggles but are anchors that open a new tab. */
+.sidebar .overlay-grid .overlay-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+  background: #fff;
+  color: #1a2a4a;
+  border: 1px solid #1a2a4a;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.sidebar .overlay-grid .overlay-link:hover {
+  background: #eef2fb;
+}
+
+.sidebar .overlay-grid .overlay-link::after {
+  content: " \2197";   /* north-east arrow indicating external link */
+  margin-left: 4px;
+  font-size: 11px;
 }
 
 /* Focus-triggered tooltip showing the full placeholder text even when the

@@ -334,6 +334,36 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Civic-address labels — every official address point inside a
+      // result parcel, rendered as just the street number ("440",
+      // "400 1/2") at the address's coordinates. Layered on top of
+      // every other map layer so labels read clearly. minzoom keeps
+      // them out of the city-wide view where they'd be noise; at
+      // zoom ≥ 16 they're typically meaningful.
+      map.addSource('civic-addresses', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'civic-addresses-label',
+        type: 'symbol',
+        source: 'civic-addresses',
+        minzoom: 16,
+        layout: {
+          'text-field': ['coalesce', ['get', 'street_num'], ['get', 'full_address'], ''],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 11,
+          'text-anchor': 'center',
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+        },
+        paint: {
+          'text-color': '#1a1a1a',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.5,
+        },
+      });
+
       // Combined hover popup. Wherever the cursor is on the map, query
       // both the primary (parcel-fill) and the assessment-context layers
       // and build a single popup that shows whichever one(s) are under
@@ -532,6 +562,13 @@ export function setZoningVisible(map, visible) {
 /** Push data into the named OurWinnipeg overlay source. */
 export function setOverlayData(map, sourceId, fc) {
   const src = map.getSource(sourceId);
+  if (src) src.setData(fc);
+}
+
+/** Set / clear the civic-address Point feature collection. Each feature
+ *  carries a `street_num` for the symbol-layer label. */
+export function setCivicAddresses(map, fc) {
+  const src = map.getSource('civic-addresses');
   if (src) src.setData(fc);
 }
 
