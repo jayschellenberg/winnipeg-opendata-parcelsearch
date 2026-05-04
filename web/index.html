@@ -20,127 +20,119 @@
       </small>
     </header>
 
-    <details class="explainer" open>
-      <summary>What's the difference between Survey and Assessment parcels?</summary>
-      <div class="explainer-body">
-        <p>
-          <span class="legend-pill survey">Survey</span>
-          parcels (blue on the map) are the legal lots from the Land Titles
-          register — the <em>Lot / Block / Plan</em> you'd see on a deed.
-        </p>
-        <p>
-          <span class="legend-pill assess">Assessment</span>
-          parcels (red on the map) are the City's tax-assessed properties
-          — one per <em>Roll Number / civic address</em>.
-        </p>
-        <p>
-          The two layers don't always align. One assessment parcel can
-          cover many survey lots (a big building on multiple original lots),
-          and one survey lot can be split between multiple assessment rolls
-          (a duplex with two roll numbers). Hover anywhere on the map to
-          see both at once.
-        </p>
-      </div>
-    </details>
+    <div class="layout">
+      <aside class="sidebar controls" aria-label="Search and overlay controls">
+        <details class="explainer" open>
+          <summary>Survey vs Assessment parcels</summary>
+          <div class="explainer-body">
+            <p>
+              <span class="legend-pill survey">Survey</span>
+              parcels (blue on the map) are legal lots from Land Titles —
+              the <em>Lot / Block / Plan</em> on a deed.
+            </p>
+            <p>
+              <span class="legend-pill assess">Assessment</span>
+              parcels (red) are the City's tax-assessed properties —
+              one per <em>Roll Number / civic address</em>.
+            </p>
+            <p>
+              The two layers don't always align. One assessment can cover
+              many lots, and one lot can be split between rolls. Hover
+              anywhere on the map to see both at once.
+            </p>
+          </div>
+        </details>
 
-    <section class="controls">
-      <span class="field">
-        <input id="lot"     type="text" size="12" placeholder="Lot" />
-        <span class="tip">Lot (or River Lot or Section)</span>
-      </span>
-      <span class="field">
-        <input id="block"   type="text" size="9"  placeholder="Block" />
-        <span class="tip">Block (or RL/OT or Township)</span>
-      </span>
-      <span class="field">
-        <input id="plan"    type="text" size="12" placeholder="Plan" />
-        <span class="tip">Plan (or Parish i.e. BO, NO, JA, JO, VT, CH or Range i.e. 2E)</span>
-      </span>
-      <span class="field">
-        <input id="desc"    type="text" size="18" placeholder="Description (contains)" />
-        <span class="tip">Description (contains)</span>
-      </span>
-      <span class="field">
-        <input id="roll"    type="text" size="14" placeholder="Roll # (contains)" />
-        <span class="tip">Roll # (contains)</span>
-      </span>
-      <span class="field">
-        <input id="address" type="text" size="18" placeholder="Address (contains)" />
-        <span class="tip">Address (contains)</span>
-      </span>
-      <span class="field">
-        <input id="zoning"  type="text" size="12" placeholder="Zoning (contains)" />
-        <span class="tip">Zoning (contains)</span>
-      </span>
-      <span class="field du-mode-field">
-        <select id="du-mode">
-          <option value="">Any DU</option>
-          <option value="zero">0 DU only</option>
-          <option value="min">Min DU</option>
-        </select>
-        <span class="tip">Dwelling units filter (Any · 0 · Min N)</span>
-      </span>
-      <span class="field du-min-field">
-        <input id="du-min" type="number" min="1" step="1" size="3" placeholder="#" disabled />
-        <span class="tip">Minimum dwelling units (when 'Min DU' is selected)</span>
-      </span>
-      <button id="search" type="button">Search</button>
-      <button id="clear"  type="button" class="secondary">Clear</button>
-      <button id="export" type="button" class="secondary">Export CSV</button>
-      <button id="survey-toggle" type="button" class="secondary active" aria-pressed="true">Hide Survey</button>
-      <button id="assess-toggle" type="button" class="secondary active" aria-pressed="true">Hide Assessment</button>
-      <button id="zoning-toggle" type="button" class="secondary" aria-pressed="false">Show Zoning</button>
-      <button id="secondary-plans-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Precincts (Secondary Plan boundaries)">Show Secondary Plans</button>
-      <button id="infill-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Show Infill Area</button>
-      <button id="malls-corridors-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Mixed Use Corridors">Show Malls/Corridors</button>
-      <span id="count" class="count"></span>
-    </section>
+        <h2>Search by legal description</h2>
+        <span class="field">
+          <input id="lot"     type="text" placeholder="Lot" />
+          <span class="tip">Lot (or River Lot or Section)</span>
+        </span>
+        <span class="field">
+          <input id="block"   type="text" placeholder="Block" />
+          <span class="tip">Block (or RL/OT or Township)</span>
+        </span>
+        <span class="field">
+          <input id="plan"    type="text" placeholder="Plan" />
+          <span class="tip">Plan (or Parish — BO, NO, JA, JO, VT, CH — or Range like 2E)</span>
+        </span>
+        <span class="field">
+          <input id="desc"    type="text" placeholder="Description (contains)" />
+          <span class="tip">Description (contains)</span>
+        </span>
 
-    <details class="hint">
-      <summary>How to search River Lots, Outer Two Mile, and Section-Township-Range parcels</summary>
-      <div class="hint-body">
-        <p>
-          Unusual legal descriptions go into the same four fields, just
-          with different values:
-        </p>
-        <ul>
-          <li>
-            <strong>River Lots:</strong> put <code>RL</code> in the
-            <em>Block</em> field and the parish code in the <em>Plan</em>
-            field (e.g. <code>JA</code> for St. James, <code>CH</code> for
-            St. Charles — or another parish). The <em>Lot</em> field takes
-            the river-lot number.
-          </li>
-          <li>
-            <strong>Outer Two Mile lots:</strong> put <code>OT</code> in the
-            <em>Block</em> field and the parish code in the <em>Plan</em>
-            field.
-          </li>
-          <li>
-            <strong>Section-Township-Range:</strong> for a description like
-            <code>NW 10-11-4E</code> (NW ¼ of Section 10, Township 11,
-            Range 4E), put the section in <em>Lot</em> (<code>10</code>),
-            the township in <em>Block</em> (<code>11</code>), the range in
-            <em>Plan</em> (<code>4E</code>), and optionally the quarter
-            (<code>NW</code>) in <em>Description</em>.
-          </li>
-        </ul>
-        <p>Partial matches work in every field.</p>
-      </div>
-    </details>
+        <h2>Search by assessment</h2>
+        <span class="field">
+          <input id="roll"    type="text" placeholder="Roll # (contains)" />
+          <span class="tip">Roll # (contains)</span>
+        </span>
+        <span class="field">
+          <input id="address" type="text" placeholder="Address (contains)" />
+          <span class="tip">Address (contains)</span>
+        </span>
+        <span class="field">
+          <input id="zoning"  type="text" placeholder="Zoning (contains)" />
+          <span class="tip">Zoning (contains)</span>
+        </span>
+        <div class="du-row">
+          <span class="field du-mode-field">
+            <select id="du-mode">
+              <option value="">Any DU</option>
+              <option value="zero">0 DU only</option>
+              <option value="min">Min DU</option>
+            </select>
+            <span class="tip">Dwelling units filter (Any · 0 · Min N)</span>
+          </span>
+          <span class="field du-min-field">
+            <input id="du-min" type="number" min="1" step="1" placeholder="#" disabled />
+            <span class="tip">Minimum dwelling units (when 'Min DU')</span>
+          </span>
+        </div>
 
-    <div id="map">
-      <div id="map-legend" class="map-legend" hidden>
-        <strong>Legend</strong>
-        <ul>
-          <li><span class="swatch survey"></span>Survey parcel (legal lot)</li>
-          <li><span class="swatch assess"></span>Assessment parcel (roll/building)</li>
-        </ul>
-      </div>
-    </div>
+        <div class="action-row">
+          <button id="search" type="button">Search</button>
+          <button id="clear"  type="button" class="secondary">Clear</button>
+          <button id="export" type="button" class="secondary">Export CSV</button>
+        </div>
+        <span id="count" class="count"></span>
 
-    <div id="results-wrap">
-      <table id="results">
+        <h2>Map overlays</h2>
+        <div class="overlay-grid">
+          <button id="survey-toggle" type="button" class="secondary active" aria-pressed="true" title="Show / hide blue survey-lot polygons">Hide Survey</button>
+          <button id="assess-toggle" type="button" class="secondary active" aria-pressed="true" title="Show / hide red assessment-parcel polygons">Hide Assessment</button>
+          <button id="zoning-toggle" type="button" class="secondary" aria-pressed="false" title="City-wide zoning by-law polygons (cached for 7 days)">Show Zoning</button>
+          <button id="secondary-plans-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Show Secondary Plans</button>
+          <button id="infill-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Show Infill Area</button>
+          <button id="malls-corridors-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Show Malls/Corridors</button>
+        </div>
+
+        <details class="hint">
+          <summary>River Lots, Outer Two Mile, Section-Township-Range</summary>
+          <div class="hint-body">
+            <p>Unusual legal descriptions go in the same fields:</p>
+            <ul>
+              <li><strong>River Lots:</strong> <code>RL</code> in <em>Block</em>, parish code (<code>JA</code>, <code>CH</code>, etc.) in <em>Plan</em>, river-lot number in <em>Lot</em>.</li>
+              <li><strong>Outer Two Mile lots:</strong> <code>OT</code> in <em>Block</em>, parish code in <em>Plan</em>.</li>
+              <li><strong>Section-Township-Range</strong> like <code>NW 10-11-4E</code>: section <code>10</code> in <em>Lot</em>, township <code>11</code> in <em>Block</em>, range <code>4E</code> in <em>Plan</em>, quarter <code>NW</code> in <em>Description</em>.</li>
+            </ul>
+            <p>Partial matches work in every field.</p>
+          </div>
+        </details>
+      </aside>
+
+      <main class="main-pane">
+        <div id="map">
+          <div id="map-legend" class="map-legend" hidden>
+            <strong>Legend</strong>
+            <ul>
+              <li><span class="swatch survey"></span>Survey parcel (legal lot)</li>
+              <li><span class="swatch assess"></span>Assessment parcel (roll/building)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div id="results-wrap">
+          <table id="results">
         <thead>
           <tr>
             <th data-col="lot">Lot</th>
@@ -162,15 +154,17 @@
         </thead>
         <tbody></tbody>
       </table>
-    </div>
+        </div>
 
-    <section id="static-map-section" class="static-map-section">
+        <section id="static-map-section" class="static-map-section">
       <div class="static-map-header">
         <button id="static-map-btn" type="button" class="secondary">Generate Static Map</button>
         <span class="static-map-hint">Captures the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the image &amp; choose <em>Save Image As…</em> to drop it into a report.</span>
       </div>
-      <div id="static-map-output" class="static-map-output" hidden></div>
-    </section>
+          <div id="static-map-output" class="static-map-output" hidden></div>
+        </section>
+      </main>
+    </div>
 
     <footer id="disclaimer" class="disclaimer">
       <strong>Disclaimer:</strong> This site is provided without warranty

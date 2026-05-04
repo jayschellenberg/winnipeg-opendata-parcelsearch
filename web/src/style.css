@@ -37,35 +37,125 @@ header small a {
   text-decoration: underline;
 }
 
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 20px;
+/* Two-pane layout: fixed-width sidebar on the left for all controls,
+   fluid main pane on the right for the map + table. Stacks to a single
+   column on viewports below 980 px so it stays usable on tablets. */
+.layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  align-items: stretch;
+}
+
+@media (max-width: 980px) {
+  .layout { grid-template-columns: 1fr; }
+}
+
+.sidebar {
   background: #fff;
-  border-bottom: 1px solid #e2e4e9;
-  align-items: center;
+  border-right: 1px solid #e2e4e9;
+  padding: 12px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Sticky on tall viewports so the controls stay visible while the
+     user scrolls the table. The min-height ensures the column always
+     spans the viewport. */
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 980px) {
+  .sidebar {
+    position: static;
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid #e2e4e9;
+  }
+}
+
+.sidebar h2 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #4a6280;
+  margin: 10px 0 2px;
+}
+
+.sidebar h2:first-of-type {
+  margin-top: 4px;
+}
+
+.main-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;  /* lets table scroll horizontally without breaking layout */
+}
+
+.controls {
+  align-items: stretch;
 }
 
 .controls .field {
   /* Wrapper around each input so the focus-triggered .tip tooltip can be
      absolutely positioned relative to the field without being pushed off
-     by the flex layout. */
+     by the layout. */
   position: relative;
-  display: inline-flex;
+  display: flex;
   flex: 0 0 auto;
 }
 
-.controls input[type="text"] {
-  /* Natural width comes from each input's `size` attribute in index.html,
-     so fields are tight and don't stretch across the row. Long placeholders
-     clip visually; clicking into the field shows the full hint in the tip. */
-  flex: 0 0 auto;
+.controls input[type="text"],
+.controls input[type="number"],
+.controls select {
+  flex: 1 1 auto;
+  width: 100%;
   padding: 7px 10px;
   border: 1px solid #c2c5cc;
   border-radius: 4px;
   font-size: 14px;
   min-width: 0;
+  font-family: inherit;
+  background: #fff;
+}
+
+/* DU mode + min-# in a side-by-side row inside the sidebar. Mode select
+   takes most of the width; min input is a fixed narrow column. */
+.sidebar .du-row {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebar .du-row .du-mode-field { flex: 1 1 auto; min-width: 0; }
+.sidebar .du-row .du-min-field  { flex: 0 0 64px; min-width: 0; }
+
+/* Action row keeps Search / Clear / Export CSV together as a group. */
+.sidebar .action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sidebar .action-row button {
+  flex: 1 1 auto;
+}
+
+/* Map-overlay buttons sit in a 2-column grid inside the sidebar so the
+   six toggles stay compact. Each button stretches to its grid cell. */
+.sidebar .overlay-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.sidebar .overlay-grid button {
+  width: 100%;
+  padding: 8px 6px;
+  font-size: 12.5px;
 }
 
 /* Focus-triggered tooltip showing the full placeholder text even when the
@@ -160,15 +250,16 @@ header small a {
 }
 
 .count {
-  margin-left: 8px;
-  padding: 6px 12px;
+  display: block;
+  margin: 6px 0 2px;
+  padding: 6px 10px;
   background: #eef2fb;
   border: 1px solid #c7d2ec;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #1a2a4a;
-  min-height: 20px;
+  text-align: center;
 }
 
 .count:empty {
@@ -176,11 +267,12 @@ header small a {
 }
 
 .hint {
-  margin: 0;
-  padding: 8px 20px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
   background: #f2f6ff;
-  border-bottom: 1px solid #e2e4e9;
-  font-size: 13px;
+  border: 1px solid #dde4f1;
+  border-radius: 4px;
+  font-size: 12.5px;
   color: #2e3a55;
 }
 
@@ -307,11 +399,12 @@ header small a {
 /* Top-of-page explainer block. Default open on first visit; collapsible
    so it gets out of the way once the user knows the difference. */
 .explainer {
-  margin: 0;
-  padding: 8px 20px;
+  margin: 0 0 6px;
+  padding: 8px 10px;
   background: #f4f6fb;
-  border-bottom: 1px solid #e2e4e9;
-  font-size: 13px;
+  border: 1px solid #dde4f1;
+  border-radius: 4px;
+  font-size: 12.5px;
   color: #2e3a55;
 }
 
