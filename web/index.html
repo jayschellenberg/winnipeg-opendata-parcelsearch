@@ -104,20 +104,8 @@
           <button id="dimensions-toggle" type="button" class="secondary" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+)">Show Dimensions</button>
           <a class="overlay-link secondary" href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer" title="City of Winnipeg index of all 42 adopted Local Area Plans (Secondary Plans)">Secondary Plans Index</a>
           <a class="overlay-link secondary" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" title="City of Winnipeg Planning, Property &amp; Development Property Map">PP&amp;D Property Map</a>
+          <button id="static-map-btn" type="button" class="secondary" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the image &amp; choose Save Image As to drop it into a report.">Static Map</button>
         </div>
-
-        <details class="hint">
-          <summary>River Lots, Outer Two Mile, Section-Township-Range</summary>
-          <div class="hint-body">
-            <p>Unusual legal descriptions go in the same fields:</p>
-            <ul>
-              <li><strong>River Lots:</strong> <code>RL</code> in <em>Block</em>, parish code (<code>JA</code>, <code>CH</code>, etc.) in <em>Plan</em>, river-lot number in <em>Lot</em>.</li>
-              <li><strong>Outer Two Mile lots:</strong> <code>OT</code> in <em>Block</em>, parish code in <em>Plan</em>.</li>
-              <li><strong>Section-Township-Range</strong> like <code>NW 10-11-4E</code>: section <code>10</code> in <em>Lot</em>, township <code>11</code> in <em>Block</em>, range <code>4E</code> in <em>Plan</em>, quarter <code>NW</code> in <em>Description</em>.</li>
-            </ul>
-            <p>Partial matches work in every field.</p>
-          </div>
-        </details>
       </aside>
 
       <main class="main-pane">
@@ -163,12 +151,21 @@
     </div>
 
     <section id="static-map-section" class="static-map-section">
-      <div class="static-map-header">
-        <button id="static-map-btn" type="button" class="secondary">Generate Static Map</button>
-        <span class="static-map-hint">Captures the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the image &amp; choose <em>Save Image As…</em> to drop it into a report.</span>
-      </div>
       <div id="static-map-output" class="static-map-output" hidden></div>
     </section>
+
+    <details class="hint hint-page">
+      <summary>How to search River Lots, Outer Two Mile, and Section-Township-Range parcels</summary>
+      <div class="hint-body">
+        <p>Unusual legal descriptions go in the same fields, just with different values:</p>
+        <ul>
+          <li><strong>River Lots:</strong> put <code>RL</code> in the <em>Block</em> field and the parish code in the <em>Plan</em> field (e.g. <code>JA</code> for St. James, <code>CH</code> for St. Charles, or another parish). The <em>Lot</em> field takes the river-lot number.</li>
+          <li><strong>Outer Two Mile lots:</strong> put <code>OT</code> in the <em>Block</em> field and the parish code in the <em>Plan</em> field.</li>
+          <li><strong>Section-Township-Range</strong> for a description like <code>NW 10-11-4E</code> (NW ¼ of Section 10, Township 11, Range 4E): put the section in <em>Lot</em> (<code>10</code>), the township in <em>Block</em> (<code>11</code>), the range in <em>Plan</em> (<code>4E</code>), and optionally the quarter (<code>NW</code>) in <em>Description</em>.</li>
+        </ul>
+        <p>Partial matches work in every field.</p>
+      </div>
+    </details>
 
     <footer id="disclaimer" class="disclaimer">
       <strong>Disclaimer:</strong> This site is provided without warranty

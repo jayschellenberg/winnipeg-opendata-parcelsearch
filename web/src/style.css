@@ -340,6 +340,16 @@ header small a {
   color: #2e3a55;
 }
 
+/* `.hint-page` modifier — used when the hint sits at the page level
+   (between the static-map output and the disclaimer) instead of
+   inside the sidebar. Spans the full width with the same horizontal
+   padding as the disclaimer/static-map-section so it lines up. */
+.hint-page {
+  margin: 16px 20px 0;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
 .hint > summary {
   cursor: pointer;
   list-style: none;
@@ -674,25 +684,16 @@ header small a {
 /* Static-map capture section sits between the results table and the
    disclaimer. Header is one row (button + helper text); the output box
    is initially hidden and reveals after the user clicks Generate. */
+/* Static-map section now just wraps the captured-PNG output. The
+   capture button lives in the sidebar's overlay grid alongside the
+   other map-related controls; this section is intentionally empty
+   (zero padding, hidden output) until the user clicks the button. */
 .static-map-section {
-  padding: 12px 20px 0;
-}
-
-.static-map-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-
-.static-map-hint {
-  font-size: 12px;
-  color: #555c6e;
-  flex: 1 1 320px;
+  padding: 0 20px;
 }
 
 .static-map-output {
-  margin-top: 10px;
+  margin: 12px 0 0;
   padding: 8px;
   background: #fff;
   border: 1px solid #e2e4e9;
