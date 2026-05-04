@@ -354,7 +354,10 @@ export function initMap(container, { onFeatureClick } = {}) {
           'text-field': ['get', 'length_label'],
           'text-font': ['Open Sans Semibold'],
           'text-size': 10,
-          'symbol-placement': 'line',
+          // line-center: exactly one label at each LineString's midpoint,
+          // auto-rotated along the edge. The default 'line' placement
+          // puts variable-spaced labels and skips short edges altogether.
+          'symbol-placement': 'line-center',
           'text-allow-overlap': false,
           'text-ignore-placement': false,
         },

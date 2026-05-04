@@ -95,6 +95,7 @@ const rowFeatureMap = new Map();
 // fetch zones for the current results without re-running the search.
 let zoningEnabled = false;
 let lastParcelFc = null;
+let lastSurveyFc = { type: 'FeatureCollection', features: [] };
 
 // ---------- Column sort ----------
 
@@ -275,6 +276,11 @@ function setParcels(surveyFc, assessFc = EMPTY_FC) {
     type: 'FeatureCollection',
     features: [...surveyFc.features, ...assessFc.features],
   };
+  // Stash the survey FC separately so the dimensions overlay can tie
+  // its edge labels to the legal-lot polygons only — assessment-parcel
+  // edges describe building footprints, which aren't useful as "lot
+  // dimensions" in the appraisal sense.
+  lastSurveyFc = surveyFc;
   // Toggle the floating colour legend — hidden on an empty map.
   if ($legend) $legend.hidden = lastParcelFc.features.length === 0;
   mapReady.then(() => {
@@ -419,10 +425,14 @@ async function toggleDimensions() {
 }
 
 /** Recompute and push the dimension-label FC. Called when the toggle
- *  flips on AND whenever the parcel set changes (via setParcels). */
+ *  flips on AND whenever the parcel set changes (via setParcels).
+ *  Tied to survey lots only — the legal-lot dimensions are what an
+ *  appraiser cares about ("33 ft × 120 ft"). Assessment polygons
+ *  describe building footprints / aggregations, so their edges aren't
+ *  meaningful as "lot dimensions". */
 function refreshDimensions() {
   if (!dimensionsEnabled) return;
-  const fc = buildDimensionLabels(lastParcelFc);
+  const fc = buildDimensionLabels(lastSurveyFc);
   mapReady.then(() => setDimensions(map, fc));
 }
 
