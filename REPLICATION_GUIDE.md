@@ -24,12 +24,19 @@ This document explains how to build the same parcel-search tool for a different 
 
 ## 1. What the tool does
 
-- **Legal-description search** (Lot / Block / Plan / Description): queries a **Survey Parcels** dataset, then back-fills Roll # / Address / Zoning by spatially joining an **Assessment Parcels** dataset.
-- **Assessment-first search** (Roll # / Address / Zoning): queries the Assessment Parcels dataset *and* (optionally) cross-references a **Civic Addresses** dataset so that searching by any of a parcel's official addresses surfaces the parcel even if it's not the primary assessment address. Survey Parcels are then back-filled to populate the legal-description columns.
+- **Legal-description search** (Lot / Block / Plan / Description): queries a **Survey Parcels** dataset, then back-fills Roll # / Address / Zoning / DU / Total Assessed Value by spatially joining an **Assessment Parcels** dataset.
+- **Assessment-first search** (Roll # / Address / Zoning / DU mode): queries the Assessment Parcels dataset *and* (optionally) cross-references a **Civic Addresses** dataset so that searching by any of a parcel's official addresses surfaces the parcel even if it's not the primary assessment address. Survey Parcels are then back-filled to populate the legal-description columns.
+- A **DU (dwelling-units) filter** ANDs into the assessment query to find vacant lots (`= 0`) or multi-unit buildings (`>= N`). The text-typed `dwelling_units` column is cast with SoQL `::number` to compare numerically.
 - Every search renders **two map layers simultaneously**: blue = survey lots, red = assessment parcels. The two often differ — one assessment can span many survey lots, and one survey lot can be split between rolls.
 - The Address column on each row is enriched with **every civic address** falling inside the parcel polygon (so a parcel with primary "400 Hargrave" but an additional civic address "440 Hargrave" displays both, and is searchable from either direction).
-- Optional **zoning overlay** (toggle button) draws zoning-by-law polygons under the parcel layers, coloured by category, with click-popups showing zoning code + description.
-- Results table includes: Lot, Block, Plan, Description, Roll #, Full Address, Zoning, Lot Size (sf), Lat, Lon. Sortable by any column. **CSV export**, **map-click → row scroll**, **row click → map fly-to-parcel**, **combined hover popup** for overlapping layers, **layer toggles**, and a top-of-page **explainer** describing the difference between survey and assessment parcels.
+- The Zoning column shows the **top-1 area-weighted** zoning code (via `@turf/intersect` + `@turf/area`), with separate columns for coverage % and the second-largest zone (when ≥ 1%). Reveals zoning splits that the Assessment dataset's single primary `zoning` text hides.
+- The Assess-{year} column shows total assessed value as a clickable link into the City's assessment portal (`winnipegassessment.com`). The header year is dynamically stamped from the most-common `current_assessment_year` in the result set.
+- Five **toggleable map overlays**: citywide Zoning (cached in IndexedDB for 7 days), Secondary Plans (combined Precincts + Major Redev Sites), Infill Guideline Area (Mature Communities), Malls and Corridors PDO (combined Regional Centres + Urban + Regional Corridors), and Lot Dimensions (survey-edge feet labels at zoom ≥ 17).
+- A **Streets ⇄ Satellite basemap toggle** in the map's top-right gutter (Esri World Imagery, no API key).
+- A **Generate Static Map** button captures the current view as a PNG with attribution composited, for dropping into reports.
+- **Two floating legends** — survey/assessment swatches (bottom-right) and zoning categories (bottom-left, when zoning is on).
+- Results table is fully sortable; supports **CSV export**, **map-click → row scroll**, **row click → map fly-to-parcel**, **combined hover popup** for overlapping layers, and **Walkscore + Flood** external-link columns.
+- The page uses a **fixed-width left sidebar** (320 px sticky) holding all controls grouped into Search and Map-overlay sections; below 980 px it collapses to a single column.
 
 ---
 
@@ -49,31 +56,47 @@ Browser
         ▼
   data.winnipeg.ca  ←── swap this for the new jurisdiction's endpoint
   Socrata SODA API
-  sjjm-nj47   Survey Parcels   (legal lots — Lot/Block/Plan)
-  d4mq-wa44   Assessment Parcels (rolls — civic address, zoning, area)
-  cam2-ii3u   Addresses          (every civic-address point — for multi-address xref)
-  dxrp-w6re   Zoning By-law      (optional overlay layer)
+  sjjm-nj47   Survey Parcels      (legal lots — Lot/Block/Plan)
+  d4mq-wa44   Assessment Parcels  (rolls — civic address, zoning, area, value)
+  cam2-ii3u   Addresses           (every civic-address point — multi-address xref)
+  dxrp-w6re   Zoning By-law       (citywide overlay + area-weighted top-2 analysis)
+  xh28-4smq   OurWPG Precinct     (Secondary Plans overlay — new-community precincts)
+  piz6-n3at   OurWPG Major Redev  (Secondary Plans overlay — major-infill sites)
+  5guk-f7xw   OurWPG Mature Comm  (Infill Guideline Area overlay)
+  wv32-jdtk   OurWPG Reg Mix Use Centre   ┐
+  t4kh-5gtd   OurWPG Urban Mix Use Corr   ├ Malls and Corridors PDO overlay
+  ahzi-uwu2   OurWPG Reg Mix Use Corr     ┘
+                              │
+                              ▼
+              ┌───────────────────────────┐
+              │  IndexedDB (`wpsCache`)   │
+              │  citywide zoning, 7-day   │
+              │  TTL — instant re-toggles │
+              └───────────────────────────┘
 ```
 
-**No server, no database, no auth.** Vercel just serves the Vite bundle. All data is queried by the browser on every search.
+**No server, no database, no auth.** Vercel just serves the Vite bundle. All data is queried by the browser on every search; the citywide zoning is the only dataset cached across sessions.
 
 A typical search fires multiple SODA calls in parallel and merges them client-side:
 
-1. **Attribute query** — Survey Parcels by Lot/Block/Plan, or Assessment Parcels by Roll/Address/Zoning.
+1. **Attribute query** — Survey Parcels by Lot/Block/Plan, or Assessment Parcels by Roll/Address/Zoning + DU mode (`dwelling_units::number = 0` or `>= N`).
 2. **Address cross-reference** (when the address field is filled) — Civic Addresses dataset, find parcels containing each matching address point.
 3. **Spatial enrichment** — per-feature `within_box` queries against the *other* parcel dataset (assessment-side for legal flow, survey-side for assessment flow). Batched 50 clauses per request, run in parallel.
 4. **Civic-address enrichment** — per-parcel `within_box` against the Addresses dataset, attaching the full civic-address list to each result.
-5. **Partial-lot detection** (assessment flow) — counts how many assessments overlap each survey lot; lots overlapping >1 are flagged "(partial)".
-6. **Zoning overlay** (when toggled on) — per-parcel `within_box` against the Zoning By-law dataset.
+5. **Top-2 zoning enrichment** — for each parcel, intersects its polygon against zoning polygons (cache-warm: from IndexedDB; cache-cold: per-parcel `within_box`) and computes top-2 area-weighted coverage with `@turf/intersect` + `@turf/area`.
+6. **Partial-lot detection** (assessment flow) — counts how many assessments overlap each survey lot; lots overlapping >1 are flagged "(partial)".
+7. **Citywide zoning overlay** (toggled on demand) — fetches all 18K zoning polygons in one call, caches in IndexedDB for 7 days. Subsequent toggles read from disk.
+8. **Policy-area overlays** (Secondary Plans / Infill / Malls and Corridors) — small whole-citywide datasets (5–24 polygons each) fetched whole on first toggle and memoised in-memory for the session.
 
-All spatial filters use `within_box` with a 150 m bbox pad (because Socrata's `within_box` requires *containment*, not intersection — see [Bug 10.2](#102-within_box-uses-containment-not-intersection)). Client-side `booleanPointInPolygon` then re-checks every match to eliminate false positives. The bidirectional `parcelsOverlap` check (assessment-centroid-in-survey OR survey-bbox-center-in-assessment) handles both 1:N and N:1 alignment cases.
+All parcel-side spatial filters use `within_box` with a 150 m bbox pad (because Socrata's `within_box` requires *containment*, not intersection — see [Bug 10.2](#102-within_box-uses-containment-not-intersection)). Client-side `booleanPointInPolygon` then re-checks every match to eliminate false positives. The bidirectional `parcelsOverlap` check (assessment-centroid-in-survey OR survey-bbox-center-in-assessment) handles both 1:N and N:1 alignment cases.
 
 **Dependencies** (`web/package.json`):
 
-- `maplibre-gl` — the map (no API key, CartoDB Positron raster basemap)
+- `maplibre-gl` — the map (CartoDB Positron + Esri World Imagery raster basemaps, no API keys)
 - `@turf/bbox` — bounding boxes
 - `@turf/boolean-intersects` — defensive fallback when centroid coords are missing
-- `@turf/boolean-point-in-polygon` — the primary client-side join primitive
+- `@turf/boolean-point-in-polygon` — primary client-side join primitive
+- `@turf/intersect`, `@turf/area` — area-weighted top-2 zoning analysis (note: turf v7 changed the `intersect` API — see [Bug 10.11](#1011-turfintersect-v7-changed-its-api))
 
 ---
 
@@ -689,6 +712,93 @@ Single-plan merges drop the plan annotation. Non-numeric lots (RL10, fractional,
 **Root cause:** MapLibre defers tile loading when `document.visibilityState === 'hidden'`. The `map.on('load')` event never fires, so any code waiting on `mapReady` queues forever.
 
 **Fix:** This is a benign quirk of how the map behaves in non-visible tabs. Real users don't hit it. For Chrome MCP / automated testing, override `document.visibilityState` before search.
+
+### 10.11 `@turf/intersect` v7 changed its API
+
+**Symptom:** Top-2 area-weighted zoning columns silently stay empty even though the zoning fetch is succeeding and parcels are being passed in correctly.
+
+**Root cause:** `@turf/intersect` v6 took two Feature args: `intersect(poly1, poly2)`. v7 changed the signature to take a single FeatureCollection of two features: `intersect({ type: 'FeatureCollection', features: [poly1, poly2] })`. Calling the v6 form on v7 means the second arg gets read as `options` instead of as the second polygon, so the function returns null on every call.
+
+**Fix:** wrap both features into a FeatureCollection per the v7 contract:
+```js
+const inter = intersect({ type: 'FeatureCollection', features: [parcel, zone] });
+```
+
+### 10.12 localStorage quota too small for citywide overlays — use IndexedDB
+
+**Symptom:** localStorage write throws `QuotaExceededError` when caching the citywide zoning dataset (~13.5 MB gzipped, ~42 MB parsed).
+
+**Root cause:** localStorage's hard limit is typically 5 MB per origin. Large GeoJSON FeatureCollections won't fit.
+
+**Fix:** Use IndexedDB. Browser quotas are typically several hundred MB, and the structured-clone storage handles GeoJSON FeatureCollections directly — no JSON-stringify round-trip:
+
+```js
+const req = indexedDB.open('wpsCache', 1);
+req.onupgradeneeded = () => req.result.createObjectStore('cache');
+// ...
+store.put({ v: featureCollection, t: Date.now() }, 'cityZoning');
+```
+
+Wrap the read in a TTL check (`Date.now() - entry.t > ttlMs ? null : entry.v`) so stale data refreshes after the cache window expires.
+
+### 10.13 Concurrent toggle clicks fire duplicate citywide fetches
+
+**Symptom:** User mashes the Show Zoning toggle button before the first 10–15 s fetch completes; multiple identical requests fly off in parallel.
+
+**Fix:** Memoise the in-flight fetch as a module-scoped Promise. Concurrent callers all `await` the same Promise; only one network round-trip happens. Clear the memoised slot on rejection so a later attempt can retry:
+
+```js
+let _cityZoningPromise = null;
+export async function fetchCityZoning() {
+  if (_cityZoningPromise) return _cityZoningPromise;
+  _cityZoningPromise = (async () => { /* fetch + cache */ })();
+  _cityZoningPromise.catch(() => { _cityZoningPromise = null; });
+  return _cityZoningPromise;
+}
+```
+
+### 10.14 Dimension labels missing on shared/short edges
+
+**Symptom:** Toggling Show Dimensions in dense residential blocks: some lots show their 120 ft depth but skip their 40-50 ft frontage, even though the polygon clearly has labellable front edges.
+
+**Root causes:** two compounding issues —
+
+1. Adjacent survey lots share their side edges, so each shared edge gets emitted twice (once per lot iterating its outer ring). MapLibre's collision detection then drops one of the duplicate stacked labels arbitrarily.
+2. With `symbol-placement: 'line-center'`, MapLibre skips placing a label when it judges the line shorter than the rendered text. A 40 ft edge at zoom 18 measures ~25 px on screen; "40 ft" in 10 px Open Sans Semibold is ~30 px wide. So the label gets dropped silently.
+
+**Fix:** dedupe edges with a canonical key + force-show:
+
+```js
+const seenEdges = new Set();
+// ...
+const key = canonicalEdgeKey(a, b);  // sort+round endpoints
+if (seenEdges.has(key)) continue;
+seenEdges.add(key);
+// emit LineString feature
+```
+
+```js
+// in the symbol layer paint config:
+'text-allow-overlap': true,
+'text-ignore-placement': true,
+```
+
+### 10.15 Static map PNG capture returns blank canvas
+
+**Symptom:** `canvas.toDataURL()` returns `data:image/png;base64,iVBORw0...AAAA` — header valid but pixel data is all-transparent.
+
+**Root cause:** WebGL clears the framebuffer between frames by default. By the time `toDataURL()` runs, the rendered pixels are gone.
+
+**Fix:** opt in to a preserved framebuffer at map construction time:
+
+```js
+const map = new maplibregl.Map({
+  // ...
+  preserveDrawingBuffer: true,
+});
+```
+
+Small perf cost on continuous interaction; fine at the scale of an appraisal-research tool. Also wait for `map.on('idle', ...)` before reading pixels to ensure no half-loaded tiles are caught mid-frame.
 
 ---
 

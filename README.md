@@ -1,6 +1,6 @@
 # Winnipeg Open Data Parcel Search
 
-A firm-facing web tool for searching City of Winnipeg parcel data — by legal description (Lot / Block / Plan), by Roll #, by civic address, or by zoning code — with results drawn on an interactive MapLibre map. Plus the R scripts used to build a local quarterly archive for historical pre-subdivision lookups.
+A firm-facing web tool for researching City of Winnipeg properties — search by legal description (Lot / Block / Plan / Description), Roll #, civic address, zoning code, or dwelling-unit count, with results enriched live from five Winnipeg Open Data sources and rendered on a MapLibre interactive map. Two parcel layers (legal-survey + tax-assessment) sit alongside four toggleable policy overlays, an area-weighted zoning analysis, dimension labels at lot scale, and one-click links into Manitoba Assessment Online, Walk Score, and the sister Manitoba flood-mapping tool.
 
 ## Live site
 
@@ -11,73 +11,115 @@ A firm-facing web tool for searching City of Winnipeg parcel data — by legal d
 | Path | Purpose | Audience |
 |---|---|---|
 | `web/` | Vite + vanilla JS static site. Queries Winnipeg Open Data's Socrata API live on every search. Deployed to Vercel. | Firm colleagues |
-| `r/download_parcels.R` | Downloads the latest Survey Parcels and Assessment Parcels datasets as GeoPackages. | Local archive |
-| `r/cross_reference_parcels.R` | Offline spatial join between Survey and Assessment Parcels — builds `ParcelCrossRef_YYYYMMDD.csv`. | Local archive |
-| `r/parcel_search_app.R` | R Shiny app that searches the **local** archive. Used for historical (pre-subdivision) lookups. | Personal use |
-| `extras/` | Experimentation files and sample queries. | — |
-| `REPLICATION_GUIDE.md` | Step-by-step guide for adapting this tool to another jurisdiction (Manitoba Open Data, another municipality, etc.). | Anyone replicating |
+| `r/download_parcels.R` | Downloads the latest Survey + Assessment Parcels datasets as GeoPackages. | Local archive |
+| `r/cross_reference_parcels.R` | Offline spatial join — builds `ParcelCrossRef_YYYYMMDD.csv`. | Local archive |
+| `r/parcel_search_app.R` | R Shiny app with a snapshot-picker dropdown for searching dated `.gpkg` archives. Used for historical (pre-subdivision) lookups. | Personal use |
+| `extras/` | Experimentation files. | — |
+| `REPLICATION_GUIDE.md` | Step-by-step guide for adapting this tool to another jurisdiction. | Anyone replicating |
 
 ## Data sources
 
-All data is queried live from the City of Winnipeg Open Data portal (`data.winnipeg.ca`) — no copies are shipped with the site, so search results are always current.
+All data is queried live from `data.winnipeg.ca` — no copies are shipped with the bundle, results are always against current published data. The citywide zoning dataset is cached in IndexedDB for 7 days for performance, but every parcel search is live.
 
 | Dataset | ID | Used for |
 |---|---|---|
-| [Map of Survey Parcels](https://data.winnipeg.ca/City-Planning/Map-of-Survey-Parcels/tira-k3hi) | `sjjm-nj47` | Lot / Block / Plan / Description (legal subdivision lots) |
-| [Map of Assessment Parcels](https://data.winnipeg.ca/Assessment-Taxation-Corporate/Map-of-Assessment-Parcels/7shc-stst) | `d4mq-wa44` | Roll number, primary address, zoning, assessed area, centroid |
-| [Addresses](https://data.winnipeg.ca/City-Planning/Addresses/cam2-ii3u/about_data) | `cam2-ii3u` | Every official civic address with a point geometry — used to find parcels by *any* of their civic addresses, and to display the full set of addresses per parcel |
-| [Zoning By-law Parcels](https://data.winnipeg.ca/City-Planning/City-of-Winnipeg-Zoning-By-law-Parcels-and-Zoning-/dxrp-w6re/about_data) | `dxrp-w6re` | Optional toggleable colour overlay showing zoning districts and codes |
+| [Map of Survey Parcels](https://data.winnipeg.ca/City-Planning/Map-of-Survey-Parcels/tira-k3hi) | `sjjm-nj47` | Lot / Block / Plan / Description (262K legal subdivision lots) |
+| [Map of Assessment Parcels](https://data.winnipeg.ca/Assessment-Taxation-Corporate/Map-of-Assessment-Parcels/7shc-stst) | `d4mq-wa44` | Roll number, primary address, zoning text, dwelling units, total assessed value, link to assessment record (245K parcels) |
+| [Addresses](https://data.winnipeg.ca/City-Planning/Addresses/cam2-ii3u/about_data) | `cam2-ii3u` | 243K official civic addresses with point geometry — used to find parcels by *any* of their civic addresses, and to display the full address list per parcel |
+| [Zoning By-law Parcels](https://data.winnipeg.ca/City-Planning/City-of-Winnipeg-Zoning-By-law-Parcels-and-Zoning-/dxrp-w6re/about_data) | `dxrp-w6re` | Citywide zoning overlay (18K polygons) + area-weighted top-2 zoning analysis per parcel |
+| [OurWPG Precinct](https://data.winnipeg.ca/City-Planning/OurWPG-Precinct/xh28-4smq) | `xh28-4smq` | Secondary Plans overlay — new-community precincts |
+| [OurWPG Major Redevelopment Site](https://data.winnipeg.ca/City-Planning/OurWPG-Major-Redevelopment-Site/piz6-n3at) | `piz6-n3at` | Secondary Plans overlay — major-infill redev sites |
+| [OurWPG Mature Community](https://data.winnipeg.ca/City-Planning/OurWPG-Mature-Community/5guk-f7xw) | `5guk-f7xw` | Infill Guideline Area overlay |
+| [OurWPG Regional Mixed Use Centre](https://data.winnipeg.ca/City-Planning/OurWPG-Regional-Mixed-Use-Centre/wv32-jdtk) | `wv32-jdtk` | Malls and Corridors PDO overlay (the "malls" half) |
+| [OurWPG Urban Mixed Use Corridor](https://data.winnipeg.ca/City-Planning/OurWPG-Urban-Mixed-Use-Corridor/t4kh-5gtd) | `t4kh-5gtd` | Malls and Corridors PDO overlay (urban corridors) |
+| [OurWPG Regional Mixed Use Corridor](https://data.winnipeg.ca/City-Planning/OurWPG-Regional-Mixed-Use-Corridor/ahzi-uwu2) | `ahzi-uwu2` | Malls and Corridors PDO overlay (regional corridors) |
+
+The City has **42 adopted Local Area / Secondary Plans** (per the [Long Range Planning index](https://winnipeg.ca/node/44825)), but Open Data only publishes boundaries for 16 of them (5 Precincts + 11 Major Redev Sites). The Secondary Plans popup links to the City's full plan list so users can look up plans the overlay can't render.
 
 ## What the web app does
 
 **Two search directions, both surface the same parcels.**
 
-- **Legal-description flow** — fill any of *Lot / Block / Plan / Description*. Queries Survey Parcels by attribute, then back-fills the matching Assessment Parcels (and their civic addresses) so you see roll number, address, and zoning beside each lot.
-- **Assessment-first flow** — fill any of *Roll # / Address / Zoning*. Queries Assessment Parcels by attribute *and* cross-references the Addresses dataset so a search for "440 Hargrave" finds the parcel even though its primary assessment address is "400 Hargrave Street". Survey Parcels are then back-filled to populate the Lot / Block / Plan columns.
+- **Assessment-first flow** — fill any of *Roll # / Address / Zoning / DU mode*. Queries Assessment Parcels by attribute and cross-references the Addresses dataset, so a search for "440 Hargrave" finds the parcel even when the assessment dataset's primary address is "400 Hargrave Street". Survey Parcels back-fill the Lot / Block / Plan columns.
+- **Legal-description flow** — fill any of *Lot / Block / Plan / Description*. Queries Survey Parcels by attribute, then back-fills the Roll #, address, zoning, dwelling units, total assessed value, and Manitoba Assessment Online link.
 
-In both flows, the map shows **two layers simultaneously**:
+In both flows the map shows **two parcel layers simultaneously**:
 
 - **Blue** = Survey parcels (legal lots from Land Titles)
-- **Red** = Assessment parcels (tax-assessed properties — building/parcel footprints from City taxation)
+- **Red** = Assessment parcels (tax-assessed properties — building/roll footprints)
 
-The two layers don't always 1:1 align — one assessment roll can cover many survey lots (e.g. a downtown building spanning 20 original lots), and one survey lot can be split between multiple rolls (e.g. a duplex). The table merges either side into one row with the lot list grouped by plan and "(partial)" suffixes for lots that span more than one assessment.
+The two don't always 1:1 align — one assessment roll can cover many survey lots (e.g. 400 Hargrave covers 20+ downtown lots) and one survey lot can be split between multiple rolls (e.g. a duplex). The table merges either side into one row with the lot list grouped by plan and "(partial)" suffixes for split lots.
 
-## UX features
+## Sidebar layout
 
-- **Sortable columns** — click any header to sort. Default sort is by Roll # ascending.
-- **CSV export** of the current results.
-- **Map ↔ Table linkage** — click any polygon (blue or red) to scroll to its row; click any row to fly the map to that parcel.
-- **Combined hover popup** — hovering on a survey lot inside an assessment parcel shows both blocks of info (legal + roll/address/zoning) in a single popup.
-- **Layer toggles** — Hide Survey / Hide Assessment / Show Zoning buttons in the controls bar.
-- **Floating legend** in the bottom-right of the map.
-- **Top-of-page explainer** — one-click open describing what survey vs assessment parcels are.
-- **Multi-address parcels** — parcels with multiple civic addresses display all of them in the Address column (e.g. "400 HARGRAVE STREET, 440 HARGRAVE ST"), making them findable from any direction.
-- **Zoning overlay** — toggle on to see zoning districts (R1-M, C2, etc.) coloured by category, with click-popups showing the full description from the by-law.
-- **Clear button = full page reload** — bulletproof reset of every piece of state.
+The page uses a two-pane layout with a **320 px sticky left sidebar** holding every control, grouped into sections:
+
+- **Survey vs Assessment explainer** (collapsible)
+- **Search by assessment** — Roll #, Address, Zoning, DU mode + min input
+- **Search by legal description** — Lot, Block, Plan, Description
+- **Search · Clear · Export CSV** action row + result count chip
+- **Map overlays** — 7 buttons in a 2-column grid:
+  - Hide Survey / Hide Assessment (default on, blue/red parcel layers)
+  - Show Zoning (citywide colour-coded overlay; first toggle ~10–15 s, instant after)
+  - Show Secondary Plans (Precincts + Major Redev sites)
+  - Show Infill Area (Mature Community boundaries)
+  - Show Malls/Corridors (Regional Centres + Urban + Regional Corridors)
+  - Show Dimensions (lot edge lengths in feet, zoom ≥ 17)
+- **River-Lots / Outer-Two-Mile / Section-Township-Range hint** (collapsible)
+
+The right pane holds the map, the results table, the Generate Static Map button, and the disclaimer. Below 980 px viewport the layout collapses to a single column for tablets.
+
+## Map features
+
+- **Streets ⇄ Satellite** basemap toggle in the top-right gutter (Esri World Imagery, no API key)
+- **Two floating legends** — survey/assessment swatch box (bottom-right) and zoning category list (bottom-left, only when zoning is on)
+- **Combined hover popup** — when hovering on a survey lot inside an assessment parcel, both parcel info blocks show stacked under colour-coded headers
+- **Click any layer (blue, red, zoning, policy overlays)** → scrolls to the matching row in the results table
+- **Click any results table row** → flies the map to that parcel
+- **Lot dimensions** (toggleable) — survey-lot edges labelled in feet at zoom ≥ 17, deduplicated across shared edges
+- **Generate Static Map** — captures the current view as a PNG with attribution composited, for dropping into reports
+
+## Results table columns
+
+Every column is sortable; default sort is Roll Number ascending.
+
+| Column | Source |
+|---|---|
+| Lot / Block / Plan / Description | Survey Parcels (merged & range-collapsed for multi-lot parcels) |
+| Roll Number / Full Address | Assessment Parcels (Address column shows every civic address per parcel — primary first, others alphabetical) |
+| Zoning | Top-1 zoning code by area-weighted polygon intersection |
+| % | Coverage of the top-1 zone |
+| Zoning 2 | Second zone if its coverage is ≥ 1%, with `(NN%)` suffix |
+| Lot Size (sf) | Assessment Parcels `assessed_land_area` |
+| Lat / Lon | Assessment Parcels centroid |
+| Assess-{year} | Total Assessed Value as a clickable link to `winnipegassessment.com`. Header year is the most-common `current_assessment_year` in the result set |
+| Walkscore | External link to `walkscore.com` for the address |
+| Flood | Deep-link into the sister [Manitoba flood-mapping tool](https://mb-flood-mapping.vercel.app/) |
+
+CSV export includes every column plus the raw URLs for the link columns, and raw numeric values (so spreadsheet sorts work).
 
 ## Web app architecture
 
-The site is pure static — Vercel just serves the Vite-built bundle. The browser makes its own SODA queries directly to `data.winnipeg.ca` (the API sets `Access-Control-Allow-Origin: *` so no proxy is needed).
+The site is pure static — Vercel serves the Vite-built bundle. The browser makes its own SODA queries directly to `data.winnipeg.ca` (CORS open, no proxy needed). A typical search fires several queries in parallel and merges them client-side:
 
-A typical search fires several SODA calls in parallel and merges them client-side:
+1. **Attribute query** — Survey Parcels by Lot/Block/Plan, or Assessment Parcels by Roll/Address/Zoning/DU.
+2. **Address cross-reference** (when Address is filled) — `cam2-ii3u` to find parcels containing every civic-address point matching the search text.
+3. **Spatial enrichment** — per-feature `within_box` queries against the *other* parcel dataset (assessment-side for legal flow, survey-side for assessment flow). Batched 50 clauses per request, parallel.
+4. **Civic-address enrichment** — per-parcel `within_box` against `cam2-ii3u`, attaching the full address list to each result.
+5. **Top-2 zoning enrichment** — for each result, intersects the parcel polygon against zoning polygons (cache-warm: in-memory; cache-cold: per-parcel `within_box`) and computes top-2 area-weighted coverage with `@turf/intersect` + `@turf/area`.
+6. **Partial-lot detection** (assessment flow) — second pass to count overlapping assessments per survey lot; lots overlapping >1 are flagged "(partial)".
 
-1. **Attribute query** — Survey Parcels by Lot/Block/Plan or Assessment Parcels by Roll/Address/Zoning, depending on the filled fields.
-2. **Address cross-reference** (when the address field is filled) — `cam2-ii3u` to find parcels containing every official civic address matching the search text.
-3. **Spatial enrichment** — per-feature `within_box` queries against the *other* parcel dataset to get the cross-side data (legal descriptions for an assessment search, roll/address for a legal search). Batched 50 clauses per request, parallel.
-4. **Civic-address enrichment** — `cam2-ii3u` per-parcel `within_box` to gather every civic address falling inside each result parcel.
-5. **Partial-lot detection** (assessment flow only) — second pass against `d4mq-wa44` to count how many assessment parcels each survey lot overlaps; lots that span >1 are flagged "(partial)".
-6. **Zoning overlay** (when toggled on) — `dxrp-w6re` per-parcel `within_box` to fetch zoning polygons covering the result area.
+All spatial filters use `within_box` with a 150 m bbox pad (because Socrata's `within_box` requires *containment*, not intersection — see the bug catalogue in `REPLICATION_GUIDE.md`). Client-side `parcelsOverlap` (bidirectional centroid-in-polygon) re-checks every match to eliminate false positives from neighbouring parcels.
 
-All spatial joins are then re-checked client-side with turf.js (`booleanPointInPolygon`) to filter false positives that come from the bbox-padded SODA filter. The bidirectional `parcelsOverlap` check (assessment-centroid-in-survey OR survey-bbox-center-in-assessment) handles both 1-to-many and many-to-1 cases correctly.
+**IndexedDB caching.** The citywide zoning dataset (~13.5 MB gzipped, ~42 MB parsed) is cached under `wpsCache` for 7 days. First Show Zoning toggle: ~10–15 s. Subsequent toggles within 7 days: instant. Per-search top-2 zoning enrichment also reads the cache opportunistically — every search after the first ever zoning toggle becomes faster too.
 
 **Dependencies** (`web/package.json`):
 
-- `maplibre-gl` — the map (no API key required, uses CartoDB Positron raster tiles)
-- `@turf/bbox` — bounding boxes
-- `@turf/boolean-intersects` — defensive fallback when centroids are missing
-- `@turf/boolean-point-in-polygon` — the primary client-side join check
+- `maplibre-gl` — the map (no API key, CartoDB Positron + Esri World Imagery raster tiles)
+- `@turf/bbox`, `@turf/boolean-intersects`, `@turf/boolean-point-in-polygon` — spatial primitives for the parcel join
+- `@turf/intersect`, `@turf/area` — area-weighted zoning analysis
 
-No backend, no database, no precomputed data, no quarterly rebuild.
+No backend, no database, no precomputed data, no scheduled jobs.
 
 ## Running the web app locally
 
@@ -97,15 +139,15 @@ To build for production:
 npm run build
 ```
 
-The build output goes to `web/dist/` (`.gitignored`). Vercel runs the same command on every push to `main`.
+The build output goes to `web/dist/` (gitignored). Vercel runs the same command on every push to `main`.
 
-Optional Socrata app token (raises the anonymous rate limit from 1,000 to 100,000 requests/hour, useful if firm usage ever ramps up):
+Optional Socrata app token (raises the anonymous rate limit from 1,000 to 100,000 requests/hour):
 
 1. Register at https://data.winnipeg.ca/profile/edit/developer_settings
 2. Add `VITE_SODA_APP_TOKEN=<token>` as a Vercel project environment variable
 3. Redeploy
 
-`web/src/soda.js` already reads `import.meta.env.VITE_SODA_APP_TOKEN` — no code change needed.
+`web/src/soda.js` already reads `import.meta.env.VITE_SODA_APP_TOKEN`.
 
 ## Running the R tools locally
 
@@ -118,15 +160,17 @@ source("r/cross_reference_parcels.R")   # builds ParcelCrossRef_*.csv
 shiny::runApp("r/parcel_search_app.R")  # interactive search on the local archive
 ```
 
-The Shiny app discovers every `SurveyParcels_YYYYMMDD.gpkg` in the project directory and exposes a snapshot picker dropdown — pick any dated snapshot to run searches against it. This is the one thing the live web app *cannot* do: search how parcels looked before later subdivisions or consolidations. To build the archive, re-run `download_parcels.R` periodically (e.g. quarterly); each run produces a fresh dated `.gpkg` pair without overwriting the older ones. Each snapshot adds about 590 MB of disk; older ones can be pruned manually if storage gets tight.
+The Shiny app discovers every `SurveyParcels_YYYYMMDD.gpkg` in the project directory and exposes a snapshot-picker dropdown — pick any dated snapshot to run searches against it. This is the one thing the live web app *cannot* do: search how parcels looked before later subdivisions or consolidations. To build the archive, re-run `download_parcels.R` periodically (e.g. quarterly); each run produces a fresh dated `.gpkg` pair without overwriting the older ones. Each snapshot adds about 590 MB of disk; older ones can be pruned manually if storage gets tight.
 
 ## Known caveats
 
 - The R scripts hardcode an absolute path (`D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch`). To run elsewhere, update the `data_dir` / `output_dir` variable at the top of each script.
-- `.gpkg` and `ParcelCrossRef_*.csv` files are gitignored — too large for GitHub (the full Survey Parcels GeoPackage is ~485 MB) and trivially regenerable.
+- `.gpkg` and `ParcelCrossRef_*.csv` files are gitignored — too large for GitHub (~485 MB Survey + ~108 MB Assessment per snapshot) and trivially regenerable.
 - The web app requires internet access and shows current data only. For offline use or historical snapshots, use the R Shiny app against the local archive.
-- The `LIKE` operator in SoQL is case-sensitive; the web app wraps every search column and search term in `upper()` so typing "monarch" matches "10 MONARCH MEWS". Document this if you ever swap to a different SoQL dialect.
+- The `LIKE` operator in SoQL is case-sensitive; the web app wraps every search column and search term in `upper()` so typing "monarch" matches "10 MONARCH MEWS".
+- 26 of the City's 42 adopted Local Area Plans don't have boundaries published on Open Data. The Secondary Plans overlay covers what's available (16 polygons); the popup links to the City's full list for the rest.
+- Lot dimensions are computed from WGS84 polygon edges via the haversine formula and reported in feet. The City's Open Data stores some attributes in metres but `assessed_land_area` is in square feet, so the tool stays consistent on imperial throughout. Manitoba real-estate / Land Titles / appraisal practice is overwhelmingly in feet.
 
 ## Replicating this for another jurisdiction
 
-See [REPLICATION_GUIDE.md](REPLICATION_GUIDE.md) for a step-by-step adaptation guide — what to probe, what to swap, every gotcha already solved.
+See [REPLICATION_GUIDE.md](REPLICATION_GUIDE.md) for a step-by-step adaptation guide — what to probe, what to swap, every gotcha already solved, and the architectural patterns that translate to other Socrata or ArcGIS REST portals.
