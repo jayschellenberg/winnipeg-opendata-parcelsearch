@@ -13,7 +13,7 @@ body {
 }
 
 header {
-  padding: 12px 20px;
+  padding: 6px 20px;
   background: #1a2a4a;
   color: #fff;
   display: flex;
@@ -30,6 +30,42 @@ header h1 {
 header small {
   color: #b6c4e0;
   font-size: 12px;
+}
+
+/* Hover-tooltip pill in the header that explains the Survey vs
+   Assessment difference. Triggered by hover or keyboard focus on the
+   .layer-info-trigger span; the tooltip is its inner descendant so
+   nested hover/focus selectors keep it visible while the cursor is
+   on either the trigger or the tooltip itself. */
+.layer-info-trigger {
+  position: relative;
+  cursor: help;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.layer-info-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #fff;
+  color: #1a1a1a;
+  padding: 12px 14px;
+  border: 1px solid #c7d2ec;
+  border-radius: 6px;
+  width: 360px;
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  z-index: 100;
+  white-space: normal;
+  text-align: left;
+}
+
+.layer-info-trigger:hover .layer-info-tooltip,
+.layer-info-trigger:focus-within .layer-info-tooltip {
+  display: block;
 }
 
 header small a {

@@ -16,33 +16,30 @@
       <small>
         Live data from
         <a href="https://data.winnipeg.ca" target="_blank" rel="noreferrer">data.winnipeg.ca</a>
+        · <span class="layer-info-trigger" tabindex="0" aria-label="Survey vs Assessment parcel info">Layer info<span class="layer-info-tooltip" role="tooltip">
+          <strong style="color:#1a1a1a">Survey vs Assessment parcels</strong>
+          <p style="margin:6px 0">
+            <span class="legend-pill survey">Survey</span>
+            parcels (blue on the map) are the legal lots from Land Titles —
+            the <em>Lot / Block / Plan</em> on a deed.
+          </p>
+          <p style="margin:6px 0">
+            <span class="legend-pill assess">Assessment</span>
+            parcels (red) are the City's tax-assessed properties —
+            one per <em>Roll Number / civic address</em>.
+          </p>
+          <p style="margin:6px 0 0">
+            The two layers don't always align. One assessment can cover
+            many lots; one lot can be split between rolls. Hover anywhere
+            on the map to see both at once.
+          </p>
+        </span></span>
         · <a href="#disclaimer">Disclaimer</a>
       </small>
     </header>
 
     <div class="layout">
       <aside class="sidebar controls" aria-label="Search and overlay controls">
-        <details class="explainer" open>
-          <summary>Survey vs Assessment parcels</summary>
-          <div class="explainer-body">
-            <p>
-              <span class="legend-pill survey">Survey</span>
-              parcels (blue on the map) are legal lots from Land Titles —
-              the <em>Lot / Block / Plan</em> on a deed.
-            </p>
-            <p>
-              <span class="legend-pill assess">Assessment</span>
-              parcels (red) are the City's tax-assessed properties —
-              one per <em>Roll Number / civic address</em>.
-            </p>
-            <p>
-              The two layers don't always align. One assessment can cover
-              many lots, and one lot can be split between rolls. Hover
-              anywhere on the map to see both at once.
-            </p>
-          </div>
-        </details>
-
         <h2>Search by legal description</h2>
         <span class="field">
           <input id="lot"     type="text" placeholder="Lot" />
