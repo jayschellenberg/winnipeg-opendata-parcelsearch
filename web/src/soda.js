@@ -548,6 +548,50 @@ function mergeFcByKey(fcs, key) {
 const ZONING_CACHE = new Map();
 const ZONING_CACHE_MAX = 8;
 
+// IndexedDB-backed cache for the citywide zoning fetch. ~13.5 MB gzipped
+// over the wire, ~42 MB parsed; far too big for localStorage's 5 MB
+// quota but trivial for IndexedDB (browser quotas in the hundreds of
+// MB). Cached for a week — provincial zoning bylaws don't change
+// hour-to-hour and a stale day in mid-cache is irrelevant for
+// appraisal-research purposes. The cache is shared opportunistically
+// by fetchZoningOverlap (per-search subset filter) so a cache-warm
+// session avoids the per-parcel within_box network round trips too.
+const CITY_ZONING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CITY_ZONING_CACHE_KEY = 'cityZoning';
+let _cityZoningPromise = null;
+
+/**
+ * Return the entire dxrp-w6re zoning dataset (~18,400 polygons).
+ * Reads from IndexedDB if a fresh entry exists; otherwise hits the
+ * network and writes the result back to IndexedDB for next time. The
+ * returned promise is memoised module-side so concurrent callers
+ * share one in-flight fetch.
+ */
+export async function fetchCityZoning() {
+  if (_cityZoningPromise) return _cityZoningPromise;
+  _cityZoningPromise = (async () => {
+    try {
+      const cached = await idbReadCache(CITY_ZONING_CACHE_KEY, CITY_ZONING_TTL_MS);
+      if (cached) return cached;
+    } catch (err) {
+      console.warn('IndexedDB read failed; falling back to network', err);
+    }
+    const params = new URLSearchParams({
+      $select: 'id,zoning,short_description,long_description,map_colour,location',
+      $limit: '20000',
+    });
+    const fc = await fetchSoda(`${ZONING_URL}?${params}`);
+    // Fire-and-forget so the caller doesn't wait on the disk write.
+    idbWriteCache(CITY_ZONING_CACHE_KEY, fc).catch((err) =>
+      console.warn('IndexedDB write failed for cityZoning', err)
+    );
+    return fc;
+  })();
+  // Clear the memoisation slot if the fetch fails so a retry can run.
+  _cityZoningPromise.catch(() => { _cityZoningPromise = null; });
+  return _cityZoningPromise;
+}
+
 export async function fetchZoningOverlap(parcelFc) {
   const key = parcelSetCacheKey(parcelFc);
   if (key && ZONING_CACHE.has(key)) {
@@ -556,13 +600,30 @@ export async function fetchZoningOverlap(parcelFc) {
     const cached = ZONING_CACHE.get(key);
     return { type: 'FeatureCollection', features: [...cached.features] };
   }
-  const fc = await fetchPerFeatureBboxUnion({
-    baseUrl: ZONING_URL,
-    geomColumn: 'location',
-    select: 'id,zoning,short_description,long_description,map_colour,location',
-    dedupeKey: 'id',
-    fc: parcelFc,
-  });
+
+  // Opportunistic citywide cache: if the IndexedDB cache is fresh, we
+  // already have every zoning polygon in memory after the first read,
+  // so we can filter to the parcel-set bbox in-process and skip the
+  // per-parcel within_box round-trips entirely. Falls back to the
+  // network fetch when the cache is cold or unreachable.
+  let fc = null;
+  try {
+    const cityCached = await idbReadCache(CITY_ZONING_CACHE_KEY, CITY_ZONING_TTL_MS);
+    if (cityCached?.features?.length) {
+      fc = filterZonesToParcelBbox(cityCached, parcelFc);
+    }
+  } catch { /* IDB unavailable; fall through to per-parcel fetch */ }
+
+  if (!fc) {
+    fc = await fetchPerFeatureBboxUnion({
+      baseUrl: ZONING_URL,
+      geomColumn: 'location',
+      select: 'id,zoning,short_description,long_description,map_colour,location',
+      dedupeKey: 'id',
+      fc: parcelFc,
+    });
+  }
+
   if (key) {
     ZONING_CACHE.set(key, fc);
     // Trim the oldest entries when over the cap. JS Maps preserve
@@ -572,6 +633,91 @@ export async function fetchZoningOverlap(parcelFc) {
     }
   }
   return fc;
+}
+
+/**
+ * Filter a citywide zoning FC down to only the polygons whose bbox
+ * overlaps the parcel set's bbox (with a 150m pad on each side, same
+ * pattern as the SoQL within_box query). Cheap O(N) over ~18K rows.
+ */
+function filterZonesToParcelBbox(cityFc, parcelFc) {
+  if (!parcelFc?.features?.length) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  let pMinLon, pMinLat, pMaxLon, pMaxLat;
+  try { [pMinLon, pMinLat, pMaxLon, pMaxLat] = bbox(parcelFc); }
+  catch { return { type: 'FeatureCollection', features: cityFc.features }; }
+  const PAD = 0.002;
+  pMinLon -= PAD; pMinLat -= PAD;
+  pMaxLon += PAD; pMaxLat += PAD;
+
+  const features = [];
+  for (const z of cityFc.features) {
+    try {
+      const [zMinLon, zMinLat, zMaxLon, zMaxLat] = bbox(z);
+      if (zMaxLon < pMinLon || zMinLon > pMaxLon) continue;
+      if (zMaxLat < pMinLat || zMinLat > pMaxLat) continue;
+      features.push(z);
+    } catch { /* skip malformed */ }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+// ---------- IndexedDB helpers (`wpsCache` DB, single `cache` store) ----------
+
+const IDB_DB_NAME = 'wpsCache';
+const IDB_STORE = 'cache';
+let _idbOpenPromise = null;
+
+function idbOpen() {
+  if (_idbOpenPromise) return _idbOpenPromise;
+  _idbOpenPromise = new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('indexedDB not available'));
+      return;
+    }
+    const req = indexedDB.open(IDB_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error('indexedDB open blocked'));
+  });
+  // Reset the singleton on failure so a later attempt can re-open.
+  _idbOpenPromise.catch(() => { _idbOpenPromise = null; });
+  return _idbOpenPromise;
+}
+
+async function idbReadCache(key, ttlMs) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => {
+      const entry = req.result;
+      if (!entry || typeof entry !== 'object' || !('t' in entry) || !('v' in entry)) {
+        resolve(null);
+        return;
+      }
+      if (Date.now() - entry.t > ttlMs) { resolve(null); return; }
+      resolve(entry.v);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbWriteCache(key, value) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const req = tx.objectStore(IDB_STORE).put({ v: value, t: Date.now() }, key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
 }
 
 /**

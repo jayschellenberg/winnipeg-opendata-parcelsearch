@@ -37,6 +37,7 @@ import {
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
   fetchZoningOverlap,
+  fetchCityZoning,
   computePartialSurveyIds,
   enrichAssessmentAddresses,
   enrichAssessmentZoning,
@@ -312,32 +313,45 @@ function toggleLayer(which) {
  */
 async function toggleZoning() {
   zoningEnabled = !zoningEnabled;
-  $zoningToggle.textContent = zoningEnabled ? 'Hide Zoning' : 'Show Zoning';
   $zoningToggle.setAttribute('aria-pressed', String(zoningEnabled));
   $zoningToggle.classList.toggle('active', zoningEnabled);
   await mapReady;
   setZoningVisible(map, zoningEnabled);
-  if (zoningEnabled) await refreshZoning();
+  if (zoningEnabled) {
+    // First-load shows a loading state because the citywide fetch is
+    // ~10-15s on a cold IndexedDB cache. Subsequent toggles within
+    // the 7-day TTL read from disk and resolve in a few hundred ms.
+    $zoningToggle.disabled = true;
+    $zoningToggle.textContent = 'Loading zoning…';
+    try {
+      await refreshZoning();
+      $zoningToggle.textContent = 'Hide Zoning';
+    } catch (err) {
+      console.warn('zoning toggle failed', err);
+      // Roll the toggle back so the user can retry.
+      zoningEnabled = false;
+      $zoningToggle.classList.remove('active');
+      $zoningToggle.setAttribute('aria-pressed', 'false');
+      $zoningToggle.textContent = 'Show Zoning';
+      setZoningVisible(map, false);
+    } finally {
+      $zoningToggle.disabled = false;
+    }
+  } else {
+    $zoningToggle.textContent = 'Show Zoning';
+  }
 }
 
 /**
- * Fetch zoning polygons covering the current search results and load them
- * into the zoning source. No-op when the layer is disabled or there are no
- * results. Failures are logged but non-fatal — the parcel results still
- * render normally.
+ * Fetch the citywide zoning layer (cached for 7 days in IndexedDB) and
+ * push it into the map source. No-op when the toggle is off. Failures
+ * are logged and re-thrown so toggleZoning can roll back the button
+ * state.
  */
 async function refreshZoning() {
   if (!zoningEnabled) return;
-  if (!lastParcelFc || lastParcelFc.features.length === 0) {
-    setZoningData(map, { type: 'FeatureCollection', features: [] });
-    return;
-  }
-  try {
-    const zoningFc = await fetchZoningOverlap(lastParcelFc);
-    setZoningData(map, zoningFc);
-  } catch (err) {
-    console.warn('zoning fetch failed', err);
-  }
+  const zoningFc = await fetchCityZoning();
+  setZoningData(map, zoningFc);
 }
 
 /**
