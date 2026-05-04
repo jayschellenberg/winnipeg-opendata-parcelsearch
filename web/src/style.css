@@ -460,6 +460,33 @@ header small a {
   border: 2px solid #690000;
 }
 
+/* Zoning legend mirrors the structure of .map-legend but lives in the
+   bottom-left so it doesn't overlap the survey/assess swatch box at
+   bottom-right. Built dynamically by main.js from ZONING_PALETTE so
+   colour swatches stay in lock-step with the layer fill expression. */
+.zoning-legend {
+  bottom: 12px;
+  left: 12px;
+  right: auto;
+  max-width: 220px;
+}
+
+.zoning-legend ul {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+}
+
+.zoning-legend li {
+  font-size: 11px;
+}
+
+.zoning-legend .swatch {
+  width: 14px;
+  height: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
 /* Top-of-page explainer block. Default open on first visit; collapsible
    so it gets out of the way once the user knows the difference. */
 .explainer {

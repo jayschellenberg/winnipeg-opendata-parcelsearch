@@ -49,7 +49,7 @@ import {
 } from './soda.js';
 import {
   initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
-  setOverlayData, setOverlayVisible, setCivicAddresses,
+  setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible,
 } from './map.js';
 
@@ -78,6 +78,7 @@ const $mapEl = document.getElementById('map');
 const $staticMapBtn = document.getElementById('static-map-btn');
 const $staticMapOutput = document.getElementById('static-map-output');
 const $legend = document.getElementById('map-legend');
+const $zoningLegend = document.getElementById('zoning-legend');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
@@ -204,6 +205,7 @@ $duMode.addEventListener('change', () => {
 
 setExportEnabled(false);
 updateSortIndicators();
+buildZoningLegend();
 
 // Wire sortable column headers.
 for (const th of document.querySelectorAll('#results th[data-col]')) {
@@ -328,6 +330,9 @@ async function toggleZoning() {
   $zoningToggle.classList.toggle('active', zoningEnabled);
   await mapReady;
   setZoningVisible(map, zoningEnabled);
+  // Floating zoning legend follows the toggle. Built once at startup
+  // (see buildZoningLegend below) so flipping is just a hidden flag.
+  if ($zoningLegend) $zoningLegend.hidden = !zoningEnabled;
   if (zoningEnabled) {
     // First-load shows a loading state because the citywide fetch is
     // ~10-15s on a cold IndexedDB cache. Subsequent toggles within
@@ -345,6 +350,7 @@ async function toggleZoning() {
       $zoningToggle.setAttribute('aria-pressed', 'false');
       $zoningToggle.textContent = 'Show Zoning';
       setZoningVisible(map, false);
+      if ($zoningLegend) $zoningLegend.hidden = true;
     } finally {
       $zoningToggle.disabled = false;
     }
@@ -484,6 +490,31 @@ function buildDimensionLabels(parcelFc) {
     } catch { /* skip a single malformed feature; rest of set still labels */ }
   }
   return { type: 'FeatureCollection', features };
+}
+
+/**
+ * Populate the floating zoning legend's <ul> from the same palette
+ * map.js uses to colour the zoning fill layer. Run once at startup —
+ * the citywide layer always covers all 13 categories so we don't have
+ * to recompute on viewport changes. Visibility is flipped by the
+ * toggleZoning handler.
+ */
+function buildZoningLegend() {
+  if (!$zoningLegend || !ZONING_PALETTE) return;
+  const ul = $zoningLegend.querySelector('ul');
+  if (!ul) return;
+  ul.innerHTML = '';
+  for (let i = 0; i < ZONING_PALETTE.length; i += 2) {
+    const name = ZONING_PALETTE[i];
+    const color = ZONING_PALETTE[i + 1];
+    const li = document.createElement('li');
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.background = color;
+    li.appendChild(sw);
+    li.appendChild(document.createTextNode(name));
+    ul.appendChild(li);
+  }
 }
 
 /** Canonical key for an undirected edge between two [lon, lat] points.

@@ -15,7 +15,8 @@ const WINNIPEG_CENTER = [-97.14, 49.89];
 // taken from a $group=map_colour query against dxrp-w6re — 13 categories
 // covering ~99% of city zones, with a neutral grey fallback for anything
 // that gets added later. Tuned to read clearly under a 0.4 alpha overlay.
-const ZONING_PALETTE = [
+// Exported so main.js can render the floating legend with matching swatches.
+export const ZONING_PALETTE = [
   'Single Family Residential',  '#fff4a3',
   'Two Family Residential',     '#ffd9a0',
   'Multi-Family Residential',   '#f5b97d',
