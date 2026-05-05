@@ -296,7 +296,6 @@ export function initMap(container, { onFeatureClick } = {}) {
         id: 'assess-context-fill',
         type: 'fill',
         source: 'assess-context',
-        layout: { visibility: 'none' },
         paint: {
           'fill-color': '#b22222',
           'fill-opacity': 0.22,
@@ -306,7 +305,6 @@ export function initMap(container, { onFeatureClick } = {}) {
         id: 'assess-context-line',
         type: 'line',
         source: 'assess-context',
-        layout: { visibility: 'none' },
         paint: {
           'line-color': '#690000',
           'line-width': 3,
