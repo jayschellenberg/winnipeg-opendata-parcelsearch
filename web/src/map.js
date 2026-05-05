@@ -693,6 +693,15 @@ function popupHtml(p) {
     if (p.roll_number) lines.push(`<strong>Roll #</strong> ${escapeHtml(p.roll_number)}`);
     if (p.full_address) lines.push(escapeHtml(p.full_address));
     if (p.zoning) lines.push(`<em>${escapeHtml(p.zoning)}</em>`);
+    // For multi-unit buildings (condos, strip malls) the same polygon
+    // covers many roll numbers. dedupeByGeometryHash in main.js stamps
+    // _unitCount on the representative feature so the popup can flag
+    // the other units. Click scrolls to the representative's row;
+    // other units are visible in the table for sort/scroll.
+    const n = Number(p._unitCount);
+    if (Number.isFinite(n) && n > 1) {
+      lines.push(`<small>+ ${n - 1} more unit${n - 1 === 1 ? '' : 's'} at this location — see table for the full list</small>`);
+    }
     return lines.join('<br>');
   }
   // Survey Parcels schema.

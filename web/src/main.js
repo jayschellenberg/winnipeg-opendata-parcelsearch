@@ -29,6 +29,7 @@
 // query and the two datasets don't share attribute columns so they can't
 // be combined in one SoQL where-clause.
 
+import bbox from '@turf/bbox';
 import {
   searchSurveyParcels,
   fetchAssessmentOverlap,
@@ -282,8 +283,16 @@ function setParcels(surveyFc, assessFc = EMPTY_FC) {
   // edges describe building footprints, which aren't useful as "lot
   // dimensions" in the appraisal sense.
   lastSurveyFc = surveyFc;
+  // Dedupe assess-side polygons by geometry before pushing to the map.
+  // Condo buildings (e.g. 635 Ballantrae has 52 units) carry one
+  // assessment roll per unit, all with the same building footprint.
+  // Without dedupe, 52 stacked translucent fills render as solid dark
+  // red and clicking the polygon scrolls the table to whichever unit
+  // MapLibre happened to return first — confusing UX. Dedupe the MAP
+  // (so the polygon is drawn once) while the TABLE keeps every row.
+  const mapAssessFc = dedupeByGeometryHash(assessFc);
   mapReady.then(() => {
-    showResults(map, surveyFc, assessFc);
+    showResults(map, surveyFc, mapAssessFc);
     refreshZoning();
     refreshDimensions();
   });
@@ -512,6 +521,63 @@ function buildZoningLegend() {
     li.appendChild(document.createTextNode(name));
     ul.appendChild(li);
   }
+}
+
+/**
+ * Dedupe a FeatureCollection by geometry hash. Designed for the
+ * map-render side of the assessment flow where multi-unit buildings
+ * (condo towers, strip malls) carry one roll per unit — all with the
+ * same polygon. The TABLE wants every row, but the MAP wants the
+ * polygon drawn once.
+ *
+ * Each kept feature is decorated with `_unitCount` (≥1) and
+ * `_unitAddresses` (top-N comma-joined) so the hover popup can show
+ * "PH18-635 BALLANTRAE DRIVE +51 more units" instead of pretending
+ * there's only one unit there. The original `_rowKey` carries
+ * through (first-seen wins) so clicking the polygon still scrolls
+ * the table to a real row.
+ */
+function dedupeByGeometryHash(fc) {
+  if (!fc?.features?.length) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  const seen = new Map();
+  for (const f of fc.features) {
+    const key = geometryHash(f);
+    if (!key) continue;
+    const existing = seen.get(key);
+    if (existing) {
+      existing.properties._unitCount = (existing.properties._unitCount || 1) + 1;
+      const addr = f.properties?.full_address;
+      if (addr && existing.properties._unitAddresses.length < 5) {
+        existing.properties._unitAddresses.push(addr);
+      }
+    } else {
+      // Clone so we don't mutate the original table-side feature.
+      const clone = {
+        ...f,
+        properties: {
+          ...f.properties,
+          _unitCount: 1,
+          _unitAddresses: f.properties?.full_address ? [f.properties.full_address] : [],
+        },
+      };
+      seen.set(key, clone);
+    }
+  }
+  return { type: 'FeatureCollection', features: [...seen.values()] };
+}
+
+/** Geometry hash for a Polygon/MultiPolygon feature. Uses the bbox
+ *  rounded to 6 dp (~10 cm) so near-identical condo footprints
+ *  collapse to one key without false positives between separate
+ *  buildings. */
+function geometryHash(f) {
+  try {
+    const [minLon, minLat, maxLon, maxLat] = bbox(f);
+    if (![minLon, minLat, maxLon, maxLat].every(Number.isFinite)) return null;
+    return `${minLon.toFixed(6)},${minLat.toFixed(6)},${maxLon.toFixed(6)},${maxLat.toFixed(6)}`;
+  } catch { return null; }
 }
 
 /** Canonical key for an undirected edge between two [lon, lat] points.
