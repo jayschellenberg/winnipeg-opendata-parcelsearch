@@ -865,7 +865,10 @@ function renderTable(rows) {
     tr.appendChild(td(s.block));
     tr.appendChild(td(s.plan));
     tr.appendChild(td(s.description));
-    tr.appendChild(td(a.roll_number));
+    // Roll Number cell links to the same assessment-page record as the
+     // Assessment dollar-value column — gives the user two ways to land
+     // on the source record from a row without having to scan across.
+    tr.appendChild(linkTd(assessmentUrl(a), a.roll_number));
     tr.appendChild(td(a.full_address));
     // Prefer the area-weighted top-1 zoning code; fall back to the
     // assessment dataset's primary `zoning` text if enrichment hasn't

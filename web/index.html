@@ -42,12 +42,12 @@
       <aside class="sidebar controls" aria-label="Search and overlay controls">
         <h2>Search by assessment</h2>
         <span class="field">
-          <input id="roll"    type="text" placeholder="Roll # (contains)" />
-          <span class="tip">Roll # (contains)</span>
-        </span>
-        <span class="field">
           <input id="address" type="text" placeholder="Address (contains)" />
           <span class="tip">Address (contains)</span>
+        </span>
+        <span class="field">
+          <input id="roll"    type="text" placeholder="Roll # (contains, or comma-separated list)" />
+          <span class="tip">Roll # — partial match for a single value, or a comma-separated list for exact multi-roll lookup. Leading zeros optional.</span>
         </span>
         <span class="field">
           <input id="zoning"  type="text" placeholder="Zoning (contains)" />

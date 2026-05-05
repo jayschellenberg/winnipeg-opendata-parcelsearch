@@ -153,7 +153,8 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
  */
 export async function searchAssessmentParcels({ roll, address, zoning, duMode, duMin }) {
   const clauses = [];
-  if (roll)    clauses.push(likeClause('roll_number', roll));
+  const rc = rollClause(roll);
+  if (rc)      clauses.push(rc);
   if (address) clauses.push(likeClause('full_address', address));
   if (zoning)  clauses.push(likeClause('zoning', zoning));
   const duClause = buildDuClause(duMode, duMin);
@@ -530,7 +531,8 @@ async function searchAddressesAndFindParcels(address, extraFilters) {
  */
 async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
   const extras = [];
-  if (extraFilters.roll)   extras.push(likeClause('roll_number', extraFilters.roll));
+  const rc = rollClause(extraFilters.roll);
+  if (rc) extras.push(rc);
   if (extraFilters.zoning) extras.push(likeClause('zoning', extraFilters.zoning));
   const duClause = buildDuClause(extraFilters.duMode, extraFilters.duMin);
   if (duClause) extras.push(duClause);
@@ -1328,4 +1330,53 @@ function escapeSoql(s) {
 // case-insensitive — typing "monarch" matches "10 MONARCH MEWS".
 function likeClause(column, value) {
   return `upper(${column}) like '%${escapeSoql(String(value).toUpperCase())}%'`;
+}
+
+/**
+ * Build the roll-number SoQL clause based on the user input. Two modes,
+ * automatically detected from the input:
+ *
+ *  - Single value (no commas/whitespace separators)
+ *      "300"            → `upper(roll_number) like '%300%'`
+ *    Partial-match LIKE — historical behaviour, lets the user type a
+ *    fragment like a street block.
+ *
+ *  - Comma-separated list (>= 2 tokens after splitting on
+ *    comma/whitespace/semicolon/newline/tab)
+ *      "1000001000, 03093017710, 13052686500"
+ *      → `roll_number IN ('01000001000','03093017710','13052686500')`
+ *    Exact multi-roll lookup. Each token is normalised via
+ *    `normalizeRoll` — strips non-digits and pads to 11 chars — so
+ *    pasted lists tolerate missing leading zeros and stray formatting
+ *    (commas vs newlines from Excel, tabs from a CSV cell, etc.).
+ *
+ * Returns the SoQL clause string, or null when input is empty.
+ */
+function rollClause(roll) {
+  if (!roll) return null;
+  const tokens = String(roll).split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+  if (tokens.length <= 1) {
+    return likeClause('roll_number', roll);
+  }
+  const normalised = tokens.map(normalizeRoll).filter(Boolean);
+  if (normalised.length === 0) return null;
+  // Hard cap protects against accidentally pasting tens of thousands
+  // of rolls and blowing past Socrata's URL/clause-length limits.
+  // Typical use is < 10 rolls; 500 is a comfortable ceiling that
+  // still fits in one query.
+  const capped = normalised.slice(0, 500);
+  const inList = capped.map((r) => `'${escapeSoql(r)}'`).join(',');
+  return `roll_number IN (${inList})`;
+}
+
+/**
+ * Normalise a single roll-number token to its canonical 11-digit form.
+ * Strips any non-digit characters (commas, dashes, spaces) then pads
+ * with leading zeros so that "1000001000" and "01000001000" key the
+ * same. Returns null when nothing's left after stripping.
+ */
+function normalizeRoll(token) {
+  const digits = String(token).replace(/[^0-9]/g, '');
+  if (!digits) return null;
+  return digits.length >= 11 ? digits : digits.padStart(11, '0');
 }

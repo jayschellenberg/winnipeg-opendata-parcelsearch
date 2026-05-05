@@ -816,12 +816,81 @@ Small perf cost on continuous interaction; fine at the scale of an appraisal-res
 | Select specific columns | `$select=col1,col2,col3` |
 | Order by column | `$order=col_name` (use this to make `$limit`-truncated results deterministic) |
 | Row limit | `$limit=1000` (Socrata's anonymous max is 1,000 unless using `$offset`/paging) |
+| **Multi-value exact match** | `column IN ('val1','val2','val3')` |
 | GeoJSON output | Replace `.json` with `.geojson` in the resource URL |
 | Escape a single quote | Double it: `O''Brien` |
 
 `within_box` argument order: **NW corner first** (max lat, min lon), then **SE corner** (min lat, max lon).
 
 Socrata also supports `intersects(geom, wkt)` for true geometry intersection — useful as a fallback when the bbox-pad approach doesn't fit a particular query. The Winnipeg datasets accept it; not all Socrata instances do, so test before relying on it.
+
+---
+
+## 11a. Multi-roll lookup pattern
+
+A common appraisal-research workflow is *"highlight these specific N parcels on the map"* — paste a comma-separated roll-number list from a spreadsheet and have the tool exact-match each, populate the table, and zoom the map. The Winnipeg implementation overloads the existing single Roll # input field rather than adding a separate textarea: behaviour is automatic based on whether the input contains separators.
+
+### Detection logic
+
+```js
+function rollClause(roll) {
+  if (!roll) return null;
+  // Split on comma, semicolon, whitespace, newline, tab — covers Excel-cell
+  // pastes (tab-delimited), CSV cell pastes (commas), and hand-typed lists.
+  const tokens = String(roll).split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+  if (tokens.length <= 1) {
+    // Single value — preserve the historical partial-LIKE behaviour
+    return likeClause('roll_number', roll);
+  }
+  // Multi-value — exact match each, with the input normalised
+  const normalised = tokens.map(normalizeRoll).filter(Boolean);
+  if (normalised.length === 0) return null;
+  const capped = normalised.slice(0, 500);  // URL/clause-length safety
+  const inList = capped.map(r => `'${escapeSoql(r)}'`).join(',');
+  return `roll_number IN (${inList})`;
+}
+```
+
+### Input normalisation
+
+Pasted lists from a spreadsheet often have inconsistent formatting — leading-zero stripped numbers, embedded dashes, padding spaces. The normalizer absorbs all of that:
+
+```js
+function normalizeRoll(token) {
+  const digits = String(token).replace(/[^0-9]/g, '');
+  if (!digits) return null;
+  return digits.length >= 11 ? digits : digits.padStart(11, '0');
+}
+```
+
+So `"1000001000"` and `"01-000-001-000"` both normalise to `01000001000`. The `>= 11` branch leaves longer-than-canonical values alone in case the new jurisdiction uses 12-digit rolls or composite keys.
+
+### Why `IN (…)` not multiple `OR`-joined `=`s
+
+```sql
+roll_number IN ('A','B','C')          -- good: one parsed clause
+roll_number = 'A' OR roll_number = 'B' OR roll_number = 'C'   -- works but wordy
+```
+
+Both produce the same result set, but `IN` is shorter (fewer chars in the URL) and more readable in a debugger / network tab. For 500 rolls the difference is roughly 2× URL size.
+
+### Cap on list length
+
+Socrata accepts arbitrarily long `IN` clauses up to the URL-length limit (typically ~8 KB for a GET). 500 rolls × ~15 chars each + quoting ≈ 7.5 KB — comfortably under. Beyond that you'd need to batch into multiple queries with `Promise.all` and merge by roll number, the same pattern `fetchPerFeatureBboxUnion` uses for spatial OR'd batches. Typical appraisal use is < 10 rolls, so the single-query path covers nearly every real session.
+
+### Adapting to a new jurisdiction
+
+Three things need updating:
+
+1. **The column name**. Replace `roll_number` with whatever the new dataset's unique-identifier column is (`assessment_roll`, `parcel_id`, `pin`, etc.). Same column on both branches of the rollClause if-else.
+2. **The normaliser**. If the new jurisdiction's IDs aren't fixed-width digit strings, simplify to `String(token).trim()` and skip the `padStart`. If they have a different canonical length (e.g. 14 digits in Manitoba), bump the `11` to `14`.
+3. **The placeholder text** on the input — make it clear that paste-list input is supported (e.g. `"Roll # (contains, or comma-separated list)"`).
+
+The detection logic itself (split-on-separators, single = LIKE, many = IN) is generic and translates verbatim. The same pattern works for any column where users want both fuzzy single-value search and exact multi-value lookup — e.g. a property-ID column, a permit-number column, or a parcel-PIN column.
+
+### Other filters compose normally
+
+When the multi-roll list is filled alongside other filters (e.g. roll list + zoning text), they AND together at the SoQL level — no special-casing needed. So pasting 5 rolls AND typing "R1" in zoning returns only those 5 rolls that also have R1 zoning. Useful for narrowing a hand-curated comp set.
 
 ---
 
