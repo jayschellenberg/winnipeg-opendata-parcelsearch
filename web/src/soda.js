@@ -60,6 +60,10 @@ const CORRIDORS_REGIONAL_URL       = 'https://data.winnipeg.ca/resource/ahzi-uwu
 // Set via Vercel env var VITE_SODA_APP_TOKEN; undefined in anonymous mode.
 const APP_TOKEN = import.meta.env.VITE_SODA_APP_TOKEN;
 
+const USER_SEARCH_LIMIT = 1000;
+const SODA_PAGE_SIZE = 5000;
+const SODA_MAX_ROWS = 100000;
+
 /**
  * Query Survey Parcels by attribute. Any provided field is partial-matched
  * with SoQL `like '%x%'`. All provided fields are ANDed. Returns a
@@ -77,9 +81,14 @@ export async function searchSurveyParcels({ plan, lot, block, desc }) {
 
   const params = new URLSearchParams({
     $where: clauses.join(' AND '),
-    $limit: '1000',
+    $order: 'id',
   });
-  return fetchSoda(`${SURVEY_URL}?${params}`);
+  return fetchSodaPaged(SURVEY_URL, params, {
+    pageSize: USER_SEARCH_LIMIT,
+    maxRows: USER_SEARCH_LIMIT,
+    allowTruncated: true,
+    label: 'Survey parcel search',
+  });
 }
 
 /**
@@ -167,9 +176,13 @@ export async function searchAssessmentParcels({ roll, address, zoning, duMode, d
     $where: clauses.join(' AND '),
     $select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
     $order: 'full_address',
-    $limit: '1000',
   });
-  return fetchSoda(`${ASSESS_URL}?${params}`);
+  return fetchSodaPaged(ASSESS_URL, params, {
+    pageSize: USER_SEARCH_LIMIT,
+    maxRows: USER_SEARCH_LIMIT,
+    allowTruncated: true,
+    label: 'Assessment parcel search',
+  });
 }
 
 /**
@@ -246,16 +259,13 @@ export async function searchAddresses({ address }) {
     $where: likeClause('full_address', address),
     $select: 'full_address,point',
     $order: 'full_address',
-    $limit: '1000',
   });
-  const url = `${ADDRESSES_URL}?${params}`;
-  const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
-  }
-  const rows = await res.json();
+  const { rows, meta } = await fetchSodaRowsPaged(ADDRESSES_URL, params, {
+    pageSize: USER_SEARCH_LIMIT,
+    maxRows: USER_SEARCH_LIMIT,
+    allowTruncated: true,
+    label: 'Civic address search',
+  });
   const features = rows
     .filter((r) => r.point?.coordinates?.length === 2)
     .map((r) => ({
@@ -263,7 +273,7 @@ export async function searchAddresses({ address }) {
       geometry: r.point,
       properties: { full_address: r.full_address },
     }));
-  return { type: 'FeatureCollection', features };
+  return featureCollection(features, meta);
 }
 
 /**
@@ -466,25 +476,22 @@ async function fetchAddressPointsForParcels(parcelFc) {
     batches.push(clauses.slice(i, i + BATCH));
   }
 
-  const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
   const responses = await Promise.all(
-    batches.map(async (group) => {
+    batches.map((group) => {
       const params = new URLSearchParams({
         $where: group.join(' OR '),
         $select: 'full_address,point',
-        $limit: '5000',
+        $order: 'full_address',
       });
-      const res = await fetch(`${ADDRESSES_URL}?${params}`, { headers });
-      if (!res.ok) {
-        throw new Error(`SODA ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      }
-      return res.json();
+      return fetchSodaRowsPaged(ADDRESSES_URL, params, {
+        label: 'Civic address enrichment',
+      });
     })
   );
 
   const features = [];
   const seen = new Set();
-  for (const rows of responses) {
+  for (const { rows } of responses) {
     for (const row of rows) {
       if (!row.point?.coordinates || row.point.coordinates.length !== 2) continue;
       const key = `${row.full_address}|${row.point.coordinates.join(',')}`;
@@ -497,7 +504,7 @@ async function fetchAddressPointsForParcels(parcelFc) {
       });
     }
   }
-  return { type: 'FeatureCollection', features };
+  return featureCollection(features);
 }
 
 /**
@@ -521,7 +528,7 @@ async function searchAddressesAndFindParcels(address, extraFilters) {
   const features = candidates.features.filter((parcel) =>
     addressFc.features.some((addr) => booleanPointInPolygon(addr, parcel))
   );
-  return { type: 'FeatureCollection', features };
+  return featureCollection(features, mergeMeta([addressFc, candidates]));
 }
 
 /**
@@ -554,6 +561,7 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
 function mergeFcByKey(fcs, key) {
   const seen = new Set();
   const features = [];
+  const meta = mergeMeta(fcs);
   for (const fc of fcs) {
     for (const feat of fc.features) {
       const k = feat.properties?.[key];
@@ -562,7 +570,7 @@ function mergeFcByKey(fcs, key) {
       features.push(feat);
     }
   }
-  return { type: 'FeatureCollection', features };
+  return featureCollection(features, meta);
 }
 
 /**
@@ -611,9 +619,11 @@ export async function fetchCityZoning() {
     }
     const params = new URLSearchParams({
       $select: 'id,zoning,short_description,long_description,map_colour,location',
-      $limit: '20000',
+      $order: 'id',
     });
-    const fc = await fetchSoda(`${ZONING_URL}?${params}`);
+    const fc = await fetchSodaPaged(ZONING_URL, params, {
+      label: 'Citywide zoning fetch',
+    });
     // Fire-and-forget so the caller doesn't wait on the disk write.
     idbWriteCache(CITY_ZONING_CACHE_KEY, fc).catch((err) =>
       console.warn('IndexedDB write failed for cityZoning', err)
@@ -864,8 +874,9 @@ const OVERLAY_CACHE = new Map();
 async function fetchAllAndCache(key, url) {
   if (OVERLAY_CACHE.has(key)) return OVERLAY_CACHE.get(key);
   const promise = (async () => {
-    const params = new URLSearchParams({ $limit: '5000' });
-    return fetchSoda(`${url}?${params}`);
+    return fetchSodaPaged(url, new URLSearchParams(), {
+      label: `Overlay fetch (${key})`,
+    });
   })();
   OVERLAY_CACHE.set(key, promise);
   try {
@@ -1287,10 +1298,12 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
         : groupClause;
       const params = new URLSearchParams({
         $where: where,
-        $limit: '5000',
       });
       if (select) params.set('$select', select);
-      return fetchSoda(`${baseUrl}?${params}`);
+      if (dedupeKey) params.set('$order', dedupeKey);
+      return fetchSodaPaged(baseUrl, params, {
+        label: 'Spatial enrichment query',
+      });
     })
   );
 
@@ -1298,6 +1311,7 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
   // happens to straddle two input parcels near a batch boundary.
   const seen = new Set();
   const merged = [];
+  const meta = mergeMeta(responses);
   for (const r of responses) {
     for (const feat of r.features) {
       const key = feat.properties?.[dedupeKey];
@@ -1306,7 +1320,7 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
       merged.push(feat);
     }
   }
-  return { type: 'FeatureCollection', features: merged };
+  return featureCollection(merged, meta);
 }
 
 async function fetchSoda(url) {
@@ -1317,6 +1331,85 @@ async function fetchSoda(url) {
     throw new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
   }
   return res.json();
+}
+
+async function fetchSodaPaged(baseUrl, params, options = {}) {
+  const { items: features, meta } = await fetchSodaItemsPaged({
+    baseUrl,
+    params,
+    getItems: (page) => page?.features || [],
+    ...options,
+  });
+  return featureCollection(features, meta);
+}
+
+async function fetchSodaRowsPaged(baseUrl, params, options = {}) {
+  return fetchSodaItemsPaged({
+    baseUrl,
+    params,
+    getItems: (page) => Array.isArray(page) ? page : [],
+    ...options,
+  });
+}
+
+async function fetchSodaItemsPaged({
+  baseUrl,
+  params,
+  getItems,
+  pageSize = SODA_PAGE_SIZE,
+  maxRows = SODA_MAX_ROWS,
+  allowTruncated = false,
+  label = 'SODA query',
+}) {
+  const items = [];
+  let offset = 0;
+  let truncated = false;
+
+  while (items.length < maxRows) {
+    const pageLimit = Math.min(pageSize, maxRows - items.length);
+    const pageParams = new URLSearchParams(params);
+    pageParams.set('$limit', String(pageLimit));
+    pageParams.set('$offset', String(offset));
+
+    const page = await fetchSoda(`${baseUrl}?${pageParams}`);
+    const pageItems = getItems(page);
+    items.push(...pageItems);
+    offset += pageItems.length;
+
+    if (pageItems.length < pageLimit || pageItems.length === 0) {
+      break;
+    }
+  }
+
+  if (items.length >= maxRows) {
+    const probeParams = new URLSearchParams(params);
+    probeParams.set('$limit', '1');
+    probeParams.set('$offset', String(offset));
+    const probe = await fetchSoda(`${baseUrl}?${probeParams}`);
+    truncated = getItems(probe).length > 0;
+  }
+
+  if (truncated && !allowTruncated) {
+    throw new Error(`${label} exceeded ${maxRows.toLocaleString('en-US')} rows; refine your search.`);
+  }
+
+  return {
+    items,
+    rows: items,
+    meta: truncated ? { truncated: true, limit: maxRows, label } : null,
+  };
+}
+
+function featureCollection(features, meta = null) {
+  const fc = { type: 'FeatureCollection', features };
+  if (meta) fc.meta = meta;
+  return fc;
+}
+
+function mergeMeta(fcs) {
+  return fcs.some((fc) => fc?.meta?.truncated)
+    ? { truncated: true }
+    : null;
 }
 
 // SoQL string literal escape: double any single quotes.

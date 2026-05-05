@@ -660,9 +660,7 @@ async function runLegalSearch(inputs) {
   // is drawn from Survey Parcels, so we key on survey.id.
   tagFeatures(surveyFc, 'survey');
 
-  const countMsg = n === 1000
-    ? '1000 parcels found (limit reached — refine your search)'
-    : `${n} parcels found`;
+  const countMsg = parcelCountMsg(n, surveyFc);
   setCount(`${countMsg} · loading roll numbers…`);
 
   // Show survey-only rows in the table immediately. Assessment overlay
@@ -737,9 +735,7 @@ async function runAssessmentSearch(inputs) {
   // Assessment Parcels, so we key on assess.roll_number.
   tagFeatures(assessFc, 'assess');
 
-  const countMsg = n === 1000
-    ? '1000 parcels found (limit reached — refine your search)'
-    : `${n} parcels found`;
+  const countMsg = parcelCountMsg(n, assessFc);
   setCount(`${countMsg} · loading legal descriptions…`);
 
   // Show assessment-only rows in the table immediately. Map renders the
@@ -789,6 +785,12 @@ async function runAssessmentSearch(inputs) {
 
 function setCount(text) {
   $count.textContent = text;
+}
+
+function parcelCountMsg(n, fc) {
+  return fc?.meta?.truncated
+    ? `Showing first ${n} parcels (limit reached — refine your search)`
+    : `${n} parcels found`;
 }
 
 function setBusy(busy) {

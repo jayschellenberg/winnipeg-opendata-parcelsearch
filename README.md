@@ -43,12 +43,12 @@ The City has **42 adopted Local Area / Secondary Plans** (per the [Long Range Pl
 - **Assessment-first flow** — fill any of *Roll # / Address / Zoning / DU mode*. Queries Assessment Parcels by attribute and cross-references the Addresses dataset, so a search for "440 Hargrave" finds the parcel even when the assessment dataset's primary address is "400 Hargrave Street". Survey Parcels back-fill the Lot / Block / Plan columns.
 - **Legal-description flow** — fill any of *Lot / Block / Plan / Description*. Queries Survey Parcels by attribute, then back-fills the Roll #, address, zoning, dwelling units, total assessed value, and Manitoba Assessment Online link.
 
-In both flows the map shows **two parcel layers simultaneously**:
+The map supports **two parcel layers**, which can be shown together or separately:
 
 - **Blue** = Survey parcels (legal lots from Land Titles)
 - **Red** = Assessment parcels (tax-assessed properties — building/roll footprints)
 
-The two don't always 1:1 align — one assessment roll can cover many survey lots (e.g. 400 Hargrave covers 20+ downtown lots) and one survey lot can be split between multiple rolls (e.g. a duplex). The table merges either side into one row with the lot list grouped by plan and "(partial)" suffixes for split lots.
+Assessment parcels are visible by default; Survey parcels start hidden and can be turned on with **Show Survey** when the blue legal-lot outlines are useful. The two don't always 1:1 align — one assessment roll can cover many survey lots (e.g. 400 Hargrave covers 20+ downtown lots) and one survey lot can be split between multiple rolls (e.g. a duplex). The table merges either side into one row with the lot list grouped by plan and "(partial)" suffixes for split lots.
 
 ## Sidebar layout
 
@@ -58,8 +58,8 @@ The page uses a two-pane layout with a **320 px sticky left sidebar** holding ev
 - **Search by assessment** — Roll #, Address, Zoning, DU mode + min input
 - **Search by legal description** — Lot, Block, Plan, Description
 - **Search · Clear · Export CSV** action row + result count chip
-- **Map overlays** — 7 buttons in a 2-column grid:
-  - Hide Survey / Hide Assessment (default on, blue/red parcel layers)
+- **Map overlays** — compact buttons and links in a 2-column grid:
+  - Show Survey / Hide Assessment (Survey off, Assessment on by default)
   - Show Zoning (citywide colour-coded overlay; first toggle ~10–15 s, instant after)
   - Show Secondary Plans (Precincts + Major Redev sites)
   - Show Infill Area (Mature Community boundaries)
@@ -67,17 +67,17 @@ The page uses a two-pane layout with a **320 px sticky left sidebar** holding ev
   - Show Dimensions (lot edge lengths in feet, zoom ≥ 17)
 - **River-Lots / Outer-Two-Mile / Section-Township-Range hint** (collapsible)
 
-The right pane holds the map, the results table, the Generate Static Map button, and the disclaimer. Below 980 px viewport the layout collapses to a single column for tablets.
+The right pane holds the responsive 16:9 map, the results table, the captured Screenshot Map output, and the disclaimer. Below 980 px viewport the layout collapses to a single column for tablets.
 
 ## Map features
 
 - **Streets ⇄ Satellite** basemap toggle in the top-right gutter (Esri World Imagery, no API key)
-- **Two floating legends** — survey/assessment swatch box (bottom-right) and zoning category list (bottom-left, only when zoning is on)
+- **Floating zoning legend** — category list appears on the map only when zoning is on
 - **Combined hover popup** — when hovering on a survey lot inside an assessment parcel, both parcel info blocks show stacked under colour-coded headers
-- **Click any layer (blue, red, zoning, policy overlays)** → scrolls to the matching row in the results table
+- **Click any visible parcel layer (blue or red)** → scrolls to the matching row in the results table
 - **Click any results table row** → flies the map to that parcel
 - **Lot dimensions** (toggleable) — survey-lot edges labelled in feet at zoom ≥ 17, deduplicated across shared edges
-- **Generate Static Map** — captures the current view as a PNG with attribution composited, for dropping into reports
+- **Screenshot Map** — captures the current view as a PNG with attribution composited, for dropping into reports
 
 ## Results table columns
 

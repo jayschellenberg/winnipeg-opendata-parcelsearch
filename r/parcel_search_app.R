@@ -18,6 +18,14 @@ library(DT)
 
 data_dir <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
 
+sql_escape <- function(value) {
+  gsub("'", "''", value, fixed = TRUE)
+}
+
+sql_like <- function(column, value) {
+  paste0(column, " LIKE '%", sql_escape(value), "%'")
+}
+
 # --- Discover every snapshot in the folder, sorted newest-first ---
 gpkg_files <- sort(
   list.files(data_dir, pattern = "^SurveyParcels_\\d{8}\\.gpkg$", full.names = TRUE),
@@ -133,10 +141,10 @@ server <- function(input, output, session) {
   # types criteria, then clicks Search.
   results <- eventReactive(input$search, {
     clauses <- c()
-    if (nzchar(input$plan))  clauses <- c(clauses, paste0("plan LIKE '%",  input$plan,  "%'"))
-    if (nzchar(input$lot))   clauses <- c(clauses, paste0("lot LIKE '%",   input$lot,   "%'"))
-    if (nzchar(input$block)) clauses <- c(clauses, paste0("block LIKE '%", input$block, "%'"))
-    if (nzchar(input$desc))  clauses <- c(clauses, paste0("description LIKE '%", input$desc, "%'"))
+    if (nzchar(input$plan))  clauses <- c(clauses, sql_like("plan", input$plan))
+    if (nzchar(input$lot))   clauses <- c(clauses, sql_like("lot", input$lot))
+    if (nzchar(input$block)) clauses <- c(clauses, sql_like("block", input$block))
+    if (nzchar(input$desc))  clauses <- c(clauses, sql_like("description", input$desc))
     if (length(clauses) == 0) return(NULL)
 
     where <- paste(clauses, collapse = " AND ")
