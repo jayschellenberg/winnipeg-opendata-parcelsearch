@@ -6,7 +6,7 @@
 //   Assessment Parcels d4mq-wa44   (roll_number, full_address, zoning, geometry, ...)
 //      geometry column name in SoQL: `geometry`  (multipolygon)
 //
-// Two search flows, both exactly two SODA calls per user query:
+// Two search flows, both built from paged SODA calls:
 //
 //   A) Legal-description search (plan/lot/block/description):
 //      1. searchSurveyParcels({ plan, lot, block, desc })
@@ -22,6 +22,8 @@
 //
 // In both flows the final polygon-overlap join is done client-side with
 // turf.js so matching is exact, not just bbox containment.
+// User-facing searches intentionally cap at 1,000 rows and return
+// truncation metadata; enrichment and overlay queries page until complete.
 
 import bbox from '@turf/bbox';
 import booleanIntersects from '@turf/boolean-intersects';
@@ -56,6 +58,14 @@ const MALLS_REGIONAL_CENTRE_URL    = 'https://data.winnipeg.ca/resource/wv32-jdt
 const CORRIDORS_URBAN_URL          = 'https://data.winnipeg.ca/resource/t4kh-5gtd.geojson';  // OurWPG Urban Mixed Use Corridor
 const CORRIDORS_REGIONAL_URL       = 'https://data.winnipeg.ca/resource/ahzi-uwu2.geojson';  // OurWPG Regional Mixed Use Corridor
 
+// Traffic-volume overlays. Midblock counts are 15-minute portable-count rows
+// keyed by study/corridor but have no geometry. Road Network supplies the
+// street-centerline geometry we use for a best-effort corridor match. Permanent
+// count stations have point geometry and are shown as station circles.
+const MIDBLOCK_TRAFFIC_COUNTS_URL = 'https://data.winnipeg.ca/resource/buvf-b9wp.json';
+const PERMANENT_TRAFFIC_COUNTS_URL = 'https://data.winnipeg.ca/resource/46sc-6jrs.json';
+const ROAD_NETWORK_URL = 'https://data.winnipeg.ca/resource/ngsx-caav.geojson';
+
 // Optional Socrata app token. Raises the anonymous rate limit.
 // Set via Vercel env var VITE_SODA_APP_TOKEN; undefined in anonymous mode.
 const APP_TOKEN = import.meta.env.VITE_SODA_APP_TOKEN;
@@ -63,6 +73,8 @@ const APP_TOKEN = import.meta.env.VITE_SODA_APP_TOKEN;
 const USER_SEARCH_LIMIT = 1000;
 const SODA_PAGE_SIZE = 5000;
 const SODA_MAX_ROWS = 100000;
+const TRAFFIC_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV3';
 
 /**
  * Query Survey Parcels by attribute. Any provided field is partial-matched
@@ -783,6 +795,517 @@ function parcelSetCacheKey(fc) {
   }
   parts.sort();
   return parts.join('|');
+}
+
+/**
+ * Fetch traffic-volume overlays:
+ *   - midblock traffic counts joined onto road-network line geometry
+ *   - permanent count stations as point markers using the latest 24h window
+ *
+ * Midblock counts are cached longer because the aggregate+join is the expensive
+ * part and the underlying portable studies update slowly. Permanent stations
+ * are fetched fresh so their 24h totals stay current.
+ */
+export async function fetchTrafficVolumes() {
+  const [linesResult, stationsResult] = await Promise.allSettled([
+    fetchTrafficVolumeLines(),
+    fetchPermanentTrafficStations(),
+  ]);
+
+  if (linesResult.status === 'rejected' && stationsResult.status === 'rejected') {
+    throw linesResult.reason || stationsResult.reason;
+  }
+  if (linesResult.status === 'rejected') {
+    console.warn('traffic line overlay failed', linesResult.reason);
+  }
+  if (stationsResult.status === 'rejected') {
+    console.warn('traffic station overlay failed', stationsResult.reason);
+  }
+
+  return {
+    lines: linesResult.status === 'fulfilled' ? linesResult.value : featureCollection([]),
+    stations: stationsResult.status === 'fulfilled' ? stationsResult.value : featureCollection([]),
+  };
+}
+
+async function fetchTrafficVolumeLines() {
+  try {
+    const cached = await idbReadCache(TRAFFIC_CACHE_KEY, TRAFFIC_CACHE_TTL_MS);
+    if (cached?.features) return cached;
+  } catch (err) {
+    console.warn('traffic cache read failed; rebuilding', err);
+  }
+
+  const [countRows, roadFc] = await Promise.all([
+    fetchMidblockTrafficStudyRows(),
+    fetchRoadNetwork(),
+  ]);
+  const latestRows = latestTrafficRowsByCorridor(countRows);
+  const roadIndex = buildRoadIndex(roadFc);
+  const fc = featureCollection(buildTrafficLineFeatures(latestRows, roadIndex), {
+    source: 'Midblock Traffic Counts + Road Network',
+    generated_at: new Date().toISOString(),
+  });
+
+  idbWriteCache(TRAFFIC_CACHE_KEY, fc).catch((err) =>
+    console.warn('traffic cache write failed', err)
+  );
+  return fc;
+}
+
+async function fetchMidblockTrafficStudyRows() {
+  const params = new URLSearchParams({
+    $select: [
+      'study_id',
+      'street',
+      'street_from',
+      'street_to',
+      'location_description',
+      'count_date',
+      'sum(count_15_minutes)',
+      'count(*)',
+    ].join(','),
+    $group: 'study_id,street,street_from,street_to,location_description,count_date',
+    $order: 'count_date DESC',
+  });
+  const { rows } = await fetchSodaRowsPaged(MIDBLOCK_TRAFFIC_COUNTS_URL, params, {
+    label: 'Midblock traffic-count daily aggregate',
+  });
+  return aggregateMidblockStudyRows(rows);
+}
+
+function aggregateMidblockStudyRows(rows) {
+  const byStudy = new Map();
+  for (const row of rows) {
+    const key = [
+      row.study_id,
+      normalizeStreetName(row.street),
+      normalizeStreetName(row.street_from),
+      normalizeStreetName(row.street_to),
+      row.location_description || '',
+    ].join('|');
+    if (!byStudy.has(key)) {
+      byStudy.set(key, {
+        study_id: row.study_id,
+        street: row.street,
+        street_from: row.street_from,
+        street_to: row.street_to,
+        location_description: row.location_description,
+        min_count_date: row.count_date,
+        max_count_date: row.count_date,
+        sum_count_15_minutes: 0,
+        count: 0,
+        _dateSet: new Set(),
+      });
+    }
+    const entry = byStudy.get(key);
+    const total = Number(row.sum_count_15_minutes);
+    if (Number.isFinite(total)) entry.sum_count_15_minutes += total;
+    const intervals = Number(row.count);
+    if (Number.isFinite(intervals)) entry.count += intervals;
+    if (row.count_date) {
+      entry._dateSet.add(row.count_date);
+      if (!entry.min_count_date || Date.parse(row.count_date) < Date.parse(entry.min_count_date)) {
+        entry.min_count_date = row.count_date;
+      }
+      if (!entry.max_count_date || Date.parse(row.count_date) > Date.parse(entry.max_count_date)) {
+        entry.max_count_date = row.count_date;
+      }
+    }
+  }
+
+  return [...byStudy.values()].map((entry) => {
+    const sample_day_count = entry._dateSet.size || 1;
+    delete entry._dateSet;
+    return { ...entry, sample_day_count };
+  });
+}
+
+async function fetchRoadNetwork() {
+  const params = new URLSearchParams({
+    $select: 'segment_id,full_name,st_name,st_type,st_dir,from_right,to_right,from_left,to_left,type,the_geom',
+    $order: 'segment_id',
+  });
+  return fetchSodaPaged(ROAD_NETWORK_URL, params, {
+    label: 'Road network fetch',
+  });
+}
+
+function latestTrafficRowsByCorridor(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    const key = trafficCorridorKey(row);
+    if (!key || seen.has(key)) continue;
+    const avg = averageDailyVolume(row);
+    if (!Number.isFinite(avg) || avg <= 0) continue;
+    seen.add(key);
+    row._avgDailyVolume = Math.round(avg);
+    row._sampleDays = trafficStudyDayCount(row);
+    out.push(row);
+  }
+  return out;
+}
+
+function buildTrafficLineFeatures(rows, roadIndex) {
+  const bySegment = new Map();
+  const endpointCache = new Map();
+
+  for (const row of rows) {
+    const features = buildTrafficCorridorFeatures(row, roadIndex, endpointCache);
+    for (const feature of features) {
+      const key = feature.properties.segment_id
+        ? `segment:${feature.properties.segment_id}`
+        : `study:${feature.properties.study_id}`;
+      const existing = bySegment.get(key);
+      if (!existing || newerTrafficFeature(feature, existing)) {
+        bySegment.set(key, feature);
+      }
+    }
+  }
+
+  return [...bySegment.values()];
+}
+
+function buildTrafficCorridorFeatures(row, roadIndex, endpointCache) {
+  const mainKey = normalizeStreetName(row.street);
+  const mainGroup = roadIndex.get(mainKey);
+  if (!mainGroup) return [];
+
+  const fromPoint = findStreetCrossing(mainGroup, row.street_from, roadIndex, endpointCache);
+  const toPoint = findStreetCrossing(mainGroup, row.street_to, roadIndex, endpointCache);
+  if (!fromPoint || !toPoint || distanceSq(fromPoint, toPoint) < 1e-12) return [];
+
+  const props = trafficLineProperties(row);
+  const maxDist = corridorToleranceDeg(fromPoint, toPoint);
+  const features = [];
+  for (const roadFeature of mainGroup.features) {
+    if (!roadFeatureWithinCorridor(roadFeature, fromPoint, toPoint, maxDist)) continue;
+    features.push({
+      type: 'Feature',
+      geometry: roadFeature.geometry,
+      properties: {
+        ...props,
+        segment_id: roadFeature.properties?.segment_id ?? null,
+        road_name: roadFeature.properties?.full_name ?? row.street,
+        match_type: 'road segment',
+      },
+    });
+  }
+
+  // Fallback: if the endpoints were found but no same-street segment midpoint
+  // fell between them, draw a straight reference line. Rare, but better than
+  // hiding a valid count because the road-network geometry is oddly split.
+  if (!features.length) {
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: [fromPoint, toPoint] },
+      properties: { ...props, segment_id: null, road_name: row.street, match_type: 'approximate corridor' },
+    });
+  }
+  return features;
+}
+
+function trafficLineProperties(row) {
+  const avg = row._avgDailyVolume;
+  return {
+    traffic_kind: 'midblock',
+    study_id: row.study_id,
+    street: row.street,
+    street_from: row.street_from,
+    street_to: row.street_to,
+    location_description: row.location_description,
+    avg_daily_volume: avg,
+    volume_label: shortTrafficVolume(avg),
+    volume_text: Number(avg).toLocaleString('en-US'),
+    count_start: row.min_count_date,
+    count_end: row.max_count_date,
+    sample_days: row._sampleDays,
+    interval_count: Number(row.count) || null,
+    source_name: 'Midblock Traffic Counts',
+  };
+}
+
+function newerTrafficFeature(a, b) {
+  const da = Date.parse(a.properties?.count_end || '');
+  const db = Date.parse(b.properties?.count_end || '');
+  if (Number.isFinite(da) && Number.isFinite(db) && da !== db) return da > db;
+  return Number(a.properties?.avg_daily_volume || 0) > Number(b.properties?.avg_daily_volume || 0);
+}
+
+async function fetchPermanentTrafficStations() {
+  const latestParams = new URLSearchParams({ $select: 'max(timestamp)' });
+  const { rows: latestRows } = await fetchSodaRowsPaged(PERMANENT_TRAFFIC_COUNTS_URL, latestParams, {
+    label: 'Permanent traffic station latest timestamp',
+  });
+  const latest = latestRows[0]?.max_timestamp;
+  if (!latest) return featureCollection([]);
+
+  const end = new Date(latest);
+  const start = new Date(end.getTime() - (24 * 60 * 60 * 1000) + (15 * 60 * 1000));
+  const where = `timestamp >= '${sodaDateTime(start)}' AND timestamp <= '${sodaDateTime(end)}'`;
+  const params = new URLSearchParams({
+    $select: 'site,location,min(timestamp),max(timestamp),sum(total),count(*)',
+    $where: where,
+    $group: 'site,location',
+    $order: 'site',
+  });
+  const { rows } = await fetchSodaRowsPaged(PERMANENT_TRAFFIC_COUNTS_URL, params, {
+    label: 'Permanent traffic station 24h aggregate',
+  });
+
+  const features = rows
+    .filter((row) => row.location?.coordinates?.length === 2)
+    .map((row) => {
+      const avg = Math.round(Number(row.sum_total) / Math.max(trafficSampleDays({
+        min_count_date: row.min_timestamp,
+        max_count_date: row.max_timestamp,
+      }), 1));
+      return {
+        type: 'Feature',
+        geometry: row.location,
+        properties: {
+          traffic_kind: 'station',
+          site: row.site,
+          avg_daily_volume: avg,
+          volume_label: shortTrafficVolume(avg),
+          volume_text: Number(avg).toLocaleString('en-US'),
+          count_start: row.min_timestamp,
+          count_end: row.max_timestamp,
+          interval_count: Number(row.count) || null,
+          source_name: 'Permanent Count Station Traffic Counts',
+        },
+      };
+    });
+  return featureCollection(features, { source: 'Permanent Count Station Traffic Counts' });
+}
+
+function buildRoadIndex(roadFc) {
+  const index = new Map();
+  for (const feature of roadFc.features || []) {
+    if (!feature.geometry) continue;
+    const segments = flattenLineSegments(feature);
+    if (!segments.length) continue;
+    const aliases = roadNameAliases(feature.properties || {});
+    for (const key of aliases) {
+      if (!key) continue;
+      if (!index.has(key)) index.set(key, { key, features: [], segments: [] });
+      const group = index.get(key);
+      group.features.push(feature);
+      for (const seg of segments) group.segments.push({ ...seg, feature });
+    }
+  }
+  return index;
+}
+
+function roadNameAliases(p) {
+  const aliases = new Set();
+  aliases.add(normalizeStreetName(p.full_name));
+  aliases.add(normalizeStreetName([p.st_name, p.st_type, p.st_dir].filter(Boolean).join(' ')));
+  aliases.add(normalizeStreetName([p.st_name, p.st_type].filter(Boolean).join(' ')));
+  aliases.add(normalizeStreetName(p.st_name));
+  aliases.delete('');
+  return aliases;
+}
+
+function findStreetCrossing(mainGroup, crossStreet, roadIndex, cache) {
+  const crossKey = normalizeStreetName(crossStreet);
+  if (!crossKey) return null;
+  const cacheKey = `${mainGroup.key}|${crossKey}`;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  const crossGroup = roadIndex.get(crossKey);
+  if (!crossGroup) {
+    cache.set(cacheKey, null);
+    return null;
+  }
+
+  let best = null;
+  for (const mainSeg of mainGroup.segments) {
+    for (const crossSeg of crossGroup.segments) {
+      const intersectPoint = segmentIntersection(mainSeg.a, mainSeg.b, crossSeg.a, crossSeg.b);
+      if (intersectPoint) {
+        cache.set(cacheKey, intersectPoint);
+        return intersectPoint;
+      }
+      const candidate = closestMainPointToSegment(mainSeg, crossSeg);
+      if (!best || candidate.distSq < best.distSq) best = candidate;
+    }
+  }
+
+  const snapLimit = 0.0012; // roughly 85m at Winnipeg latitude
+  const point = best && best.distSq <= snapLimit * snapLimit ? best.point : null;
+  cache.set(cacheKey, point);
+  return point;
+}
+
+function roadFeatureWithinCorridor(feature, a, b, maxDist) {
+  const center = featureCenter(feature);
+  if (!center) return false;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return false;
+  const t = ((center[0] - a[0]) * dx + (center[1] - a[1]) * dy) / lenSq;
+  if (t < -0.04 || t > 1.04) return false;
+  const proj = [a[0] + dx * t, a[1] + dy * t];
+  return Math.sqrt(distanceSq(center, proj)) <= maxDist;
+}
+
+function featureCenter(feature) {
+  try {
+    const [minLon, minLat, maxLon, maxLat] = bbox(feature);
+    return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
+  } catch {
+    return null;
+  }
+}
+
+function corridorToleranceDeg(a, b) {
+  const len = Math.sqrt(distanceSq(a, b));
+  return Math.min(0.01, Math.max(0.002, len * 0.18));
+}
+
+function flattenLineSegments(feature) {
+  const geom = feature.geometry;
+  const lines = [];
+  if (geom.type === 'LineString') {
+    lines.push(geom.coordinates);
+  } else if (geom.type === 'MultiLineString') {
+    lines.push(...geom.coordinates);
+  }
+  const segments = [];
+  for (const line of lines) {
+    for (let i = 0; i < line.length - 1; i++) {
+      const a = line[i];
+      const b = line[i + 1];
+      if (Array.isArray(a) && Array.isArray(b)) segments.push({ a, b });
+    }
+  }
+  return segments;
+}
+
+function segmentIntersection(a, b, c, d) {
+  const x1 = a[0], y1 = a[1];
+  const x2 = b[0], y2 = b[1];
+  const x3 = c[0], y3 = c[1];
+  const x4 = d[0], y4 = d[1];
+  const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(denom) < 1e-14) return null;
+  const px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom;
+  const py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom;
+  const eps = 1e-10;
+  if (px < Math.min(x1, x2) - eps || px > Math.max(x1, x2) + eps) return null;
+  if (py < Math.min(y1, y2) - eps || py > Math.max(y1, y2) + eps) return null;
+  if (px < Math.min(x3, x4) - eps || px > Math.max(x3, x4) + eps) return null;
+  if (py < Math.min(y3, y4) - eps || py > Math.max(y3, y4) + eps) return null;
+  return [px, py];
+}
+
+function closestMainPointToSegment(mainSeg, crossSeg) {
+  const candidates = [
+    closestPointOnSegment(crossSeg.a, mainSeg.a, mainSeg.b),
+    closestPointOnSegment(crossSeg.b, mainSeg.a, mainSeg.b),
+    { point: mainSeg.a, distSq: distanceSq(mainSeg.a, closestPointOnSegment(mainSeg.a, crossSeg.a, crossSeg.b).point) },
+    { point: mainSeg.b, distSq: distanceSq(mainSeg.b, closestPointOnSegment(mainSeg.b, crossSeg.a, crossSeg.b).point) },
+  ];
+  candidates[0].distSq = distanceSq(candidates[0].point, crossSeg.a);
+  candidates[1].distSq = distanceSq(candidates[1].point, crossSeg.b);
+  return candidates.sort((a, b) => a.distSq - b.distSq)[0];
+}
+
+function closestPointOnSegment(p, a, b) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return { point: a, distSq: distanceSq(p, a) };
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / lenSq));
+  const point = [a[0] + dx * t, a[1] + dy * t];
+  return { point, distSq: distanceSq(p, point) };
+}
+
+function distanceSq(a, b) {
+  const dx = a[0] - b[0];
+  const dy = a[1] - b[1];
+  return dx * dx + dy * dy;
+}
+
+function averageDailyVolume(row) {
+  const total = Number(row.sum_count_15_minutes);
+  const days = trafficStudyDayCount(row);
+  return Number.isFinite(total) && days > 0 ? total / days : null;
+}
+
+function trafficStudyDayCount(row) {
+  const days = Number(row.sample_day_count ?? row.count_distinct_count_date);
+  if (Number.isFinite(days) && days > 0) return days;
+  return trafficSampleDays(row);
+}
+
+function trafficSampleDays(row) {
+  const start = Date.parse(row.min_count_date || row.min_timestamp || '');
+  const end = Date.parse(row.max_count_date || row.max_timestamp || '');
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 1;
+  const ms = Math.max(15 * 60 * 1000, end - start + 15 * 60 * 1000);
+  return Math.round((ms / (24 * 60 * 60 * 1000)) * 100) / 100;
+}
+
+function trafficCorridorKey(row) {
+  const street = normalizeStreetName(row.street);
+  const a = normalizeStreetName(row.street_from);
+  const b = normalizeStreetName(row.street_to);
+  if (!street || !a || !b) return null;
+  return `${street}|${[a, b].sort().join('|')}`;
+}
+
+const STREET_TYPE_ALIASES = {
+  AVENUE: 'AVE',
+  AV: 'AVE',
+  BOULEVARD: 'BLVD',
+  BVD: 'BLVD',
+  CIRCLE: 'CIR',
+  CRESCENT: 'CRES',
+  CRESC: 'CRES',
+  COURT: 'CRT',
+  DRIVE: 'DR',
+  HIGHWAY: 'HWY',
+  LANE: 'LN',
+  PARKWAY: 'PKWY',
+  PLACE: 'PL',
+  ROAD: 'RD',
+  SAINT: 'ST',
+  STREET: 'ST',
+  TERRACE: 'TER',
+  TRAIL: 'TRL',
+};
+
+function normalizeStreetName(raw) {
+  if (!raw) return '';
+  return String(raw)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/['’]/g, '')
+    .replace(/&/g, ' AND ')
+    .replace(/[^A-Za-z0-9]+/g, ' ')
+    .trim()
+    .toUpperCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => STREET_TYPE_ALIASES[token] || token)
+    .join(' ');
+}
+
+function shortTrafficVolume(n) {
+  const value = Number(n);
+  if (!Number.isFinite(value)) return '';
+  if (value >= 10000) return `${Math.round(value / 1000)}k`;
+  if (value >= 1000) return `${Math.round(value / 100) / 10}k`;
+  return String(Math.round(value));
+}
+
+function sodaDateTime(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    + `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 /**

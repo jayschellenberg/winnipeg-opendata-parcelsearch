@@ -27,16 +27,16 @@ This document explains how to build the same parcel-search tool for a different 
 - **Legal-description search** (Lot / Block / Plan / Description): queries a **Survey Parcels** dataset, then back-fills Roll # / Address / Zoning / DU / Total Assessed Value by spatially joining an **Assessment Parcels** dataset.
 - **Assessment-first search** (Roll # / Address / Zoning / DU mode): queries the Assessment Parcels dataset *and* (optionally) cross-references a **Civic Addresses** dataset so that searching by any of a parcel's official addresses surfaces the parcel even if it's not the primary assessment address. Survey Parcels are then back-filled to populate the legal-description columns.
 - A **DU (dwelling-units) filter** ANDs into the assessment query to find vacant lots (`= 0`) or multi-unit buildings (`>= N`). The text-typed `dwelling_units` column is cast with SoQL `::number` to compare numerically.
-- Every search renders **two map layers simultaneously**: blue = survey lots, red = assessment parcels. The two often differ — one assessment can span many survey lots, and one survey lot can be split between rolls.
+- Every search supports **two map layers**: blue = survey lots, red = assessment parcels. Assessment parcels are visible by default; survey lots start hidden and can be toggled on when the legal-lot outlines are useful. The two often differ — one assessment can span many survey lots, and one survey lot can be split between rolls.
 - The Address column on each row is enriched with **every civic address** falling inside the parcel polygon (so a parcel with primary "400 Hargrave" but an additional civic address "440 Hargrave" displays both, and is searchable from either direction).
 - The Zoning column shows the **top-1 area-weighted** zoning code (via `@turf/intersect` + `@turf/area`), with separate columns for coverage % and the second-largest zone (when ≥ 1%). Reveals zoning splits that the Assessment dataset's single primary `zoning` text hides.
 - The Assess-{year} column shows total assessed value as a clickable link into the City's assessment portal (`winnipegassessment.com`). The header year is dynamically stamped from the most-common `current_assessment_year` in the result set.
-- Five **toggleable map overlays**: citywide Zoning (cached in IndexedDB for 7 days), Secondary Plans (combined Precincts + Major Redev Sites), Infill Guideline Area (Mature Communities), Malls and Corridors PDO (combined Regional Centres + Urban + Regional Corridors), and Lot Dimensions (survey-edge feet labels at zoom ≥ 17).
+- Six **toggleable map overlays**: citywide Zoning (cached in IndexedDB for 7 days), Traffic Volumes (24-hour average count-study corridors + permanent stations), Secondary Plans (combined Precincts + Major Redev Sites), Infill Guideline Area (Mature Communities), Malls and Corridors PDO (combined Regional Centres + Urban + Regional Corridors), and Lot Dimensions (survey-edge feet labels at zoom ≥ 17).
 - A **Streets ⇄ Satellite basemap toggle** in the map's top-right gutter (Esri World Imagery, no API key).
-- A **Generate Static Map** button captures the current view as a PNG with attribution composited, for dropping into reports.
-- **Two floating legends** — survey/assessment swatches (bottom-right) and zoning categories (bottom-left, when zoning is on).
+- A **Screenshot Map** button captures the current view as a PNG with attribution composited, for dropping into reports.
+- **Floating zoning and traffic legends** appear on the map only when those overlays are on.
 - Results table is fully sortable; supports **CSV export**, **map-click → row scroll**, **row click → map fly-to-parcel**, **combined hover popup** for overlapping layers, and **Walkscore + Flood** external-link columns.
-- The page uses a **fixed-width left sidebar** (320 px sticky) holding all controls grouped into Search and Map-overlay sections; below 980 px it collapses to a single column.
+- The page uses a **fixed-width left sidebar** (320 px sticky) holding all controls grouped into Search and Map-overlay sections, plus a responsive 16:9 map area above the results table; below 980 px it collapses to a single column.
 
 ---
 
@@ -48,8 +48,8 @@ Browser
   ├─ index.html          Static shell: inputs, map div, results table, explainer
   ├─ src/main.js         UI wiring — reads inputs, calls soda.js, renders table+map
   ├─ src/soda.js         API client — every SODA/SoQL query lives here
-  ├─ src/map.js          MapLibre GL setup, two parcel layers, zoning overlay,
-  │                      hover/click popups, fly-to-feature
+  ├─ src/map.js          MapLibre GL setup, parcel layers, zoning + traffic
+  │                      overlays, hover/click popups, fly-to-feature
   └─ src/style.css       All CSS
         │
         │   fetch (GeoJSON, CORS open)
@@ -66,29 +66,35 @@ Browser
   wv32-jdtk   OurWPG Reg Mix Use Centre   ┐
   t4kh-5gtd   OurWPG Urban Mix Use Corr   ├ Malls and Corridors PDO overlay
   ahzi-uwu2   OurWPG Reg Mix Use Corr     ┘
+  buvf-b9wp   Midblock Traffic Counts     (15-minute counts, no geometry)
+  46sc-6jrs   Permanent Count Stations    (15-minute counts with point geometry)
+  ngsx-caav   Road Network                (street centerline geometry)
                               │
                               ▼
               ┌───────────────────────────┐
               │  IndexedDB (`wpsCache`)   │
-              │  citywide zoning, 7-day   │
-              │  TTL — instant re-toggles │
+              │  zoning, 7-day TTL;       │
+              │  traffic lines, 30-day TTL │
               └───────────────────────────┘
 ```
 
-**No server, no database, no auth.** Vercel just serves the Vite bundle. All data is queried by the browser on every search; the citywide zoning is the only dataset cached across sessions.
+**No server, no database, no auth.** Vercel just serves the Vite bundle. All search data is queried by the browser on every search. Citywide zoning and matched midblock traffic lines are cached across sessions because those whole-city overlays are heavier than parcel searches.
 
 A typical search fires multiple SODA calls in parallel and merges them client-side:
 
-1. **Attribute query** — Survey Parcels by Lot/Block/Plan, or Assessment Parcels by Roll/Address/Zoning + DU mode (`dwelling_units::number = 0` or `>= N`).
-2. **Address cross-reference** (when the address field is filled) — Civic Addresses dataset, find parcels containing each matching address point.
-3. **Spatial enrichment** — per-feature `within_box` queries against the *other* parcel dataset (assessment-side for legal flow, survey-side for assessment flow). Batched 50 clauses per request, run in parallel.
-4. **Civic-address enrichment** — per-parcel `within_box` against the Addresses dataset, attaching the full civic-address list to each result.
-5. **Top-2 zoning enrichment** — for each parcel, intersects its polygon against zoning polygons (cache-warm: from IndexedDB; cache-cold: per-parcel `within_box`) and computes top-2 area-weighted coverage with `@turf/intersect` + `@turf/area`.
+1. **Attribute query** — Survey Parcels by Lot/Block/Plan, or Assessment Parcels by Roll/Address/Zoning + DU mode (`dwelling_units::number = 0` or `>= N`). User-facing searches cap at 1,000 rows and carry truncation metadata when more rows exist.
+2. **Address cross-reference** (when the address field is filled) — Civic Addresses dataset, find parcels containing each matching address point. This path uses the same 1,000-row user-facing cap and truncation metadata.
+3. **Spatial enrichment** — per-feature `within_box` queries against the *other* parcel dataset (assessment-side for legal flow, survey-side for assessment flow). Batched 50 clauses per request, paged with `$limit` + `$offset`, and run in parallel.
+4. **Civic-address enrichment** — per-parcel `within_box` against the Addresses dataset, attaching the full civic-address list to each result. Enrichment pages through all matching address points.
+5. **Top-2 zoning enrichment** — for each parcel, intersects its polygon against zoning polygons (cache-warm: from IndexedDB; cache-cold: paged per-parcel `within_box`) and computes top-2 area-weighted coverage with `@turf/intersect` + `@turf/area`.
 6. **Partial-lot detection** (assessment flow) — counts how many assessments overlap each survey lot; lots overlapping >1 are flagged "(partial)".
-7. **Citywide zoning overlay** (toggled on demand) — fetches all 18K zoning polygons in one call, caches in IndexedDB for 7 days. Subsequent toggles read from disk.
+7. **Citywide zoning overlay** (toggled on demand) — pages through all 18K zoning polygons, caches the FeatureCollection in IndexedDB for 7 days, and shares one in-flight fetch across concurrent toggles. Subsequent toggles read from disk.
 8. **Policy-area overlays** (Secondary Plans / Infill / Malls and Corridors) — small whole-citywide datasets (5–24 polygons each) fetched whole on first toggle and memoised in-memory for the session.
+9. **Traffic-volume overlay** (toggled on demand) — aggregates Midblock Traffic Counts by study corridor, keeps the latest study per corridor, matches attribute-only count rows onto Road Network centerlines, and caches the line FeatureCollection in IndexedDB for 30 days. Permanent count stations are fetched fresh and aggregated over their latest complete 24-hour window.
 
 All parcel-side spatial filters use `within_box` with a 150 m bbox pad (because Socrata's `within_box` requires *containment*, not intersection — see [Bug 10.2](#102-within_box-uses-containment-not-intersection)). Client-side `booleanPointInPolygon` then re-checks every match to eliminate false positives. The bidirectional `parcelsOverlap` check (assessment-centroid-in-survey OR survey-bbox-center-in-assessment) handles both 1:N and N:1 alignment cases.
+
+SODA paging is centralized in `fetchSodaPaged` / `fetchSodaRowsPaged`. Internal enrichment and overlay queries page until Socrata returns a short page; if an unexpected internal query would exceed the high safety cap, it throws instead of silently accepting partial data. The 1,000-row user-search cap is intentional: the UI reports "Showing first N..." when `meta.truncated` is present so users know to refine broad searches.
 
 **Dependencies** (`web/package.json`):
 
@@ -142,7 +148,7 @@ https://data.example.ca/resource/xxxx-xxxx.geojson
 
 you have Socrata and everything in this guide applies directly. Manitoba Open Data (`opendata.gov.mb.ca`) is **not** Socrata — see [Section 12](#12-non-socrata-portals).
 
-### 4.2 Find the four datasets (or whatever subset exists)
+### 4.2 Find the core and optional datasets
 
 | Winnipeg dataset | Required? | What it provides |
 |---|---|---|
@@ -150,6 +156,8 @@ you have Socrata and everything in this guide applies directly. Manitoba Open Da
 | Assessment Parcels (`d4mq-wa44`) | yes | Roll #, civic address, zoning, area, centroid + polygon geometry |
 | Addresses (`cam2-ii3u`) | optional | Every official civic address with point geometry. Without it, multi-address parcels are only findable by their primary address. |
 | Zoning By-law Parcels (`dxrp-w6re`) | optional | Coloured zoning overlay. The tool still works without it; just delete the toggle button and the related code. |
+| Traffic Counts (`buvf-b9wp`, `46sc-6jrs`) | optional | 15-minute vehicle counts. Midblock rows provide corridor attributes but no geometry; permanent station rows include point geometry. |
+| Road Network (`ngsx-caav`) | optional | Street centerline geometry used to draw midblock traffic count corridors. Needed only if the traffic-count dataset lacks line geometry. |
 
 If the new jurisdiction collapses Survey + Assessment into one dataset, the two-flow architecture simplifies to one flow and you can delete the cross-side enrichment.
 
@@ -207,9 +215,14 @@ const SURVEY_URL    = 'https://data.example.ca/resource/AAAA-AAAA.geojson';
 const ASSESS_URL    = 'https://data.example.ca/resource/BBBB-BBBB.geojson';
 const ADDRESSES_URL = 'https://data.example.ca/resource/CCCC-CCCC.json';   // optional
 const ZONING_URL    = 'https://data.example.ca/resource/DDDD-DDDD.geojson'; // optional
+const MIDBLOCK_TRAFFIC_COUNTS_URL = 'https://data.example.ca/resource/EEEE-EEEE.json';   // optional
+const PERMANENT_TRAFFIC_COUNTS_URL = 'https://data.example.ca/resource/FFFF-FFFF.json';  // optional
+const ROAD_NETWORK_URL = 'https://data.example.ca/resource/GGGG-GGGG.geojson';           // optional
 ```
 
 The Addresses URL uses `.json` (not `.geojson`) because the dataset typically has multiple geometry columns and we want to be explicit about which one to interpret as the point. `searchAddresses` builds GeoJSON features manually from the `point` column.
+
+Traffic-count datasets often need the same split: use `.json` for attribute-only count tables and `.geojson` for the street centerline geometry. If the new jurisdiction publishes count lines with geometry already attached, you can delete the Road Network matching code and style the count-line FeatureCollection directly.
 
 ### 5.2 Update `searchSurveyParcels` field names
 
@@ -239,10 +252,17 @@ export async function searchAssessmentParcels({ roll, address, zoning }) {
     $where: clauses.join(' AND '),
     $select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,geometry',
     $order: 'full_address',
-    $limit: '1000',
+  });
+  return fetchSodaPaged(ASSESS_URL, params, {
+    pageSize: USER_SEARCH_LIMIT,
+    maxRows: USER_SEARCH_LIMIT,
+    allowTruncated: true,
+    label: 'Assessment parcel search',
   });
 }
 ```
+
+Use `allowTruncated: true` only where accepting a deliberate user-facing cap is OK and the UI can tell the user the count was capped. For enrichment and overlay queries, leave truncation disallowed so a too-broad internal query fails loudly instead of returning partial joins.
 
 ### 5.4 Update `fetchAssessmentOverlap` and `fetchSurveyOverlap`
 
@@ -277,9 +297,14 @@ export async function searchAddresses({ address }) {
     $where: likeClause('full_address', address),  // ← address column
     $select: 'full_address,point',                // ← geometry column = 'point'
     $order: 'full_address',
-    $limit: '1000',
   });
-  // ... fetches .json, builds GeoJSON Point features manually
+  const { rows, meta } = await fetchSodaRowsPaged(ADDRESSES_URL, params, {
+    pageSize: USER_SEARCH_LIMIT,
+    maxRows: USER_SEARCH_LIMIT,
+    allowTruncated: true,
+    label: 'Civic address search',
+  });
+  // ... builds GeoJSON Point features manually and attaches meta
 }
 ```
 
@@ -305,9 +330,22 @@ export async function fetchZoningOverlap(parcelFc) {
 
 The categorical fill colour in `map.js` is driven by the `map_colour` field — if your dataset has different category names, update the `ZONING_PALETTE` array there to match.
 
-### 5.8 Keep these unchanged
+### 5.8 Update or remove the traffic overlay
 
-- `fetchPerFeatureBboxUnion` — generic batching/parallel/dedupe helper, takes `{ baseUrl, geomColumn, select, dedupeKey, fc, extraWhere }`. **Don't modify** unless the new portal has a different spatial-query syntax (see [Section 12](#12-non-socrata-portals)).
+Winnipeg's midblock traffic counts are not map features. They are 15-minute count rows with `street`, `street_from`, `street_to`, `study_id`, and `count_date`; the web app groups those rows into study corridors, computes a 24-hour average, then finds matching Road Network segments by normalized street/cross-street names.
+
+For another jurisdiction, first decide which shape you have:
+
+- **Count rows already have line geometry:** fetch the latest counts, normalize the volume property to `avg_daily_volume`, and call `setTrafficData(map, lines, stations)`.
+- **Count rows have point geometry:** render them like the permanent station layer, or snap them to the nearest street segment if line styling matters.
+- **Count rows have only road/cross-street names:** keep the Winnipeg pattern, but replace `normalizeStreetName`, `roadNameAliases`, and the corridor-matching helpers with rules that match the local road-network attributes.
+
+Treat traffic volumes as contextual planning data. They are observed count-study averages unless the source dataset explicitly says they are modeled AADT/annualized volumes.
+
+### 5.9 Keep these unchanged
+
+- `fetchSodaPaged` / `fetchSodaRowsPaged` — generic `$limit` + `$offset` paging helpers. They return truncation metadata only when the caller opts into an intentional cap.
+- `fetchPerFeatureBboxUnion` — generic batching/parallel/dedupe helper, takes `{ baseUrl, geomColumn, select, dedupeKey, fc, extraWhere }` and pages each batch. **Don't modify** unless the new portal has a different spatial-query syntax (see [Section 12](#12-non-socrata-portals)).
 - `parcelsOverlap`, `assessCentroidInSurvey`, `surveyCenterInAssess` — bidirectional client-side overlap check. The bidirectional logic correctly handles both 1-survey-many-assessments (duplexes) and 1-assessment-many-surveys (downtown buildings) cases.
 - `mergeSurveyFeatures`, `mergeAssessFeatures` — collapse multiple matching features per row into a single synthetic feature with grouped lots, range-collapsed numbers (`21-25, 68-75`), plan-grouped breakdowns when more than one plan is involved (`21-25 (Pl 129); 39-46 (Pl 24208)`), and `(partial)` suffixes for split lots.
 - `computePartialSurveyIds`, `filterMatchedSurveys`, `filterMatchedAssessments` — used by main.js to drive the dual-layer map render and partial detection.
@@ -368,31 +406,40 @@ Each `data-col` attribute drives the click-to-sort behaviour in `main.js`. The c
 
 Tailor the wording to the new jurisdiction's parcel types. The legend pills inside use `.legend-pill.survey` / `.legend-pill.assess` colour classes from `style.css`.
 
-### 6.4 Layer-toggle and zoning buttons
+### 6.4 Layer-toggle and overlay buttons
 
 ```html
-<button id="survey-toggle" type="button" class="secondary active" aria-pressed="true">Hide Survey</button>
+<button id="survey-toggle" type="button" class="secondary" aria-pressed="false">Show Survey</button>
 <button id="assess-toggle" type="button" class="secondary active" aria-pressed="true">Hide Assessment</button>
 <button id="zoning-toggle" type="button" class="secondary" aria-pressed="false">Show Zoning</button>
+<button id="traffic-toggle" type="button" class="secondary" aria-pressed="false">Show Traffic</button>
+<button id="static-map-btn" type="button" class="secondary">Screenshot Map</button>
 ```
 
-Drop the zoning button if the new jurisdiction doesn't have a zoning dataset.
+Drop the zoning or traffic button if the new jurisdiction doesn't have that dataset. The `active` class and `aria-pressed` value should match the MapLibre layer visibility you initialize in `map.js`.
 
 ### 6.5 Map legend
 
 ```html
 <div id="map">
-  <div id="map-legend" class="map-legend" hidden>
-    <strong>Legend</strong>
+  <div id="zoning-legend" class="map-legend zoning-legend" hidden>
+    <strong>Zoning</strong>
+    <ul></ul>
+  </div>
+  <div id="traffic-legend" class="map-legend traffic-legend" hidden>
+    <strong>24h Traffic</strong>
     <ul>
-      <li><span class="swatch survey"></span>Survey parcel (legal lot)</li>
-      <li><span class="swatch assess"></span>Assessment parcel (roll/building)</li>
+      <li><span class="line-swatch traffic-low"></span>&lt;5k</li>
+      <li><span class="line-swatch traffic-med"></span>5k-15k</li>
+      <li><span class="line-swatch traffic-high"></span>15k-30k</li>
+      <li><span class="line-swatch traffic-vhigh"></span>30k-60k</li>
+      <li><span class="line-swatch traffic-extreme"></span>60k+</li>
     </ul>
   </div>
 </div>
 ```
 
-Positioned in the bottom-right of the map by `style.css`. Toggled hidden/visible by `main.js` based on whether there are any results.
+Positioned on the map by `style.css`. `main.js` populates/toggles the zoning legend when zoning is on and toggles the traffic legend when traffic is on; the parcel-layer colours are explained in the sidebar instead of a separate map legend.
 
 ---
 
@@ -533,6 +580,27 @@ Winnipeg's `assessed_land_area` is in **square feet** as a plain integer string.
 
 The Clear button does a full page reload. Earlier versions tried soft resets (clearing inputs, table, map, sort state, in-flight requests one by one) and accumulated subtle drift bugs. A reload is the bulletproof reset.
 
+### 7.10 Overlay toggles
+
+Heavy overlays are lazy-loaded when a user asks for them. The traffic overlay follows the zoning pattern: bind the button, flip layer visibility immediately, fetch data on first enable, then keep it in the map source for instant re-toggles.
+
+```js
+$trafficToggle.addEventListener('click', toggleTraffic);
+
+async function toggleTraffic() {
+  trafficEnabled = !trafficEnabled;
+  setTrafficVisible(map, trafficEnabled);
+  $trafficLegend.hidden = !trafficEnabled;
+  if (trafficEnabled && !trafficLoaded) {
+    const { lines, stations } = await fetchTrafficVolumes();
+    setTrafficData(map, lines, stations);
+    trafficLoaded = true;
+  }
+}
+```
+
+If you remove a source overlay, remove all four pieces together: the HTML button/legend, the imported data helper, the MapLibre source/layers, and the toggle handler state in `main.js`.
+
 ---
 
 ## 8. Step 4 — Adapt `map.js` (popup labels + colour palette)
@@ -541,11 +609,14 @@ The Clear button does a full page reload. Earlier versions tried soft resets (cl
 
 ```
 zoning-fill, zoning-line, zoning-label   (optional zoning overlay)
+traffic-lines-casing, traffic-lines      (optional traffic-volume overlay)
+traffic-stations-circle                  (optional permanent count stations)
 assess-context-fill, assess-context-line  (red — assessment parcels)
 parcel-fill, parcel-line                  (blue — survey parcels)
+traffic-lines-label, traffic-stations-label
 ```
 
-Smaller polygons (surveys) on top so they don't get obscured by the bigger assessment fills below.
+Smaller polygons (surveys) sit above assessment fills so they don't get obscured by the bigger red footprints. Traffic lines are drawn above parcels with a white casing so volume corridors stay readable on both streets and satellite basemaps; labels sit above the linework.
 
 ### 8.2 Combined hover popup
 
@@ -573,7 +644,26 @@ The MapLibre `match` expression in `zoning-fill`'s paint uses these. Adjust the 
 
 If the dataset uses a different "category" attribute name (not `map_colour`), update the `['get', 'map_colour']` reference in the layer paint and the `popupHtml` for zoning popups.
 
-### 8.5 Colour theme
+### 8.5 Traffic overlay
+
+Traffic styling is driven by a numeric `avg_daily_volume` property on both line and station features. `TRAFFIC_COLOR_EXPR`, `TRAFFIC_LINE_WIDTH_EXPR`, and `TRAFFIC_POINT_RADIUS_EXPR` in `map.js` use MapLibre interpolation expressions so higher-volume corridors read heavier at a glance.
+
+Update the breakpoints and legend labels together if the new source uses a different scale:
+
+```js
+const TRAFFIC_COLOR_EXPR = [
+  'interpolate', ['linear'], ['coalesce', ['to-number', ['get', 'avg_daily_volume']], 0],
+  0, '#2ca25f',
+  5000, '#f0c419',
+  15000, '#f28e2b',
+  30000, '#d7191c',
+  60000, '#7b3294',
+];
+```
+
+The click popup reads `traffic_kind`, `volume_text`, `street`, `from_street`, `to_street`, and count-date properties. If your source uses different names, either normalize them in `soda.js` or update `trafficPopupHtml`.
+
+### 8.6 Colour theme
 
 ```
 survey  fill: #4682b4  (steel blue)   line: #0b2566 (deep navy)   2px solid
@@ -639,7 +729,25 @@ If the new jurisdiction has bigger parcels (e.g. industrial or rural), bump the 
 
 **Root cause:** A single union bbox across spread results covers a huge area; `within_box` returns parcels in between and `$limit` runs out before the relevant ones.
 
-**Fix:** One small `within_box` per feature, OR'd together, batched 50 per request, run in parallel via `Promise.all`. Each clause's bbox is tiny (just that one parcel ± 150m).
+**Fix:** One small `within_box` per feature, OR'd together, batched 50 per request, run in parallel via `Promise.all`, and page each batched query with `$limit` + `$offset`. Each clause's bbox is tiny (just that one parcel ± 150m), and paging prevents a valid large batch from stopping at the first page.
+
+### 10.3a Fixed `$limit` values silently truncate broad queries
+
+**Symptom:** Broad direct searches, address cross-reference searches, or large enrichment batches return the first page only. The map/table look plausible, but data is incomplete.
+
+**Root cause:** Socrata returns up to the requested `$limit`; it does not warn the caller that more rows exist. A hard-coded `$limit=1000` or `$limit=5000` is a cap, not a complete fetch.
+
+**Fix:** Route every Socrata read through `fetchSodaPaged` or `fetchSodaRowsPaged`. User-facing searches use `USER_SEARCH_LIMIT = 1000`, opt into `allowTruncated: true`, and return `meta.truncated` so the UI can say "Showing first N...". Internal enrichment and overlay calls keep `allowTruncated` false; if they exceed the high safety cap, the query throws instead of returning partial data.
+
+### 10.3b Traffic-count tables may not be map layers
+
+**Symptom:** The traffic dataset has counts by road segment or intersection, but the map cannot render it because rows have no geometry column.
+
+**Root cause:** Traffic programs often publish count observations as tabular study records (`street`, `street_from`, `street_to`, `count_date`, `count_15_minutes`) rather than GIS features. Socrata can aggregate the counts, but it cannot invent line geometry.
+
+**Fix:** Pair the count table with a road-network centerline dataset. Aggregate counts by study/corridor, normalize street names on both datasets, find centerline segments between the two cross streets, and store a derived FeatureCollection for display. Cache the derived line overlay because the matching work is more expensive than ordinary parcel lookups.
+
+Also inspect the time fields before computing daily volume. Winnipeg's `count_date` is date-only even though each row is a 15-minute interval, so the app groups by `count_date` and divides by the number of distinct study dates. Do not infer sample days from `max(count_date) - min(count_date)` unless the field includes real interval timestamps.
 
 ### 10.4 `booleanIntersects` triggers on shared edges
 
@@ -814,8 +922,9 @@ Small perf cost on continuous interaction; fine at the scale of an appraisal-res
 | Spatial containment | `within_box(geom_col, nwLat, nwLon, seLat, seLon)` |
 | Spatial intersection (where supported) | `intersects(geom_col, 'POINT(lon lat)')` |
 | Select specific columns | `$select=col1,col2,col3` |
-| Order by column | `$order=col_name` (use this to make `$limit`-truncated results deterministic) |
-| Row limit | `$limit=1000` (Socrata's anonymous max is 1,000 unless using `$offset`/paging) |
+| Order by column | `$order=col_name` (use with paging so page boundaries are stable) |
+| Page size / row limit | `$limit=5000` (request page size; exact allowed values vary by portal and endpoint) |
+| Pagination offset | `$offset=5000` (fetch the next page after the first 5,000 rows) |
 | **Multi-value exact match** | `column IN ('val1','val2','val3')` |
 | GeoJSON output | Replace `.json` with `.geojson` in the resource URL |
 | Escape a single quote | Double it: `O''Brien` |

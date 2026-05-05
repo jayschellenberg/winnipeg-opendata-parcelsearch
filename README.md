@@ -1,6 +1,6 @@
 # Winnipeg Open Data Parcel Search
 
-A firm-facing web tool for researching City of Winnipeg properties — search by legal description (Lot / Block / Plan / Description), Roll #, civic address, zoning code, or dwelling-unit count, with results enriched live from five Winnipeg Open Data sources and rendered on a MapLibre interactive map. Two parcel layers (legal-survey + tax-assessment) sit alongside four toggleable policy overlays, an area-weighted zoning analysis, dimension labels at lot scale, and one-click links into Manitoba Assessment Online, Walk Score, and the sister Manitoba flood-mapping tool.
+A firm-facing web tool for researching City of Winnipeg properties — search by legal description (Lot / Block / Plan / Description), Roll #, civic address, zoning code, or dwelling-unit count, with results enriched live from multiple Winnipeg Open Data datasets and rendered on a MapLibre interactive map. Two parcel layers (legal-survey + tax-assessment) sit alongside four toggleable policy overlays, a traffic-volume overlay, an area-weighted zoning analysis, dimension labels at lot scale, and one-click links into Manitoba Assessment Online, Walk Score, and the sister Manitoba flood-mapping tool.
 
 ## Live site
 
@@ -33,6 +33,9 @@ All data is queried live from `data.winnipeg.ca` — no copies are shipped with 
 | [OurWPG Regional Mixed Use Centre](https://data.winnipeg.ca/City-Planning/OurWPG-Regional-Mixed-Use-Centre/wv32-jdtk) | `wv32-jdtk` | Malls and Corridors PDO overlay (the "malls" half) |
 | [OurWPG Urban Mixed Use Corridor](https://data.winnipeg.ca/City-Planning/OurWPG-Urban-Mixed-Use-Corridor/t4kh-5gtd) | `t4kh-5gtd` | Malls and Corridors PDO overlay (urban corridors) |
 | [OurWPG Regional Mixed Use Corridor](https://data.winnipeg.ca/City-Planning/OurWPG-Regional-Mixed-Use-Corridor/ahzi-uwu2) | `ahzi-uwu2` | Malls and Corridors PDO overlay (regional corridors) |
+| [Midblock Traffic Counts](https://data.winnipeg.ca/Transportation-Planning-Traffic-Management/Midblock-Traffic-Counts/buvf-b9wp) | `buvf-b9wp` | Portable 15-minute counts aggregated to 24-hour average traffic volumes by study corridor |
+| [Permanent Count Station Traffic Counts](https://data.winnipeg.ca/w/46sc-6jrs/swpr-bv7p) | `46sc-6jrs` | Latest 24-hour average volumes at permanent count stations |
+| [Road Network](https://data.winnipeg.ca/City-Planning/Road-Network/2eba-wm4h/about) | `ngsx-caav` | Street centerline geometry used to draw traffic-count corridors |
 
 The City has **42 adopted Local Area / Secondary Plans** (per the [Long Range Planning index](https://winnipeg.ca/node/44825)), but Open Data only publishes boundaries for 16 of them (5 Precincts + 11 Major Redev Sites). The Secondary Plans popup links to the City's full plan list so users can look up plans the overlay can't render.
 
@@ -61,6 +64,7 @@ The page uses a two-pane layout with a **320 px sticky left sidebar** holding ev
 - **Map overlays** — compact buttons and links in a 2-column grid:
   - Show Survey / Hide Assessment (Survey off, Assessment on by default)
   - Show Zoning (citywide colour-coded overlay; first toggle ~10–15 s, instant after)
+  - Show Traffic (latest available 24-hour average volumes on matched street segments + permanent stations)
   - Show Secondary Plans (Precincts + Major Redev sites)
   - Show Infill Area (Mature Community boundaries)
   - Show Malls/Corridors (Regional Centres + Urban + Regional Corridors)
@@ -73,6 +77,7 @@ The right pane holds the responsive 16:9 map, the results table, the captured Sc
 
 - **Streets ⇄ Satellite** basemap toggle in the top-right gutter (Esri World Imagery, no API key)
 - **Floating zoning legend** — category list appears on the map only when zoning is on
+- **Traffic volumes** — latest midblock count study per corridor is styled by 24-hour average volume; permanent count stations appear as scaled circles
 - **Combined hover popup** — when hovering on a survey lot inside an assessment parcel, both parcel info blocks show stacked under colour-coded headers
 - **Click any visible parcel layer (blue or red)** → scrolls to the matching row in the results table
 - **Click any results table row** → flies the map to that parcel
@@ -108,10 +113,15 @@ The site is pure static — Vercel serves the Vite-built bundle. The browser mak
 4. **Civic-address enrichment** — per-parcel `within_box` against `cam2-ii3u`, attaching the full address list to each result.
 5. **Top-2 zoning enrichment** — for each result, intersects the parcel polygon against zoning polygons (cache-warm: in-memory; cache-cold: per-parcel `within_box`) and computes top-2 area-weighted coverage with `@turf/intersect` + `@turf/area`.
 6. **Partial-lot detection** (assessment flow) — second pass to count overlapping assessments per survey lot; lots overlapping >1 are flagged "(partial)".
+7. **Traffic-volume overlay** (toggled on demand) — aggregates Midblock Traffic Counts by study corridor, computes 24-hour average volume, keeps the latest study per corridor, and matches it onto Road Network centerlines. Permanent count stations are aggregated over the latest 24-hour window and rendered as point markers.
 
 All spatial filters use `within_box` with a 150 m bbox pad (because Socrata's `within_box` requires *containment*, not intersection — see the bug catalogue in `REPLICATION_GUIDE.md`). Client-side `parcelsOverlap` (bidirectional centroid-in-polygon) re-checks every match to eliminate false positives from neighbouring parcels.
 
+**SODA paging and caps.** Socrata reads go through `fetchSodaPaged` / `fetchSodaRowsPaged`, which page with `$limit` + `$offset`. User-facing attribute and address searches intentionally cap at 1,000 rows; when more data exists the returned FeatureCollection carries `meta.truncated` and the UI reports "Showing first N...". Internal enrichment and overlay calls page through their result sets so broad `within_box` batches and the citywide zoning overlay do not silently stop at the first page.
+
 **IndexedDB caching.** The citywide zoning dataset (~13.5 MB gzipped, ~42 MB parsed) is cached under `wpsCache` for 7 days. First Show Zoning toggle: ~10–15 s. Subsequent toggles within 7 days: instant. Per-search top-2 zoning enrichment also reads the cache opportunistically — every search after the first ever zoning toggle becomes faster too.
+
+**Traffic caching.** The midblock traffic line overlay is cached in IndexedDB for 30 days after the first build because it requires a server-side aggregate plus client-side road-network matching. Permanent station points are fetched fresh when the overlay is enabled.
 
 **Dependencies** (`web/package.json`):
 
@@ -160,13 +170,15 @@ source("r/cross_reference_parcels.R")   # builds ParcelCrossRef_*.csv
 shiny::runApp("r/parcel_search_app.R")  # interactive search on the local archive
 ```
 
-The Shiny app discovers every `SurveyParcels_YYYYMMDD.gpkg` in the project directory and exposes a snapshot-picker dropdown — pick any dated snapshot to run searches against it. This is the one thing the live web app *cannot* do: search how parcels looked before later subdivisions or consolidations. To build the archive, re-run `download_parcels.R` periodically (e.g. quarterly); each run produces a fresh dated `.gpkg` pair without overwriting the older ones. Each snapshot adds about 590 MB of disk; older ones can be pruned manually if storage gets tight.
+The Shiny app discovers every `SurveyParcels_YYYYMMDD.gpkg` in the project directory and exposes a snapshot-picker dropdown — pick any dated snapshot to run searches against it. Search text is escaped before interpolation into GeoPackage SQL, so apostrophes in legal descriptions do not break the local query. This is the one thing the live web app *cannot* do: search how parcels looked before later subdivisions or consolidations. To build the archive, re-run `download_parcels.R` periodically (e.g. quarterly); each run produces a fresh dated `.gpkg` pair without overwriting the older ones. Each snapshot adds about 590 MB of disk; older ones can be pruned manually if storage gets tight.
 
 ## Known caveats
 
 - The R scripts hardcode an absolute path (`D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch`). To run elsewhere, update the `data_dir` / `output_dir` variable at the top of each script.
 - `.gpkg` and `ParcelCrossRef_*.csv` files are gitignored — too large for GitHub (~485 MB Survey + ~108 MB Assessment per snapshot) and trivially regenerable.
 - The web app requires internet access and shows current data only. For offline use or historical snapshots, use the R Shiny app against the local archive.
+- Broad web searches intentionally show the first 1,000 matches; refine the search when the result count reports that the limit was reached.
+- Traffic volumes are observed count-study averages, not a modeled annual average for every street. Midblock rows without geometry are matched to Road Network centerlines by street/cross-street names, so treat the overlay as planning context and verify unusually important corridors against the City's source traffic data.
 - The `LIKE` operator in SoQL is case-sensitive; the web app wraps every search column and search term in `upper()` so typing "monarch" matches "10 MONARCH MEWS".
 - 26 of the City's 42 adopted Local Area Plans don't have boundaries published on Open Data. The Secondary Plans overlay covers what's available (16 polygons); the popup links to the City's full list for the rest.
 - Lot dimensions are computed from WGS84 polygon edges via the haversine formula and reported in feet. The City's Open Data stores some attributes in metres but `assessed_land_area` is in square feet, so the tool stays consistent on imperial throughout. Manitoba real-estate / Land Titles / appraisal practice is overwhelmingly in feet.

@@ -32,6 +32,48 @@ export const ZONING_PALETTE = [
   'Riverbank Sector',           '#99c5c5',
 ];
 
+const TRAFFIC_VOLUME_VALUE = ['to-number', ['get', 'avg_daily_volume'], 0];
+const TRAFFIC_COLOR_EXPR = [
+  'interpolate',
+  ['linear'],
+  TRAFFIC_VOLUME_VALUE,
+  0,     '#4f9d69',
+  5000,  '#d6c94f',
+  15000, '#e59a3d',
+  30000, '#d45a43',
+  60000, '#7b3f98',
+];
+const TRAFFIC_LINE_WIDTH_EXPR = [
+  'interpolate',
+  ['linear'],
+  TRAFFIC_VOLUME_VALUE,
+  0,     1.5,
+  5000,  2.5,
+  15000, 4,
+  30000, 6,
+  60000, 9,
+];
+const TRAFFIC_LINE_CASING_WIDTH_EXPR = [
+  'interpolate',
+  ['linear'],
+  TRAFFIC_VOLUME_VALUE,
+  0,     3.5,
+  5000,  4.5,
+  15000, 6,
+  30000, 8,
+  60000, 11,
+];
+const TRAFFIC_POINT_RADIUS_EXPR = [
+  'interpolate',
+  ['linear'],
+  TRAFFIC_VOLUME_VALUE,
+  0,     4,
+  5000,  6,
+  15000, 8,
+  30000, 11,
+  60000, 14,
+];
+
 // Two basemap sources stacked under one style — only one is visible at a
 // time. Lets the user flip between the default light street map and an
 // Esri-hosted aerial without re-creating the map. Esri World Imagery is
@@ -337,6 +379,102 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Traffic volumes. Midblock portable-count studies are joined to
+      // road-network line geometry; permanent count stations render as
+      // point markers. Hidden until main.js loads data and toggles the
+      // group on. Drawn above parcels with a white casing so high-volume
+      // streets remain readable on both streets and satellite basemaps.
+      map.addSource('traffic-lines', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'traffic-lines-casing',
+        type: 'line',
+        source: 'traffic-lines',
+        layout: {
+          visibility: 'none',
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': 'rgba(255,255,255,0.92)',
+          'line-width': TRAFFIC_LINE_CASING_WIDTH_EXPR,
+          'line-opacity': 0.82,
+        },
+      });
+      map.addLayer({
+        id: 'traffic-lines',
+        type: 'line',
+        source: 'traffic-lines',
+        layout: {
+          visibility: 'none',
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': TRAFFIC_COLOR_EXPR,
+          'line-width': TRAFFIC_LINE_WIDTH_EXPR,
+          'line-opacity': 0.86,
+        },
+      });
+      map.addLayer({
+        id: 'traffic-lines-label',
+        type: 'symbol',
+        source: 'traffic-lines',
+        minzoom: 12,
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'volume_label'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 11,
+          'symbol-placement': 'line-center',
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+        },
+        paint: {
+          'text-color': '#1a1a1a',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.5,
+        },
+      });
+      map.addSource('traffic-stations', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'traffic-stations-circle',
+        type: 'circle',
+        source: 'traffic-stations',
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-color': TRAFFIC_COLOR_EXPR,
+          'circle-radius': TRAFFIC_POINT_RADIUS_EXPR,
+          'circle-opacity': 0.88,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      });
+      map.addLayer({
+        id: 'traffic-stations-label',
+        type: 'symbol',
+        source: 'traffic-stations',
+        minzoom: 12,
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'volume_label'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 11,
+          'text-offset': [0, 1.4],
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': '#1a1a1a',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.5,
+        },
+      });
+
       // Parcel-edge dimension labels. Source carries one LineString per
       // polygon edge with `length_label` already pre-formatted. The
       // symbol layer uses `symbol-placement: 'line'` so each label
@@ -516,6 +654,25 @@ export function initMap(container, { onFeatureClick } = {}) {
           ${p.feature_name ? `<br>${escapeHtml(p.feature_name)}` : ''}
         </div>`));
 
+      const trafficPopup = new maplibregl.Popup({ closeButton: true });
+      const trafficClick = (e) => {
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        trafficPopup.setLngLat(e.lngLat).setHTML(trafficPopupHtml(p)).addTo(map);
+      };
+      map.on('click', 'traffic-lines', trafficClick);
+      map.on('click', 'traffic-stations-circle', trafficClick);
+      for (const layerId of ['traffic-lines', 'traffic-stations-circle']) {
+        map.on('mouseenter', layerId, () => {
+          if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
+            map.getCanvas().style.cursor = 'help';
+          }
+        });
+        map.on('mouseleave', layerId, () => {
+          map.getCanvas().style.cursor = '';
+        });
+      }
+
       resolve();
     });
   });
@@ -605,6 +762,28 @@ export function setOverlayData(map, sourceId, fc) {
   if (src) src.setData(fc);
 }
 
+/** Set line + station traffic-volume overlay data. */
+export function setTrafficData(map, lineFc, stationFc) {
+  const lineSrc = map.getSource('traffic-lines');
+  const stationSrc = map.getSource('traffic-stations');
+  if (lineSrc) lineSrc.setData(lineFc);
+  if (stationSrc) stationSrc.setData(stationFc);
+}
+
+/** Toggle traffic line/station layers together. */
+export function setTrafficVisible(map, visible) {
+  const v = visible ? 'visible' : 'none';
+  for (const id of [
+    'traffic-lines-casing',
+    'traffic-lines',
+    'traffic-lines-label',
+    'traffic-stations-circle',
+    'traffic-stations-label',
+  ]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+  }
+}
+
 /** Set / clear the civic-address Point feature collection. Each feature
  *  carries a `street_num` for the symbol-layer label. */
 export function setCivicAddresses(map, fc) {
@@ -651,6 +830,33 @@ function zoningPopupHtml(p) {
   if (p.short_description) lines.push(`<em>${escapeHtml(p.short_description)}</em>`);
   if (p.long_description) lines.push(escapeHtml(p.long_description));
   return `<div style="max-width:300px;line-height:1.35">${lines.join('<br>')}</div>`;
+}
+
+function trafficPopupHtml(p) {
+  const isStation = p.traffic_kind === 'station';
+  const title = isStation
+    ? (p.site || 'Permanent count station')
+    : (p.location_description || p.road_name || p.street || 'Traffic count');
+  const lines = [`<strong>${escapeHtml(title)}</strong>`];
+  if (p.avg_daily_volume) {
+    lines.push(`24h avg volume: <strong>${Number(p.avg_daily_volume).toLocaleString('en-US')}</strong> vehicles/day`);
+  }
+  if (!isStation && p.street_from && p.street_to) {
+    lines.push(`${escapeHtml(p.street_from)} to ${escapeHtml(p.street_to)}`);
+  }
+  if (p.count_start || p.count_end) {
+    lines.push(`<small>Count window: ${escapeHtml(formatDate(p.count_start))} to ${escapeHtml(formatDate(p.count_end))}</small>`);
+  }
+  if (p.match_type) lines.push(`<small>Match: ${escapeHtml(p.match_type)}</small>`);
+  if (p.source_name) lines.push(`<small>Source: ${escapeHtml(p.source_name)}</small>`);
+  return `<div style="max-width:320px;line-height:1.4">${lines.join('<br>')}</div>`;
+}
+
+function formatDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('en-CA');
 }
 
 /**

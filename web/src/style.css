@@ -497,6 +497,32 @@ header small a {
   border: 1px solid rgba(0, 0, 0, 0.25);
 }
 
+.traffic-legend {
+  bottom: 12px;
+  left: 12px;
+  right: auto;
+  max-width: 170px;
+}
+
+.traffic-legend li {
+  font-size: 11px;
+}
+
+.traffic-legend .line-swatch {
+  display: inline-block;
+  width: 26px;
+  height: 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.traffic-low { background: #4f9d69; }
+.traffic-med { background: #d6c94f; }
+.traffic-high { background: #e59a3d; }
+.traffic-vhigh { background: #d45a43; }
+.traffic-extreme { background: #7b3f98; }
+
 /* Top-of-page explainer block. Default open on first visit; collapsible
    so it gets out of the way once the user knows the difference. */
 .explainer {

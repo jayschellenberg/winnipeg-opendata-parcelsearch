@@ -47,11 +47,12 @@ import {
   fetchSecondaryPlans,
   fetchInfillGuidelineArea,
   fetchMallsAndCorridors,
+  fetchTrafficVolumes,
 } from './soda.js';
 import {
   initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
-  setDimensions, setDimensionsVisible,
+  setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
 } from './map.js';
 
 const $lot = document.getElementById('lot');
@@ -67,6 +68,7 @@ const $search = document.getElementById('search');
 const $clear = document.getElementById('clear');
 const $export = document.getElementById('export');
 const $zoningToggle = document.getElementById('zoning-toggle');
+const $trafficToggle = document.getElementById('traffic-toggle');
 const $surveyToggle = document.getElementById('survey-toggle');
 const $assessToggle = document.getElementById('assess-toggle');
 const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
@@ -79,6 +81,7 @@ const $mapEl = document.getElementById('map');
 const $staticMapBtn = document.getElementById('static-map-btn');
 const $staticMapOutput = document.getElementById('static-map-output');
 const $zoningLegend = document.getElementById('zoning-legend');
+const $trafficLegend = document.getElementById('traffic-legend');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
@@ -97,6 +100,8 @@ const rowFeatureMap = new Map();
 let zoningEnabled = false;
 let lastParcelFc = null;
 let lastSurveyFc = { type: 'FeatureCollection', features: [] };
+let trafficEnabled = false;
+let trafficLoaded = false;
 
 // ---------- Column sort ----------
 
@@ -180,6 +185,7 @@ $search.addEventListener('click', runSearch);
 $clear.addEventListener('click', clearAll);
 $export.addEventListener('click', exportCsv);
 $zoningToggle.addEventListener('click', toggleZoning);
+$trafficToggle.addEventListener('click', toggleTraffic);
 $surveyToggle.addEventListener('click', () => toggleLayer('survey'));
 $assessToggle.addEventListener('click', () => toggleLayer('assess'));
 $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secondaryPlans'));
@@ -362,6 +368,42 @@ async function toggleZoning() {
     }
   } else {
     $zoningToggle.textContent = 'Show Zoning';
+  }
+}
+
+async function toggleTraffic() {
+  trafficEnabled = !trafficEnabled;
+  $trafficToggle.setAttribute('aria-pressed', String(trafficEnabled));
+  $trafficToggle.classList.toggle('active', trafficEnabled);
+  await mapReady;
+  setTrafficVisible(map, trafficEnabled);
+  if ($trafficLegend) $trafficLegend.hidden = !trafficEnabled;
+
+  if (trafficEnabled) {
+    if (trafficLoaded) {
+      $trafficToggle.textContent = 'Hide Traffic';
+      return;
+    }
+    $trafficToggle.disabled = true;
+    $trafficToggle.textContent = 'Loading traffic...';
+    try {
+      const { lines, stations } = await fetchTrafficVolumes();
+      setTrafficData(map, lines, stations);
+      trafficLoaded = true;
+      $trafficToggle.textContent = 'Hide Traffic';
+    } catch (err) {
+      console.warn('traffic overlay failed', err);
+      trafficEnabled = false;
+      $trafficToggle.classList.remove('active');
+      $trafficToggle.setAttribute('aria-pressed', 'false');
+      $trafficToggle.textContent = 'Show Traffic';
+      setTrafficVisible(map, false);
+      if ($trafficLegend) $trafficLegend.hidden = true;
+    } finally {
+      $trafficToggle.disabled = false;
+    }
+  } else {
+    $trafficToggle.textContent = 'Show Traffic';
   }
 }
 
