@@ -74,7 +74,7 @@ const USER_SEARCH_LIMIT = 1000;
 const SODA_PAGE_SIZE = 5000;
 const SODA_MAX_ROWS = 100000;
 const TRAFFIC_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV3';
+const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV4';
 
 /**
  * Query Survey Parcels by attribute. Any provided field is partial-matched
@@ -861,12 +861,12 @@ async function fetchMidblockTrafficStudyRows() {
       'street_from',
       'street_to',
       'location_description',
-      'count_date',
+      'date_trunc_ymd(count_date)',
       'sum(count_15_minutes)',
       'count(*)',
     ].join(','),
-    $group: 'study_id,street,street_from,street_to,location_description,count_date',
-    $order: 'count_date DESC',
+    $group: 'study_id,street,street_from,street_to,location_description,date_trunc_ymd(count_date)',
+    $order: 'date_trunc_ymd_count_date DESC',
   });
   const { rows } = await fetchSodaRowsPaged(MIDBLOCK_TRAFFIC_COUNTS_URL, params, {
     label: 'Midblock traffic-count daily aggregate',
@@ -877,6 +877,7 @@ async function fetchMidblockTrafficStudyRows() {
 function aggregateMidblockStudyRows(rows) {
   const byStudy = new Map();
   for (const row of rows) {
+    const countDate = row.date_trunc_ymd_count_date || row.count_date;
     const key = [
       row.study_id,
       normalizeStreetName(row.street),
@@ -891,8 +892,8 @@ function aggregateMidblockStudyRows(rows) {
         street_from: row.street_from,
         street_to: row.street_to,
         location_description: row.location_description,
-        min_count_date: row.count_date,
-        max_count_date: row.count_date,
+        min_count_date: countDate,
+        max_count_date: countDate,
         sum_count_15_minutes: 0,
         count: 0,
         _dateSet: new Set(),
@@ -903,13 +904,13 @@ function aggregateMidblockStudyRows(rows) {
     if (Number.isFinite(total)) entry.sum_count_15_minutes += total;
     const intervals = Number(row.count);
     if (Number.isFinite(intervals)) entry.count += intervals;
-    if (row.count_date) {
-      entry._dateSet.add(row.count_date);
-      if (!entry.min_count_date || Date.parse(row.count_date) < Date.parse(entry.min_count_date)) {
-        entry.min_count_date = row.count_date;
+    if (countDate) {
+      entry._dateSet.add(countDate);
+      if (!entry.min_count_date || Date.parse(countDate) < Date.parse(entry.min_count_date)) {
+        entry.min_count_date = countDate;
       }
-      if (!entry.max_count_date || Date.parse(row.count_date) > Date.parse(entry.max_count_date)) {
-        entry.max_count_date = row.count_date;
+      if (!entry.max_count_date || Date.parse(countDate) > Date.parse(entry.max_count_date)) {
+        entry.max_count_date = countDate;
       }
     }
   }
@@ -1260,12 +1261,16 @@ function trafficCorridorKey(row) {
 const STREET_TYPE_ALIASES = {
   AVENUE: 'AVE',
   AV: 'AVE',
+  BAY: 'BAY',
   BOULEVARD: 'BLVD',
   BVD: 'BLVD',
   CIRCLE: 'CIR',
+  CLOSE: 'CL',
+  CL: 'CL',
   CRESCENT: 'CRES',
   CRESC: 'CRES',
   COURT: 'CRT',
+  CT: 'CRT',
   DRIVE: 'DR',
   HIGHWAY: 'HWY',
   LANE: 'LN',
@@ -1276,6 +1281,8 @@ const STREET_TYPE_ALIASES = {
   STREET: 'ST',
   TERRACE: 'TER',
   TRAIL: 'TRL',
+  WAY: 'WY',
+  WY: 'WY',
 };
 
 function normalizeStreetName(raw) {
