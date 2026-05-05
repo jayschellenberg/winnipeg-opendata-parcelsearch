@@ -430,7 +430,7 @@ async function toggleDimensions() {
   dimensionsEnabled = !dimensionsEnabled;
   $dimensionsToggle.setAttribute('aria-pressed', String(dimensionsEnabled));
   $dimensionsToggle.classList.toggle('active', dimensionsEnabled);
-  $dimensionsToggle.textContent = dimensionsEnabled ? 'Hide Dimensions' : 'Show Dimensions';
+  $dimensionsToggle.textContent = dimensionsEnabled ? 'Hide Dimensions*' : 'Show Dimensions*';
   await mapReady;
   setDimensionsVisible(map, dimensionsEnabled);
   if (dimensionsEnabled) refreshDimensions();
