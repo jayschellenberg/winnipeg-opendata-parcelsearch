@@ -296,6 +296,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         id: 'assess-context-fill',
         type: 'fill',
         source: 'assess-context',
+        layout: { visibility: 'none' },
         paint: {
           'fill-color': '#b22222',
           'fill-opacity': 0.22,
@@ -305,6 +306,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         id: 'assess-context-line',
         type: 'line',
         source: 'assess-context',
+        layout: { visibility: 'none' },
         paint: {
           'line-color': '#690000',
           'line-width': 3,
@@ -320,6 +322,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         id: 'parcel-fill',
         type: 'fill',
         source: 'parcel-results',
+        layout: { visibility: 'none' },
         paint: {
           'fill-color': '#4682b4',
           'fill-opacity': 0.4,
@@ -329,6 +332,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         id: 'parcel-line',
         type: 'line',
         source: 'parcel-results',
+        layout: { visibility: 'none' },
         paint: {
           'line-color': '#0b2566',
           'line-width': 2,
