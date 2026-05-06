@@ -177,7 +177,8 @@ export async function searchAssessmentParcels({ roll, address, zoning, duMode, d
   const rc = rollClause(roll);
   if (rc)      clauses.push(rc);
   if (address) clauses.push(likeClause('full_address', address));
-  if (zoning)  clauses.push(likeClause('zoning', zoning));
+  const zc = zoningClause(zoning);
+  if (zc)      clauses.push(zc);
   const duClause = buildDuClause(duMode, duMin);
   if (duClause) clauses.push(duClause);
   if (clauses.length === 0) {
@@ -552,7 +553,8 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
   const extras = [];
   const rc = rollClause(extraFilters.roll);
   if (rc) extras.push(rc);
-  if (extraFilters.zoning) extras.push(likeClause('zoning', extraFilters.zoning));
+  const zc2 = zoningClause(extraFilters.zoning);
+  if (zc2) extras.push(zc2);
   const duClause = buildDuClause(extraFilters.duMode, extraFilters.duMin);
   if (duClause) extras.push(duClause);
   return fetchPerFeatureBboxUnion({
@@ -1990,6 +1992,26 @@ function rollClause(roll) {
   const capped = normalised.slice(0, 500);
   const inList = capped.map((r) => `'${escapeSoql(r)}'`).join(',');
   return `roll_number IN (${inList})`;
+}
+
+/**
+ * Build the zoning SoQL clause. d4mq-wa44 stores zoning text without a
+ * hyphen between the alpha prefix and the numeric/alpha suffix —
+ * `R1M - RES - S F - MEDIUM`, `R2 - RES - TWO FAMILY`, etc. But the
+ * area-weighted enrichment from dxrp-w6re populates the displayed
+ * Zoning column with the *hyphenated* zone code (`R1-M`, `C2`, `PR1`,
+ * `D-OS-DT`). So a user reading the table column and typing it back
+ * would get zero results because the hyphens don't match.
+ *
+ * Strip hyphens from BOTH sides of the LIKE so `R1-M`, `R1M`, and
+ * `R-1-M` all resolve the same. Uses SoQL's `replace(col, find, sub)`
+ * — confirmed available on the Winnipeg Socrata instance.
+ */
+function zoningClause(value) {
+  if (!value) return null;
+  const stripped = String(value).toUpperCase().replace(/-/g, '');
+  if (!stripped) return null;
+  return `upper(replace(zoning,'-','')) like '%${escapeSoql(stripped)}%'`;
 }
 
 /**

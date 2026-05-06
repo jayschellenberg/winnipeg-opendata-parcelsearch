@@ -766,8 +766,17 @@ async function runAssessmentSearch(inputs) {
   }
 
   const n = assessFc.features.length;
+  // For a multi-roll paste, surface a "(X of N requested rolls not
+  // found)" hint when fewer parcels came back than rolls input. Without
+  // this the missing rolls would silently disappear (e.g. exempt
+  // properties, stale clipboard data) and the user wouldn't know.
+  const requestedRolls = countRollList(inputs.roll);
+  const missingHint = requestedRolls > 1 && n < requestedRolls
+    ? ` (${requestedRolls - n} of ${requestedRolls} requested roll${requestedRolls === 1 ? '' : 's'} not found)`
+    : '';
+
   if (n === 0) {
-    setCount('No parcels found.');
+    setCount(`No parcels found.${missingHint}`);
     setParcels(EMPTY_FC, EMPTY_FC);
     return;
   }
@@ -777,7 +786,7 @@ async function runAssessmentSearch(inputs) {
   // Assessment Parcels, so we key on assess.roll_number.
   tagFeatures(assessFc, 'assess');
 
-  const countMsg = parcelCountMsg(n, assessFc);
+  const countMsg = parcelCountMsg(n, assessFc) + missingHint;
   setCount(`${countMsg} · loading legal descriptions…`);
 
   // Show assessment-only rows in the table immediately. Map renders the
@@ -833,6 +842,18 @@ function parcelCountMsg(n, fc) {
   return fc?.meta?.truncated
     ? `Showing first ${n} parcels (limit reached — refine your search)`
     : `${n} parcels found`;
+}
+
+/**
+ * Count how many distinct roll-number tokens the user pasted into the
+ * Roll # field. Mirrors the split logic in soda.js's rollClause(). When
+ * the token count is ≤ 1, the field is in single-value LIKE mode and
+ * we don't bother with the multi-roll "not found" UX.
+ */
+function countRollList(roll) {
+  if (!roll) return 0;
+  const tokens = String(roll).split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+  return tokens.length;
 }
 
 function setBusy(busy) {
