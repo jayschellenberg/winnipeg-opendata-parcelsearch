@@ -118,54 +118,42 @@ writeLines(
 )
 cat("GeoJSON size: ", round(file.size(output_geojson) / 1e6, 1), " MB\n", sep = "")
 
-# --- Step 3: Print the tippecanoe + pmtiles convert commands -------
-# klokantech/tippecanoe (the readily-Dockerised image) is older and
-# only outputs .mbtiles, so we go through a two-step pipeline:
-# tippecanoe -> .mbtiles, then pmtiles convert -> .pmtiles.
+# --- Step 3: Print the tippecanoe command --------------------------
+# Uses the locally-built `felt-tippecanoe` image (Dockerfile.tippecanoe
+# at the repo root) — Felt's actively-maintained tippecanoe fork.
+# Modern tippecanoe writes .pmtiles directly, so this is a single
+# step (no .mbtiles intermediate, no go-pmtiles convert).
 #
 # Flag choices (locked in after a Karpathy round on the live overlay):
 #   --maximum-zoom=18           : enough detail at parcel scale
 #   --minimum-zoom=13           : at zoom < 13 every parcel is sub-pixel
 #                                 anyway, so generating those tiles
-#                                 just inflates the .pmtiles and adds
-#                                 simplification artefacts
-#   --simplification=2          : default 4 was too aggressive — chevron
-#                                 / zigzag artefacts on rectangular lots
-#                                 in dense neighbourhoods
+#                                 just inflates the .pmtiles
+#   --simplification=2          : gentle Douglas-Peucker — preserves
+#                                 rectangle corners on small city lots
 #   --full-detail=14            : default 12 means a 4096-quantum grid
 #                                 per tile; 14 = 16384 = 4× more precise
-#                                 corners on small city lots
+#                                 corners
 #   --no-feature-limit          : don't drop any parcel
 #   --no-tile-size-limit        : don't enforce default 500 KB tile cap
 #   --force                     : overwrite any existing output
-
-intermediate_mbtiles <- file.path(public_dir, "parcels.mbtiles")
-output_pmtiles_rel   <- "/data/web/public/parcels.pmtiles"
-output_mbtiles_rel   <- "/data/web/public/parcels.mbtiles"
-input_geojson_rel    <- "/data/web/public/parcels.geojson"
+#
+# If you don't have the felt-tippecanoe image yet, build it once:
+#   docker build -f Dockerfile.tippecanoe -t felt-tippecanoe:latest .
 
 tippecanoe_cmd <- paste(
-  "docker run --rm -v \"${PWD}:/data\" klokantech/tippecanoe",
-  "tippecanoe",
-  "--output=", output_mbtiles_rel,
-  "--layer=parcels",
-  "--maximum-zoom=18 --minimum-zoom=13",
-  "--simplification=2 --full-detail=14",
-  "--no-feature-limit --no-tile-size-limit --force",
-  input_geojson_rel
+  'docker run --rm -v "${PWD}:/data" felt-tippecanoe',
+  '-o /data/web/public/parcels.pmtiles',
+  '--layer=parcels',
+  '--maximum-zoom=18 --minimum-zoom=13',
+  '--simplification=2 --full-detail=14',
+  '--no-feature-limit --no-tile-size-limit --force',
+  '/data/web/public/parcels.geojson'
 )
 
-pmtiles_cmd <- paste(
-  ".\\pmtiles.exe convert",
-  shQuote(intermediate_mbtiles),
-  shQuote(output_pmtiles)
-)
-
-cat("\nNext step 1 — build .mbtiles via Docker tippecanoe:\n  ",
+cat("\nNext step (run from the project root in PowerShell):\n  ",
     tippecanoe_cmd, "\n\n", sep = "")
-cat("Next step 2 — convert to .pmtiles (download go-pmtiles binary if",
-    " you don't have one, see REPLICATION_GUIDE):\n  ",
-    pmtiles_cmd, "\n\n", sep = "")
-cat("After both finish you can delete the intermediates:\n  ",
-    shQuote(output_geojson), "\n  ",
-    shQuote(intermediate_mbtiles), "\n", sep = "")
+cat("If the felt-tippecanoe image doesn't exist yet, build it first (one-time, ~3 min):\n",
+    "  docker build -f Dockerfile.tippecanoe -t felt-tippecanoe:latest .\n\n", sep = "")
+cat("After tippecanoe finishes you can delete the GeoJSON intermediate:\n  ",
+    shQuote(output_geojson), "\n", sep = "")
