@@ -29,6 +29,7 @@
 library(sf)
 library(httr2)
 library(jsonlite)
+library(digest)
 
 data_dir       <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
 public_dir     <- file.path(data_dir, "web", "public")
@@ -72,6 +73,35 @@ repeat {
 }
 
 cat("Total features: ", length(all_features), "\n", sep = "")
+
+# --- Step 1.5: Deduplicate by geometry ------------------------------
+# Multi-unit buildings (condos especially) often have one assessment
+# record per unit, all sharing the SAME building polygon. Without
+# dedup, every unit emits an identical polygon to the .pmtiles, and
+# the citywide overlay renders those stacked features as dark
+# opaque blobs (50 units × 0.06 opacity ≈ 95% opaque). For the
+# overlay's purpose ("show every parcel boundary") one polygon per
+# unique geometry is all we need; per-unit roll numbers are still
+# served live from SODA when the user actually queries that parcel.
+#
+# We hash the geometry's coordinate JSON to a key, group by key, and
+# keep only the first feature in each group. Properties of subsequent
+# duplicates are discarded — they're per-unit, not per-polygon, and
+# would only matter if we tried to surface them in the overlay popup
+# (which we don't; the overlay is line-only).
+
+cat("Deduplicating by geometry...\n")
+geom_keys <- vapply(
+  all_features,
+  function(f) digest::digest(toJSON(f$geometry, auto_unbox = TRUE)),
+  character(1)
+)
+keep_mask <- !duplicated(geom_keys)
+n_before  <- length(all_features)
+all_features <- all_features[keep_mask]
+n_after   <- length(all_features)
+cat("  ", n_before - n_after, "duplicates removed; ",
+    n_after, "unique polygons retained.\n", sep = " ")
 
 # --- Step 2: Write the combined FeatureCollection -------------------
 # We deliberately bypass sf here so we don't lose precision through
