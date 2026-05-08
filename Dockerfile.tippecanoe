@@ -1,0 +1,42 @@
+# Modern tippecanoe (Felt's actively-maintained fork) compiled from
+# source. The widely-cached klokantech/tippecanoe Docker image is from
+# 2019 and predates several simplification fixes — produces chevron /
+# zigzag artefacts on dense residential parcels even with conservative
+# flags. Felt's fork also writes .pmtiles directly so we don't need a
+# .mbtiles intermediate or the go-pmtiles convert step.
+#
+# One-time build:
+#   docker build -f Dockerfile.tippecanoe -t felt-tippecanoe:latest .
+#
+# Then run from the project root:
+#   docker run --rm -v "${PWD}:/data" felt-tippecanoe \
+#     -o /data/web/public/parcels.pmtiles \
+#     --layer=parcels \
+#     --maximum-zoom=18 --minimum-zoom=13 \
+#     --simplification=2 --full-detail=14 \
+#     --no-feature-limit --no-tile-size-limit --force \
+#     /data/web/public/parcels.geojson
+#
+# r/build_parcel_tiles.R prints the exact command at the end of every
+# run; just copy-paste.
+
+FROM ubuntu:22.04
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      build-essential \
+      libsqlite3-dev \
+      zlib1g-dev \
+      git \
+      ca-certificates \
+ && git clone --depth 1 https://github.com/felt/tippecanoe.git /src \
+ && cd /src \
+ && make -j$(nproc) \
+ && make install \
+ && rm -rf /src \
+ && apt-get purge -y build-essential git \
+ && apt-get autoremove -y \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+ENTRYPOINT ["tippecanoe"]
