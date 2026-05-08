@@ -365,9 +365,12 @@ export function initMap(container, { onFeatureClick } = {}) {
         'source-layer': 'parcels',
         layout: { visibility: 'none' },
         paint: {
-          'line-color': '#5a6478',
+          // Blue to match the Manitoba parcel-search sister site's
+          // muni-parcels overlay — same Tailwind blue-700, slightly
+          // wider so the line stays readable on satellite basemap.
+          'line-color': '#1d4ed8',
           'line-width': 1.0,
-          'line-opacity': 0.75,
+          'line-opacity': 0.7,
         },
       });
 
