@@ -348,19 +348,16 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'vector',
         url: CITYWIDE_PARCELS_URL,
       });
-      map.addLayer({
-        id: 'citywide-parcels-fill',
-        type: 'fill',
-        source: 'citywide-parcels',
-        'source-layer': 'parcels',
-        layout: { visibility: 'none' },
-        paint: {
-          // Very faint grey wash — just enough to show parcel
-          // boundaries exist without competing with anything else.
-          'fill-color': '#7a8aa0',
-          'fill-opacity': 0.06,
-        },
-      });
+      // Citywide parcels intentionally render as line-only, no fill.
+      // The pmtiles archive includes one feature per assessment record,
+      // and condo buildings have many units that share a single building
+      // polygon — at fill-opacity 0.06, 50 stacked condo units would
+      // composite to ~95% opaque, producing the "dark blue chunks" the
+      // user reported. Lines stack mathematically the same way but a
+      // stacked 1px line just renders as a normal solid line. The
+      // long-term fix lives in build_parcel_tiles.R: dedupe by
+      // geometry before handing GeoJSON to tippecanoe so each unique
+      // polygon ends up as one feature.
       map.addLayer({
         id: 'citywide-parcels-line',
         type: 'line',
@@ -369,8 +366,8 @@ export function initMap(container, { onFeatureClick } = {}) {
         layout: { visibility: 'none' },
         paint: {
           'line-color': '#5a6478',
-          'line-width': 0.4,
-          'line-opacity': 0.55,
+          'line-width': 1.0,
+          'line-opacity': 0.75,
         },
       });
 
@@ -815,7 +812,6 @@ export function setZoningVisible(map, visible) {
  *  check whether the archive exists before flipping the toggle. */
 export function setCitywideParcelsVisible(map, visible) {
   const v = visible ? 'visible' : 'none';
-  if (map.getLayer('citywide-parcels-fill')) map.setLayoutProperty('citywide-parcels-fill', 'visibility', v);
   if (map.getLayer('citywide-parcels-line')) map.setLayoutProperty('citywide-parcels-line', 'visibility', v);
 }
 
