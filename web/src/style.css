@@ -579,9 +579,9 @@ header small a {
 }
 
 .legend-pill.assess {
-  background: rgba(178, 34, 34, 0.22);
-  border: 1.5px solid #690000;
-  color: #690000;
+  background: rgba(255, 214, 10, 0.35);
+  border: 1.5px solid #8a6500;
+  color: #5a4400;
 }
 
 #results-wrap {

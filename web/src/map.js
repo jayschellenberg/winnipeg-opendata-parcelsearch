@@ -339,8 +339,8 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'fill',
         source: 'assess-context',
         paint: {
-          'fill-color': '#b22222',
-          'fill-opacity': 0.22,
+          'fill-color': '#ffd60a',
+          'fill-opacity': 0.35,
         },
       });
       map.addLayer({
@@ -348,7 +348,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'line',
         source: 'assess-context',
         paint: {
-          'line-color': '#690000',
+          'line-color': '#8a6500',
           'line-width': 3,
           'line-opacity': 0.95,
         },
@@ -880,12 +880,12 @@ function combinedPopupHtml(primary, context) {
     blocks.push(`<div><strong style="color:#0b2566">Survey Parcel</strong><br>${popupHtml(primary)}</div>`);
   }
   if (primaryIsAssess) {
-    blocks.push(`<div><strong style="color:#690000">Assessment Parcel</strong><br>${popupHtml(primary)}</div>`);
+    blocks.push(`<div><strong style="color:#8a6500">Assessment Parcel</strong><br>${popupHtml(primary)}</div>`);
   }
   // The context layer is always assessment-side. Only show separately
   // from primary to avoid duplicating the same parcel.
   if (context && (!primaryIsAssess || context.roll_number !== primary?.roll_number)) {
-    blocks.push(`<div><strong style="color:#690000">Assessment Parcel</strong><br>${popupHtml(context)}</div>`);
+    blocks.push(`<div><strong style="color:#8a6500">Assessment Parcel</strong><br>${popupHtml(context)}</div>`);
   }
   return blocks.join('<hr style="margin:6px 0;border:none;border-top:1px solid #ddd">');
 }
