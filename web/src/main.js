@@ -53,6 +53,7 @@ import {
   initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
+  setCitywideParcelsVisible, probeCitywideParcels,
 } from './map.js';
 
 const $lot = document.getElementById('lot');
@@ -75,6 +76,7 @@ const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
 const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
+const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
@@ -192,6 +194,7 @@ $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secon
 $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 $dimensionsToggle.addEventListener('click', toggleDimensions);
+$allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning, $duMin]) {
   el.addEventListener('keydown', (e) => {
@@ -676,6 +679,34 @@ async function togglePolicyOverlay(name) {
       btn.disabled = false;
     }
   }
+}
+
+/**
+ * Toggle the citywide-parcels PMTiles overlay. Different from the
+ * policy overlays — there's no GeoJSON to fetch up front; MapLibre
+ * pulls vector tiles for whatever's in the viewport on demand. The
+ * only thing this handler manages is layer visibility, plus an
+ * up-front probe to surface a "tiles not built" message when the
+ * .pmtiles archive isn't deployed yet (a fresh fork that hasn't run
+ * the offline build pipeline).
+ */
+let citywideParcelsEnabled = false;
+async function toggleCitywideParcels() {
+  await mapReady;
+  // Probe once on the first toggle attempt — bypasses if already
+  // confirmed available.
+  const available = await probeCitywideParcels();
+  if (!available) {
+    setCount(
+      'Show All Parcels: tiles not built. Run r/build_parcel_tiles.R + tippecanoe to generate web/public/parcels.pmtiles.'
+    );
+    return;
+  }
+  citywideParcelsEnabled = !citywideParcelsEnabled;
+  $allParcelsToggle.textContent = citywideParcelsEnabled ? 'Hide All Parcels' : 'Show All Parcels';
+  $allParcelsToggle.setAttribute('aria-pressed', String(citywideParcelsEnabled));
+  $allParcelsToggle.classList.toggle('active', citywideParcelsEnabled);
+  setCitywideParcelsVisible(map, citywideParcelsEnabled);
 }
 
 // ---------- Legal-description flow ----------

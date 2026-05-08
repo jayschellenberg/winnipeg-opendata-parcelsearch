@@ -13,6 +13,7 @@ A firm-facing web tool for researching City of Winnipeg properties — search by
 | `web/` | Vite + vanilla JS static site. Queries Winnipeg Open Data's Socrata API live on every search. Deployed to Vercel. | Firm colleagues |
 | `r/download_parcels.R` | Downloads the latest Survey + Assessment Parcels datasets as GeoPackages. | Local archive |
 | `r/cross_reference_parcels.R` | Offline spatial join — builds `ParcelCrossRef_YYYYMMDD.csv`. | Local archive |
+| `r/build_parcel_tiles.R` | Pages every Assessment Parcel from SODA, hands the GeoJSON to `tippecanoe` to build `web/public/parcels.pmtiles` for the citywide-parcels overlay. | Site build |
 | `r/parcel_search_app.R` | R Shiny app with a snapshot-picker dropdown for searching dated `.gpkg` archives. Used for historical (pre-subdivision) lookups. | Personal use |
 | `extras/` | Experimentation files. | — |
 | `REPLICATION_GUIDE.md` | Step-by-step guide for adapting this tool to another jurisdiction. | Anyone replicating |
@@ -63,6 +64,7 @@ The page uses a two-pane layout with a **320 px sticky left sidebar** holding ev
 - **Search · Clear · Export CSV** action row + result count chip
 - **Map overlays** — compact buttons and links in a 2-column grid:
   - Show Survey / Hide Assessment (Survey off, Assessment on by default)
+  - Show All Parcels (citywide assessment-parcel overlay served from a single PMTiles archive — instant render, hover-able citywide)
   - Show Zoning (citywide colour-coded overlay; first toggle ~10–15 s, instant after)
   - Show Traffic (latest available 24-hour average volumes on matched street segments + permanent stations)
   - Show Secondary Plans (Precincts + Major Redev sites)

@@ -7,7 +7,20 @@
 // The hover popup figures out which schema the feature is carrying.
 
 import maplibregl from 'maplibre-gl';
+import { Protocol } from 'pmtiles';
 import bbox from '@turf/bbox';
+
+// Register the pmtiles:// protocol so MapLibre can read vector tiles
+// from a single .pmtiles archive served as a static asset on Vercel.
+// Used by the citywide-parcels overlay (web/public/parcels.pmtiles).
+// Idempotent — addProtocol() simply replaces if already registered.
+maplibregl.addProtocol('pmtiles', new Protocol().tile);
+
+// Path the JS uses to fetch the citywide-parcels archive. Lives in
+// web/public/ and is served as a static asset from the site root.
+// Generated offline by r/build_parcel_tiles.R + tippecanoe; see the
+// REPLICATION_GUIDE for the build pipeline.
+const CITYWIDE_PARCELS_URL = 'pmtiles:///parcels.pmtiles';
 
 const WINNIPEG_CENTER = [-97.14, 49.89];
 
@@ -319,6 +332,45 @@ export function initMap(container, { onFeatureClick } = {}) {
           'text-color': '#1a1a1a',
           'text-halo-color': '#ffffff',
           'text-halo-width': 1.5,
+        },
+      });
+
+      // Citywide assessment parcels — every parcel (~245K) served as a
+      // single PMTiles archive. Vector source so it's sharp at any zoom
+      // and stays interactive (hover/click). Hidden by default; the
+      // user toggles via "Show All Parcels". Drawn under the
+      // search-result highlight so selected parcels (yellow fill)
+      // visibly stand out against the citywide light-grey wash.
+      // The archive is built offline by r/build_parcel_tiles.R; if it
+      // hasn't been built yet the source request returns 404 and the
+      // toggle handler surfaces a "tiles not built" message.
+      map.addSource('citywide-parcels', {
+        type: 'vector',
+        url: CITYWIDE_PARCELS_URL,
+      });
+      map.addLayer({
+        id: 'citywide-parcels-fill',
+        type: 'fill',
+        source: 'citywide-parcels',
+        'source-layer': 'parcels',
+        layout: { visibility: 'none' },
+        paint: {
+          // Very faint grey wash — just enough to show parcel
+          // boundaries exist without competing with anything else.
+          'fill-color': '#7a8aa0',
+          'fill-opacity': 0.06,
+        },
+      });
+      map.addLayer({
+        id: 'citywide-parcels-line',
+        type: 'line',
+        source: 'citywide-parcels',
+        'source-layer': 'parcels',
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#5a6478',
+          'line-width': 0.4,
+          'line-opacity': 0.55,
         },
       });
 
@@ -754,6 +806,35 @@ export function setZoningVisible(map, visible) {
   if (map.getLayer('zoning-fill')) map.setLayoutProperty('zoning-fill', 'visibility', v);
   if (map.getLayer('zoning-line')) map.setLayoutProperty('zoning-line', 'visibility', v);
   if (map.getLayer('zoning-label')) map.setLayoutProperty('zoning-label', 'visibility', v);
+}
+
+/** Toggle the citywide-parcels vector overlay on/off. The PMTiles
+ *  archive only fetches the tiles for the current viewport, so cost
+ *  is bounded; turning the layer on instantly draws what's on screen.
+ *  Promise-returning `probeCitywideParcels()` below lets the caller
+ *  check whether the archive exists before flipping the toggle. */
+export function setCitywideParcelsVisible(map, visible) {
+  const v = visible ? 'visible' : 'none';
+  if (map.getLayer('citywide-parcels-fill')) map.setLayoutProperty('citywide-parcels-fill', 'visibility', v);
+  if (map.getLayer('citywide-parcels-line')) map.setLayoutProperty('citywide-parcels-line', 'visibility', v);
+}
+
+/**
+ * Resolve true/false based on whether the .pmtiles archive can be
+ * fetched. Used by the toggle handler to surface a "tiles not built"
+ * hint instead of silently doing nothing when the asset is missing.
+ * One-time check (the result doesn't change at runtime); cached.
+ */
+let _citywideTilesAvailable = null;
+export async function probeCitywideParcels() {
+  if (_citywideTilesAvailable !== null) return _citywideTilesAvailable;
+  try {
+    const res = await fetch('/parcels.pmtiles', { method: 'HEAD' });
+    _citywideTilesAvailable = res.ok;
+  } catch {
+    _citywideTilesAvailable = false;
+  }
+  return _citywideTilesAvailable;
 }
 
 /** Push data into the named OurWinnipeg overlay source. */

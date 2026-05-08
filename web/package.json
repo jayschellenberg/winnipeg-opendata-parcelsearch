@@ -14,7 +14,8 @@
     "@turf/boolean-intersects": "^7.1.0",
     "@turf/boolean-point-in-polygon": "^7.3.4",
     "@turf/intersect": "^7.3.5",
-    "maplibre-gl": "^4.7.1"
+    "maplibre-gl": "^4.7.1",
+    "pmtiles": "^4.4.1"
   },
   "devDependencies": {
     "vite": "^5.4.10"
