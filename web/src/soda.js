@@ -172,11 +172,15 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
  * ANDed together. Returns a FeatureCollection with assessment-parcel
  * geometry suitable for rendering directly on the map.
  */
-export async function searchAssessmentParcels({ roll, address, zoning, duMode, duMin }) {
+export async function searchAssessmentParcels({
+  roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+}) {
   const clauses = [];
   const rc = rollClause(roll);
   if (rc)      clauses.push(rc);
-  if (address) clauses.push(likeClause('full_address', address));
+  for (const ac of buildAddressClauses({ addressFrom, addressTo, addressStreet })) {
+    clauses.push(ac);
+  }
   const zc = zoningClause(zoning);
   if (zc)      clauses.push(zc);
   const duClause = buildDuClause(duMode, duMin);
@@ -230,10 +234,17 @@ function buildDuClause(duMode, duMin) {
  * combined intent — "parcel must match all the filters the user typed" —
  * stays consistent regardless of which path surfaced it.
  */
-export async function searchAssessmentParcelsExpanded({ roll, address, zoning, duMode, duMin }) {
-  const directPromise = searchAssessmentParcels({ roll, address, zoning, duMode, duMin });
-  const xrefPromise = address
-    ? searchAddressesAndFindParcels(address, { roll, zoning, duMode, duMin })
+export async function searchAssessmentParcelsExpanded({
+  roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+}) {
+  const directPromise = searchAssessmentParcels({
+    roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+  });
+  const xrefPromise = (addressFrom || addressTo || addressStreet)
+    ? searchAddressesAndFindParcels(
+        { addressFrom, addressTo, addressStreet },
+        { roll, zoning, duMode, duMin }
+      )
     : Promise.resolve({ type: 'FeatureCollection', features: [] });
   const [directFc, xrefFc] = await Promise.all([directPromise, xrefPromise]);
   const merged = mergeFcByKey([directFc, xrefFc], 'roll_number');
@@ -266,10 +277,16 @@ export async function searchAssessmentParcelsExpanded({ roll, address, zoning, d
  * geometry-typed columns and explicit conversion is more predictable than
  * letting Socrata pick one.
  */
-export async function searchAddresses({ address }) {
-  if (!address) return { type: 'FeatureCollection', features: [] };
+export async function searchAddresses({ addressFrom, addressTo, addressStreet }) {
+  const clauses = [];
+  for (const ac of buildAddressClauses({ addressFrom, addressTo, addressStreet })) {
+    clauses.push(ac);
+  }
+  if (clauses.length === 0) {
+    return { type: 'FeatureCollection', features: [] };
+  }
   const params = new URLSearchParams({
-    $where: likeClause('full_address', address),
+    $where: clauses.join(' AND '),
     $select: 'full_address,point',
     $order: 'full_address',
   });
@@ -529,8 +546,8 @@ async function fetchAddressPointsForParcels(parcelFc) {
  * cross-reference path can't surface parcels that wouldn't have matched
  * the direct query for unrelated reasons.
  */
-async function searchAddressesAndFindParcels(address, extraFilters) {
-  const addressFc = await searchAddresses({ address });
+async function searchAddressesAndFindParcels(addressInput, extraFilters) {
+  const addressFc = await searchAddresses(addressInput);
   if (!addressFc.features.length) {
     return { type: 'FeatureCollection', features: [] };
   }
@@ -1955,6 +1972,51 @@ function escapeSoql(s) {
 // case-insensitive — typing "monarch" matches "10 MONARCH MEWS".
 function likeClause(column, value) {
   return `upper(${column}) like '%${escapeSoql(String(value).toUpperCase())}%'`;
+}
+
+/**
+ * Build the SoQL clauses for the civic-address search inputs (range +
+ * street name). Returns an array of clause strings (0-3 entries) that
+ * the caller AND-joins with the rest of the where-clause.
+ *
+ * Schema notes (d4mq-wa44 + cam2-ii3u):
+ *   - `street_number` is stored as a NUMBER type (not text) and is
+ *     populated for ~100% of rows. Direct numeric comparison works,
+ *     no `::number` cast needed.
+ *   - `street_name` is uppercase text. Wrap user input in upper() for
+ *     a case-insensitive substring match.
+ *
+ * Range semantics:
+ *   - From and To both filled, equal       -> exact-number match
+ *   - From and To both filled, To > From   -> closed range
+ *   - From only                            -> open upper bound
+ *   - To only                              -> open lower bound
+ *   - Both empty                           -> no number filter
+ */
+function buildAddressClauses({ addressFrom, addressTo, addressStreet }) {
+  const out = [];
+  const from = parseStreetNumber(addressFrom);
+  const to   = parseStreetNumber(addressTo);
+  if (from != null && to != null) {
+    out.push(from === to
+      ? `street_number = ${from}`
+      : `street_number BETWEEN ${Math.min(from, to)} AND ${Math.max(from, to)}`);
+  } else if (from != null) {
+    out.push(`street_number >= ${from}`);
+  } else if (to != null) {
+    out.push(`street_number <= ${to}`);
+  }
+  if (addressStreet && String(addressStreet).trim()) {
+    out.push(likeClause('street_name', addressStreet));
+  }
+  return out;
+}
+
+/** Parse a From/To bound to a positive integer; null on empty/garbage. */
+function parseStreetNumber(raw) {
+  if (raw == null || raw === '') return null;
+  const n = parseInt(String(raw).trim(), 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 /**

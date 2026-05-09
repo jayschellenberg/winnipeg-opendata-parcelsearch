@@ -41,9 +41,29 @@
     <div class="layout">
       <aside class="sidebar controls" aria-label="Search and overlay controls">
         <h2>Search by assessment</h2>
+        <!--
+          Civic-address search splits into a street-number range +
+          a street-name field, all backed by d4mq-wa44's separate
+          street_number / street_name columns. Tabbing into the To
+          field after typing in From auto-fills it with the same
+          value (and selects all of it), so the default behaviour
+          when the user just types a number is "search this exact
+          number" — type to overwrite for a range, or clear for an
+          open upper bound.
+        -->
+        <div class="address-row">
+          <span class="field address-from-field">
+            <input id="address-from" type="text" placeholder="From #" autocomplete="off" />
+            <span class="tip">Street number lower bound (inclusive). Leave blank for no lower limit.</span>
+          </span>
+          <span class="field address-to-field">
+            <input id="address-to" type="text" placeholder="To #" autocomplete="off" />
+            <span class="tip">Street number upper bound (inclusive). Tab here after From and it auto-fills with the same value (highlighted) for an exact-number search; overwrite for a range or clear it for an open upper bound.</span>
+          </span>
+        </div>
         <span class="field">
-          <input id="address" type="text" placeholder="Address (contains)" />
-          <span class="tip">Address (contains)</span>
+          <input id="address-street" type="text" placeholder="Street Name (contains)" />
+          <span class="tip">Substring match against street_name. e.g. "HARGRAVE", "MAIN", "ROUGE BAY". The street type (ST / AVE / DR) lives in a separate column and isn't matched here.</span>
         </span>
         <span class="field">
           <input id="roll"    type="text" placeholder="Roll # (contains, or comma-separated list)" />

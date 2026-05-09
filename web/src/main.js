@@ -61,7 +61,9 @@ const $block = document.getElementById('block');
 const $plan = document.getElementById('plan');
 const $desc = document.getElementById('desc');
 const $roll = document.getElementById('roll');
-const $address = document.getElementById('address');
+const $addressFrom = document.getElementById('address-from');
+const $addressTo = document.getElementById('address-to');
+const $addressStreet = document.getElementById('address-street');
 const $zoning = document.getElementById('zoning');
 const $duMode = document.getElementById('du-mode');
 const $duMin = document.getElementById('du-min');
@@ -196,7 +198,22 @@ $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('malls
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
-for (const el of [$lot, $block, $plan, $desc, $roll, $address, $zoning, $duMin]) {
+// Tab-into-To auto-fill: when the user types a number in From and
+// then focuses To (by Tab or click), pre-fill To with the same value
+// and select it. Default behaviour for typing a single number is
+// thus "exact match"; the user can immediately type to overwrite for
+// a range, or clear for an open upper bound. Matches the MB tool.
+$addressTo.addEventListener('focus', () => {
+  if ($addressTo.value === '' && $addressFrom.value.trim() !== '') {
+    $addressTo.value = $addressFrom.value.trim();
+    // Defer .select() so it runs after the focus event finishes
+    // claiming the field — without the timeout some browsers
+    // re-collapse the selection on the trailing focus tick.
+    setTimeout(() => $addressTo.select(), 0);
+  }
+});
+
+for (const el of [$lot, $block, $plan, $desc, $roll, $addressFrom, $addressTo, $addressStreet, $zoning, $duMin]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
   });
@@ -237,7 +254,9 @@ async function runSearch() {
     plan: $plan.value.trim(),
     desc: $desc.value.trim(),
     roll: $roll.value.trim(),
-    address: $address.value.trim(),
+    addressFrom:   $addressFrom.value.trim(),
+    addressTo:     $addressTo.value.trim(),
+    addressStreet: $addressStreet.value.trim(),
     zoning: $zoning.value.trim(),
     // DU filter: 'zero' = vacant lots only, 'min' = ≥ N units, '' = no filter.
     // The minimum is captured separately so it persists across mode swaps.
@@ -247,7 +266,8 @@ async function runSearch() {
 
   const anyLegal = inputs.lot || inputs.block || inputs.plan || inputs.desc;
   const anyDu = inputs.duMode === 'zero' || (inputs.duMode === 'min' && inputs.duMin > 0);
-  const anyAssess = inputs.roll || inputs.address || inputs.zoning || anyDu;
+  const anyAddress = inputs.addressFrom || inputs.addressTo || inputs.addressStreet;
+  const anyAssess = inputs.roll || anyAddress || inputs.zoning || anyDu;
 
   if (!anyLegal && !anyAssess) {
     setCount('Enter at least one search field.');
