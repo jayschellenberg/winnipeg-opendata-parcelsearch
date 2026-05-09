@@ -346,7 +346,7 @@ function toggleLayer(which) {
   const fillId = which === 'survey' ? 'parcel-fill' : 'assess-context-fill';
   const lineId = which === 'survey' ? 'parcel-line' : 'assess-context-line';
   const labelOn = which === 'survey' ? 'Hide Survey' : 'Hide Assessment';
-  const labelOff = which === 'survey' ? 'Show Survey' : 'Show Assessment';
+  const labelOff = which === 'survey' ? 'Survey' : 'Assessment';
   const wasActive = btn.classList.contains('active');
   const nowVisible = !wasActive;
   btn.classList.toggle('active', nowVisible);
@@ -389,14 +389,14 @@ async function toggleZoning() {
       zoningEnabled = false;
       $zoningToggle.classList.remove('active');
       $zoningToggle.setAttribute('aria-pressed', 'false');
-      $zoningToggle.textContent = 'Show Zoning';
+      $zoningToggle.textContent = 'Zoning';
       setZoningVisible(map, false);
       if ($zoningLegend) $zoningLegend.hidden = true;
     } finally {
       $zoningToggle.disabled = false;
     }
   } else {
-    $zoningToggle.textContent = 'Show Zoning';
+    $zoningToggle.textContent = 'Zoning';
   }
 }
 
@@ -412,25 +412,29 @@ async function toggleContam() {
   setContamVisible(map, contamEnabled);
 
   if (contamEnabled) {
-    if (contamLoaded) return;
+    if (contamLoaded) {
+      $contamToggle.textContent = 'Hide Enviro Sites';
+      return;
+    }
     $contamToggle.disabled = true;
-    const prevText = $contamToggle.textContent;
     $contamToggle.textContent = 'Loading...';
     try {
       const fc = await fetchContaminatedSites();
       setContamData(map, fc);
       contamLoaded = true;
-      $contamToggle.textContent = prevText;
+      $contamToggle.textContent = 'Hide Enviro Sites';
     } catch (err) {
       console.warn('contaminated-sites overlay failed', err);
       contamEnabled = false;
       $contamToggle.classList.remove('active');
       $contamToggle.setAttribute('aria-pressed', 'false');
-      $contamToggle.textContent = prevText;
+      $contamToggle.textContent = 'Enviro Sites';
       setContamVisible(map, false);
     } finally {
       $contamToggle.disabled = false;
     }
+  } else {
+    $contamToggle.textContent = 'Enviro Sites';
   }
 }
 
@@ -459,14 +463,14 @@ async function toggleTraffic() {
       trafficEnabled = false;
       $trafficToggle.classList.remove('active');
       $trafficToggle.setAttribute('aria-pressed', 'false');
-      $trafficToggle.textContent = 'Show Traffic';
+      $trafficToggle.textContent = 'Traffic';
       setTrafficVisible(map, false);
       if ($trafficLegend) $trafficLegend.hidden = true;
     } finally {
       $trafficToggle.disabled = false;
     }
   } else {
-    $trafficToggle.textContent = 'Show Traffic';
+    $trafficToggle.textContent = 'Traffic';
   }
 }
 
@@ -495,22 +499,22 @@ const POLICY_OVERLAY_CONFIG = {
     btn:    () => $secondaryPlansToggle,
     src:    'secondary-plans',
     fetch:  fetchSecondaryPlans,
-    onLabel:  'Hide Secondary Plans',
-    offLabel: 'Show Secondary Plans',
+    onLabel:  'Hide Sec. Plans',
+    offLabel: 'Sec. Plans',
   },
   infill: {
     btn:    () => $infillToggle,
     src:    'infill-guideline',
     fetch:  fetchInfillGuidelineArea,
     onLabel:  'Hide Infill Area',
-    offLabel: 'Show Infill Area',
+    offLabel: 'Infill Area',
   },
   mallsCorridors: {
     btn:    () => $mallsCorridorsToggle,
     src:    'malls-corridors',
     fetch:  fetchMallsAndCorridors,
     onLabel:  'Hide Malls/Corridors',
-    offLabel: 'Show Malls/Corridors',
+    offLabel: 'Malls/Corridors',
   },
 };
 
@@ -535,7 +539,7 @@ async function toggleDimensions() {
   dimensionsEnabled = !dimensionsEnabled;
   $dimensionsToggle.setAttribute('aria-pressed', String(dimensionsEnabled));
   $dimensionsToggle.classList.toggle('active', dimensionsEnabled);
-  $dimensionsToggle.textContent = dimensionsEnabled ? 'Hide Dimensions*' : 'Show Dimensions*';
+  $dimensionsToggle.textContent = dimensionsEnabled ? 'Hide Dimensions*' : 'Dimensions*';
   await mapReady;
   setDimensionsVisible(map, dimensionsEnabled);
   if (dimensionsEnabled) refreshDimensions();
@@ -763,7 +767,7 @@ async function toggleCitywideParcels() {
     return;
   }
   citywideParcelsEnabled = !citywideParcelsEnabled;
-  $allParcelsToggle.textContent = citywideParcelsEnabled ? 'Hide All Parcels' : 'Show All Parcels';
+  $allParcelsToggle.textContent = citywideParcelsEnabled ? 'Hide All Assess. Parcels' : 'All Assess. Parcels';
   $allParcelsToggle.setAttribute('aria-pressed', String(citywideParcelsEnabled));
   $allParcelsToggle.classList.toggle('active', citywideParcelsEnabled);
   setCitywideParcelsVisible(map, citywideParcelsEnabled);
