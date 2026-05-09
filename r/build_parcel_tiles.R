@@ -54,7 +54,10 @@ page_size <- 5000
 url       <- "https://data.winnipeg.ca/resource/d4mq-wa44.geojson"
 # Fields we want surfaced as feature properties in the .pmtiles —
 # enough for the click popup; extra columns just bloat the archive.
-select_cols <- "roll_number,full_address,zoning,total_assessed_value,geometry"
+# dwelling_units + assessed_land_area are included so the
+# Show All Parcels hover tooltip can show the same fields
+# (size + DU) as the search-result tooltip.
+select_cols <- "roll_number,full_address,zoning,total_assessed_value,dwelling_units,assessed_land_area,geometry"
 
 cat("Fetching Assessment Parcels in pages of ", page_size, "...\n", sep = "")
 

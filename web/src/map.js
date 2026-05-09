@@ -364,6 +364,24 @@ export function initMap(container, { onFeatureClick } = {}) {
       // long-term fix lives in build_parcel_tiles.R: dedupe by
       // geometry before handing GeoJSON to tippecanoe so each unique
       // polygon ends up as one feature.
+      // Invisible fill layer over the citywide-parcels source — captures
+      // hover hits anywhere on a polygon body so the tooltip works even
+      // when the cursor is well inside a parcel (the line layer alone
+      // would only fire when the cursor lands exactly on a 1px line).
+      // Standard MapLibre pattern: fill-opacity 0 still counts as
+      // rendered for queryRenderedFeatures, just invisible.
+      map.addLayer({
+        id: 'citywide-parcels-fill',
+        type: 'fill',
+        source: 'citywide-parcels',
+        'source-layer': 'parcels',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': '#000',
+          'fill-opacity': 0,
+        },
+      });
+
       map.addLayer({
         id: 'citywide-parcels-line',
         type: 'line',
@@ -621,11 +639,12 @@ export function initMap(container, { onFeatureClick } = {}) {
       });
 
       // Civic-address labels — every official address point inside a
-      // result parcel, rendered as just the street number ("440",
-      // "400 1/2") at the address's coordinates. Layered on top of
-      // every other map layer so labels read clearly. minzoom keeps
-      // them out of the city-wide view where they'd be noise; at
-      // zoom ≥ 16 they're typically meaningful.
+      // result parcel, rendered as the full street address
+      // ("1129 FIFE STREET") at the address's coordinates. Layered on
+      // top of every other map layer so labels read clearly. minzoom
+      // keeps them out of the city-wide view where they'd be noise;
+      // at zoom ≥ 16 they're typically meaningful. Falls back to the
+      // bare street number if full_address is missing for some reason.
       map.addSource('civic-addresses', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -636,10 +655,11 @@ export function initMap(container, { onFeatureClick } = {}) {
         source: 'civic-addresses',
         minzoom: 16,
         layout: {
-          'text-field': ['coalesce', ['get', 'street_num'], ['get', 'full_address'], ''],
+          'text-field': ['coalesce', ['get', 'full_address'], ['get', 'street_num'], ''],
           'text-font': ['Open Sans Semibold'],
           'text-size': 11,
           'text-anchor': 'center',
+          'text-max-width': 8,
           'text-allow-overlap': false,
           'text-ignore-placement': false,
         },
@@ -669,15 +689,27 @@ export function initMap(container, { onFeatureClick } = {}) {
         const contextHits = map.getLayer('assess-context-fill')
           ? map.queryRenderedFeatures(e.point, { layers: ['assess-context-fill'] })
           : [];
-        if (!primaryHits.length && !contextHits.length) {
+        // Citywide-parcels-fill is consulted only when no search-result
+        // layer matches. queryRenderedFeatures honours layer visibility,
+        // so this is a no-op when Show All Parcels is off. Search results
+        // win over citywide because the live SoDA data on results is
+        // richer (e.g. address-enrichment + partial-lot flags).
+        let citywideHits = [];
+        if (!primaryHits.length && !contextHits.length && map.getLayer('citywide-parcels-fill')) {
+          citywideHits = map.queryRenderedFeatures(e.point, { layers: ['citywide-parcels-fill'] });
+        }
+        if (!primaryHits.length && !contextHits.length && !citywideHits.length) {
           popup.remove();
           map.getCanvas().style.cursor = '';
           return;
         }
         map.getCanvas().style.cursor = 'pointer';
+        const primaryProps = primaryHits[0]?.properties
+          ?? (contextHits.length ? null : citywideHits[0]?.properties);
+        const contextProps = contextHits[0]?.properties;
         popup
           .setLngLat(e.lngLat)
-          .setHTML(combinedPopupHtml(primaryHits[0]?.properties, contextHits[0]?.properties))
+          .setHTML(combinedPopupHtml(primaryProps, contextProps))
           .addTo(map);
       });
       map.on('mouseout', () => {
@@ -871,6 +903,7 @@ export function setZoningVisible(map, visible) {
  *  check whether the archive exists before flipping the toggle. */
 export function setCitywideParcelsVisible(map, visible) {
   const v = visible ? 'visible' : 'none';
+  if (map.getLayer('citywide-parcels-fill')) map.setLayoutProperty('citywide-parcels-fill', 'visibility', v);
   if (map.getLayer('citywide-parcels-line')) map.setLayoutProperty('citywide-parcels-line', 'visibility', v);
   if (map.getLayer('citywide-parcels-label')) map.setLayoutProperty('citywide-parcels-label', 'visibility', v);
 }
