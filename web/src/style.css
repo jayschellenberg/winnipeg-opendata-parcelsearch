@@ -232,6 +232,19 @@ header small a {
   line-height: 1.35;
 }
 
+/* Divider between the overlay-note (Dimensions caveat) and the
+   "Other searches" block at the bottom of the sidebar. Default <hr>
+   has chunky margins; tighten and match the sidebar's border colour. */
+.sidebar .advanced-divider {
+  border: 0;
+  border-top: 1px solid #d0d4dd;
+  margin: 10px 0 0;
+}
+
+.sidebar .advanced-divider + h2 {
+  margin-top: 6px;
+}
+
 /* External-link entries in the overlay grid look identical to the
    secondary-button toggles but are anchors that open a new tab. */
 .sidebar .overlay-grid .overlay-link {
