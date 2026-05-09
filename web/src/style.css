@@ -168,17 +168,30 @@ header small a {
 .sidebar .du-row .du-mode-field { flex: 1 1 auto; min-width: 0; }
 .sidebar .du-row .du-min-field  { flex: 0 0 64px; min-width: 0; }
 
-/* From-# and To-# share a row inside the sidebar; equal-width narrow
-   columns (~6 chars each fit). Street Name sits below as its own row
-   spanning the full sidebar width. */
+/* From-#, To-#, Street Name all share a single row inside the sidebar.
+   The two number boxes are fixed-narrow (room for ~5 digits each);
+   Street Name flexes to fill the rest of the row. Padding is reduced
+   on the number inputs so 5 digits fit without truncation. */
 .sidebar .address-row {
   display: flex;
   gap: 6px;
+  align-items: stretch;
 }
 
 .sidebar .address-row .address-from-field,
 .sidebar .address-row .address-to-field {
-  flex: 1 1 50%;
+  flex: 0 0 56px;
+  min-width: 0;
+}
+
+.sidebar .address-row .address-from-field input,
+.sidebar .address-row .address-to-field input {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.sidebar .address-row .address-street-field {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -335,6 +348,22 @@ header small a {
   color: #a0a6b3;
   border-color: #c2c5cc;
   cursor: default;
+}
+
+/* Dark-red outline modifier for the Generate Map button. Same shape
+   and base styling as `.secondary` but coloured to stand out from the
+   rest of the navy overlay grid — it's a distinct *action* (capture
+   image) rather than a layer toggle. */
+.controls button.secondary.danger-outline {
+  color: #690000;
+  border-color: #690000;
+  background: #fff;
+}
+
+.controls button.secondary.danger-outline:hover:not(:disabled) {
+  background: #fbeaea;
+  border-color: #4a0000;
+  color: #4a0000;
 }
 
 .count {
