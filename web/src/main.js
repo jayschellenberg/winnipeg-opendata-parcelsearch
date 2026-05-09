@@ -957,7 +957,10 @@ function renderTable(rows) {
       const f = rowFeatureMap.get(tr.dataset.rowKey);
       if (f) mapReady.then(() => flyToFeature(map, f));
     });
-    tr.appendChild(td(s.lot));
+    // Lot cell can run long for multi-lot merges (e.g. "21-25, 68-75,
+    // 120-121 (Pl 129); 39-46 (Pl 24208)"). Truncate with full text
+    // available on hover so the table column doesn't blow up.
+    tr.appendChild(truncatedTd(s.lot, 10));
     tr.appendChild(td(s.block));
     tr.appendChild(td(s.plan));
     tr.appendChild(td(s.description));
@@ -965,11 +968,18 @@ function renderTable(rows) {
      // Assessment dollar-value column — gives the user two ways to land
      // on the source record from a row without having to scan across.
     tr.appendChild(linkTd(assessmentUrl(a), a.roll_number));
-    tr.appendChild(td(a.full_address));
+    // Multi-address parcels can have long comma-joined address lists
+    // (e.g. "400 HARGRAVE STREET, 400 HARGRAVE ST, 440 HARGRAVE ST").
+    // Truncate at 40 chars with full text on hover.
+    tr.appendChild(truncatedTd(a.full_address, 40));
     // Prefer the area-weighted top-1 zoning code; fall back to the
     // assessment dataset's primary `zoning` text if enrichment hasn't
-    // populated zoning_top1 (no overlap, fetch failed, etc.).
-    tr.appendChild(td(a.zoning_top1 ?? a.zoning));
+    // populated zoning_top1 (no overlap, fetch failed, etc.). The
+    // d4mq-wa44 fallback ships in a verbose "R1M - RES - S F - MEDIUM"
+    // form — strip everything after " - " so the column shows just
+    // the code (R1M, RMF-S, etc.). zoning_top1 from dxrp-w6re is
+    // already in code-only form, so the strip is a no-op there.
+    tr.appendChild(td(stripZoningCode(a.zoning_top1 ?? a.zoning)));
     tr.appendChild(td(formatPct(a.zoning_top1_pct), 'num'));
     tr.appendChild(td(formatZone2(a.zoning_top2, a.zoning_top2_pct)));
     tr.appendChild(td(formatArea(a.assessed_land_area), 'num'));
@@ -1106,6 +1116,45 @@ function td(value, className) {
   }
   if (className) el.classList.add(className);
   return el;
+}
+
+/**
+ * Cell variant that truncates long values to `maxChars`, appends an
+ * ellipsis, and exposes the full string on hover via the `title`
+ * attribute. Used for the Lot column (multi-lot merges run long) and
+ * the Full Address column (multi-address parcels concatenate every
+ * civic address). Cursor changes to `help` so the truncation is
+ * visually discoverable.
+ */
+function truncatedTd(value, maxChars, className) {
+  const el = document.createElement('td');
+  if (value == null || value === '') {
+    el.textContent = '—';
+    el.classList.add('empty');
+    return el;
+  }
+  const str = String(value);
+  if (str.length > maxChars) {
+    el.textContent = str.slice(0, maxChars) + '…';
+    el.title = str;
+    el.style.cursor = 'help';
+  } else {
+    el.textContent = str;
+  }
+  if (className) el.classList.add(className);
+  return el;
+}
+
+/**
+ * Strip the verbose suffix off d4mq-wa44 zoning text. The fallback
+ * value when the area-weighted enrichment doesn't produce a code
+ * looks like "R1M - RES - S F - MEDIUM"; we want just "R1M". When
+ * the source already has no " - " (the dxrp-w6re top-1 enrichment
+ * returns clean codes like "R1-M", "C2", "PR1"), this is a no-op.
+ */
+function stripZoningCode(value) {
+  if (value == null || value === '') return value;
+  return String(value).split(' - ')[0].trim();
 }
 
 /**
