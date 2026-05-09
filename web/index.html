@@ -40,7 +40,7 @@
 
     <div class="layout">
       <aside class="sidebar controls" aria-label="Search and overlay controls">
-        <h2>Search by assessment</h2>
+        <h2>Search by Address/Roll #</h2>
         <!--
           Civic-address search splits into a street-number range +
           a street-name field, all backed by d4mq-wa44's separate
@@ -69,24 +69,6 @@
           <input id="roll"    type="text" placeholder="Roll # (contains, or comma-separated list)" />
           <span class="tip">Roll # — partial match for a single value, or a comma-separated list for exact multi-roll lookup. Leading zeros optional.</span>
         </span>
-        <span class="field">
-          <input id="zoning"  type="text" placeholder="Zoning (contains)" />
-          <span class="tip">Zoning (contains)</span>
-        </span>
-        <div class="du-row">
-          <span class="field du-mode-field">
-            <select id="du-mode">
-              <option value="">Any DU</option>
-              <option value="zero">0 DU only</option>
-              <option value="min">Min DU</option>
-            </select>
-            <span class="tip">Dwelling units filter (Any · 0 · Min N)</span>
-          </span>
-          <span class="field du-min-field">
-            <input id="du-min" type="number" min="1" step="1" placeholder="#" disabled />
-            <span class="tip">Minimum dwelling units (when 'Min DU')</span>
-          </span>
-        </div>
 
         <h2>Search by legal description</h2>
         <span class="field">
@@ -120,7 +102,7 @@
           <button id="all-parcels-toggle" type="button" class="secondary" aria-pressed="false" title="Show every assessment parcel in the city as a faint grey wash. Search results highlight in yellow on top.">Show All Parcels</button>
           <button id="zoning-toggle" type="button" class="secondary" aria-pressed="false" title="City-wide zoning by-law polygons (cached for 7 days)">Show Zoning</button>
           <button id="traffic-toggle" type="button" class="secondary" aria-pressed="false" title="Latest available 24-hour average traffic volumes from City midblock and permanent count stations">Show Traffic</button>
-          <button id="secondary-plans-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Show Secondary Plans</button>
+          <button id="secondary-plans-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Show Sec. Plans</button>
           <button id="infill-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Show Infill Area</button>
           <button id="malls-corridors-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Show Malls/Corridors</button>
           <a class="overlay-link secondary" href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer" title="City of Winnipeg index of all 42 adopted Local Area Plans (Secondary Plans)">Sec Plan Index</a>
@@ -130,6 +112,27 @@
           <button id="dimensions-toggle" type="button" class="secondary" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Show Dimensions*</button>
         </div>
         <p class="overlay-note">* Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.</p>
+
+        <hr class="advanced-divider" />
+        <h2>Other searches</h2>
+        <span class="field">
+          <input id="zoning"  type="text" placeholder="Zoning (contains)" />
+          <span class="tip">Zoning (contains)</span>
+        </span>
+        <div class="du-row">
+          <span class="field du-mode-field">
+            <select id="du-mode">
+              <option value="">Any DU</option>
+              <option value="zero">0 DU only</option>
+              <option value="min">Min DU</option>
+            </select>
+            <span class="tip">Dwelling units filter (Any · 0 · Min N)</span>
+          </span>
+          <span class="field du-min-field">
+            <input id="du-min" type="number" min="1" step="1" placeholder="#" disabled />
+            <span class="tip">Minimum dwelling units (when 'Min DU')</span>
+          </span>
+        </div>
       </aside>
 
       <main class="main-pane">
