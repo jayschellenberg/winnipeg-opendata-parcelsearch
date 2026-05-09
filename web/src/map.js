@@ -670,6 +670,36 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Manitoba Contaminated Sites Registry overlay. Filtered to
+      // Winnipeg sites only client-side. Circles colour-coded by
+      // CSGroup status — red for Designated Contaminated, orange
+      // for Designated Impacted, grey for anything else. Lazy-
+      // loaded on first toggle (see fetchContaminatedSites in soda.js
+      // and toggleContam in main.js).
+      map.addSource('contam', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'contam-circle',
+        type: 'circle',
+        source: 'contam',
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-radius': 6,
+          'circle-color': [
+            'match',
+            ['get', 'CSGroup'],
+            'Designated Contaminated Site', '#c0392b',
+            'Designated Impacted Site',     '#e67e22',
+            /* default */                    '#7f8c8d',
+          ],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1,
+          'circle-opacity': 0.9,
+        },
+      });
+
       // Combined hover popup. Wherever the cursor is on the map, query
       // both the primary (parcel-fill) and the assessment-context layers
       // and build a single popup that shows whichever one(s) are under
@@ -728,6 +758,27 @@ export function initMap(container, { onFeatureClick } = {}) {
         map.on('click', 'parcel-fill', handle);
         map.on('click', 'assess-context-fill', handle);
       }
+
+      // Click a contaminated-site circle → standalone popup with the
+      // site name, address, status pill, and a link out to the
+      // Manitoba registry page for that site.
+      const contamPopup = new maplibregl.Popup({ closeButton: true });
+      map.on('click', 'contam-circle', (e) => {
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        contamPopup
+          .setLngLat(e.lngLat)
+          .setHTML(contamPopupHtml(p))
+          .addTo(map);
+      });
+      map.on('mouseenter', 'contam-circle', () => {
+        if (map.getLayoutProperty('contam-circle', 'visibility') === 'visible') {
+          map.getCanvas().style.cursor = 'pointer';
+        }
+      });
+      map.on('mouseleave', 'contam-circle', () => {
+        map.getCanvas().style.cursor = '';
+      });
 
 // Click a zoning polygon → show a popup with the zone code and
       // description. Skipped when the zoning layer is hidden (clicks pass
@@ -991,6 +1042,18 @@ export function setOverlayVisible(map, sourceId, visible) {
   }
 }
 
+/** Push the parsed Manitoba Contaminated Sites Registry FC onto the
+ *  map. Called by main.js after the lazy fetch resolves. */
+export function setContamData(map, fc) {
+  map.getSource('contam')?.setData(fc);
+}
+
+/** Toggle the contam-circle layer visibility. */
+export function setContamVisible(map, visible) {
+  const v = visible ? 'visible' : 'none';
+  if (map.getLayer('contam-circle')) map.setLayoutProperty('contam-circle', 'visibility', v);
+}
+
 // Click-popup body for zoning polygons. Shows the zone code, the short
 // category, and the long description (which is sometimes a useful sentence
 // or two about what the district allows).
@@ -1000,6 +1063,45 @@ function zoningPopupHtml(p) {
   if (p.short_description) lines.push(`<em>${escapeHtml(p.short_description)}</em>`);
   if (p.long_description) lines.push(escapeHtml(p.long_description));
   return `<div style="max-width:300px;line-height:1.35">${lines.join('<br>')}</div>`;
+}
+
+// Click-popup body for a contaminated-site circle. Shows the operation
+// name, address line, status pill colour-keyed to the circle, and a
+// link out to the official Manitoba registry page for that site.
+function contamPopupHtml(p) {
+  const name = p['OPERATION NAME'] || p.OPRID || 'Contaminated site';
+  const lines = [`<strong>${escapeHtml(name)}</strong>`];
+  const addr = [p.ADDRESS, p.MUNICIPALITY].filter(Boolean).map(escapeHtml).join(', ');
+  if (addr) lines.push(addr);
+  const group = p.CSGroup || '';
+  if (group) {
+    const colour = group === 'Designated Contaminated Site' ? '#c0392b'
+                : group === 'Designated Impacted Site'     ? '#e67e22'
+                :                                            '#7f8c8d';
+    lines.push(
+      `<span style="display:inline-block;padding:1px 6px;border-radius:3px;`
+      + `background:${colour};color:#fff;font-size:11px">${escapeHtml(group)}</span>`
+    );
+  }
+  const url = safeExternalUrl(p.Link);
+  if (url) {
+    lines.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Registry record</a>`);
+  }
+  if (p.OPRID) lines.push(`<small>Site ID: ${escapeHtml(p.OPRID)}</small>`);
+  return `<div style="max-width:300px;line-height:1.4">${lines.join('<br>')}</div>`;
+}
+
+// Allow only http(s) URLs through to popup links — never javascript:,
+// data:, vbscript:, etc. Returns null if the URL is malformed or uses
+// any other scheme.
+function safeExternalUrl(raw) {
+  if (raw == null || raw === '') return null;
+  try {
+    const u = new URL(String(raw));
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function trafficPopupHtml(p) {
@@ -1068,7 +1170,11 @@ function popupHtml(p) {
     const lines = [];
     if (p.roll_number) lines.push(`<strong>Roll #</strong> ${escapeHtml(p.roll_number)}`);
     if (p.full_address) lines.push(escapeHtml(p.full_address));
-    if (p.zoning) lines.push(`<em>${escapeHtml(p.zoning)}</em>`);
+    // Property Use Code (PUC) - the City's classification of how the
+    // parcel is actually being used, e.g. "RESSD - DETACHED SINGLE
+    // DWELLING". More informative for appraisal context than zoning
+    // (which is the legally permitted use, often less specific).
+    if (p.property_use_code) lines.push(`<em>${escapeHtml(p.property_use_code)}</em>`);
     // Parcel size: assessed_land_area is in square feet on d4mq-wa44.
     // Show SF (with thousands separator) and acres (SF / 43,560) for
     // appraisal sanity-checking at a glance.

@@ -114,7 +114,7 @@ export async function fetchAssessmentOverlap(surveyFc) {
   return fetchPerFeatureBboxUnion({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
-    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
+    select: 'roll_number,full_address,zoning,property_use_code,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
     dedupeKey: 'roll_number',
     fc: surveyFc,
   });
@@ -191,7 +191,7 @@ export async function searchAssessmentParcels({
 
   const params = new URLSearchParams({
     $where: clauses.join(' AND '),
-    $select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
+    $select: 'roll_number,full_address,zoning,property_use_code,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
     $order: 'full_address',
   });
   return fetchSodaPaged(ASSESS_URL, params, {
@@ -577,7 +577,7 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
   return fetchPerFeatureBboxUnion({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
-    select: 'roll_number,full_address,zoning,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
+    select: 'roll_number,full_address,zoning,property_use_code,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
     dedupeKey: 'roll_number',
     fc: addressFc,
     extraWhere: extras.length ? extras.join(' AND ') : null,
@@ -1419,6 +1419,110 @@ function tagPdoKind(feature, kind) {
 // concurrent callers share one in-flight request — important when a
 // user mashes a toggle button before the first fetch completes.
 const OVERLAY_CACHE = new Map();
+
+// ---------- Contaminated-Sites Registry overlay -----------------
+//
+// Manitoba's Sustainable Development Contaminated Sites Registry
+// publishes a CSV of every designated and impacted site in the
+// province. The upstream URL doesn't set CORS headers, so we proxy
+// it through `/proxy/contam-sites.csv` (vercel.json rewrite in prod;
+// vite.config.js dev-server proxy locally). Filter to MUNICIPALITY=
+// "Winnipeg" client-side since this is a Winnipeg-focused tool.
+//
+// Cache in IndexedDB for 7 days — the registry is updated
+// occasionally but not daily, and refetching ~few-hundred-row CSV
+// every page load is wasteful. Cache key is versioned so a future
+// schema change can invalidate stale cache via key bump.
+const CONTAM_CSV_URL    = '/proxy/contam-sites.csv';
+const CONTAM_CACHE_KEY  = 'contamSitesV1';
+const CONTAM_CACHE_TTL  = 7 * 24 * 60 * 60 * 1000;
+let _contamPromise = null;
+
+export async function fetchContaminatedSites() {
+  if (_contamPromise) return _contamPromise;
+  _contamPromise = (async () => {
+    try {
+      const cached = await idbReadCache(CONTAM_CACHE_KEY, CONTAM_CACHE_TTL);
+      if (cached) return cached;
+    } catch (err) {
+      console.warn('IndexedDB read failed for contam sites; will fetch fresh', err);
+    }
+    const res = await fetch(CONTAM_CSV_URL, { credentials: 'omit' });
+    if (!res.ok) throw new Error(`Contam sites fetch failed: ${res.status}`);
+    const text = await res.text();
+    const fc = csvToWinnipegFeatureCollection(text);
+    idbWriteCache(CONTAM_CACHE_KEY, fc).catch((err) =>
+      console.warn('IndexedDB write failed for contam sites', err)
+    );
+    return fc;
+  })();
+  _contamPromise.catch(() => { _contamPromise = null; });
+  return _contamPromise;
+}
+
+// Tiny RFC-4180-ish CSV parser. Handles quoted fields, embedded
+// commas, and "" escapes. The upstream CSV is well-formed; this
+// doesn't need to be bulletproof against arbitrary input.
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { cur += c; }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(cur);
+      cur = '';
+    } else if (c === '\n' || c === '\r') {
+      // Handle \r\n, \n, and \r line endings. Skip the \n after \r.
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cur);
+      cur = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+    } else {
+      cur += c;
+    }
+  }
+  if (cur !== '' || row.length) {
+    row.push(cur);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function csvToWinnipegFeatureCollection(text) {
+  const rows = parseCsv(text);
+  if (!rows.length) return featureCollection([]);
+  const headers = rows[0].map((h) => h.trim());
+  const idxMuni = headers.findIndex((h) => h.toUpperCase() === 'MUNICIPALITY');
+  const idxLat  = headers.findIndex((h) => h.toUpperCase() === 'LATITUDE');
+  const idxLon  = headers.findIndex((h) => h.toUpperCase() === 'LONGITUDE');
+  const features = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (idxMuni < 0 || (r[idxMuni] || '').trim().toLowerCase() !== 'winnipeg') continue;
+    const lat = Number(r[idxLat]);
+    const lon = Number(r[idxLon]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const props = {};
+    for (let j = 0; j < headers.length; j++) {
+      props[headers[j]] = r[j] ?? '';
+    }
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lon, lat] },
+      properties: props,
+    });
+  }
+  return featureCollection(features);
+}
 
 async function fetchAllAndCache(key, url) {
   if (OVERLAY_CACHE.has(key)) return OVERLAY_CACHE.get(key);

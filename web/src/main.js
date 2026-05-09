@@ -48,12 +48,14 @@ import {
   fetchInfillGuidelineArea,
   fetchMallsAndCorridors,
   fetchTrafficVolumes,
+  fetchContaminatedSites,
 } from './soda.js';
 import {
   initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
   setCitywideParcelsVisible, probeCitywideParcels,
+  setContamData, setContamVisible,
 } from './map.js';
 
 const $lot = document.getElementById('lot');
@@ -79,6 +81,7 @@ const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
+const $contamToggle         = document.getElementById('contam-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
@@ -106,6 +109,8 @@ let lastParcelFc = null;
 let lastSurveyFc = { type: 'FeatureCollection', features: [] };
 let trafficEnabled = false;
 let trafficLoaded = false;
+let contamEnabled = false;
+let contamLoaded = false;
 
 // ---------- Column sort ----------
 
@@ -197,6 +202,7 @@ $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infil
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
+if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 // Tab-into-To auto-fill: when the user types a number in From and
 // then focuses To (by Tab or click), pre-fill To with the same value
@@ -391,6 +397,40 @@ async function toggleZoning() {
     }
   } else {
     $zoningToggle.textContent = 'Show Zoning';
+  }
+}
+
+// Manitoba Contaminated Sites Registry overlay. Lazy-fetches the
+// CSV (filtered to Winnipeg) on first toggle, then caches the FC
+// in IndexedDB for 7 days. Toggle is purely a layer-visibility flip
+// after the first load. Mirrors the toggleTraffic pattern.
+async function toggleContam() {
+  contamEnabled = !contamEnabled;
+  $contamToggle.setAttribute('aria-pressed', String(contamEnabled));
+  $contamToggle.classList.toggle('active', contamEnabled);
+  await mapReady;
+  setContamVisible(map, contamEnabled);
+
+  if (contamEnabled) {
+    if (contamLoaded) return;
+    $contamToggle.disabled = true;
+    const prevText = $contamToggle.textContent;
+    $contamToggle.textContent = 'Loading...';
+    try {
+      const fc = await fetchContaminatedSites();
+      setContamData(map, fc);
+      contamLoaded = true;
+      $contamToggle.textContent = prevText;
+    } catch (err) {
+      console.warn('contaminated-sites overlay failed', err);
+      contamEnabled = false;
+      $contamToggle.classList.remove('active');
+      $contamToggle.setAttribute('aria-pressed', 'false');
+      $contamToggle.textContent = prevText;
+      setContamVisible(map, false);
+    } finally {
+      $contamToggle.disabled = false;
+    }
   }
 }
 
