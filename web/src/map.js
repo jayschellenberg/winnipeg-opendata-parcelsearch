@@ -347,6 +347,12 @@ export function initMap(container, { onFeatureClick } = {}) {
       map.addSource('citywide-parcels', {
         type: 'vector',
         url: CITYWIDE_PARCELS_URL,
+        // The .pmtiles archive is built with --maximum-zoom=18 (see
+        // r/build_parcel_tiles.R). Tell MapLibre that's the cap so it
+        // overzooms level-18 tile data past z18 instead of trying to
+        // fetch z19+ tiles that don't exist (protocol returns null →
+        // entire layer goes blank when zoomed in past 18).
+        maxzoom: 18,
       });
       // Citywide parcels intentionally render as line-only, no fill.
       // The pmtiles archive includes one feature per assessment record,
@@ -374,20 +380,32 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
-      // Civic-address label for the citywide-parcels overlay. Address
-      // is the primary identifier (more universally useful than the
-      // roll); appears at zoom 16 where ~20-50 polygons are in view.
-      // Cull-by-default (text-allow-overlap=false) — dense blocks just
-      // show fewer labels rather than a wall of overlapping text.
+      // Citywide-parcels label. Address is the primary identifier and
+      // appears at zoom 16+; roll # joins it on a second line at
+      // zoom 17+. Single symbol layer (not two) so address + roll are
+      // a single collision unit — otherwise the roll's offset position
+      // lands on adjacent parcels' address labels and cull-by-default
+      // drops every roll. With one layer the pair appears or culls
+      // together, which is what the user actually sees.
       map.addLayer({
-        id: 'citywide-parcels-address-label',
+        id: 'citywide-parcels-label',
         type: 'symbol',
         source: 'citywide-parcels',
         'source-layer': 'parcels',
         minzoom: 16,
         layout: {
           visibility: 'none',
-          'text-field': ['get', 'full_address'],
+          'text-field': [
+            'step',
+            ['zoom'],
+            ['format', ['get', 'full_address'], {}],
+            17,
+            ['format',
+              ['get', 'full_address'], {},
+              '\n',
+              ['get', 'roll_number'], { 'font-scale': 0.85, 'text-color': '#555' },
+            ],
+          ],
           'text-font': ['Open Sans Semibold'],
           'text-size': 10,
           'symbol-placement': 'point',
@@ -399,32 +417,6 @@ export function initMap(container, { onFeatureClick } = {}) {
           'text-color': '#1a1a1a',
           'text-halo-color': 'rgba(255,255,255,0.9)',
           'text-halo-width': 1.2,
-        },
-      });
-
-      // Roll-number label, gated to zoom 17+ so it only appears when
-      // you've drilled in. Rendered above the address with smaller,
-      // lighter type so it reads as a secondary identifier.
-      map.addLayer({
-        id: 'citywide-parcels-roll-label',
-        type: 'symbol',
-        source: 'citywide-parcels',
-        'source-layer': 'parcels',
-        minzoom: 17,
-        layout: {
-          visibility: 'none',
-          'text-field': ['get', 'roll_number'],
-          'text-font': ['Open Sans Regular'],
-          'text-size': 9,
-          'text-offset': [0, -1.1],
-          'symbol-placement': 'point',
-          'text-allow-overlap': false,
-          'text-ignore-placement': false,
-        },
-        paint: {
-          'text-color': '#555',
-          'text-halo-color': 'rgba(255,255,255,0.9)',
-          'text-halo-width': 1.0,
         },
       });
 
@@ -870,8 +862,7 @@ export function setZoningVisible(map, visible) {
 export function setCitywideParcelsVisible(map, visible) {
   const v = visible ? 'visible' : 'none';
   if (map.getLayer('citywide-parcels-line')) map.setLayoutProperty('citywide-parcels-line', 'visibility', v);
-  if (map.getLayer('citywide-parcels-address-label')) map.setLayoutProperty('citywide-parcels-address-label', 'visibility', v);
-  if (map.getLayer('citywide-parcels-roll-label')) map.setLayoutProperty('citywide-parcels-roll-label', 'visibility', v);
+  if (map.getLayer('citywide-parcels-label')) map.setLayoutProperty('citywide-parcels-label', 'visibility', v);
 }
 
 /**
@@ -1035,6 +1026,23 @@ function popupHtml(p) {
     if (p.roll_number) lines.push(`<strong>Roll #</strong> ${escapeHtml(p.roll_number)}`);
     if (p.full_address) lines.push(escapeHtml(p.full_address));
     if (p.zoning) lines.push(`<em>${escapeHtml(p.zoning)}</em>`);
+    // Parcel size: assessed_land_area is in square feet on d4mq-wa44.
+    // Show SF (with thousands separator) and acres (SF / 43,560) for
+    // appraisal sanity-checking at a glance.
+    const sf = Number(p.assessed_land_area);
+    if (Number.isFinite(sf) && sf > 0) {
+      const sfFmt = Math.round(sf).toLocaleString('en-US');
+      const ac = (sf / 43560).toFixed(2);
+      lines.push(`<strong>Size</strong> ${sfFmt} sf (${ac} ac)`);
+    }
+    // Dwelling units: dwelling_units is text-typed; coerce defensively.
+    // Show even when 0 because vacant lot is a meaningful state.
+    if (p.dwelling_units != null && p.dwelling_units !== '') {
+      const du = Number(p.dwelling_units);
+      if (Number.isFinite(du)) {
+        lines.push(`<strong>DU</strong> ${du}`);
+      }
+    }
     // For multi-unit buildings (condos, strip malls) the same polygon
     // covers many roll numbers. dedupeByGeometryHash in main.js stamps
     // _unitCount on the representative feature so the popup can flag
