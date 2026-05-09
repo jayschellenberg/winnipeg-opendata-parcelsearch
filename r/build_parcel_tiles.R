@@ -53,11 +53,21 @@ geojson_digits <- 10
 page_size <- 5000
 url       <- "https://data.winnipeg.ca/resource/d4mq-wa44.geojson"
 # Fields we want surfaced as feature properties in the .pmtiles —
-# enough for the click popup; extra columns just bloat the archive.
-# dwelling_units + assessed_land_area are included so the
-# Show All Parcels hover tooltip can show the same fields
-# (size + DU) as the search-result tooltip.
-select_cols <- "roll_number,full_address,zoning,total_assessed_value,dwelling_units,assessed_land_area,geometry"
+# enough for the Show All Parcels hover tooltip and the centroid-
+# label text. Everything else is fetched live from SoDA when the
+# user actually searches a parcel, so anything not used by the
+# citywide overlay would just bloat the archive.
+#
+# Dropped on purpose:
+#   - zoning: the popup uses property_use_code instead; the table's
+#     Zoning column comes from the live search-result query, not
+#     from this tile.
+#   - total_assessed_value: the citywide tooltip doesn't show
+#     assessed value; the table's Assessment column comes from the
+#     live search-result query.
+# Both drops save ~9-11 MB in the .pmtiles, keeping us under
+# GitHub's 100 MB hard cap with breathing room.
+select_cols <- "roll_number,full_address,property_use_code,dwelling_units,assessed_land_area,geometry"
 
 cat("Fetching Assessment Parcels in pages of ", page_size, "...\n", sep = "")
 
