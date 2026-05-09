@@ -31,10 +31,11 @@ library(httr2)
 library(jsonlite)
 library(digest)
 
-data_dir       <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
-public_dir     <- file.path(data_dir, "web", "public")
-output_geojson <- file.path(public_dir, "parcels.geojson")
-output_pmtiles <- file.path(public_dir, "parcels.pmtiles")
+data_dir          <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
+public_dir        <- file.path(data_dir, "web", "public")
+output_geojson    <- file.path(public_dir, "parcels.geojson")
+output_centroids  <- file.path(public_dir, "parcels-centroids.geojson")
+output_pmtiles    <- file.path(public_dir, "parcels.pmtiles")
 
 if (!dir.exists(public_dir)) dir.create(public_dir, recursive = TRUE)
 
@@ -125,6 +126,34 @@ writeLines(
 )
 cat("GeoJSON size: ", round(file.size(output_geojson) / 1e6, 1), " MB\n", sep = "")
 
+# --- Step 2.5: Write a parallel one-Point-per-parcel centroids file -
+# When a polygon spans multiple vector tiles (common at zoom >= 17 for
+# residential parcels), MapLibre places one symbol-layer label per
+# tile-clipped polygon, at different representative-point positions.
+# Cull-by-default doesn't catch them because they're not visually
+# colliding — they're at different positions. Result: the same parcel
+# shows its address+roll twice or three times.
+#
+# The fix is a separate label tileset: one Point feature per parcel,
+# carrying the same identifying properties. tippecanoe ingests it as
+# a second named layer in the same .pmtiles archive (-L parcels-labels)
+# and the symbol layer in map.js reads from that source-layer instead
+# of the polygon layer. Each parcel then has exactly one label feature
+# regardless of how many tiles its polygon spans.
+#
+# st_point_on_surface() is preferred over st_centroid() because it
+# guarantees the point is INSIDE the polygon — important for L-shaped
+# or elongated lots where the geometric centroid can fall outside.
+
+cat("Computing label centroids (one Point per parcel)...\n")
+sf_polygons  <- sf::st_read(output_geojson, quiet = TRUE)
+sf_centroids <- suppressWarnings(sf::st_point_on_surface(sf_polygons))
+sf::st_write(sf_centroids, output_centroids,
+             delete_dsn = TRUE, quiet = TRUE,
+             layer_options = "COORDINATE_PRECISION=7")
+cat("Centroids: ", nrow(sf_centroids), " features, ",
+    round(file.size(output_centroids) / 1e6, 1), " MB\n", sep = "")
+
 # --- Step 3: Print the tippecanoe command --------------------------
 # Uses the locally-built `felt-tippecanoe` image (Dockerfile.tippecanoe
 # at the repo root) — Felt's actively-maintained tippecanoe fork.
@@ -151,16 +180,16 @@ cat("GeoJSON size: ", round(file.size(output_geojson) / 1e6, 1), " MB\n", sep = 
 tippecanoe_cmd <- paste(
   'docker run --rm -v "${PWD}:/data" felt-tippecanoe',
   '-o /data/web/public/parcels.pmtiles',
-  '--layer=parcels',
+  '-L parcels:/data/web/public/parcels.geojson',
+  '-L parcels-labels:/data/web/public/parcels-centroids.geojson',
   '--maximum-zoom=18 --minimum-zoom=13',
   '--simplification=2 --full-detail=14',
-  '--no-feature-limit --no-tile-size-limit --force',
-  '/data/web/public/parcels.geojson'
+  '--no-feature-limit --no-tile-size-limit --force'
 )
 
 cat("\nNext step (run from the project root in PowerShell):\n  ",
     tippecanoe_cmd, "\n\n", sep = "")
 cat("If the felt-tippecanoe image doesn't exist yet, build it first (one-time, ~3 min):\n",
     "  docker build -f Dockerfile.tippecanoe -t felt-tippecanoe:latest .\n\n", sep = "")
-cat("After tippecanoe finishes you can delete the GeoJSON intermediate:\n  ",
-    shQuote(output_geojson), "\n", sep = "")
+cat("After tippecanoe finishes you can delete the GeoJSON intermediates:\n  ",
+    shQuote(output_geojson), "\n  ", shQuote(output_centroids), "\n", sep = "")

@@ -387,11 +387,21 @@ export function initMap(container, { onFeatureClick } = {}) {
       // lands on adjacent parcels' address labels and cull-by-default
       // drops every roll. With one layer the pair appears or culls
       // together, which is what the user actually sees.
+      //
+      // Reads from the 'parcels-labels' source-layer (one Point per
+      // parcel) rather than 'parcels' (polygons) so that each parcel
+      // gets exactly one label feature regardless of how many vector
+      // tiles its polygon spans. Without this split, MapLibre places
+      // one label per tile-clipped polygon at different representative
+      // points, and visually-non-colliding duplicates accumulate.
+      // The 'parcels-labels' layer is built by r/build_parcel_tiles.R
+      // via sf::st_point_on_surface() and ingested by tippecanoe as a
+      // second named layer in the same .pmtiles archive.
       map.addLayer({
         id: 'citywide-parcels-label',
         type: 'symbol',
         source: 'citywide-parcels',
-        'source-layer': 'parcels',
+        'source-layer': 'parcels-labels',
         minzoom: 16,
         layout: {
           visibility: 'none',
