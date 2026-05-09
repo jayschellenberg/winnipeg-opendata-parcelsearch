@@ -374,6 +374,60 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Civic-address label for the citywide-parcels overlay. Address
+      // is the primary identifier (more universally useful than the
+      // roll); appears at zoom 16 where ~20-50 polygons are in view.
+      // Cull-by-default (text-allow-overlap=false) — dense blocks just
+      // show fewer labels rather than a wall of overlapping text.
+      map.addLayer({
+        id: 'citywide-parcels-address-label',
+        type: 'symbol',
+        source: 'citywide-parcels',
+        'source-layer': 'parcels',
+        minzoom: 16,
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'full_address'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 10,
+          'symbol-placement': 'point',
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+          'text-max-width': 8,
+        },
+        paint: {
+          'text-color': '#1a1a1a',
+          'text-halo-color': 'rgba(255,255,255,0.9)',
+          'text-halo-width': 1.2,
+        },
+      });
+
+      // Roll-number label, gated to zoom 17+ so it only appears when
+      // you've drilled in. Rendered above the address with smaller,
+      // lighter type so it reads as a secondary identifier.
+      map.addLayer({
+        id: 'citywide-parcels-roll-label',
+        type: 'symbol',
+        source: 'citywide-parcels',
+        'source-layer': 'parcels',
+        minzoom: 17,
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'roll_number'],
+          'text-font': ['Open Sans Regular'],
+          'text-size': 9,
+          'text-offset': [0, -1.1],
+          'symbol-placement': 'point',
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+        },
+        paint: {
+          'text-color': '#555',
+          'text-halo-color': 'rgba(255,255,255,0.9)',
+          'text-halo-width': 1.0,
+        },
+      });
+
       // Secondary overlay for the legal-flow context: when the user
       // searches by lot/block/plan, the primary highlight is the small
       // survey polygons, but the *containing* assessment parcels (the
@@ -816,6 +870,8 @@ export function setZoningVisible(map, visible) {
 export function setCitywideParcelsVisible(map, visible) {
   const v = visible ? 'visible' : 'none';
   if (map.getLayer('citywide-parcels-line')) map.setLayoutProperty('citywide-parcels-line', 'visibility', v);
+  if (map.getLayer('citywide-parcels-address-label')) map.setLayoutProperty('citywide-parcels-address-label', 'visibility', v);
+  if (map.getLayer('citywide-parcels-roll-label')) map.setLayoutProperty('citywide-parcels-roll-label', 'visibility', v);
 }
 
 /**
