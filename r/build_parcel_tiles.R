@@ -38,6 +38,12 @@ output_pmtiles <- file.path(public_dir, "parcels.pmtiles")
 
 if (!dir.exists(public_dir)) dir.create(public_dir, recursive = TRUE)
 
+# jsonlite::toJSON() defaults to 4 significant digits, which snaps
+# Winnipeg parcel coordinates to an ~11 m grid and makes small rectangles
+# turn into blocky chevrons in PMTiles. Keep enough coordinate precision
+# for Tippecanoe to receive the actual parcel geometry.
+geojson_digits <- 10
+
 # --- Step 1: Page through d4mq-wa44 ---------------------------------
 # Socrata caps individual responses around 1k-50k rows depending on
 # format; pagining at 5,000 keeps each request small and parallel-
@@ -93,7 +99,7 @@ cat("Total features: ", length(all_features), "\n", sep = "")
 cat("Deduplicating by geometry...\n")
 geom_keys <- vapply(
   all_features,
-  function(f) digest::digest(toJSON(f$geometry, auto_unbox = TRUE)),
+  function(f) digest::digest(toJSON(f$geometry, auto_unbox = TRUE, digits = geojson_digits)),
   character(1)
 )
 keep_mask <- !duplicated(geom_keys)
@@ -112,6 +118,7 @@ writeLines(
   toJSON(
     list(type = "FeatureCollection", features = all_features),
     auto_unbox = TRUE,
+    digits = geojson_digits,
     na = "null"
   ),
   output_geojson
