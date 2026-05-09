@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "cd web && npm install && npm run build",
   "outputDirectory": "web/dist",
-  "framework": "vite"
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/proxy/contam-sites.csv",
+      "destination": "https://manitoba.ca/sd/waste_management/contaminated_sites/registry/cs-data.csv"
+    }
+  ]
 }
