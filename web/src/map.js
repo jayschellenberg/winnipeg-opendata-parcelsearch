@@ -620,7 +620,7 @@ export function initMap(container, { onFeatureClick } = {}) {
           visibility: 'none',
           'text-field': ['get', 'length_label'],
           'text-font': ['Open Sans Semibold'],
-          'text-size': 10,
+          'text-size': 20,
           // line-center: exactly one label at each LineString's midpoint,
           // auto-rotated along the edge. text-allow-overlap forces the
           // label to render even when the edge is shorter than the
@@ -632,9 +632,13 @@ export function initMap(container, { onFeatureClick } = {}) {
           'text-ignore-placement': true,
         },
         paint: {
-          'text-color': '#003322',
+          // Tailwind blue-700, matching the citywide-parcels line layer
+          // so dimensions read as part of the same "survey" visual
+          // family. Halo bumped from 1.6 -> 2.8 to keep the white
+          // outline proportional to the 2x text.
+          'text-color': '#1d4ed8',
           'text-halo-color': '#ffffff',
-          'text-halo-width': 1.6,
+          'text-halo-width': 2.8,
         },
       });
 
