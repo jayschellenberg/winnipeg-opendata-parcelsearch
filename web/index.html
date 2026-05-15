@@ -70,23 +70,25 @@
           <span class="tip">Roll # — partial match for a single value, or a comma-separated list for exact multi-roll lookup. Leading zeros optional.</span>
         </span>
 
-        <h2>Search by legal description</h2>
-        <span class="field">
-          <input id="lot"     type="text" placeholder="Lot (or River Lot or Section)" />
-          <span class="tip">Lot (or River Lot or Section)</span>
-        </span>
-        <span class="field">
-          <input id="block"   type="text" placeholder="Block (or RL/OT or Twp)" />
-          <span class="tip">Block (or RL/OT or Twp)</span>
-        </span>
-        <span class="field">
-          <input id="plan"    type="text" placeholder="Plan (or Parish Code or Range)" />
-          <span class="tip">Plan (or Parish Code — BO, NO, JA, JO, VT, CH — or Range like 2E)</span>
-        </span>
-        <span class="field">
-          <input id="desc"    type="text" placeholder="Description (contains)" />
-          <span class="tip">Description (contains)</span>
-        </span>
+        <details class="legal-search">
+          <summary>Search by legal description</summary>
+          <span class="field">
+            <input id="lot"     type="text" placeholder="Lot (or River Lot or Section)" />
+            <span class="tip">Lot (or River Lot or Section)</span>
+          </span>
+          <span class="field">
+            <input id="block"   type="text" placeholder="Block (or RL/OT or Twp)" />
+            <span class="tip">Block (or RL/OT or Twp)</span>
+          </span>
+          <span class="field">
+            <input id="plan"    type="text" placeholder="Plan (or Parish Code or Range)" />
+            <span class="tip">Plan (or Parish Code — BO, NO, JA, JO, VT, CH — or Range like 2E)</span>
+          </span>
+          <span class="field">
+            <input id="desc"    type="text" placeholder="Description (contains)" />
+            <span class="tip">Description (contains)</span>
+          </span>
+        </details>
 
         <div class="action-row">
           <button id="search" type="button">Search</button>
