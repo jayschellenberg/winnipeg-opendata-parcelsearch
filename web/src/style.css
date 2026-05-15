@@ -125,6 +125,31 @@ header small a {
   margin-top: 4px;
 }
 
+/* Collapsible "Search by legal description" section — used for the
+   secondary lot/block/plan/description search that's accessed
+   occasionally rather than every session. Style the <summary> to
+   match the .sidebar h2 visual while keeping the native disclosure
+   triangle so the user knows it's expandable. */
+.sidebar details.legal-search > summary {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #4a6280;
+  margin: 10px 0 2px;
+  cursor: pointer;
+  user-select: none;
+  list-style-position: outside;
+}
+
+.sidebar details.legal-search[open] > summary {
+  margin-bottom: 6px;
+}
+
+.sidebar details.legal-search > summary:hover {
+  color: #1a1a1a;
+}
+
 .main-pane {
   display: flex;
   flex-direction: column;
