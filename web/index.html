@@ -135,7 +135,7 @@
       </nav>
     </header>
 
-    <div class="layout">
+    <div class="app-shell" id="app-shell">
       <aside class="sidebar controls" aria-label="Search and overlay controls">
         <h2>Search by Address/Roll #</h2>
         <!--
@@ -235,8 +235,8 @@
         </div>
       </aside>
 
-      <main class="main-pane">
-        <div id="map">
+      <main class="workspace">
+        <div id="map" class="map-pane">
           <div id="zoning-legend" class="map-legend zoning-legend" hidden>
             <strong>Zoning</strong>
             <ul></ul>
@@ -253,7 +253,8 @@
           </div>
         </div>
 
-        <div id="results-wrap">
+        <div id="results-wrap" class="table-pane">
+          <div class="table-scroll">
           <table id="results">
         <thead>
           <tr>
@@ -276,6 +277,7 @@
         </thead>
         <tbody></tbody>
       </table>
+          </div>
         </div>
       </main>
     </div>
