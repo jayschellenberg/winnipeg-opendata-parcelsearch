@@ -323,7 +323,7 @@ export function initMap(container, { onFeatureClick } = {}) {
             '',
           ],
           'text-font': ['Open Sans Semibold'],
-          'text-size': 11,
+          'text-size': 22,
           'text-allow-overlap': false,
           'text-ignore-placement': false,
           'symbol-placement': 'point',
@@ -331,7 +331,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         paint: {
           'text-color': '#1a1a1a',
           'text-halo-color': '#ffffff',
-          'text-halo-width': 1.5,
+          'text-halo-width': 2.8,
         },
       });
 
