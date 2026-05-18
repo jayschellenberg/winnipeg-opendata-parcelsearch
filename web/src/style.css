@@ -1379,3 +1379,118 @@ body {
   cursor: pointer;
 }
 .parcel-summary-verify-list li label:hover { color: var(--color-accent-600, #1d4ed8); }
+
+/* -------------------------------------------------------------
+   Phase 7 sidebar tabs + Sales Analysis panel.
+   ------------------------------------------------------------- */
+.sidebar-tabs {
+  display: flex;
+  background: var(--color-neutral-100, #f4f4f5);
+  border-bottom: 1px solid var(--color-neutral-200, #e4e4e7);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  /* Negative margin matches the sidebar's padding (12px 14px 18px)
+     so the tab strip stretches flush to the sidebar's borders. */
+  margin: -12px -14px 8px;
+  padding: 0 4px;
+}
+.sidebar-tab {
+  flex: 1 1 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-neutral-600, #52525b);
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+.sidebar-tab:hover {
+  color: var(--color-primary-500, #1e293b);
+}
+.sidebar-tab[aria-selected="true"] {
+  color: var(--color-primary-500, #1e293b);
+  border-bottom-color: var(--color-accent-500, #2563eb);
+  background: #fff;
+}
+.sidebar-tab:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: -2px;
+}
+
+.sidebar-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar-tab-panel[hidden] {
+  display: none !important;
+}
+
+/* Sales dropzone — wraps a hidden <input type="file">. Hover and
+   drag-over states light up the border in accent blue. */
+.sales-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 12px;
+  border: 2px dashed var(--color-neutral-300, #d4d4d8);
+  border-radius: 6px;
+  background: var(--color-neutral-50, #fafafa);
+  cursor: pointer;
+  color: var(--color-neutral-700, #3f3f46);
+  text-align: center;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+.sales-dropzone:hover,
+.sales-dropzone.drag-over {
+  border-color: var(--color-accent-500, #2563eb);
+  background: #eff6ff;
+  color: var(--color-primary-500, #1e293b);
+}
+.sales-dropzone:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: 2px;
+}
+.sales-dropzone-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--color-neutral-400, #a1a1aa);
+}
+.sales-dropzone:hover .sales-dropzone-icon,
+.sales-dropzone.drag-over .sales-dropzone-icon {
+  color: var(--color-accent-500, #2563eb);
+}
+.sales-dropzone-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.sales-dropzone-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--color-neutral-500, #71717a);
+  line-height: 1.4;
+}
+
+/* Filter row in the Sales panel — checkbox + label paired
+   horizontally. */
+.sales-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--color-primary-500, #1e293b);
+  padding: 2px 0;
+  cursor: pointer;
+}
+.sales-filter-row input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}

@@ -35,6 +35,7 @@ import { initInfoIcons } from './lib/infoIcon.js';
 import { initColumns, applyVisibility as applyColumnVisibility } from './lib/columns.js';
 import { formatSqFt } from './lib/format.js';
 import { encodeState, decodeState } from './lib/urlState.js';
+import { initSidebarTabs, setActiveTab, onTabChange } from './lib/tabs.js';
 import bbox from '@turf/bbox';
 import {
   searchSurveyParcels,
@@ -267,6 +268,16 @@ initInfoIcons();
 // table. The default-visible set (Quick lookup preset) applies on
 // first load; subsequent changes persist to localStorage.
 initColumns();
+
+// Phase 7: sidebar tabs (Property Search + Sales Analysis). The
+// tab strip + panels live in index.html; tabs.js wires arrow-key
+// navigation, ARIA, focus, and localStorage persistence. Always
+// boots on Property Search regardless of stored value.
+initSidebarTabs();
+
+// Wire the Sales Analysis tab — dropzone, subject roll, sentinel
+// filter. The CSV is parsed entirely client-side; no upload.
+wireSalesTab();
 
 // Wire the parcel-summary close button. The card is populated on
 // row click below; the X dismisses without clearing the results.
@@ -1761,4 +1772,198 @@ function formatCoord(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
   return n.toFixed(6);
+}
+
+// ===============================================================
+// Phase 7 — Sales Analysis tab
+// ===============================================================
+//
+// CSV upload + dedup + group flow. Phase 7 (1/2) parses + dedups
+// + groups and reports the counts in the sidebar. Phase 7 (2/2)
+// fetches live d4mq-wa44 data for every distinct roll, renders
+// sales-mode columns, applies the sentinel + subject-distance
+// filters, and defers zoning enrichment to the Zoning overlay
+// toggle.
+
+// Module-scope sales state. salesData stays null until the user
+// drops a CSV. The shape is:
+//   { sales: SaleRecord[], rolls: Set<string>, groups: Map<inst, SaleRecord[]> }
+let salesData = null;
+
+// Required columns the CSV must contain. The parser is tolerant
+// of extra columns and surrounding whitespace, but missing any of
+// these surfaces an error in the sidebar status.
+const SALES_REQUIRED_COLS = [
+  'Parcel ID', 'Sale Dates', 'Sold Price', 'Instrument Number',
+];
+
+function wireSalesTab() {
+  const $dropzone = document.getElementById('sales-dropzone');
+  const $fileInput = document.getElementById('sales-file-input');
+  const $salesCount = document.getElementById('sales-count');
+  if (!$dropzone || !$fileInput) return;
+
+  // Click anywhere in the dropzone -> open the native file picker.
+  // Enter / Space when the dropzone is focused does the same.
+  function openPicker() { $fileInput.click(); }
+  $dropzone.addEventListener('click', openPicker);
+  $dropzone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openPicker();
+    }
+  });
+
+  $fileInput.addEventListener('change', () => {
+    const file = $fileInput.files?.[0];
+    if (file) loadSalesCsv(file);
+    // Reset so re-selecting the same file re-fires change.
+    $fileInput.value = '';
+  });
+
+  // Drag + drop. dragover must preventDefault for the drop to fire.
+  $dropzone.addEventListener('dragenter', (e) => {
+    e.preventDefault(); $dropzone.classList.add('drag-over');
+  });
+  $dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+  });
+  $dropzone.addEventListener('dragleave', (e) => {
+    if (e.target === $dropzone) $dropzone.classList.remove('drag-over');
+  });
+  $dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    $dropzone.classList.remove('drag-over');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) loadSalesCsv(file);
+  });
+
+  // Subject-roll chip input. Same lib as #roll; hidden input
+  // #subject-roll holds the value. Phase 7 (2/2) reads it for the
+  // Dist (km) column.
+  const $subjectRollChip = document.querySelector('.chip-input[data-target="subject-roll"]');
+  if ($subjectRollChip) initChipInput($subjectRollChip);
+
+  // The hide-sentinels checkbox doesn't do anything in (1/2) — the
+  // filter logic lands in (2/2). Wired now so URL state can read
+  // its value once that schema entry exists.
+
+  setSalesCount('');
+}
+
+async function loadSalesCsv(file) {
+  try {
+    setSalesCount(`Reading ${file.name}…`);
+    const text = await file.text();
+    const rows = parseSalesCsv(text);
+    if (!rows.length) {
+      setSalesCount(`No data rows found in ${file.name}.`, true);
+      return;
+    }
+    const missing = SALES_REQUIRED_COLS.filter((c) => !(c in rows[0]));
+    if (missing.length) {
+      setSalesCount(`CSV is missing required column(s): ${missing.join(', ')}.`, true);
+      return;
+    }
+    salesData = dedupAndGroupSales(rows);
+    setSalesCount(
+      `${salesData.sales.length} sale${salesData.sales.length === 1 ? '' : 's'} loaded · ` +
+      `${salesData.rolls.size} parcel${salesData.rolls.size === 1 ? '' : 's'}`
+    );
+  } catch (err) {
+    console.warn('Sales CSV load failed:', err);
+    setSalesCount(`Couldn't read ${file.name}: ${err.message || 'unknown error'}.`, true);
+  }
+}
+
+/**
+ * Minimal CSV parser. The Winnipeg sales CSV is comma-separated
+ * with no embedded commas, no quoting, no escaped newlines —
+ * pasted directly from the City's exporter. If a future variant
+ * adds quoting we'll swap to PapaParse (a sanctioned new dep
+ * conversation, not snuck in here).
+ *
+ * Returns an array of objects keyed by header name. Leading /
+ * trailing whitespace stripped from each cell.
+ */
+function parseSalesCsv(text) {
+  const lines = String(text).split(/\r?\n/).filter((l) => l.length > 0);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map((h) => h.trim());
+  const out = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(',');
+    if (cells.length === 1 && !cells[0].trim()) continue; // blank
+    const row = {};
+    for (let j = 0; j < headers.length; j++) {
+      row[headers[j]] = (cells[j] ?? '').trim();
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * Dedup by (Parcel ID, Instrument Number) — multi-building rows
+ * on the same sale roll up into one record. Then group by
+ * Instrument Number so multi-parcel sales can compute group
+ * aggregates ($/Lot, $/Acre, group size) in Phase 7 (2/2).
+ *
+ * Returns:
+ *   {
+ *     sales: SaleRecord[],          // one per (roll, instrument)
+ *     rolls: Set<string>,           // distinct rolls
+ *     groups: Map<instrument, SaleRecord[]>  // sale-level groups
+ *   }
+ */
+function dedupAndGroupSales(rows) {
+  const merged = new Map(); // key = `${roll}|${instrument}`
+  for (const r of rows) {
+    const roll = String(r['Parcel ID'] ?? '').trim();
+    const inst = String(r['Instrument Number'] ?? '').trim();
+    if (!roll || !inst) continue;
+    const key = `${roll}|${inst}`;
+    const existing = merged.get(key);
+    const livingArea = Number.parseFloat(r['Living Area']) || 0;
+    if (!existing) {
+      merged.set(key, {
+        roll,
+        instrument: inst,
+        saleDate: r['Sale Dates'] || null,
+        salePrice: Number.parseFloat(r['Sold Price']) || 0,
+        landSf: Number.parseFloat(r['Land Actual sqft']) || 0,
+        landAssessedSf: Number.parseFloat(r['Land Assessed sqft']) || 0,
+        livingArea,
+        yearBuilt: r['Year Built'] || null,
+        useCode: r['Par Use Code'] || null,
+        propertyType: r['Property Type'] || null,
+        propertySubType: r['Property Sub Type'] || null,
+        streetNumber: r['Street Number'] || null,
+        streetDirection: r['Street Direction'] || null,
+        streetName: r['Street Name'] || null,
+        numUnits: Number.parseInt(r['Number of Unit'], 10) || null,
+      });
+    } else {
+      // Merge: sum living area across duplicate rows (multi-building
+      // entries); keep first non-empty year built / use code.
+      existing.livingArea += livingArea;
+      if (!existing.yearBuilt && r['Year Built']) existing.yearBuilt = r['Year Built'];
+      if (!existing.useCode && r['Par Use Code']) existing.useCode = r['Par Use Code'];
+    }
+  }
+  const sales = Array.from(merged.values());
+  const rolls = new Set(sales.map((s) => s.roll));
+  const groups = new Map();
+  for (const s of sales) {
+    if (!groups.has(s.instrument)) groups.set(s.instrument, []);
+    groups.get(s.instrument).push(s);
+  }
+  return { sales, rolls, groups };
+}
+
+function setSalesCount(text, isError = false) {
+  const el = document.getElementById('sales-count');
+  if (!el) return;
+  el.textContent = text || '';
+  el.classList.toggle('results-status-error', !!isError && !!text);
 }

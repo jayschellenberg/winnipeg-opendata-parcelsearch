@@ -137,7 +137,34 @@
 
     <div class="app-shell" id="app-shell">
       <aside class="sidebar controls" aria-label="Search and overlay controls">
-        <h2 class="sidebar-section-title">Property Search</h2>
+        <!-- Phase 7 tab strip. Property Search (default) + Sales
+             Analysis. Map Layers stays always-visible below the
+             active tab panel. -->
+        <div class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
+          <button
+            type="button" role="tab"
+            id="tab-btn-property" class="sidebar-tab"
+            data-tab="property"
+            aria-controls="tab-panel-property"
+            aria-selected="true"
+          >Property Search</button>
+          <button
+            type="button" role="tab"
+            id="tab-btn-sales" class="sidebar-tab"
+            data-tab="sales"
+            aria-controls="tab-panel-sales"
+            aria-selected="false"
+            tabindex="-1"
+          >Sales Analysis</button>
+        </div>
+
+        <section
+          class="sidebar-tab-panel"
+          id="tab-panel-property"
+          data-tab="property"
+          role="tabpanel"
+          aria-labelledby="tab-btn-property"
+        >
         <!--
           Civic-address search splits into a street-number range +
           a street-name field, all backed by d4mq-wa44's separate
@@ -225,6 +252,64 @@
           <button id="export" type="button" class="secondary">Export CSV</button>
         </div>
         <span id="count" class="count"></span>
+        </section><!-- /tab-panel-property -->
+
+        <!-- Phase 7 Sales Analysis tab. Inert until the user clicks
+             the Sales Analysis tab button. CSV dropzone accepts a
+             sales-listing CSV (Parcel ID, Sale Dates, Sold Price,
+             Land Actual sqft, etc.). Subject roll powers the
+             Dist (km) column; sentinel-price toggle controls
+             whether $0/$1 family transfers / title corrections
+             render. -->
+        <section
+          class="sidebar-tab-panel"
+          id="tab-panel-sales"
+          data-tab="sales"
+          role="tabpanel"
+          aria-labelledby="tab-btn-sales"
+          hidden
+        >
+          <div
+            id="sales-dropzone"
+            class="sales-dropzone"
+            role="button"
+            tabindex="0"
+            aria-label="Upload sales CSV — drop a file here or click to browse"
+          >
+            <svg class="sales-dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4l4 4h-3v6h-2V8H8l4-4zm-7 14h14v2H5v-2z" fill="currentColor"/>
+            </svg>
+            <p class="sales-dropzone-label">Drop a sales CSV here, or click to browse</p>
+            <p class="sales-dropzone-hint">Columns: Parcel ID, Sale Dates, Sold Price, Land Actual sqft …</p>
+            <input
+              type="file"
+              id="sales-file-input"
+              accept=".csv,text/csv"
+              hidden
+            />
+          </div>
+
+          <span class="field chip-input-field">
+            <div class="chip-input" data-target="subject-roll">
+              <input id="subject-roll" type="hidden" />
+              <input
+                class="chip-input-text"
+                type="text"
+                placeholder="Subject roll # (for Dist km)"
+                autocomplete="off"
+                aria-label="Subject roll number"
+              />
+            </div>
+            <span class="tip">Subject parcel roll #. Once set, every loaded sale row gets a Dist (km) value (centroid-to-centroid) and a Sale/Asmt ratio relative to the subject's assessment. Press Enter or comma to commit; leave blank to skip distance math.</span>
+          </span>
+
+          <label class="sales-filter-row">
+            <input type="checkbox" id="sales-hide-sentinels" checked />
+            <span>Hide $0 / $1 non-arms-length transfers</span>
+          </label>
+
+          <span id="sales-count" class="count"></span>
+        </section><!-- /tab-panel-sales -->
 
         <h2 class="sidebar-section-title sidebar-section-title-second">Map Layers</h2>
         <div class="overlay-grid">
