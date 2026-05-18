@@ -2009,10 +2009,17 @@ function dedupAndGroupSales(rows) {
         numUnits: Number.parseInt(r['Number of Unit'], 10) || null,
       });
     } else {
-      // Merge: sum living area across duplicate rows (multi-building
-      // entries); keep first non-empty year built / use code.
+      // Merge: same Parcel ID + same Instrument Number = multiple
+      // building components on one sale. Sum living area across
+      // them; keep the OLDEST (smallest) Year Built so e.g. the
+      // HIGGINS rows at 2008 / 2012 / 2012 report 2008. Use code
+      // falls back to the first non-empty value.
       existing.livingArea += livingArea;
-      if (!existing.yearBuilt && r['Year Built']) existing.yearBuilt = r['Year Built'];
+      const yb = Number.parseInt(r['Year Built'], 10);
+      const existingYb = Number.parseInt(existing.yearBuilt, 10);
+      if (Number.isFinite(yb) && (!Number.isFinite(existingYb) || yb < existingYb)) {
+        existing.yearBuilt = r['Year Built'];
+      }
       if (!existing.useCode && r['Par Use Code']) existing.useCode = r['Par Use Code'];
     }
   }
