@@ -8,6 +8,23 @@ export default defineConfig({
   plugins: [tailwindcss()],
   build: {
     target: 'es2020',
+    // MapLibre alone is ~700 kB minified; without splitting it the
+    // single bundle trips Rollup's 500 kB warning. Lift the ceiling
+    // and bucket the heavy third-party deps into named vendor
+    // chunks so a change in app code doesn't bust their browser
+    // cache.
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('maplibre-gl')) return 'maplibre';
+          if (id.includes('@turf/')) return 'turf';
+          if (id.includes('pmtiles')) return 'pmtiles';
+          return 'vendor';
+        },
+      },
+    },
   },
   // Dev-server proxy for the Manitoba contaminated-sites registry CSV.
   // The upstream doesn't set CORS headers, so the browser can't fetch
