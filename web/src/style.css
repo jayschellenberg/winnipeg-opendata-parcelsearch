@@ -267,12 +267,8 @@ body {
   border-radius: 4px;
 }
 
-.table-scroll thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: #fff;
-}
+/* Sticky thead rules live under #results th below so the id
+   selector wins over any legacy specificity. */
 
 /* Legacy alias — the main element previously used .main-pane;
    downstream descendant selectors (.main-pane *) are rare but
@@ -822,10 +818,15 @@ body {
 }
 
 #results th {
-  background: #f2f4f8;
+  background: #f2f6f8;
   font-weight: 600;
+  /* Sticky thead sits above the rest of the table so the column
+     labels stay visible while the user scrolls a long result set
+     inside .table-scroll. z-index lets the header float above any
+     positioned row-level elements. */
   position: sticky;
   top: 0;
+  z-index: 4;
 }
 
 /* MapLibre control button for the Streets/Satellite basemap toggle.
