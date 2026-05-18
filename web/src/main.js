@@ -1854,6 +1854,20 @@ const SALES_REQUIRED_COLS = [
   'Parcel ID', 'Sale Dates', 'Sold Price', 'Instrument Number',
 ];
 
+/**
+ * Normalize a Winnipeg roll number to its 11-digit zero-padded
+ * canonical form. The CSV strips leading zeros from short rolls
+ * (e.g. `6070731000` instead of `06070731000`), but d4mq-wa44
+ * stores them padded. soda.js's rollClause already normalizes on
+ * the query side; this helper makes the client-side joins
+ * (matchedRolls.has, saleByRoll.get, subject lookups) line up.
+ */
+function normalizeRoll(token) {
+  const digits = String(token ?? '').replace(/[^0-9]/g, '');
+  if (!digits) return null;
+  return digits.length >= 11 ? digits : digits.padStart(11, '0');
+}
+
 function wireSalesTab() {
   const $dropzone = document.getElementById('sales-dropzone');
   const $fileInput = document.getElementById('sales-file-input');
@@ -1984,7 +1998,9 @@ function parseSalesCsv(text) {
 function dedupAndGroupSales(rows) {
   const merged = new Map(); // key = `${roll}|${instrument}`
   for (const r of rows) {
-    const roll = String(r['Parcel ID'] ?? '').trim();
+    // 11-digit zero-pad so 10-digit CSV rolls (`6070731000`) match
+    // their 11-digit d4mq-wa44 records (`06070731000`).
+    const roll = normalizeRoll(r['Parcel ID']);
     const inst = String(r['Instrument Number'] ?? '').trim();
     if (!roll || !inst) continue;
     const key = `${roll}|${inst}`;
@@ -2082,8 +2098,11 @@ async function runSalesAnalysis() {
 
   // Resolve the subject parcel's centroid (if any) — pulled from
   // the result set first, then from a one-off fetch when the
-  // subject isn't in the CSV.
-  const subjectRoll = (document.getElementById('subject-roll')?.value || '').trim();
+  // subject isn't in the CSV. Normalize the raw subject input to
+  // the 11-digit canonical form so it lines up with d4mq-wa44's
+  // roll_number values.
+  const subjectRollRaw = (document.getElementById('subject-roll')?.value || '').trim();
+  const subjectRoll = normalizeRoll(subjectRollRaw);
   let subjectCentroid = null;
   if (subjectRoll) {
     const hit = assessFc.features.find((f) => String(f.properties?.roll_number) === subjectRoll);
@@ -2102,20 +2121,48 @@ async function runSalesAnalysis() {
   document.body.classList.toggle('subject-set', subjectCentroid != null);
 
   // Stamp sale + computed fields onto every matching feature.
+  // Multi-parcel sales (>1 distinct Parcel ID sharing an Instrument
+  // Number, e.g. 630 Kildare) need group totals: the Sold Price is
+  // the same on every row (the full sale total), so $/Lot SF is
+  // price ÷ sum-of-land-across-the-group, and Sale/Asmt is
+  // price ÷ sum-of-assessments-across-the-group.
   const saleByRoll = new Map();
   for (const s of visibleSales) saleByRoll.set(s.roll, s);
+  const liveByRoll = new Map();
+  for (const f of assessFc.features) {
+    const r = String(f.properties?.roll_number ?? '');
+    if (r) liveByRoll.set(r, f);
+  }
   for (const f of assessFc.features) {
     const p = f.properties || {};
     const sale = saleByRoll.get(String(p.roll_number));
     if (!sale) continue;
+    const group = salesData.groups.get(sale.instrument) || [sale];
+    const isMulti = group.length > 1;
     p._saleDate = sale.saleDate;
     p._salePrice = sale.salePrice > 0 ? sale.salePrice : null;
     p._saleInstrument = sale.instrument;
+    p._saleGroupSize = group.length;
     p._saleUseCode = sale.useCode;
     p._saleLivingArea = sale.livingArea > 0 ? sale.livingArea : null;
     p._saleYearBuilt = sale.yearBuilt;
-    if (p._salePrice && sale.landSf > 0) p._pricePerSf = p._salePrice / sale.landSf;
-    const asmt = Number(p.total_assessed_value) || 0;
+    // $/Lot SF: divide by group land for multi-parcel sales.
+    let landSf = sale.landSf;
+    if (isMulti) {
+      landSf = group.reduce((sum, g) => sum + (g.landSf || 0), 0);
+    }
+    if (p._salePrice && landSf > 0) p._pricePerSf = p._salePrice / landSf;
+    // Sale/Asmt: divide by group assessment for multi-parcel sales.
+    // Sums best-effort across the live features we have; a missing
+    // live record on one group member just makes the denominator
+    // smaller (Sale/Asmt slightly overstated).
+    let asmt = Number(p.total_assessed_value) || 0;
+    if (isMulti) {
+      asmt = group.reduce((sum, g) => {
+        const live = liveByRoll.get(g.roll);
+        return sum + (Number(live?.properties?.total_assessed_value) || 0);
+      }, 0);
+    }
     // Sale / Asmt as a percentage value (e.g. 101 for a sale at
     // 1% over assessed). The local formatPct expects 0-100 input.
     if (p._salePrice && asmt > 0) p._saleToAsmt = (p._salePrice / asmt) * 100;
