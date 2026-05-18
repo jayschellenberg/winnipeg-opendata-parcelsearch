@@ -34,6 +34,7 @@ import { initChipInput } from './lib/chipInput.js';
 import { initInfoIcons } from './lib/infoIcon.js';
 import { initColumns, applyVisibility as applyColumnVisibility } from './lib/columns.js';
 import { formatSqFt } from './lib/format.js';
+import { encodeState, decodeState } from './lib/urlState.js';
 import bbox from '@turf/bbox';
 import {
   searchSurveyParcels,
@@ -116,6 +117,18 @@ let trafficEnabled = false;
 let trafficLoaded = false;
 let contamEnabled = false;
 let contamLoaded = false;
+
+// Phase 8 TDZ audit: these three were previously declared mid-file
+// next to their toggle handlers. Hoisted up here so the Phase 8 (2/2)
+// applyUrlState() can synchronously click any toggle button at init
+// without tripping a Cannot access 'X' before initialization throw.
+const policyOverlayState = {
+  secondaryPlans: { enabled: false, loaded: false },
+  infill:         { enabled: false, loaded: false },
+  mallsCorridors: { enabled: false, loaded: false },
+};
+let dimensionsEnabled = false;
+let citywideParcelsEnabled = false;
 
 // ---------- Column sort ----------
 
@@ -234,6 +247,13 @@ for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $address
   });
 }
 
+// Phase 8: apply the URL's decoded state to the inputs + toggles
+// before initChipInput runs. The chip module renders chips from
+// the hidden #roll.value at init time, so the value has to land
+// first; toggle clicks fire here too (they run their bookkeeping
+// + any associated network fetches, restoring the captured view).
+applyUrlState(decodeState(location.search));
+
 // Wire chip input on the Roll # field (initChipInput resolves the
 // hidden input via data-target="roll", so soda.js's rollClause still
 // reads the canonical comma-separated string).
@@ -278,6 +298,135 @@ setExportEnabled(false);
 updateSortIndicators();
 buildZoningLegend();
 
+// ---------- Phase 8 URL state (encode/decode/apply) ----------
+//
+// Read all 23 schema fields from the current UI into a plain state
+// object. Toggles are only emitted when their state differs from
+// the page default (assess defaults ON; everything else OFF), which
+// keeps default-state URLs clean.
+function captureUrlState() {
+  const s = {};
+  const v = (el) => (el ? String(el.value || '').trim() : '');
+  if (v($lot))           s.lot           = v($lot);
+  if (v($block))         s.block         = v($block);
+  if (v($plan))          s.plan          = v($plan);
+  if (v($desc))          s.desc          = v($desc);
+  if (v($roll))          s.roll          = v($roll);
+  if (v($addressFrom))   s.addressFrom   = v($addressFrom);
+  if (v($addressTo))     s.addressTo     = v($addressTo);
+  if (v($addressStreet)) s.addressStreet = v($addressStreet);
+  if (v($zoning))        s.zoning        = v($zoning);
+  if (v($duMode))        s.duMode        = v($duMode);
+  const duMinNum = Number.parseInt(v($duMin), 10);
+  if (Number.isFinite(duMinNum) && duMinNum >= 1) s.duMin = duMinNum;
+
+  // Toggle defaults: assess is the only one that ships ON.
+  const defaults = {
+    surveyToggle: false, assessToggle: true, allParcelsToggle: false,
+    zoningToggle: false, trafficToggle: false,
+    secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
+    contamToggle: false, dimensionsToggle: false,
+  };
+  const buttons = {
+    surveyToggle: $surveyToggle, assessToggle: $assessToggle,
+    allParcelsToggle: $allParcelsToggle, zoningToggle: $zoningToggle,
+    trafficToggle: $trafficToggle,
+    secondaryPlansToggle: $secondaryPlansToggle,
+    infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
+    contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
+  };
+  for (const [key, btn] of Object.entries(buttons)) {
+    if (!btn) continue;
+    const on = btn.getAttribute('aria-pressed') === 'true';
+    if (on !== defaults[key]) s[key] = on;
+  }
+
+  if (currentSort?.col) s.sortCol = currentSort.col;
+  if (currentSort?.dir) s.sortDir = currentSort.dir;
+  return s;
+}
+
+// Apply a decoded state object to the UI. Inputs get assigned
+// synchronously; toggles are flipped by clicking the button so each
+// underlying handler runs its full bookkeeping (aria-pressed, button
+// label, source fetch, etc.).
+function applyUrlState(state) {
+  if (!state || Object.keys(state).length === 0) return;
+  if ('lot' in state)           $lot.value           = state.lot;
+  if ('block' in state)         $block.value         = state.block;
+  if ('plan' in state)          $plan.value          = state.plan;
+  if ('desc' in state)          $desc.value          = state.desc;
+  if ('roll' in state)          $roll.value          = state.roll;
+  if ('addressFrom' in state)   $addressFrom.value   = state.addressFrom;
+  if ('addressTo' in state)     $addressTo.value     = state.addressTo;
+  if ('addressStreet' in state) $addressStreet.value = state.addressStreet;
+  if ('zoning' in state)        $zoning.value        = state.zoning;
+  if ('duMode' in state) {
+    $duMode.value = state.duMode;
+    $duMode.dispatchEvent(new Event('change'));
+  }
+  if ('duMin' in state) $duMin.value = String(state.duMin);
+
+  const toggles = {
+    surveyToggle: $surveyToggle, assessToggle: $assessToggle,
+    allParcelsToggle: $allParcelsToggle, zoningToggle: $zoningToggle,
+    trafficToggle: $trafficToggle,
+    secondaryPlansToggle: $secondaryPlansToggle,
+    infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
+    contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
+  };
+  for (const [key, btn] of Object.entries(toggles)) {
+    if (!btn || !(key in state)) continue;
+    const cur = btn.getAttribute('aria-pressed') === 'true';
+    if (cur !== state[key]) btn.click();
+  }
+
+  if (state.sortCol) {
+    currentSort = { col: state.sortCol, dir: state.sortDir === 'desc' ? 'desc' : 'asc' };
+    updateSortIndicators();
+  }
+}
+
+// rAF-coalesced replaceState. A rapid sequence of edits collapses
+// into a single history write so typing in an input doesn't spam
+// browser history.
+let urlWritePending = false;
+function queueUrlWrite() {
+  if (urlWritePending) return;
+  urlWritePending = true;
+  requestAnimationFrame(() => {
+    urlWritePending = false;
+    try {
+      const qs = encodeState(captureUrlState());
+      const url = qs ? `${location.pathname}?${qs}` : location.pathname;
+      history.replaceState(null, '', url);
+    } catch (err) {
+      console.warn('queueUrlWrite failed (non-fatal):', err);
+    }
+  });
+}
+
+// Hook every relevant input + button so each edit refreshes the URL.
+// Inputs fire 'input' on every keystroke; selects fire 'change'.
+for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $addressStreet, $zoning, $duMin]) {
+  if (el) el.addEventListener('input', queueUrlWrite);
+}
+if ($duMode) $duMode.addEventListener('change', queueUrlWrite);
+// #roll is a hidden input wrapped by chipInput; the chip module
+// dispatches 'input' on the hidden input when chips change, so the
+// same listener catches it.
+if ($roll) $roll.addEventListener('input', queueUrlWrite);
+// Every overlay toggle button — extra listener runs after the
+// toggle handler so it sees the post-flip aria-pressed value.
+for (const btn of [
+  $surveyToggle, $assessToggle, $allParcelsToggle,
+  $zoningToggle, $trafficToggle,
+  $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
+  $contamToggle, $dimensionsToggle,
+]) {
+  if (btn) btn.addEventListener('click', queueUrlWrite);
+}
+
 // Wire sortable column headers.
 for (const th of document.querySelectorAll('#results th[data-col]')) {
   th.addEventListener('click', () => {
@@ -289,8 +438,14 @@ for (const th of document.querySelectorAll('#results th[data-col]')) {
     }
     updateSortIndicators();
     if (currentRows.length > 0) renderTable(currentRows);
+    queueUrlWrite();
   });
 }
+
+// The initial decode + apply happens earlier (before initChipInput)
+// so the chip module sees the URL-state $roll.value at init time.
+// Search-input listeners attached above will start writing back to
+// the URL on the user's next edit.
 
 async function runSearch() {
   const inputs = {
@@ -557,15 +712,9 @@ const POLICY_OVERLAY_CONFIG = {
   },
 };
 
-const policyOverlayState = {
-  secondaryPlans: { enabled: false, loaded: false },
-  infill:         { enabled: false, loaded: false },
-  mallsCorridors: { enabled: false, loaded: false },
-};
-
 // ---------- Parcel-edge dimensions toggle ----------
-
-let dimensionsEnabled = false;
+// policyOverlayState + dimensionsEnabled hoisted to the top of the
+// module (Phase 8 TDZ audit).
 
 /**
  * Flip the dimension-label layer on or off. When enabling, recompute
@@ -793,7 +942,7 @@ async function togglePolicyOverlay(name) {
  * .pmtiles archive isn't deployed yet (a fresh fork that hasn't run
  * the offline build pipeline).
  */
-let citywideParcelsEnabled = false;
+// citywideParcelsEnabled hoisted to the top (Phase 8 TDZ audit).
 async function toggleCitywideParcels() {
   await mapReady;
   // Probe once on the first toggle attempt — bypasses if already
