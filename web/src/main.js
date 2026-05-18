@@ -30,6 +30,8 @@
 // be combined in one SoQL where-clause.
 
 import './lib/tailwind.css';
+import { initChipInput } from './lib/chipInput.js';
+import { initInfoIcons } from './lib/infoIcon.js';
 import bbox from '@turf/bbox';
 import {
   searchSurveyParcels,
@@ -220,11 +222,24 @@ $addressTo.addEventListener('focus', () => {
   }
 });
 
-for (const el of [$lot, $block, $plan, $desc, $roll, $addressFrom, $addressTo, $addressStreet, $zoning, $duMin]) {
+// Phase 5: #roll is a chip-input now; the chip wrapper handles its
+// own Enter (commit chip) and forwards Enter-on-empty to runSearch
+// via the onEnterEmpty callback below. Every other input still binds
+// keydown directly so a stray Enter runs the search.
+for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $addressStreet, $zoning, $duMin]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
   });
 }
+
+// Wire chip input on the Roll # field (initChipInput resolves the
+// hidden input via data-target="roll", so soda.js's rollClause still
+// reads the canonical comma-separated string).
+const $rollChip = document.querySelector('.chip-input[data-target="roll"]');
+if ($rollChip) initChipInput($rollChip, { onEnterEmpty: () => runSearch() });
+
+// Walk every .field > .tip and turn it into an info-icon popover.
+initInfoIcons();
 
 // The "Min #" input only matters when Min DU is selected. Disable it
 // otherwise so users can't type a value that has no effect, and

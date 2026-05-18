@@ -438,36 +438,155 @@ body {
 /* Focus-triggered tooltip showing the full placeholder text even when the
    input is too narrow to render it fully. Pops below the field when the
    user clicks in, vanishes on blur. Pure CSS, no JS. */
+/* Phase 5: tips are no longer revealed on input focus. They become
+   the popover body for the info-icon (added by lib/infoIcon.js):
+   hidden by default, revealed when the field has .popover-hover
+   (mouse/keyboard) or .popover-pinned (click). Wider max-width and
+   normal whitespace so longer per-field micro-copy stays readable. */
 .controls .field .tip {
   display: none;
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: #1a2a4a;
+  right: auto;
+  background: var(--color-primary-500, #1e293b);
   color: #fff;
-  padding: 5px 9px;
-  border-radius: 3px;
+  padding: 7px 10px;
+  border-radius: 4px;
   font-size: 12px;
-  white-space: nowrap;
-  z-index: 20;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  line-height: 1.4;
+  max-width: min(320px, calc(100vw - 40px));
+  white-space: normal;
+  z-index: 40;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  pointer-events: auto;
   pointer-events: none;
 }
 
 .controls .field .tip::before {
   content: "";
   position: absolute;
-  top: -4px;
-  left: 12px;
+  top: -5px;
+  right: 10px;
   width: 0;
   height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-bottom: 4px solid #1a2a4a;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 5px solid var(--color-primary-500, #1e293b);
 }
 
-.controls .field input:focus ~ .tip {
+.controls .field.popover-hover > .tip,
+.controls .field.popover-pinned > .tip {
   display: block;
+}
+
+/* Info icon button (lib/infoIcon.js). Small "i" rendered to the
+   right of the field's input, vertically centred. Inherits text
+   color via currentColor; hover/active picks up the accent. */
+.controls .field .info-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--color-neutral-500, #71717a);
+  cursor: help;
+  align-self: center;
+}
+.controls .field .info-icon:hover,
+.controls .field.popover-pinned .info-icon {
+  color: var(--color-accent-500, #2563eb);
+  background: rgba(37, 99, 235, 0.08);
+}
+.controls .field .info-icon:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: 1px;
+  color: var(--color-accent-500, #2563eb);
+}
+.controls .field .info-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Phase 5 chip input (lib/chipInput.js). Wraps the hidden #roll
+   input + a .chip-input-text. Looks like a normal text field, but
+   each comma-separated value renders as a removable chip. */
+.chip-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid #c2c5cc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: text;
+  font-size: 14px;
+}
+.chip-input:focus-within {
+  outline: 2px solid #4a6cb3;
+  outline-offset: -1px;
+  border-color: #4a6cb3;
+}
+.chip-input .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  background: var(--color-primary-50, #f1f5f9);
+  color: var(--color-primary-500, #1e293b);
+  border: 1px solid var(--color-primary-100, #e2e8f0);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.chip-input .chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--color-primary-400, #64748b);
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chip-input .chip-remove:hover {
+  background: var(--color-primary-100, #e2e8f0);
+  color: var(--color-primary-500, #1e293b);
+}
+.chip-input .chip-input-text {
+  flex: 1 1 80px;
+  min-width: 80px;
+  border: none;
+  outline: none;
+  padding: 4px 2px;
+  background: transparent;
+  font-size: 13px;
+  font-family: inherit;
+}
+/* Cancel the legacy .controls input border/padding inside the chip
+   wrapper so the inner text input reads as a continuation of the
+   chip strip rather than a nested second field. */
+.controls .chip-input .chip-input-text {
+  padding: 4px 2px;
+  border: none;
+  background: transparent;
 }
 
 .controls input[type="text"]:focus {

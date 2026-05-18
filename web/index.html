@@ -162,9 +162,22 @@
             <span class="tip">Substring match against street_name. e.g. "HARGRAVE", "MAIN", "ROUGE BAY". The street type (ST / AVE / DR) lives in a separate column and isn't matched here.</span>
           </span>
         </div>
-        <span class="field">
-          <input id="roll"    type="text" placeholder="Roll # (contains, or comma-separated list)" />
-          <span class="tip">Roll # — partial match for a single value, or a comma-separated list for exact multi-roll lookup. Leading zeros optional.</span>
+        <!-- Phase 5: Roll # becomes a chip input. The hidden #roll
+             input still holds the canonical comma-separated string,
+             so soda.js's rollClause and the existing $roll.value reads
+             keep working unchanged. -->
+        <span class="field chip-input-field">
+          <div class="chip-input" data-target="roll">
+            <input id="roll" type="hidden" />
+            <input
+              class="chip-input-text"
+              type="text"
+              placeholder="Roll # — Enter or comma to add"
+              autocomplete="off"
+              aria-label="Roll number"
+            />
+          </div>
+          <span class="tip">Roll # — partial match for a single value, or a comma-separated list for exact multi-roll lookup. Press Enter or type a comma to commit; Backspace on an empty input removes the last chip. Leading zeros optional.</span>
         </span>
 
         <details class="legal-search">
