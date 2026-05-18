@@ -32,6 +32,7 @@
 import './lib/tailwind.css';
 import { initChipInput } from './lib/chipInput.js';
 import { initInfoIcons } from './lib/infoIcon.js';
+import { initColumns, applyVisibility as applyColumnVisibility } from './lib/columns.js';
 import bbox from '@turf/bbox';
 import {
   searchSurveyParcels,
@@ -240,6 +241,27 @@ if ($rollChip) initChipInput($rollChip, { onEnterEmpty: () => runSearch() });
 
 // Walk every .field > .tip and turn it into an info-icon popover.
 initInfoIcons();
+
+// Column-visibility gear + presets dropdown above the results
+// table. The default-visible set (Quick lookup preset) applies on
+// first load; subsequent changes persist to localStorage.
+initColumns();
+
+// Wire the parcel-summary close button. The card is populated on
+// row click below; the X dismisses without clearing the results.
+const $parcelSummary = document.getElementById('parcel-summary');
+const $psClose = document.getElementById('ps-close');
+if ($psClose && $parcelSummary) {
+  $psClose.addEventListener('click', () => { $parcelSummary.hidden = true; });
+}
+
+// Empty-state visible on initial load (before any search). renderTable
+// hides it once results land, clearAll re-shows it.
+const $resultsEmpty = document.getElementById('results-empty');
+function showEmptyState(on) {
+  if ($resultsEmpty) $resultsEmpty.hidden = !on;
+}
+showEmptyState(true);
 
 // The "Min #" input only matters when Min DU is selected. Disable it
 // otherwise so users can't type a value that has no effect, and
@@ -947,6 +969,19 @@ async function runAssessmentSearch(inputs) {
 
 function setCount(text) {
   $count.textContent = text;
+  // Phase 5: mirror the same message into the prominent status bar
+  // above the results table. Hidden when text is empty so a fresh
+  // load doesn't show an empty pill.
+  const status = document.getElementById('results-status');
+  if (status) {
+    if (!text) {
+      status.hidden = true;
+      status.textContent = '';
+    } else {
+      status.hidden = false;
+      status.textContent = text;
+    }
+  }
 }
 
 function parcelCountMsg(n, fc) {
@@ -988,12 +1023,15 @@ function clearTable() {
   $tbody.innerHTML = '';
   currentRows = [];
   setExportEnabled(false);
+  showEmptyState(true);
+  if ($parcelSummary) $parcelSummary.hidden = true;
 }
 
 function renderTable(rows) {
   $tbody.innerHTML = '';
   currentRows = rows;
   rowFeatureMap.clear();
+  showEmptyState(rows.length === 0);
   const sorted = sortRows(rows);
   // Stamp the dominant assessment year onto the column header so it
   // reads "Assess-2026" (or whatever year the source data carries).
@@ -1036,6 +1074,10 @@ function renderTable(rows) {
     tr.addEventListener('click', () => {
       const f = rowFeatureMap.get(tr.dataset.rowKey);
       if (f) mapReady.then(() => flyToFeature(map, f));
+      // Phase 5: also populate the parcel-summary card above the
+      // table. Closure captures the row's properties so we don't
+      // have to reach back into rows[].
+      showParcelSummary(a, s);
     });
     // Lot cell can run long for multi-lot merges (e.g. "21-25, 68-75,
     // 120-121 (Pl 129); 39-46 (Pl 24208)"). Truncate with full text
@@ -1072,6 +1114,80 @@ function renderTable(rows) {
   }
   $tbody.appendChild(frag);
   setExportEnabled(rows.length > 0);
+  // Phase 5: reapply column visibility so newly-built rows pick up
+  // the user's hidden-column choices.
+  applyColumnVisibility();
+}
+
+// Phase 5: populate the parcel-summary card from a clicked row's
+// assessment + survey property objects. Hidden card -> visible;
+// verify-this checklist persists per-roll to localStorage.
+function showParcelSummary(a, s) {
+  if (!$parcelSummary) return;
+  const roll = a?.roll_number ?? s?.roll_number ?? '';
+  const $title    = document.getElementById('ps-roll');
+  const $address  = document.getElementById('ps-address');
+  const $area     = document.getElementById('ps-area');
+  const $zoning   = document.getElementById('ps-zoning');
+  const $asmt     = document.getElementById('ps-asmt');
+  const $coords   = document.getElementById('ps-coords');
+  if ($title)   $title.textContent   = roll ? `Roll ${roll}` : 'Selected parcel';
+  if ($address) $address.textContent = a?.full_address || '—';
+  if ($area)    $area.textContent    = formatArea(a?.assessed_land_area) ? `${formatArea(a?.assessed_land_area)} sf` : '—';
+  if ($zoning) {
+    const code = stripZoningCode(a?.zoning_top1 ?? a?.zoning);
+    const pct  = formatPct(a?.zoning_top1_pct);
+    $zoning.textContent = code ? (pct ? `${code} (${pct})` : code) : '—';
+  }
+  if ($asmt) {
+    const dollars = formatDollars(a?.total_assessed_value);
+    const year = a?.current_assessment_year;
+    $asmt.textContent = dollars ? (year ? `${dollars} · ${year}` : dollars) : '—';
+  }
+  if ($coords) {
+    const lat = formatCoord(a?.centroid_lat);
+    const lon = formatCoord(a?.centroid_lon);
+    $coords.textContent = (lat && lon) ? `${lat}, ${lon}` : '—';
+  }
+
+  // Open-Assessment action: rebuild the URL from the roll # (the
+  // other three action links are static and live in index.html).
+  const $openAsmt = document.getElementById('ps-open-assessment');
+  if ($openAsmt) {
+    const url = assessmentUrl(a);
+    if (url) {
+      $openAsmt.href = url;
+      $openAsmt.removeAttribute('aria-disabled');
+    } else {
+      $openAsmt.href = '#';
+      $openAsmt.setAttribute('aria-disabled', 'true');
+    }
+  }
+
+  // Verify-this checklist: restore the saved ticks for this roll,
+  // and persist on change. Storage key includes the roll so each
+  // parcel has its own state.
+  if (roll) {
+    const storageKey = `wps_verify_v1:${roll}`;
+    let saved = {};
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) saved = JSON.parse(raw) || {};
+    } catch { /* ignore */ }
+    const checks = document.querySelectorAll('#ps-verify-list input[type="checkbox"]');
+    for (const cb of checks) {
+      const k = cb.dataset.key;
+      cb.checked = !!saved[k];
+      cb.onchange = () => {
+        saved[k] = cb.checked;
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(saved));
+        } catch { /* ignore */ }
+      };
+    }
+  }
+
+  $parcelSummary.hidden = false;
 }
 
 /**

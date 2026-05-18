@@ -265,6 +265,79 @@
         </div>
 
         <div id="results-wrap" class="table-pane">
+          <!-- Phase 5 parcel summary. Toggled visible by main.js on
+               row click; the X dismisses. Action row links into the
+               four external tools that appraisers reach for after
+               picking a parcel; the Verify-this checklist persists
+               per-roll progress to localStorage. -->
+          <aside id="parcel-summary" class="parcel-summary" hidden aria-live="polite">
+            <div class="parcel-summary-header">
+              <h3 class="parcel-summary-title" id="ps-roll">Selected parcel</h3>
+              <button class="parcel-summary-close" id="ps-close" type="button" aria-label="Dismiss summary">×</button>
+            </div>
+            <dl class="parcel-summary-fields">
+              <div><dt>Address</dt><dd id="ps-address">—</dd></div>
+              <div><dt>Lot size</dt><dd id="ps-area">—</dd></div>
+              <div><dt>Zoning</dt><dd id="ps-zoning">—</dd></div>
+              <div><dt>Assessment</dt><dd id="ps-asmt">—</dd></div>
+              <div><dt>Coordinates</dt><dd id="ps-coords">—</dd></div>
+            </dl>
+            <div class="parcel-summary-actions">
+              <a id="ps-open-assessment" class="ps-action" href="#" target="_blank" rel="noreferrer">Open Assessment</a>
+              <a id="ps-open-ppd" class="ps-action" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer">PP&amp;D Property Map</a>
+              <a id="ps-open-dmis" class="ps-action" href="https://dmis.winnipeg.ca/" target="_blank" rel="noreferrer">DMIS</a>
+              <a id="ps-open-zoning" class="ps-action" href="https://legacy.winnipeg.ca/ppd/zoning/bylaws.stm" target="_blank" rel="noreferrer">Zoning By-Laws</a>
+            </div>
+            <details class="parcel-summary-verify" id="ps-verify">
+              <summary>Verify this</summary>
+              <ul class="parcel-summary-verify-list" id="ps-verify-list">
+                <li><label><input type="checkbox" data-key="assessment" /> <span>Assessment &amp; Taxation record</span></label></li>
+                <li><label><input type="checkbox" data-key="ppd" /> <span>PP&amp;D Property Map</span></label></li>
+                <li><label><input type="checkbox" data-key="dmis" /> <span>DMIS active permits</span></label></li>
+                <li><label><input type="checkbox" data-key="zoning" /> <span>Zoning By-law 100/2019</span></label></li>
+              </ul>
+            </details>
+          </aside>
+
+          <!-- Phase 5 status bar above the table. Mirrors the
+               #count message in the sidebar but sits next to the
+               table so it stays visible while scanning results. -->
+          <div class="results-status" id="results-status" role="status" aria-live="polite" hidden></div>
+
+          <!-- Phase 5 toolbar: column preset on the left, gear popover
+               on the right. -->
+          <div class="results-toolbar">
+            <label class="results-toolbar-presets">
+              <span class="results-toolbar-label">Columns:</span>
+              <select id="columns-preset" aria-label="Apply a column preset">
+                <option value="">Preset…</option>
+                <option value="Quick lookup">Quick lookup</option>
+                <option value="Zoning detail">Zoning detail</option>
+                <option value="Full detail">Full detail</option>
+              </select>
+            </label>
+            <div class="results-toolbar-spacer"></div>
+            <div class="columns-popover-wrap">
+              <button
+                type="button"
+                id="columns-gear"
+                class="columns-gear-btn"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="columns-popover"
+                title="Choose which columns to show"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M8 5.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6zm5.7 4.3c.05-.32.08-.66.08-1s-.03-.68-.08-1l1.36-1.05a.4.4 0 0 0 .08-.5l-1.3-2.25a.4.4 0 0 0-.5-.18l-1.6.64c-.34-.26-.71-.48-1.1-.65L10.4 1.85a.4.4 0 0 0-.4-.35h-2.6a.4.4 0 0 0-.4.35L6.76 3.5c-.39.17-.76.39-1.1.65l-1.6-.64a.4.4 0 0 0-.5.18L2.26 5.95a.4.4 0 0 0 .08.5l1.36 1.05c-.05.32-.08.66-.08 1s.03.68.08 1L2.34 10.55a.4.4 0 0 0-.08.5l1.3 2.25a.4.4 0 0 0 .5.18l1.6-.64c.34.26.71.48 1.1.65l.24 1.66a.4.4 0 0 0 .4.35h2.6a.4.4 0 0 0 .4-.35l.24-1.66c.39-.17.76-.39 1.1-.65l1.6.64a.4.4 0 0 0 .5-.18l1.3-2.25a.4.4 0 0 0-.08-.5L13.7 9.5z" fill="currentColor"/>
+                </svg>
+                <span class="columns-gear-label">Columns</span>
+              </button>
+              <div class="columns-popover" id="columns-popover" role="menu" aria-label="Column visibility">
+                <!-- Checkboxes populated by columns.js at init time. -->
+              </div>
+            </div>
+          </div>
+
           <div class="table-scroll">
           <table id="results">
         <thead>
@@ -288,6 +361,15 @@
         </thead>
         <tbody></tbody>
       </table>
+          </div>
+          <!-- Phase 5 empty-state. Shown when no search has run yet
+               (or after Clear). Hidden once renderTable confirms at
+               least one row, and re-shown if a search returns zero. -->
+          <div id="results-empty" class="results-empty">
+            <p>
+              Search by civic address, roll number, or legal description to
+              begin. Results will appear here.
+            </p>
           </div>
         </div>
       </main>
