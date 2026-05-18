@@ -33,6 +33,7 @@ import './lib/tailwind.css';
 import { initChipInput } from './lib/chipInput.js';
 import { initInfoIcons } from './lib/infoIcon.js';
 import { initColumns, applyVisibility as applyColumnVisibility } from './lib/columns.js';
+import { formatSqFt } from './lib/format.js';
 import bbox from '@turf/bbox';
 import {
   searchSurveyParcels,
@@ -1104,7 +1105,7 @@ function renderTable(rows) {
     tr.appendChild(td(stripZoningCode(a.zoning_top1 ?? a.zoning)));
     tr.appendChild(td(formatPct(a.zoning_top1_pct), 'num'));
     tr.appendChild(td(formatZone2(a.zoning_top2, a.zoning_top2_pct)));
-    tr.appendChild(td(formatArea(a.assessed_land_area), 'num'));
+    tr.appendChild(td(formatSqFt(a.assessed_land_area), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lat), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lon), 'num'));
     tr.appendChild(assessmentTd(a));
@@ -1133,7 +1134,7 @@ function showParcelSummary(a, s) {
   const $coords   = document.getElementById('ps-coords');
   if ($title)   $title.textContent   = roll ? `Roll ${roll}` : 'Selected parcel';
   if ($address) $address.textContent = a?.full_address || '—';
-  if ($area)    $area.textContent    = formatArea(a?.assessed_land_area) ? `${formatArea(a?.assessed_land_area)} sf` : '—';
+  if ($area)    $area.textContent    = formatSqFt(a?.assessed_land_area) ? `${formatSqFt(a?.assessed_land_area)} sf` : '—';
   if ($zoning) {
     const code = stripZoningCode(a?.zoning_top1 ?? a?.zoning);
     const pct  = formatPct(a?.zoning_top1_pct);
@@ -1598,14 +1599,11 @@ function formatZone2(code, pct) {
   return `${code} (${Math.round(pct)}%)`;
 }
 
-// Assessment land area comes in as a stringified integer of square feet.
-// Render with thousands separators; hide junk values.
-function formatArea(v) {
-  if (v == null || v === '') return null;
-  const n = Number(v);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n).toLocaleString('en-US');
-}
+// Assessment land area is now formatted via lib/format.js's
+// formatSqFt — same shape (`1,234`) but en-CA locale and shared
+// across the eventual Sales Analysis tab. The local formatArea
+// helper has been removed; replace any future callers with
+// formatSqFt(v).
 
 // Winnipeg serves centroid_lat / centroid_lon as strings with way more
 // precision than anyone needs. 6 decimals is ~10 cm at this latitude.
