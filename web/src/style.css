@@ -199,6 +199,29 @@ body {
   margin-top: 4px;
 }
 
+/* Phase 4 section header. Two stacked sections (Property Search,
+   Map Layers); the first sits flush with the top of the sidebar,
+   the second gets an extra top margin + hairline separator so the
+   two groups read as visually distinct without needing a tab UI.
+   Specificity is .sidebar h2.<class> so this wins over the legacy
+   .sidebar h2 and .sidebar h2:first-of-type rules above. */
+.sidebar h2.sidebar-section-title {
+  margin: 0 0 4px;
+  padding-top: 0;
+  border-top: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-primary-500, #1e293b);
+}
+
+.sidebar h2.sidebar-section-title-second {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-neutral-200, #e4e4e7);
+}
+
 /* Collapsible "Search by legal description" section — used for the
    secondary lot/block/plan/description search that's accessed
    occasionally rather than every session. Style the <summary> to
@@ -378,18 +401,12 @@ body {
   line-height: 1.35;
 }
 
-/* Divider between the overlay-note (Dimensions caveat) and the
-   "Other searches" block at the bottom of the sidebar. Default <hr>
-   has chunky margins; tighten and match the sidebar's border colour. */
-.sidebar .advanced-divider {
-  border: 0;
-  border-top: 1px solid #d0d4dd;
-  margin: 10px 0 0;
-}
-
-.sidebar .advanced-divider + h2 {
-  margin-top: 6px;
-}
+/* Phase 4: .advanced-divider is no longer used (zoning + DU moved
+   into the Property Search section, and the Map Layers section
+   gets its own hairline via .sidebar-section-title-second above).
+   Rule kept as a no-op so any leftover markup elsewhere doesn't
+   render a stray default <hr> line. */
+.sidebar .advanced-divider { display: none; }
 
 /* External-link entries in the overlay grid look identical to the
    secondary-button toggles but are anchors that open a new tab. */
