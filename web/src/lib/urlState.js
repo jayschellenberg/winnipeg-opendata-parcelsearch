@@ -9,13 +9,14 @@
  * Empty / default values aren't emitted so a fresh page load
  * produces a clean URL.
  *
- * The schema covers 23 keys:
+ * The schema covers 24 keys:
  *   - 11 search inputs (lot, block, plan, desc, roll, addressFrom,
  *     addressTo, addressStreet, zoning, duMode, duMin)
  *   - 10 overlay toggles (survey, assess, allParcels, zoning,
  *     traffic, secondaryPlans, infill, mallsCorridors, contam,
  *     dimensions) — each a boolean
  *   - 2 sort (sortCol, sortDir)
+ *   - 1 tab (property | sales) — Phase 7
  *
  * Map center/zoom/basemap are deliberately NOT encoded (the locked
  * Phase 8 decision was to keep URLs compact).
@@ -102,6 +103,11 @@ export const SCHEMA = {
   // --- Sort (2) ---
   sortCol: { param: 'sc', validate: oneOf(SORT_COLS),       format: (v) => v },
   sortDir: { param: 'sd', validate: oneOf(['asc', 'desc']), format: (v) => v },
+
+  // --- Tab (1, Phase 7) ---
+  // captureUrlState should only emit `tab` when it differs from the
+  // page default ('property') so a fresh load keeps a clean URL.
+  tab: { param: 't', validate: oneOf(['property', 'sales']), format: (v) => v },
 };
 
 const PARAM_TO_KEY = Object.fromEntries(

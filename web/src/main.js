@@ -41,6 +41,7 @@ import {
   searchSurveyParcels,
   fetchAssessmentOverlap,
   joinSurveyWithAssessment,
+  searchAssessmentParcels,
   searchAssessmentParcelsExpanded,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
@@ -248,6 +249,15 @@ for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $address
   });
 }
 
+// Phase 7: sidebar tabs (Property Search + Sales Analysis). The
+// tab strip + panels live in index.html; tabs.js wires arrow-key
+// navigation, ARIA, focus, and localStorage persistence. Always
+// boots on Property Search regardless of stored value.
+//
+// initSidebarTabs runs BEFORE applyUrlState so the latter can call
+// setActiveTab('sales') to honour a shared ?t=sales URL.
+initSidebarTabs();
+
 // Phase 8: apply the URL's decoded state to the inputs + toggles
 // before initChipInput runs. The chip module renders chips from
 // the hidden #roll.value at init time, so the value has to land
@@ -268,12 +278,9 @@ initInfoIcons();
 // table. The default-visible set (Quick lookup preset) applies on
 // first load; subsequent changes persist to localStorage.
 initColumns();
-
-// Phase 7: sidebar tabs (Property Search + Sales Analysis). The
-// tab strip + panels live in index.html; tabs.js wires arrow-key
-// navigation, ARIA, focus, and localStorage persistence. Always
-// boots on Property Search regardless of stored value.
-initSidebarTabs();
+// Tab switches refresh the URL state (tab=sales / no t= for the
+// default property tab).
+onTabChange(() => queueUrlWrite());
 
 // Wire the Sales Analysis tab — dropzone, subject roll, sentinel
 // filter. The CSV is parsed entirely client-side; no upload.
@@ -354,6 +361,12 @@ function captureUrlState() {
 
   if (currentSort?.col) s.sortCol = currentSort.col;
   if (currentSort?.dir) s.sortDir = currentSort.dir;
+
+  // Tab: only emit when on the Sales Analysis tab; Property is
+  // the page default and stays out of the URL.
+  const salesPanel = document.getElementById('tab-panel-sales');
+  if (salesPanel && !salesPanel.hidden) s.tab = 'sales';
+
   return s;
 }
 
@@ -395,6 +408,11 @@ function applyUrlState(state) {
   if (state.sortCol) {
     currentSort = { col: state.sortCol, dir: state.sortDir === 'desc' ? 'desc' : 'asc' };
     updateSortIndicators();
+  }
+
+  if (state.tab && (state.tab === 'sales' || state.tab === 'property')) {
+    // skipFocus so a shared URL doesn't yank focus to the dropzone.
+    setActiveTab(state.tab, { skipFocus: true });
   }
 }
 
@@ -587,6 +605,25 @@ async function toggleZoning() {
     $zoningToggle.textContent = 'Loading zoning…';
     try {
       await refreshZoning();
+      // Phase 7 deferred zoning enrichment: a CSV upload doesn't
+      // run enrichAssessmentZoning eagerly (that would block 10+s
+      // on a multi-parcel cold load). When the user actually
+      // toggles Zoning on, enrich the current sales FC + re-render
+      // so the % / Zoning 2 columns fill in.
+      if (document.body.classList.contains('sales-mode')
+          && lastParcelFc && lastParcelFc.features?.length
+          && salesData) {
+        try {
+          const enriched = await enrichAssessmentZoning(lastParcelFc);
+          if (enriched?.features) {
+            lastParcelFc = enriched;
+            const rows = enriched.features.map((f) => ({ assess: f, survey: null }));
+            renderTable(rows);
+          }
+        } catch (zErr) {
+          console.warn('Sales zoning enrichment failed (non-fatal):', zErr);
+        }
+      }
       $zoningToggle.textContent = 'Hide Zoning';
     } catch (err) {
       console.warn('zoning toggle failed', err);
@@ -1271,6 +1308,17 @@ function renderTable(rows) {
     tr.appendChild(assessmentTd(a));
     tr.appendChild(linkTd(walkscoreUrl(a.full_address), 'Walk'));
     tr.appendChild(linkTd(floodToolUrl(a), 'Flood'));
+    // Phase 7 sales-only cells (always appended; CSS .sales-only
+    // hides them when body lacks .sales-mode).
+    tr.appendChild(td(a._saleDate || null));
+    tr.appendChild(td(formatDollars(a._salePrice), 'num'));
+    tr.appendChild(td(formatDollars(a._pricePerSf), 'num'));
+    tr.appendChild(td(formatPct(a._saleToAsmt), 'num'));
+    tr.appendChild(td(formatDist(a._dist), 'num'));
+    tr.appendChild(td(a._saleUseCode || null));
+    tr.appendChild(td(formatSqFt(a._saleLivingArea), 'num'));
+    tr.appendChild(td(a._saleYearBuilt || null));
+    tr.appendChild(td(a._saleInstrument || null));
     frag.appendChild(tr);
   }
   $tbody.appendChild(frag);
@@ -1774,6 +1822,15 @@ function formatCoord(v) {
   return n.toFixed(6);
 }
 
+// Format a distance in kilometres to one decimal. Used by the
+// sales-mode Dist column when a subject roll is set.
+function formatDist(km) {
+  if (km == null) return null;
+  const n = Number(km);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n.toFixed(2);
+}
+
 // ===============================================================
 // Phase 7 — Sales Analysis tab
 // ===============================================================
@@ -1839,14 +1896,25 @@ function wireSalesTab() {
   });
 
   // Subject-roll chip input. Same lib as #roll; hidden input
-  // #subject-roll holds the value. Phase 7 (2/2) reads it for the
-  // Dist (km) column.
+  // #subject-roll holds the canonical value. Re-runs the analysis
+  // on change so the Dist column populates / clears.
   const $subjectRollChip = document.querySelector('.chip-input[data-target="subject-roll"]');
   if ($subjectRollChip) initChipInput($subjectRollChip);
+  const $subjectRoll = document.getElementById('subject-roll');
+  if ($subjectRoll) {
+    $subjectRoll.addEventListener('input', () => {
+      if (salesData) runSalesAnalysis();
+    });
+  }
 
-  // The hide-sentinels checkbox doesn't do anything in (1/2) — the
-  // filter logic lands in (2/2). Wired now so URL state can read
-  // its value once that schema entry exists.
+  // Hide-sentinels toggle. Re-runs the analysis to apply / remove
+  // the $0/$1 filter.
+  const $hideSentinels = document.getElementById('sales-hide-sentinels');
+  if ($hideSentinels) {
+    $hideSentinels.addEventListener('change', () => {
+      if (salesData) runSalesAnalysis();
+    });
+  }
 
   setSalesCount('');
 }
@@ -1866,10 +1934,7 @@ async function loadSalesCsv(file) {
       return;
     }
     salesData = dedupAndGroupSales(rows);
-    setSalesCount(
-      `${salesData.sales.length} sale${salesData.sales.length === 1 ? '' : 's'} loaded · ` +
-      `${salesData.rolls.size} parcel${salesData.rolls.size === 1 ? '' : 's'}`
-    );
+    await runSalesAnalysis();
   } catch (err) {
     console.warn('Sales CSV load failed:', err);
     setSalesCount(`Couldn't read ${file.name}: ${err.message || 'unknown error'}.`, true);
@@ -1966,4 +2031,162 @@ function setSalesCount(text, isError = false) {
   if (!el) return;
   el.textContent = text || '';
   el.classList.toggle('results-status-error', !!isError && !!text);
+}
+
+/**
+ * Phase 7 (2/2): join the parsed CSV against live d4mq-wa44 data
+ * and render in sales mode. Re-runs on every relevant change
+ * (sentinel toggle, subject roll). Sales rows that don't match a
+ * live record are still rendered, flagged with _noLiveMatch.
+ */
+async function runSalesAnalysis() {
+  if (!salesData || !salesData.sales.length) return;
+  const hideSentinels = document.getElementById('sales-hide-sentinels')?.checked;
+  const visibleSales = hideSentinels
+    ? salesData.sales.filter((s) => s.salePrice > 1)
+    : salesData.sales.slice();
+  if (!visibleSales.length) {
+    setSalesCount(
+      `All ${salesData.sales.length} sales are $0 / $1 transfers — uncheck "Hide non-arms-length" to view.`,
+      true,
+    );
+    document.body.classList.remove('sales-mode');
+    clearTable();
+    setParcels(EMPTY_FC, EMPTY_FC);
+    return;
+  }
+  setSalesCount(`Fetching live data for ${visibleSales.length} parcels…`);
+  document.body.classList.add('sales-mode');
+
+  const rolls = [...new Set(visibleSales.map((s) => s.roll))];
+  let assessFc;
+  try {
+    // Phase 7 deferral: use the non-expanded search so zoning +
+    // civic-address enrichment doesn't fire on every CSV upload
+    // (those add ~10s on a cold cache for 100+ rolls). The Zoning
+    // overlay toggle picks it up later via the deferred-enrichment
+    // hook in toggleZoning.
+    assessFc = await searchAssessmentParcels({ roll: rolls.join(',') });
+  } catch (err) {
+    console.warn('Sales live-data fetch failed:', err);
+    setSalesCount(`Couldn't fetch live data: ${err.message || 'unknown error'}.`, true);
+    return;
+  }
+
+  // Resolve the subject parcel's centroid (if any) — pulled from
+  // the result set first, then from a one-off fetch when the
+  // subject isn't in the CSV.
+  const subjectRoll = (document.getElementById('subject-roll')?.value || '').trim();
+  let subjectCentroid = null;
+  if (subjectRoll) {
+    const hit = assessFc.features.find((f) => String(f.properties?.roll_number) === subjectRoll);
+    if (hit) {
+      subjectCentroid = featureCentroid(hit);
+    } else {
+      try {
+        const subFc = await searchAssessmentParcels({ roll: subjectRoll });
+        const sf = subFc.features[0];
+        if (sf) subjectCentroid = featureCentroid(sf);
+      } catch (err) {
+        console.warn('Subject roll fetch failed:', err);
+      }
+    }
+  }
+  document.body.classList.toggle('subject-set', subjectCentroid != null);
+
+  // Stamp sale + computed fields onto every matching feature.
+  const saleByRoll = new Map();
+  for (const s of visibleSales) saleByRoll.set(s.roll, s);
+  for (const f of assessFc.features) {
+    const p = f.properties || {};
+    const sale = saleByRoll.get(String(p.roll_number));
+    if (!sale) continue;
+    p._saleDate = sale.saleDate;
+    p._salePrice = sale.salePrice > 0 ? sale.salePrice : null;
+    p._saleInstrument = sale.instrument;
+    p._saleUseCode = sale.useCode;
+    p._saleLivingArea = sale.livingArea > 0 ? sale.livingArea : null;
+    p._saleYearBuilt = sale.yearBuilt;
+    if (p._salePrice && sale.landSf > 0) p._pricePerSf = p._salePrice / sale.landSf;
+    const asmt = Number(p.total_assessed_value) || 0;
+    // Sale / Asmt as a percentage value (e.g. 101 for a sale at
+    // 1% over assessed). The local formatPct expects 0-100 input.
+    if (p._salePrice && asmt > 0) p._saleToAsmt = (p._salePrice / asmt) * 100;
+    if (subjectCentroid) {
+      const c = featureCentroid(f);
+      if (c) p._dist = haversineKm(subjectCentroid, c);
+    }
+  }
+
+  // Inject synthetic features for sale rolls that have no live
+  // d4mq-wa44 match — so the appraiser still sees the row.
+  const matchedRolls = new Set(assessFc.features.map((f) => String(f.properties?.roll_number)));
+  for (const sale of visibleSales) {
+    if (matchedRolls.has(sale.roll)) continue;
+    assessFc.features.push({
+      type: 'Feature',
+      geometry: null,
+      properties: {
+        roll_number: sale.roll,
+        full_address: [sale.streetNumber, sale.streetDirection, sale.streetName]
+          .filter(Boolean).join(' '),
+        _noLiveMatch: true,
+        _saleDate: sale.saleDate,
+        _salePrice: sale.salePrice > 0 ? sale.salePrice : null,
+        _saleInstrument: sale.instrument,
+        _saleUseCode: sale.useCode,
+        _saleLivingArea: sale.livingArea > 0 ? sale.livingArea : null,
+        _saleYearBuilt: sale.yearBuilt,
+      },
+    });
+  }
+
+  tagFeatures(assessFc, 'assess');
+
+  // Zoning is deferred: even with the Zoning overlay toggle ON,
+  // we don't auto-fetch zoning for every sale row. The toggle
+  // handler picks up the current parcel FC and runs
+  // enrichAssessmentZoning then re-renders. See toggleZoning.
+  lastParcelFc = assessFc;
+  lastSurveyFc = EMPTY_FC;
+
+  const rows = assessFc.features.map((f) => ({ assess: f, survey: null }));
+  const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
+  setSalesCount(
+    `${rows.length} sale${rows.length === 1 ? '' : 's'} shown` +
+    (unmatched ? ` · ${unmatched} not in d4mq-wa44` : '')
+  );
+
+  // Draw matched parcels on the map.
+  const mappable = {
+    type: 'FeatureCollection',
+    features: assessFc.features.filter((f) => f.geometry),
+  };
+  setParcels(EMPTY_FC, mappable);
+
+  renderTable(rows);
+}
+
+function featureCentroid(f) {
+  if (!f) return null;
+  const p = f.properties || {};
+  const lat = Number(p.centroid_lat);
+  const lon = Number(p.centroid_lon);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) return [lon, lat];
+  return null;
+}
+
+// Haversine distance between two [lon, lat] points, in kilometres.
+// Good enough for sales-comparison work (~10 m accuracy at city scale).
+function haversineKm(a, b) {
+  if (!a || !b) return null;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(b[1] - a[1]);
+  const dLon = toRad(b[0] - a[0]);
+  const lat1 = toRad(a[1]);
+  const lat2 = toRad(b[1]);
+  const h = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }

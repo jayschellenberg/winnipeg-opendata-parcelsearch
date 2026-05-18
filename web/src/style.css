@@ -1494,3 +1494,14 @@ body {
   margin: 0;
   cursor: pointer;
 }
+
+/* Sales-mode column visibility. .sales-only columns stay hidden
+   until body carries .sales-mode (set by runSalesAnalysis after a
+   CSV joins to live data). .subj-col hides the Dist column when
+   no subject roll is set. */
+body:not(.sales-mode) .sales-only {
+  display: none !important;
+}
+body:not(.subject-set) .subj-col {
+  display: none !important;
+}

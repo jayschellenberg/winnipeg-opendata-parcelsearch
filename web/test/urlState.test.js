@@ -303,8 +303,27 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 23 entries (11 inputs + 10 toggles + 2 sort)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 23);
+test('SCHEMA — has exactly 24 entries (11 inputs + 10 toggles + 2 sort + 1 tab)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 24);
+});
+
+// ---------- tab (Phase 7) ----------
+
+test('decodeState — tab=sales accepted', () => {
+  assert.deepEqual(decodeState('t=sales'), { tab: 'sales' });
+});
+
+test('decodeState — tab=property accepted', () => {
+  assert.deepEqual(decodeState('t=property'), { tab: 'property' });
+});
+
+test('decodeState — tab=unknown dropped', () => {
+  assert.deepEqual(decodeState('t=junk'), {});
+});
+
+test('round-trip — tab=sales survives', () => {
+  const state = { tab: 'sales', roll: '12345' };
+  assert.deepEqual(decodeState(encodeState(state)), state);
 });
 
 console.log('');

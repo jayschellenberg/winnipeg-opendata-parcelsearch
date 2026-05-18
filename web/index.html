@@ -442,6 +442,17 @@
             <th data-col="value" id="value-header" title="Click any value to open the parcel's record on winnipegassessment.com">Assessment</th>
             <th data-col="walk" title="Open this address on walkscore.com">Walkscore</th>
             <th data-col="flood" title="Run this parcel through the Manitoba flood-screening tool">Flood</th>
+            <!-- Phase 7 sales-only columns. Hidden by default; revealed
+                 when body carries .sales-mode (set after a CSV loads). -->
+            <th data-col="saleDate"   class="sales-only" title="Sale date from the uploaded CSV">Sale Date</th>
+            <th data-col="salePrice"  class="sales-only" title="Sold price from the uploaded CSV">Sale Price</th>
+            <th data-col="pricePerSf" class="sales-only" title="Sale price ÷ Land Actual sqft">$/Lot SF</th>
+            <th data-col="saleToAsmt" class="sales-only" title="Sale price ÷ total assessed value (latest year)">Sale/Asmt</th>
+            <th data-col="dist"       class="sales-only subj-col" title="Centroid-to-centroid distance from the subject parcel (km). Set a subject roll in the Sales Analysis tab to populate.">Dist (km)</th>
+            <th data-col="useCode"    class="sales-only" title="Property Assessment use code (RESMC / RESRH / RESAP / RESMU / RESAM)">Use</th>
+            <th data-col="livingArea" class="sales-only" title="Building floor area in square feet (from the CSV)">Living SF</th>
+            <th data-col="yearBuilt"  class="sales-only" title="Year built (from the CSV)">Built</th>
+            <th data-col="instrument" class="sales-only" title="Land Titles instrument number for the transaction">Instrument</th>
           </tr>
         </thead>
         <tbody></tbody>
