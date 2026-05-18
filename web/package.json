@@ -18,6 +18,8 @@
     "pmtiles": "^4.4.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "tailwindcss": "^4.3.0",
     "vite": "^5.4.10"
   }
 }

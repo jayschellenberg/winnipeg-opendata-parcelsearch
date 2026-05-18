@@ -29,6 +29,7 @@
 // query and the two datasets don't share attribute columns so they can't
 // be combined in one SoQL where-clause.
 
+import './lib/tailwind.css';
 import bbox from '@turf/bbox';
 import {
   searchSurveyParcels,

@@ -8,9 +8,20 @@
       rel="stylesheet"
       href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
     />
+    <!-- Inter loaded from Google Fonts. The preconnect hints speed up
+         the handshake; the @import-free <link> form avoids a render-
+         blocking @import statement inside style.css. The page remains
+         legible if the CDN is blocked because the --font-sans token
+         falls through to the system font set. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
     <link rel="stylesheet" href="./src/style.css" />
   </head>
-  <body>
+  <body class="font-sans">
     <header>
       <h1>Winnipeg Parcel Search</h1>
       <small>

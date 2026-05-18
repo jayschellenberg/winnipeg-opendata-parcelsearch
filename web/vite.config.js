@@ -1,7 +1,11 @@
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  // Plain static site, no framework plugins needed.
+  // Tailwind v4's Vite integration scans source files for utility
+  // classes and emits the generated stylesheet for the
+  // `web/src/lib/tailwind.css` entry. Plain ES modules otherwise.
+  plugins: [tailwindcss()],
   build: {
     target: 'es2020',
   },
