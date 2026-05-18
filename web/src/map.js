@@ -460,10 +460,16 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
+      // Phase 6: explicit layout.visibility so getLayoutProperty
+       // returns a real string. Visibility is data-driven (the source
+       // starts empty), but having the property declared keeps the
+       // basemap toggle's visibility queries on every layer
+       // consistent.
       map.addLayer({
         id: 'assess-context-fill',
         type: 'fill',
         source: 'assess-context',
+        layout: { visibility: 'visible' },
         paint: {
           'fill-color': '#ffd60a',
           'fill-opacity': 0.35,
@@ -473,6 +479,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         id: 'assess-context-line',
         type: 'line',
         source: 'assess-context',
+        layout: { visibility: 'visible' },
         paint: {
           'line-color': '#8a6500',
           'line-width': 3,
@@ -659,6 +666,10 @@ export function initMap(container, { onFeatureClick } = {}) {
         source: 'civic-addresses',
         minzoom: 16,
         layout: {
+          // Phase 6: explicit visibility so getLayoutProperty returns
+          // a real string. Source-driven empty/populated is what
+          // actually toggles the labels on screen.
+          'visibility': 'visible',
           'text-field': ['coalesce', ['get', 'full_address'], ['get', 'street_num'], ''],
           'text-font': ['Open Sans Semibold'],
           'text-size': 11,
