@@ -303,8 +303,23 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 24 entries (11 inputs + 10 toggles + 2 sort + 1 tab)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 24);
+test('SCHEMA — has exactly 25 entries (11 inputs + 10 toggles + 2 sort + 1 tab + 1 subjectRoll)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 25);
+});
+
+// ---------- subjectRoll (Phase 7 fu2) ----------
+
+test('decodeState — subjectRoll accepted', () => {
+  assert.deepEqual(decodeState('sr=12345678900'), { subjectRoll: '12345678900' });
+});
+
+test('decodeState — subjectRoll preserves 10-digit form (normalize is client-side)', () => {
+  assert.deepEqual(decodeState('sr=6070731000'), { subjectRoll: '6070731000' });
+});
+
+test('round-trip — tab + subjectRoll together', () => {
+  const state = { tab: 'sales', subjectRoll: '14030927000' };
+  assert.deepEqual(decodeState(encodeState(state)), state);
 });
 
 // ---------- tab (Phase 7) ----------

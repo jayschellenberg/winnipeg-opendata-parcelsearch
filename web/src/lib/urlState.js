@@ -9,7 +9,7 @@
  * Empty / default values aren't emitted so a fresh page load
  * produces a clean URL.
  *
- * The schema covers 24 keys:
+ * The schema covers 25 keys:
  *   - 11 search inputs (lot, block, plan, desc, roll, addressFrom,
  *     addressTo, addressStreet, zoning, duMode, duMin)
  *   - 10 overlay toggles (survey, assess, allParcels, zoning,
@@ -17,6 +17,7 @@
  *     dimensions) — each a boolean
  *   - 2 sort (sortCol, sortDir)
  *   - 1 tab (property | sales) — Phase 7
+ *   - 1 subjectRoll (the sales-tab subject parcel) — Phase 7 fu2
  *
  * Map center/zoom/basemap are deliberately NOT encoded (the locked
  * Phase 8 decision was to keep URLs compact).
@@ -108,6 +109,13 @@ export const SCHEMA = {
   // captureUrlState should only emit `tab` when it differs from the
   // page default ('property') so a fresh load keeps a clean URL.
   tab: { param: 't', validate: oneOf(['property', 'sales']), format: (v) => v },
+
+  // --- Subject roll (1, Phase 7 follow-up 2) ---
+  // The subject parcel against which loaded sales are compared
+  // (powers the Dist km column + Sale/Asmt grouping). Plain string
+  // so 10-digit and 11-digit forms both round-trip; main.js
+  // normalizes via normalizeRoll() on read.
+  subjectRoll: { param: 'sr', validate: cleanString, format: (v) => v },
 };
 
 const PARAM_TO_KEY = Object.fromEntries(

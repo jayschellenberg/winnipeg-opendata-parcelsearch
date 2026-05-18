@@ -446,7 +446,8 @@
                  when body carries .sales-mode (set after a CSV loads). -->
             <th data-col="saleDate"   class="sales-only" title="Sale date from the uploaded CSV">Sale Date</th>
             <th data-col="salePrice"  class="sales-only" title="Sold price from the uploaded CSV">Sale Price</th>
-            <th data-col="pricePerSf" class="sales-only" title="Sale price ÷ Land Actual sqft">$/Lot SF</th>
+            <th data-col="groupSize"  class="sales-only" title="Number of parcels in the same sale (1 = single-parcel sale). Multi-parcel sales aggregate $/Lot SF and Sale/Asmt across the group.">Group #</th>
+            <th data-col="pricePerSf" class="sales-only" title="Sale price ÷ Land Actual sqft. For multi-parcel sales, divides by the group total land.">$/Lot SF</th>
             <th data-col="saleToAsmt" class="sales-only" title="Sale price ÷ total assessed value (latest year)">Sale/Asmt</th>
             <th data-col="dist"       class="sales-only subj-col" title="Centroid-to-centroid distance from the subject parcel (km). Set a subject roll in the Sales Analysis tab to populate.">Dist (km)</th>
             <th data-col="useCode"    class="sales-only" title="Property Assessment use code (RESMC / RESRH / RESAP / RESMU / RESAM)">Use</th>

@@ -367,6 +367,13 @@ function captureUrlState() {
   const salesPanel = document.getElementById('tab-panel-sales');
   if (salesPanel && !salesPanel.hidden) s.tab = 'sales';
 
+  // Subject roll (Sales tab). Emit whatever the user typed — the
+  // normalize step happens on read in runSalesAnalysis so 10- or
+  // 11-digit shareable URLs both work.
+  const subjectRollEl = document.getElementById('subject-roll');
+  const subjectRollVal = (subjectRollEl?.value || '').trim();
+  if (subjectRollVal) s.subjectRoll = subjectRollVal;
+
   return s;
 }
 
@@ -413,6 +420,14 @@ function applyUrlState(state) {
   if (state.tab && (state.tab === 'sales' || state.tab === 'property')) {
     // skipFocus so a shared URL doesn't yank focus to the dropzone.
     setActiveTab(state.tab, { skipFocus: true });
+  }
+
+  if ('subjectRoll' in state) {
+    const sr = document.getElementById('subject-roll');
+    if (sr) sr.value = String(state.subjectRoll);
+    // chipInput hasn't bound to #subject-roll yet at this point in
+    // module init — it picks up the value when wireSalesTab runs
+    // later. No need to dispatch a render event.
   }
 }
 
@@ -1312,6 +1327,7 @@ function renderTable(rows) {
     // hides them when body lacks .sales-mode).
     tr.appendChild(td(a._saleDate || null));
     tr.appendChild(td(formatDollars(a._salePrice), 'num'));
+    tr.appendChild(td(a._saleGroupSize != null ? String(a._saleGroupSize) : null, 'num'));
     tr.appendChild(td(formatDollars(a._pricePerSf), 'num'));
     tr.appendChild(td(formatPct(a._saleToAsmt), 'num'));
     tr.appendChild(td(formatDist(a._dist), 'num'));
@@ -1917,6 +1933,7 @@ function wireSalesTab() {
   const $subjectRoll = document.getElementById('subject-roll');
   if ($subjectRoll) {
     $subjectRoll.addEventListener('input', () => {
+      queueUrlWrite();
       if (salesData) runSalesAnalysis();
     });
   }
