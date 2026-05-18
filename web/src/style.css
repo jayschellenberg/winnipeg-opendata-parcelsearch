@@ -14,66 +14,113 @@ body {
   background: #f7f7f8;
 }
 
-header {
-  padding: 6px 20px;
-  background: #1a2a4a;
+/* --- Sticky topbar (Phase 2) -------------------------------------
+   Replaces the legacy <header> + small-text + layer-info tooltip.
+   Sticks to the top of the viewport while the page scrolls; the
+   Data sources <details> panel positions absolute so opening it
+   doesn't push the layout below downward. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--color-primary-500, #1e293b);
   color: #fff;
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
   gap: 14px;
+  padding: 8px 20px;
 }
 
-header h1 {
+.topbar-title {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-header small {
-  color: #b6c4e0;
-  font-size: 12px;
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
 }
 
-/* Hover-tooltip pill in the header that explains the Survey vs
-   Assessment difference. Triggered by hover or keyboard focus on the
-   .layer-info-trigger span; the tooltip is its inner descendant so
-   nested hover/focus selectors keep it visible while the cursor is
-   on either the trigger or the tooltip itself. */
-.layer-info-trigger {
+.topbar-link,
+.topbar-summary {
+  color: #d8e3f4;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.topbar-link:hover,
+.topbar-summary:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.topbar-link:focus-visible,
+.topbar-summary:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: 2px;
+}
+
+.topbar-details {
   position: relative;
-  cursor: help;
-  text-decoration: underline;
-  text-decoration-style: dotted;
+}
+.topbar-summary {
+  list-style: none;
+  user-select: none;
+}
+.topbar-summary::-webkit-details-marker { display: none; }
+.topbar-summary::after {
+  content: " \25BE";
+  font-size: 11px;
+  opacity: 0.8;
+}
+.topbar-details[open] .topbar-summary::after {
+  content: " \25B4";
 }
 
-.layer-info-tooltip {
-  display: none;
+/* Drop-down panel below the topbar. Positioned absolute so opening
+   it doesn't reflow the page; covers the right side of the topbar's
+   bottom edge. Drop shadow + white surface for readability against
+   the dark topbar. */
+.topbar-panel {
   position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(640px, 92vw);
+  max-height: 70vh;
+  overflow-y: auto;
   background: #fff;
   color: #1a1a1a;
-  padding: 12px 14px;
-  border: 1px solid #c7d2ec;
-  border-radius: 6px;
-  width: 360px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.18);
+  padding: 14px 18px;
+}
+.topbar-panel-section + .topbar-panel-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-neutral-200, #e4e4e7);
+}
+.topbar-panel-section h2 {
+  margin: 0 0 6px;
   font-size: 13px;
-  line-height: 1.45;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  z-index: 100;
-  white-space: normal;
-  text-align: left;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-primary-500, #1e293b);
 }
-
-.layer-info-trigger:hover .layer-info-tooltip,
-.layer-info-trigger:focus-within .layer-info-tooltip {
-  display: block;
+.topbar-panel-section p {
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.5;
 }
-
-header small a {
-  color: inherit;
-  text-decoration: underline;
-}
+.topbar-panel-section a { color: var(--color-accent-600, #1d4ed8); }
+.topbar-panel-section.disclaimer-section p { font-size: 12px; }
 
 /* Two-pane layout: fixed-width sidebar on the left for all controls,
    fluid main pane on the right for the map + table. Stacks to a single

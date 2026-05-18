@@ -22,31 +22,117 @@
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body class="font-sans">
-    <header>
-      <h1>Winnipeg Parcel Search</h1>
-      <small>
-        Live data from
-        <a href="https://data.winnipeg.ca" target="_blank" rel="noreferrer">data.winnipeg.ca</a>
-        · <span class="layer-info-trigger" tabindex="0" aria-label="Survey vs Assessment parcel info">Layer info<span class="layer-info-tooltip" role="tooltip">
-          <strong style="color:#1a1a1a">Survey vs Assessment parcels</strong>
-          <p style="margin:6px 0">
-            <span class="legend-pill survey">Survey</span>
-            parcels (blue on the map) are the legal lots from Land Titles —
-            the <em>Lot / Block / Plan</em> on a deed.
-          </p>
-          <p style="margin:6px 0">
-            <span class="legend-pill assess">Assessment</span>
-            parcels (yellow) are the City's tax-assessed properties —
-            one per <em>Roll Number / civic address</em>.
-          </p>
-          <p style="margin:6px 0 0">
-            The two layers don't always align. One assessment can cover
-            many lots; one lot can be split between rolls. Hover anywhere
-            on the map to see both at once.
-          </p>
-        </span></span>
-        · <a href="#disclaimer">Disclaimer</a>
-      </small>
+    <header class="topbar" role="banner">
+      <h1 class="topbar-title">Winnipeg Parcel Search</h1>
+      <nav class="topbar-nav" aria-label="App navigation">
+        <a
+          class="topbar-link"
+          href="https://manitoba-opendata-parcelsearch.vercel.app/"
+          target="_blank"
+          rel="noreferrer"
+        >Manitoba portal</a>
+        <details class="topbar-details" id="data-sources-details">
+          <summary class="topbar-summary">Data sources</summary>
+          <div class="topbar-panel" id="data-sources-panel">
+            <section class="topbar-panel-section">
+              <h2>About this tool</h2>
+              <p>
+                Search Winnipeg properties by civic address, roll number,
+                or legal description. Each result is enriched with its
+                top-2 zoning districts (with coverage %), every civic
+                address falling inside the parcel polygon, and a
+                per-parcel land area. Live data from the
+                <a href="https://data.winnipeg.ca" target="_blank" rel="noreferrer">City of Winnipeg Open Data Portal</a>
+                — no server, no auth, every search re-queries the source.
+                Browser-cached citywide zoning (7 days) and traffic
+                volumes (30 days) keep repeat work in the same area snappy.
+              </p>
+            </section>
+
+            <section class="topbar-panel-section">
+              <h2>About the parcel layers</h2>
+              <p>
+                <span class="legend-pill survey">Survey</span>
+                parcels (blue on the map) are the legal lots from Land
+                Titles — the <em>Lot / Block / Plan</em> on a deed.
+              </p>
+              <p>
+                <span class="legend-pill assess">Assessment</span>
+                parcels (yellow) are the City's tax-assessed properties
+                — one per <em>Roll Number / civic address</em>.
+              </p>
+              <p>
+                The two layers don't always align. One assessment can
+                cover many lots; one lot can be split between rolls.
+                Hover anywhere on the map to see both at once.
+              </p>
+            </section>
+
+            <section class="topbar-panel-section">
+              <h2>Open-data sources</h2>
+              <p>
+                Live queries against the
+                <a href="https://data.winnipeg.ca" target="_blank" rel="noreferrer">City of Winnipeg Open Data Portal</a>
+                (Socrata) — Survey Parcels, Assessment Parcels, Civic
+                Addresses, the Zoning By-law, OurWinnipeg overlays
+                (Precincts, Major Redevelopment Sites, Mature Community
+                / Infill, Regional Mixed-Use Centres, Urban + Regional
+                Corridors), and Traffic Counts (midblock + permanent
+                stations) joined to the Road Network centerlines.
+              </p>
+              <p>
+                Environmental sites come from the
+                <a href="https://www.gov.mb.ca/sd/contaminated_sites/registry.html" target="_blank" rel="noreferrer">Province of Manitoba Contaminated Sites Registry</a>,
+                fetched through a same-origin proxy because the upstream
+                CSV doesn't send CORS headers.
+              </p>
+            </section>
+
+            <section class="topbar-panel-section">
+              <h2>External tools</h2>
+              <p>
+                Per-row links deep-link into:
+                <a href="https://www.winnipegassessment.com/AsmtTax/English/SelectProperty/Default.asp" target="_blank" rel="noreferrer">City of Winnipeg Assessment &amp; Taxation</a>,
+                <a href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer">PP&amp;D Property Map</a>,
+                <a href="https://dmis.winnipeg.ca/" target="_blank" rel="noreferrer">DMIS (Development Management Information System)</a>,
+                <a href="https://www.walkscore.com/" target="_blank" rel="noreferrer">Walk Score</a>, and the
+                <a href="https://mb-flood-mapping.vercel.app/" target="_blank" rel="noreferrer">Manitoba Flood Mapping Tool</a>.
+                None require sign-in.
+              </p>
+            </section>
+
+            <section class="topbar-panel-section">
+              <h2>Basemaps</h2>
+              <p>
+                <a href="https://carto.com/attributions/" target="_blank" rel="noreferrer">Carto Positron</a>
+                (Streets, default) and
+                <a href="https://www.esri.com/en-us/legal/copyright-trademarks" target="_blank" rel="noreferrer">Esri World Imagery</a>
+                (Satellite). Toggle in the map's top-right corner. No
+                API keys.
+              </p>
+            </section>
+
+            <section class="topbar-panel-section disclaimer-section">
+              <h2>Disclaimer</h2>
+              <p>
+                This site is provided without warranty and is for
+                general information only. Data is queried live from the
+                City of Winnipeg Open Data portal and may be incomplete,
+                out of date, or inaccurate. Survey-parcel and
+                assessment-parcel boundaries do not always align exactly
+                — when a roll number, address, or zoning search fills in
+                the Lot / Block / Plan / Description columns, those
+                legal descriptions are matched to the assessment parcel
+                by geographic overlap only and may be partial or
+                incorrect. Do not rely on these results without
+                independent verification from Land Titles, the City of
+                Winnipeg Assessment &amp; Taxation department, or a
+                qualified professional.
+              </p>
+            </section>
+          </div>
+        </details>
+      </nav>
     </header>
 
     <div class="layout">
