@@ -470,20 +470,31 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'fill',
         source: 'assess-context',
         layout: { visibility: 'visible' },
+        // Yellow highlight (Mat. yellow-A400) lifted from the
+        // Manitoba sister app so a selected assessment parcel
+        // reads identically across both tools.
         paint: {
-          'fill-color': '#ffd60a',
-          'fill-opacity': 0.35,
+          'fill-color': '#ffea00',
+          'fill-opacity': 0.3,
         },
       });
       map.addLayer({
         id: 'assess-context-line',
         type: 'line',
         source: 'assess-context',
-        layout: { visibility: 'visible' },
+        // Dashed outline so the highlight reads as a "selection"
+        // rather than competing with solid parcel-fabric lines.
+        // Manitoba uses [3, 2] (3-width dash, 2-width gap) at
+        // 2.5 px stroke — match exactly.
+        layout: {
+          visibility: 'visible',
+          'line-cap': 'butt',
+          'line-join': 'round',
+        },
         paint: {
-          'line-color': '#8a6500',
-          'line-width': 3,
-          'line-opacity': 0.95,
+          'line-color': '#ffea00',
+          'line-width': 2.5,
+          'line-dasharray': [3, 2],
         },
       });
 
