@@ -336,7 +336,10 @@ export function initMap(container, { onFeatureClick } = {}) {
             '#cccccc',
           ],
           'fill-opacity': 0.45,
-          'fill-outline-color': '#666',
+          // Slightly darker outline so the per-zone fill colour
+          // edges read cleanly at every basemap. Matches the
+          // Manitoba sister app's zoning-fill outline.
+          'fill-outline-color': '#444',
         },
       });
       map.addLayer({
@@ -344,10 +347,13 @@ export function initMap(container, { onFeatureClick } = {}) {
         type: 'line',
         source: 'zoning',
         layout: { visibility: 'none' },
+        // Slightly darker + more opaque than the previous #444 @ 0.6,
+        // matching the Manitoba sister app for stronger boundary
+        // visibility on both basemaps.
         paint: {
-          'line-color': '#444',
+          'line-color': '#333',
           'line-width': 0.6,
-          'line-opacity': 0.6,
+          'line-opacity': 0.7,
         },
       });
       // Zoning code label, placed at the polygon centroid by default.
@@ -974,6 +980,17 @@ export function initMap(container, { onFeatureClick } = {}) {
         });
       }
 
+      // Hybrid satellite: move the two Esri reference rasters
+      // (transportation + place names) to the TOP of the layer
+      // stack so they paint above any parcel / zoning / policy
+      // overlays. Otherwise a zoning fill or sale highlight on
+      // top of the satellite imagery would obscure street labels.
+      // Order of moveLayer calls is important — the LAST call
+      // wins, so transportation moves first and reference moves
+      // last, putting place names on top.
+      if (map.getLayer('esri-transportation')) map.moveLayer('esri-transportation');
+      if (map.getLayer('esri-reference'))      map.moveLayer('esri-reference');
+
       resolve();
     });
   });
@@ -1439,8 +1456,8 @@ class BasemapToggleControl {
     this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group basemap-toggle';
     this._btn = document.createElement('button');
     this._btn.type = 'button';
-    this._btn.title = 'Toggle satellite basemap';
-    this._btn.setAttribute('aria-label', 'Toggle satellite basemap');
+    this._btn.title = 'Toggle basemap (streets ⇄ satellite)';
+    this._btn.setAttribute('aria-label', 'Toggle basemap (streets ⇄ satellite)');
     this._btn.textContent = 'Satellite';
     this._btn.addEventListener('click', () => this._toggle());
     this._container.appendChild(this._btn);

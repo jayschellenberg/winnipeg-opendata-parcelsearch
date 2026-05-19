@@ -978,6 +978,32 @@ body {
   z-index: 4;
 }
 
+/* Pin the leftmost column (Roll Number) on horizontal scroll —
+   matches the Manitoba sister app. The corner cell (thead + first
+   column) gets a higher z-index so it sits above both the body's
+   sticky column and the sticky thead row. Background is required
+   on every sticky cell so the underlying scrolled content doesn't
+   show through. */
+#results th:first-child,
+#results td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: #fff;
+}
+#results thead th:first-child {
+  z-index: 6;
+  background: #f2f6f8;
+}
+#results tbody tr:hover td:first-child {
+  background: #f6fbff;
+}
+#results tbody tr.row-highlight td:first-child {
+  /* Let the row's keyframe highlight paint through the pinned
+     cell so the flash visibility doesn't drop on the first column. */
+  background: transparent;
+}
+
 /* MapLibre control button for the Streets/Satellite basemap toggle.
    Inherits the maplibregl-ctrl-group styling for the dark border + group
    look; we just style the inner button to be wider with a label. */
