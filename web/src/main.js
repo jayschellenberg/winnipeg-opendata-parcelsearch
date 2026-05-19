@@ -1032,6 +1032,18 @@ async function setNeighbourhoodsMode(mode) {
       setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
       const src = map.getSource('wpg-neighbourhood-clusters');
       console.log('[hoods] cluster source exists?', !!src);
+      // After setData the worker tessellates async. Wait one
+      // 'idle' event, then ask what's actually on screen.
+      setTimeout(() => {
+        const rendered = map.queryRenderedFeatures({ layers: ['neighbourhood-clusters-fill'] });
+        console.log('[hoods] rendered cluster-fill features:', rendered.length);
+        if (rendered.length === 0) {
+          // Try query the source itself to see if data arrived at the worker.
+          const allRendered = map.querySourceFeatures('wpg-neighbourhood-clusters');
+          console.log('[hoods] querySourceFeatures all (any layer):', allRendered.length);
+          console.log('[hoods] cluster-fill layer object:', map.getLayer('neighbourhood-clusters-fill'));
+        }
+      }, 800);
     } else {
       const fc = await fetchNeighbourhoods();
       console.log('[hoods] fetched individual:', fc?.features?.length ?? 'none', 'features');

@@ -450,7 +450,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         layout: {
           visibility: 'none',
           'text-field': ['get', 'cluster'],
-          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+          'text-font': ['Open Sans Semibold'],
           'text-size': [
             'interpolate', ['linear'], ['zoom'],
             9,  10,
@@ -483,7 +483,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         layout: {
           visibility: 'none',
           'text-field': ['get', 'name'],
-          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+          'text-font': ['Open Sans Semibold'],
           'text-size': [
             'interpolate', ['linear'], ['zoom'],
             12, 9,
