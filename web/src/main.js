@@ -729,7 +729,7 @@ async function toggleContam() {
 
   if (contamEnabled) {
     if (contamLoaded) {
-      $contamToggle.textContent = 'Hide Enviro Sites';
+      $contamToggle.textContent = 'Hide Environmental Sites';
       return;
     }
     $contamToggle.disabled = true;
@@ -738,19 +738,19 @@ async function toggleContam() {
       const fc = await fetchContaminatedSites();
       setContamData(map, fc);
       contamLoaded = true;
-      $contamToggle.textContent = 'Hide Enviro Sites';
+      $contamToggle.textContent = 'Hide Environmental Sites';
     } catch (err) {
       console.warn('contaminated-sites overlay failed', err);
       contamEnabled = false;
       $contamToggle.classList.remove('active');
       $contamToggle.setAttribute('aria-pressed', 'false');
-      $contamToggle.textContent = 'Enviro Sites';
+      $contamToggle.textContent = 'Environmental Sites';
       setContamVisible(map, false);
     } finally {
       $contamToggle.disabled = false;
     }
   } else {
-    $contamToggle.textContent = 'Enviro Sites';
+    $contamToggle.textContent = 'Environmental Sites';
   }
 }
 
@@ -816,8 +816,8 @@ const POLICY_OVERLAY_CONFIG = {
     btn:    () => $secondaryPlansToggle,
     src:    'secondary-plans',
     fetch:  fetchSecondaryPlans,
-    onLabel:  'Hide Sec. Plans',
-    offLabel: 'Sec. Plans',
+    onLabel:  'Hide Secondary Plans',
+    offLabel: 'Secondary Plans',
   },
   infill: {
     btn:    () => $infillToggle,
@@ -837,8 +837,8 @@ const POLICY_OVERLAY_CONFIG = {
     btn:    () => $cityOwnedParcelsToggle,
     src:    'city-owned-parcels',
     fetch:  fetchCityOwnedParcels,
-    onLabel:  'Hide City Parcels',
-    offLabel: 'City Parcels',
+    onLabel:  'Hide City Owned Parcels',
+    offLabel: 'City Owned Parcels',
   },
 };
 
@@ -1085,7 +1085,7 @@ async function toggleCitywideParcels() {
     return;
   }
   citywideParcelsEnabled = !citywideParcelsEnabled;
-  $allParcelsToggle.textContent = citywideParcelsEnabled ? 'Hide All Assess. Parcels' : 'All Assess. Parcels';
+  $allParcelsToggle.textContent = citywideParcelsEnabled ? 'Hide All Assessment Parcels' : 'All Assessment Parcels';
   $allParcelsToggle.setAttribute('aria-pressed', String(citywideParcelsEnabled));
   $allParcelsToggle.classList.toggle('active', citywideParcelsEnabled);
   setCitywideParcelsVisible(map, citywideParcelsEnabled);
