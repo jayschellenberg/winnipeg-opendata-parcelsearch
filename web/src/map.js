@@ -119,19 +119,63 @@ const BASEMAP_STYLE = {
       attribution:
         'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
     },
+    // Transparent reference overlays for the hybrid satellite view —
+    // place names, road names, boundaries. Stacked on top of the
+    // imagery when Satellite is the active basemap (via the
+    // BasemapToggleControl); hidden when Streets is active so the
+    // CARTO Positron tiles (which carry their own labels) read
+    // clean. Same Esri ArcGIS Online raster service Manitoba uses.
+    'esri-transportation': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      attribution: 'Transportation &copy; Esri',
+    },
+    'esri-reference': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      attribution: 'Reference &copy; Esri',
+    },
   },
   layers: [
+    // Carto streets is the default. Satellite (imagery + the two
+    // transparent label overlays) starts hidden; the basemap
+    // toggle in the top-right swaps them in lockstep. Explicit
+    // `visibility: 'visible' / 'none'` on every layer so
+    // getLayoutProperty returns a real string on first click.
     {
       id: 'carto-positron',
       type: 'raster',
       source: 'carto-positron',
       minzoom: 0,
       maxzoom: 20,
+      layout: { visibility: 'visible' },
     },
     {
       id: 'esri-imagery',
       type: 'raster',
       source: 'esri-imagery',
+      minzoom: 0,
+      maxzoom: 20,
+      layout: { visibility: 'none' },
+    },
+    {
+      id: 'esri-transportation',
+      type: 'raster',
+      source: 'esri-transportation',
+      minzoom: 0,
+      maxzoom: 20,
+      layout: { visibility: 'none' },
+    },
+    {
+      id: 'esri-reference',
+      type: 'raster',
+      source: 'esri-reference',
       minzoom: 0,
       maxzoom: 20,
       layout: { visibility: 'none' },
@@ -389,12 +433,21 @@ export function initMap(container, { onFeatureClick } = {}) {
         'source-layer': 'parcels',
         layout: { visibility: 'none' },
         paint: {
-          // Blue to match the Manitoba parcel-search sister site's
-          // muni-parcels overlay — same Tailwind blue-700, slightly
-          // wider so the line stays readable on satellite basemap.
-          'line-color': '#1d4ed8',
-          'line-width': 1.0,
-          'line-opacity': 0.7,
+          // Slate-grey (Tailwind gray-500) so the muni-wide parcel
+          // fabric reads as pure supporting context — visible
+          // enough to trace lot boundaries when looking for it but
+          // invisible enough that zoning + sale highlights paint
+          // cleanly on top. Matches the Manitoba sister app's
+          // muni-parcels-line exactly.
+          //
+          // Previous Winnipeg styling (kept here for a one-diff
+          // revert if needed):
+          //   'line-color': '#1d4ed8',   // Tailwind blue-700
+          //   'line-width': 1.0,
+          //   'line-opacity': 0.7,
+          'line-color': '#6b7280',
+          'line-width': 1.5,
+          'line-opacity': 0.8,
         },
       });
 
@@ -1397,8 +1450,15 @@ class BasemapToggleControl {
     const map = this._map;
     const imageryVisible = map.getLayoutProperty('esri-imagery', 'visibility') === 'visible';
     const next = !imageryVisible;
-    map.setLayoutProperty('esri-imagery',   'visibility', next ? 'visible' : 'none');
-    map.setLayoutProperty('carto-positron', 'visibility', next ? 'none' : 'visible');
+    const satVis   = next ? 'visible' : 'none';
+    const cartoVis = next ? 'none' : 'visible';
+    map.setLayoutProperty('esri-imagery',        'visibility', satVis);
+    // Hybrid: place names + road names follow the imagery so the
+    // satellite view stays labelled (street names visible, place
+    // names visible).
+    map.setLayoutProperty('esri-transportation', 'visibility', satVis);
+    map.setLayoutProperty('esri-reference',      'visibility', satVis);
+    map.setLayoutProperty('carto-positron',      'visibility', cartoVis);
     this._btn.textContent = next ? 'Streets' : 'Satellite';
     this._btn.classList.toggle('active', next);
   }
