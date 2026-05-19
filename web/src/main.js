@@ -987,12 +987,17 @@ async function cycleNeighbourhoods() {
 }
 
 async function setNeighbourhoodsMode(mode) {
+  console.log('[hoods] ENTRY setNeighbourhoodsMode mode=', mode,
+    'loaded=', JSON.stringify(neighbourhoodsLoaded),
+    'currentMode=', neighbourhoodsMode);
+  console.trace('[hoods] call site');
   if (!$neighbourhoodsToggle) return;
   if (mode !== 'off' && mode !== 'clusters' && mode !== 'individual') mode = 'off';
   neighbourhoodsMode = mode;
   renderNeighbourhoodButton();
   await mapReady;
-  console.log('[hoods] mode →', mode);
+  console.log('[hoods] mode →', mode,
+    'post-await loaded=', JSON.stringify(neighbourhoodsLoaded));
 
   // Visibility first (so a switch from clusters → individual
   // doesn't leave the old layers showing during a fetch).
@@ -1032,6 +1037,7 @@ async function setNeighbourhoodsMode(mode) {
       console.log('[hoods] fetched individual:', fc?.features?.length ?? 'none', 'features');
       setOverlayData(map, 'wpg-neighbourhoods', fc);
     }
+    console.log('[hoods] SET loaded[' + fetchKey + '] = true');
     neighbourhoodsLoaded[fetchKey] = true;
     $neighbourhoodsToggle.textContent = restoreLabel;
   } catch (err) {
