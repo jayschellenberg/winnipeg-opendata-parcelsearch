@@ -349,7 +349,10 @@ body {
 
 .sidebar .address-row .address-from-field,
 .sidebar .address-row .address-to-field {
-  flex: 0 0 56px;
+  /* Sized to fit five digits comfortably (e.g. 12345). With the
+     reduced input padding below, the content area is ~60 px which
+     leaves a small comfort margin on either side. */
+  flex: 0 0 72px;
   min-width: 0;
 }
 
@@ -1493,6 +1496,108 @@ body {
 .sales-filter-row input[type="checkbox"] {
   margin: 0;
   cursor: pointer;
+}
+
+/* PUCS multi-select. Button opens an inline popover listing every
+   distinct Par Use Code in the loaded CSV; the popover positions
+   absolute so opening it doesn't reflow the sidebar. */
+.sales-pucs-filter {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.sales-pucs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-primary-500, #1e293b);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+.sales-pucs-btn:hover:not(:disabled) {
+  border-color: var(--color-accent-500, #2563eb);
+  color: var(--color-accent-600, #1d4ed8);
+}
+.sales-pucs-btn:disabled {
+  color: var(--color-neutral-400, #a1a1aa);
+  cursor: not-allowed;
+}
+.sales-pucs-btn[aria-expanded="true"] {
+  background: #eff6ff;
+  border-color: var(--color-accent-500, #2563eb);
+  color: var(--color-accent-600, #1d4ed8);
+}
+.sales-pucs-btn-caret {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.sales-pucs-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: none;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px 0;
+  background: #fff;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+  z-index: 10;
+}
+.sales-pucs-popover.open { display: block; }
+.sales-pucs-popover-actions {
+  display: flex;
+  gap: 6px;
+  padding: 4px 10px 6px;
+  border-bottom: 1px solid var(--color-neutral-200, #e4e4e7);
+  margin-bottom: 4px;
+}
+.sales-pucs-popover-actions button {
+  flex: 1 1 auto;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--color-primary-500, #1e293b);
+  cursor: pointer;
+  font-family: inherit;
+}
+.sales-pucs-popover-actions button:hover {
+  border-color: var(--color-accent-500, #2563eb);
+  color: var(--color-accent-600, #1d4ed8);
+}
+.sales-pucs-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--color-primary-500, #1e293b);
+  cursor: pointer;
+}
+.sales-pucs-popover-item:hover {
+  background: var(--color-neutral-100, #f4f4f5);
+}
+.sales-pucs-popover-item input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+.sales-pucs-popover-count {
+  margin-left: auto;
+  color: var(--color-neutral-500, #71717a);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Sales-mode column visibility. .sales-only columns stay hidden

@@ -185,7 +185,7 @@
             <span class="tip">Street number upper bound (inclusive). Tab here after From and it auto-fills with the same value (highlighted) for an exact-number search; overwrite for a range or clear it for an open upper bound.</span>
           </span>
           <span class="field address-street-field">
-            <input id="address-street" type="text" placeholder="Street Name (contains)" />
+            <input id="address-street" type="text" placeholder="Street Name" />
             <span class="tip">Substring match against street_name. e.g. "HARGRAVE", "MAIN", "ROUGE BAY". The street type (ST / AVE / DR) lives in a separate column and isn't matched here.</span>
           </span>
         </div>
@@ -307,6 +307,30 @@
             <input type="checkbox" id="sales-hide-sentinels" checked />
             <span>Hide $0 / $1 non-arms-length transfers</span>
           </label>
+
+          <!-- PUCS multi-select. Button opens a popover listing every
+               distinct Par Use Code in the loaded CSV; user ticks the
+               ones to keep. All-checked = no filter. -->
+          <div class="sales-pucs-filter">
+            <button
+              type="button"
+              id="pucs-filter-btn"
+              class="sales-pucs-btn"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="pucs-filter-popover"
+              disabled
+            >
+              <span class="sales-pucs-btn-label">Filter by PUCS</span>
+              <span class="sales-pucs-btn-caret" aria-hidden="true">▾</span>
+            </button>
+            <div
+              id="pucs-filter-popover"
+              class="sales-pucs-popover"
+              role="menu"
+              aria-label="Filter by Par Use Code"
+            ></div>
+          </div>
 
           <span id="sales-count" class="count"></span>
         </section><!-- /tab-panel-sales -->

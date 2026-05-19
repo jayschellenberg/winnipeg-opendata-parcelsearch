@@ -1888,6 +1888,17 @@ function formatDist(km) {
 //   { sales: SaleRecord[], rolls: Set<string>, groups: Map<inst, SaleRecord[]> }
 let salesData = null;
 
+// PUCS multi-select filter state. `null` = no filter (all PUCS
+// values pass); otherwise a Set of selected PUCS codes (rows whose
+// useCode is in the Set pass). Reset to null on every fresh CSV.
+let salesPucsFilter = null;
+
+// Monotonically increasing token so concurrent runSalesAnalysis
+// calls (e.g. user rapid-clicking PUCS checkboxes) only let the
+// most recent run mutate the DOM. Earlier runs check the token
+// before render and abort if a newer run has started.
+let salesRunToken = 0;
+
 // Required columns the CSV must contain. The parser is tolerant
 // of extra columns and surrounding whitespace, but missing any of
 // these surfaces an error in the sidebar status.
@@ -1972,7 +1983,139 @@ function wireSalesTab() {
     });
   }
 
+  // PUCS multi-select filter. Button toggles the popover; the
+  // popover's checkboxes drive salesPucsFilter and re-run the
+  // analysis on change. Click-away + Esc dismiss.
+  const $pucsBtn = document.getElementById('pucs-filter-btn');
+  const $pucsPopover = document.getElementById('pucs-filter-popover');
+  if ($pucsBtn && $pucsPopover) {
+    $pucsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if ($pucsBtn.disabled) return;
+      const open = $pucsPopover.classList.toggle('open');
+      $pucsBtn.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', (e) => {
+      if (!$pucsPopover.classList.contains('open')) return;
+      if ($pucsPopover.contains(e.target) || $pucsBtn.contains(e.target)) return;
+      $pucsPopover.classList.remove('open');
+      $pucsBtn.setAttribute('aria-expanded', 'false');
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && $pucsPopover.classList.contains('open')) {
+        $pucsPopover.classList.remove('open');
+        $pucsBtn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
   setSalesCount('');
+}
+
+/**
+ * Rebuild the PUCS filter popover from the current salesData.
+ * Each distinct PUCS gets a checkbox + label + per-PUCS count.
+ * Selecting / unselecting re-runs the analysis. Empty selection
+ * (nothing checked) is treated the same as all-checked: no filter,
+ * to avoid the trap of "filtered to zero results."
+ */
+function rebuildPucsFilter() {
+  const $btn = document.getElementById('pucs-filter-btn');
+  const $popover = document.getElementById('pucs-filter-popover');
+  if (!$btn || !$popover) return;
+
+  if (!salesData || !salesData.sales.length) {
+    $btn.disabled = true;
+    $btn.querySelector('.sales-pucs-btn-label').textContent = 'Filter by PUCS';
+    $popover.innerHTML = '';
+    $popover.classList.remove('open');
+    $btn.setAttribute('aria-expanded', 'false');
+    return;
+  }
+
+  // Tally per-PUCS row counts (count distinct sales, not raw CSV
+  // rows, because dedup already collapsed multi-building entries).
+  const counts = new Map();
+  for (const s of salesData.sales) {
+    const k = s.useCode || '(blank)';
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  const codes = [...counts.keys()].sort();
+
+  // Reset filter to "all" whenever the set of codes changes between
+  // CSV uploads. salesPucsFilter null means no filter; once the
+  // user picks a subset it becomes a Set.
+  if (salesPucsFilter == null) {
+    // no-op — null is the default, "all selected" rendering
+  } else {
+    // Drop any codes from the saved selection that no longer exist.
+    const valid = new Set(codes);
+    for (const c of [...salesPucsFilter]) if (!valid.has(c)) salesPucsFilter.delete(c);
+    if (salesPucsFilter.size === codes.length) salesPucsFilter = null;
+  }
+
+  $btn.disabled = false;
+  const selectedCount = salesPucsFilter == null ? codes.length : salesPucsFilter.size;
+  $btn.querySelector('.sales-pucs-btn-label').textContent =
+    salesPucsFilter == null
+      ? `Filter by PUCS · all ${codes.length}`
+      : `Filter by PUCS · ${selectedCount} of ${codes.length}`;
+
+  $popover.innerHTML = '';
+  const actions = document.createElement('div');
+  actions.className = 'sales-pucs-popover-actions';
+  const allBtn = document.createElement('button');
+  allBtn.type = 'button';
+  allBtn.textContent = 'All';
+  allBtn.addEventListener('click', () => {
+    salesPucsFilter = null;
+    rebuildPucsFilter();
+    runSalesAnalysis();
+  });
+  const noneBtn = document.createElement('button');
+  noneBtn.type = 'button';
+  noneBtn.textContent = 'None';
+  noneBtn.addEventListener('click', () => {
+    salesPucsFilter = new Set();
+    rebuildPucsFilter();
+    runSalesAnalysis();
+  });
+  actions.appendChild(allBtn);
+  actions.appendChild(noneBtn);
+  $popover.appendChild(actions);
+
+  for (const code of codes) {
+    const label = document.createElement('label');
+    label.className = 'sales-pucs-popover-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = salesPucsFilter == null || salesPucsFilter.has(code);
+    cb.addEventListener('change', () => {
+      // First user-driven change materializes the filter Set.
+      if (salesPucsFilter == null) salesPucsFilter = new Set(codes);
+      if (cb.checked) salesPucsFilter.add(code);
+      else salesPucsFilter.delete(code);
+      // If all codes are checked, collapse back to "no filter".
+      if (salesPucsFilter.size === codes.length) salesPucsFilter = null;
+      // Update the button label inline; no full rebuild needed
+      // until the user reopens the popover.
+      const sel = salesPucsFilter == null ? codes.length : salesPucsFilter.size;
+      $btn.querySelector('.sales-pucs-btn-label').textContent =
+        salesPucsFilter == null
+          ? `Filter by PUCS · all ${codes.length}`
+          : `Filter by PUCS · ${sel} of ${codes.length}`;
+      runSalesAnalysis();
+    });
+    const text = document.createElement('span');
+    text.textContent = code;
+    const count = document.createElement('span');
+    count.className = 'sales-pucs-popover-count';
+    count.textContent = `${counts.get(code)}`;
+    label.appendChild(cb);
+    label.appendChild(text);
+    label.appendChild(count);
+    $popover.appendChild(label);
+  }
 }
 
 async function loadSalesCsv(file) {
@@ -1990,6 +2133,11 @@ async function loadSalesCsv(file) {
       return;
     }
     salesData = dedupAndGroupSales(rows);
+    // Fresh CSV = fresh filter. The user's previous PUCS picks
+    // don't carry across uploads (different sale sets, different
+    // codes).
+    salesPucsFilter = null;
+    rebuildPucsFilter();
     await runSalesAnalysis();
   } catch (err) {
     console.warn('Sales CSV load failed:', err);
@@ -2106,15 +2254,24 @@ function setSalesCount(text, isError = false) {
  */
 async function runSalesAnalysis() {
   if (!salesData || !salesData.sales.length) return;
+  const myToken = ++salesRunToken;
   const hideSentinels = document.getElementById('sales-hide-sentinels')?.checked;
-  const visibleSales = hideSentinels
+  let visibleSales = hideSentinels
     ? salesData.sales.filter((s) => s.salePrice > 1)
     : salesData.sales.slice();
+  // PUCS multi-select. null = no filter; empty Set = "no codes
+  // selected" which we treat as a deliberate "show nothing" (the
+  // status message hints to use the All button).
+  if (salesPucsFilter != null) {
+    visibleSales = visibleSales.filter((s) => salesPucsFilter.has(s.useCode || '(blank)'));
+  }
   if (!visibleSales.length) {
-    setSalesCount(
-      `All ${salesData.sales.length} sales are $0 / $1 transfers — uncheck "Hide non-arms-length" to view.`,
-      true,
-    );
+    const msg = salesPucsFilter && salesPucsFilter.size === 0
+      ? `No PUCS selected — click All in the Filter by PUCS popover, or pick one or more codes.`
+      : salesPucsFilter
+        ? `${salesData.sales.length} sales loaded, but none match the current PUCS filter.`
+        : `All ${salesData.sales.length} sales are $0 / $1 transfers — uncheck "Hide non-arms-length" to view.`;
+    setSalesCount(msg, true);
     document.body.classList.remove('sales-mode');
     setColumnMode('property');
     clearTable();
@@ -2244,6 +2401,12 @@ async function runSalesAnalysis() {
   }
 
   tagFeatures(assessFc, 'assess');
+
+  // Race guard: if a newer runSalesAnalysis started while we were
+  // awaiting the SODA + subject fetches, drop this run's results
+  // on the floor. Otherwise an earlier (more permissive) filter's
+  // late-resolving response could overwrite the latest filter.
+  if (myToken !== salesRunToken) return;
 
   // Zoning is deferred: even with the Zoning overlay toggle ON,
   // we don't auto-fetch zoning for every sale row. The toggle
