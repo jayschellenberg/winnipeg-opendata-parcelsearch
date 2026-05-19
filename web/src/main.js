@@ -58,6 +58,8 @@ import {
   fetchCityOwnedParcels,
   fetchTransitRoutes,
   fetchTransitStops,
+  fetchNeighbourhoods,
+  fetchNeighbourhoodClusters,
   fetchTrafficVolumes,
   fetchContaminatedSites,
 } from './soda.js';
@@ -93,6 +95,7 @@ const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $cityOwnedParcelsToggle = document.getElementById('city-owned-parcels-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
+const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
@@ -142,6 +145,15 @@ const policyOverlayState = {
 // dedicated toggle function below.
 let transitEnabled = false;
 let transitLoaded = false;
+
+// Neighbourhoods 3-state cycle:
+//   'off'         — nothing shown (default)
+//   'clusters'    — 23 cluster polygons + labels
+//   'individual'  — 235 neighbourhood polygons + labels
+// Loaded flags are independent because the two GeoJSON files
+// are fetched on first reveal of their respective state.
+let neighbourhoodsMode = 'off';
+let neighbourhoodsLoaded = { clusters: false, individual: false };
 let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
 
@@ -247,6 +259,7 @@ $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infil
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 $cityOwnedParcelsToggle.addEventListener('click', () => togglePolicyOverlay('cityOwnedParcels'));
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
+if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
@@ -419,6 +432,11 @@ function captureUrlState() {
     if (on !== defaults[key]) s[key] = on;
   }
 
+  // Neighbourhoods mode: only emit when not in the 'off' default.
+  if (neighbourhoodsMode === 'clusters' || neighbourhoodsMode === 'individual') {
+    s.neighbourhoodsMode = neighbourhoodsMode;
+  }
+
   if (currentSort?.col) s.sortCol = currentSort.col;
   if (currentSort?.dir) s.sortDir = currentSort.dir;
 
@@ -472,6 +490,14 @@ function applyUrlState(state) {
     if (!btn || !(key in state)) continue;
     const cur = btn.getAttribute('aria-pressed') === 'true';
     if (cur !== state[key]) btn.click();
+  }
+
+  // Neighbourhoods mode (3-state cycle): apply directly rather than
+  // simulate N clicks. Validator on the urlState side already
+  // restricts to 'clusters' / 'individual'.
+  if (state.neighbourhoodsMode === 'clusters' || state.neighbourhoodsMode === 'individual') {
+    // Fire-and-forget; the async fetch resolves on its own.
+    setNeighbourhoodsMode(state.neighbourhoodsMode);
   }
 
   if (state.sortCol) {
@@ -530,6 +556,7 @@ for (const btn of [
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
   $cityOwnedParcelsToggle,
   $transitToggle,
+  $neighbourhoodsToggle,
   $contamToggle, $dimensionsToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
@@ -904,6 +931,100 @@ async function toggleTransit() {
     }
   } else {
     $transitToggle.textContent = 'Transit';
+  }
+}
+
+// ---------- Neighbourhoods 3-state cycler ----------
+
+const NEIGHBOURHOOD_CLUSTER_LAYERS = [
+  'neighbourhood-clusters-fill',
+  'neighbourhood-clusters-line',
+  'neighbourhood-clusters-label',
+];
+const NEIGHBOURHOOD_INDIVIDUAL_LAYERS = [
+  'neighbourhoods-fill',
+  'neighbourhoods-line',
+  'neighbourhoods-label',
+];
+
+function setNeighbourhoodLayerVisibility(layerIds, visible) {
+  const v = visible ? 'visible' : 'none';
+  for (const id of layerIds) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+  }
+}
+
+function renderNeighbourhoodButton() {
+  if (!$neighbourhoodsToggle) return;
+  if (neighbourhoodsMode === 'off') {
+    $neighbourhoodsToggle.textContent = 'Neighbourhoods';
+    $neighbourhoodsToggle.classList.remove('active');
+    $neighbourhoodsToggle.setAttribute('aria-pressed', 'false');
+  } else if (neighbourhoodsMode === 'clusters') {
+    $neighbourhoodsToggle.textContent = 'Clusters';
+    $neighbourhoodsToggle.classList.add('active');
+    $neighbourhoodsToggle.setAttribute('aria-pressed', 'true');
+  } else {
+    $neighbourhoodsToggle.textContent = 'Neighbourhoods';
+    $neighbourhoodsToggle.classList.add('active');
+    $neighbourhoodsToggle.setAttribute('aria-pressed', 'true');
+  }
+}
+
+/**
+ * Cycle the neighbourhoods overlay through Off → Clusters →
+ * Individual → Off. Each "on" state lazily fetches its source FC
+ * the first time it's reached and caches it for the session.
+ */
+async function cycleNeighbourhoods() {
+  if (!$neighbourhoodsToggle) return;
+  const next = neighbourhoodsMode === 'off'
+    ? 'clusters'
+    : neighbourhoodsMode === 'clusters'
+      ? 'individual'
+      : 'off';
+  await setNeighbourhoodsMode(next);
+}
+
+async function setNeighbourhoodsMode(mode) {
+  if (!$neighbourhoodsToggle) return;
+  if (mode !== 'off' && mode !== 'clusters' && mode !== 'individual') mode = 'off';
+  neighbourhoodsMode = mode;
+  renderNeighbourhoodButton();
+  await mapReady;
+
+  // Visibility first (so a switch from clusters → individual
+  // doesn't leave the old layers showing during a fetch).
+  setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS,    mode === 'clusters');
+  setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, mode === 'individual');
+
+  if (mode === 'off') return;
+
+  // Lazy-fetch the relevant FC on first reveal.
+  const fetchKey = mode === 'clusters' ? 'clusters' : 'individual';
+  if (neighbourhoodsLoaded[fetchKey]) return;
+  $neighbourhoodsToggle.disabled = true;
+  const restoreLabel = $neighbourhoodsToggle.textContent;
+  $neighbourhoodsToggle.textContent = 'Loading...';
+  try {
+    if (mode === 'clusters') {
+      const fc = await fetchNeighbourhoodClusters();
+      setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
+    } else {
+      const fc = await fetchNeighbourhoods();
+      setOverlayData(map, 'wpg-neighbourhoods', fc);
+    }
+    neighbourhoodsLoaded[fetchKey] = true;
+    $neighbourhoodsToggle.textContent = restoreLabel;
+  } catch (err) {
+    console.warn(`neighbourhoods (${mode}) fetch failed`, err);
+    // Roll back to off so the button isn't wedged.
+    neighbourhoodsMode = 'off';
+    renderNeighbourhoodButton();
+    setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS, false);
+    setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, false);
+  } finally {
+    $neighbourhoodsToggle.disabled = false;
   }
 }
 

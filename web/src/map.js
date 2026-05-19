@@ -411,6 +411,86 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Neighbourhood overlays — two source FCs ship as static
+      // GeoJSON under /public, processed from BaseFiles by
+      // build-neighbourhoods-geojson.mjs. Two visual treatments:
+      //   - Clusters (23): warm amber line + light wash, name
+      //     label at every zoom for context.
+      //   - Individual neighbourhoods (235): cool teal line +
+      //     fainter wash, name label visible at zoom 13+.
+      // Both layer groups start hidden — the single user-facing
+      // 3-state toggle in main.js cycles Off → Clusters →
+      // Neighbourhoods → Off.
+      map.addSource('wpg-neighbourhoods',         { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('wpg-neighbourhood-clusters', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'neighbourhood-clusters-fill', type: 'fill', source: 'wpg-neighbourhood-clusters',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#fbbf24', 'fill-opacity': 0.12 },
+      });
+      map.addLayer({
+        id: 'neighbourhood-clusters-line', type: 'line', source: 'wpg-neighbourhood-clusters',
+        layout: { visibility: 'none', 'line-join': 'round' },
+        paint: { 'line-color': '#b45309', 'line-width': 2, 'line-opacity': 0.85 },
+      });
+      map.addLayer({
+        id: 'neighbourhood-clusters-label', type: 'symbol', source: 'wpg-neighbourhood-clusters',
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'cluster'],
+          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            9,  10,
+            12, 13,
+            15, 15,
+          ],
+          'text-anchor': 'center',
+          'text-allow-overlap': false,
+          'text-padding': 4,
+          'symbol-placement': 'point',
+        },
+        paint: {
+          'text-color': '#7c2d12',
+          'text-halo-color': '#fff7ed',
+          'text-halo-width': 1.6,
+        },
+      });
+      map.addLayer({
+        id: 'neighbourhoods-fill', type: 'fill', source: 'wpg-neighbourhoods',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#0ea5e9', 'fill-opacity': 0.06 },
+      });
+      map.addLayer({
+        id: 'neighbourhoods-line', type: 'line', source: 'wpg-neighbourhoods',
+        layout: { visibility: 'none', 'line-join': 'round' },
+        paint: { 'line-color': '#0369a1', 'line-width': 1, 'line-opacity': 0.75 },
+      });
+      map.addLayer({
+        id: 'neighbourhoods-label', type: 'symbol', source: 'wpg-neighbourhoods',
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            12, 9,
+            14, 11,
+            17, 13,
+          ],
+          'text-anchor': 'center',
+          'text-allow-overlap': false,
+          'text-padding': 3,
+          'symbol-placement': 'point',
+        },
+        minzoom: 12,
+        paint: {
+          'text-color': '#0c4a6e',
+          'text-halo-color': '#f0f9ff',
+          'text-halo-width': 1.4,
+        },
+      });
+
       // Transit overlays (routes + stops). Both source FCs ship as
       // static GeoJSON under /public, generated from the Winnipeg
       // Transit GTFS feed by web/scripts/build-transit-geojson.mjs.
@@ -1231,6 +1311,38 @@ export function initMap(container, { onFeatureClick } = {}) {
         map.on('mouseenter', layerId, () => {
           if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
             map.getCanvas().style.cursor = 'pointer';
+          }
+        });
+        map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
+      }
+      // Neighbourhood popups. Cluster shows name + count + the
+      // comma-separated list of hoods inside it; individual
+      // neighbourhood shows name + parent cluster.
+      const hoodPopup = new maplibregl.Popup({ closeButton: true });
+      map.on('click', 'neighbourhood-clusters-fill', policyClick((p) => {
+        const list = p.neighbourhoods
+          ? String(p.neighbourhoods).split(';').map((s) => escapeHtml(s.trim())).join(', ')
+          : '';
+        return `
+          <div style="line-height:1.4;max-width:300px">
+            <strong>Cluster:</strong> ${escapeHtml(p.cluster || '')}
+            ${p.neighbourhood_count ? `<br><small>${escapeHtml(String(p.neighbourhood_count))} neighbourhoods</small>` : ''}
+            ${list ? `<br><small style="color:#475569">${list}</small>` : ''}
+          </div>`;
+      }));
+      map.on('click', 'neighbourhoods-fill', policyClick((p) => `
+        <div style="line-height:1.4;max-width:280px">
+          <strong>Neighbourhood:</strong> ${escapeHtml(p.name || '')}
+          ${p.cluster ? `<br><small>Cluster: ${escapeHtml(p.cluster)}</small>` : ''}
+        </div>`));
+      // Re-bind popup variable so the next handler block sees the
+      // correct popup constant. (Kept hoodPopup for parity even
+      // though policyClick uses its own internal popup.)
+      void hoodPopup;
+      for (const layerId of ['neighbourhood-clusters-fill', 'neighbourhoods-fill']) {
+        map.on('mouseenter', layerId, () => {
+          if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
+            map.getCanvas().style.cursor = 'help';
           }
         });
         map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });

@@ -1472,6 +1472,21 @@ export async function fetchTransitStops() {
   return fetchStaticGeoJson('transitStops', TRANSIT_STOPS_URL);
 }
 
+// Static neighbourhood overlays — see web/scripts/build-neighbourhoods-geojson.mjs.
+// Neighbourhoods: 235 polygons (Agassiz, Airport, Alpine Place, ...). Each
+// feature has properties { id, name, cluster }.
+// Clusters: 23 polygons (Assiniboine South, Downtown East, ...). Each
+// feature has properties { cluster, neighbourhood_count, neighbourhoods }.
+const NEIGHBOURHOODS_URL          = '/wpg-neighbourhoods.geojson';
+const NEIGHBOURHOOD_CLUSTERS_URL  = '/wpg-neighbourhood-clusters.geojson';
+
+export async function fetchNeighbourhoods() {
+  return fetchStaticGeoJson('neighbourhoods', NEIGHBOURHOODS_URL);
+}
+export async function fetchNeighbourhoodClusters() {
+  return fetchStaticGeoJson('neighbourhoodClusters', NEIGHBOURHOOD_CLUSTERS_URL);
+}
+
 /**
  * Stamp a `pdo_kind` discriminator on a feature so the combined Malls
  * and Corridors layer can render different colours / popup labels per
