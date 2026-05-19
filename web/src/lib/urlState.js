@@ -9,12 +9,13 @@
  * Empty / default values aren't emitted so a fresh page load
  * produces a clean URL.
  *
- * The schema covers 26 keys:
+ * The schema covers 28 keys:
  *   - 11 search inputs (lot, block, plan, desc, roll, addressFrom,
  *     addressTo, addressStreet, zoning, duMode, duMin)
- *   - 11 overlay toggles (survey, assess, allParcels, zoning,
+ *   - 13 overlay toggles (survey, assess, allParcels, zoning,
  *     traffic, secondaryPlans, infill, mallsCorridors,
- *     cityOwnedParcels, contam, dimensions) — each a boolean
+ *     cityOwnedParcels, transitRoutes, transitStops, contam,
+ *     dimensions) — each a boolean
  *   - 2 sort (sortCol, sortDir)
  *   - 1 tab (property | sales) — Phase 7
  *   - 1 subjectRoll (the sales-tab subject parcel) — Phase 7 fu2
@@ -90,7 +91,7 @@ export const SCHEMA = {
   duMode:        { param: 'du', validate: oneOf(['zero', 'min']), format: (v) => v },
   duMin:         { param: 'dn', validate: cleanInt(1, 9999),      format: (v) => String(v) },
 
-  // --- Overlay toggles (11) ---
+  // --- Overlay toggles (13) ---
   // Each is a boolean; the caller-side captureState() only emits a
   // toggle when its current value differs from the page default
   // (assess starts ON; everything else starts OFF). That keeps
@@ -104,6 +105,8 @@ export const SCHEMA = {
   infillToggle:           { param: 'if', validate: cleanBool, format: formatBool },
   mallsCorridorsToggle:   { param: 'mc', validate: cleanBool, format: formatBool },
   cityOwnedParcelsToggle: { param: 'cp', validate: cleanBool, format: formatBool },
+  transitRoutesToggle:    { param: 'br', validate: cleanBool, format: formatBool },
+  transitStopsToggle:     { param: 'bs', validate: cleanBool, format: formatBool },
   contamToggle:           { param: 'cn', validate: cleanBool, format: formatBool },
   dimensionsToggle:       { param: 'dm', validate: cleanBool, format: formatBool },
 

@@ -56,6 +56,8 @@ import {
   fetchInfillGuidelineArea,
   fetchMallsAndCorridors,
   fetchCityOwnedParcels,
+  fetchTransitRoutes,
+  fetchTransitStops,
   fetchTrafficVolumes,
   fetchContaminatedSites,
 } from './soda.js';
@@ -90,6 +92,8 @@ const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
 const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $cityOwnedParcelsToggle = document.getElementById('city-owned-parcels-toggle');
+const $transitRoutesToggle  = document.getElementById('transit-routes-toggle');
+const $transitStopsToggle   = document.getElementById('transit-stops-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
@@ -132,6 +136,8 @@ const policyOverlayState = {
   infill:            { enabled: false, loaded: false },
   mallsCorridors:    { enabled: false, loaded: false },
   cityOwnedParcels:  { enabled: false, loaded: false },
+  transitRoutes:     { enabled: false, loaded: false },
+  transitStops:      { enabled: false, loaded: false },
 };
 let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
@@ -237,6 +243,8 @@ $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secon
 $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 $cityOwnedParcelsToggle.addEventListener('click', () => togglePolicyOverlay('cityOwnedParcels'));
+if ($transitRoutesToggle) $transitRoutesToggle.addEventListener('click', () => togglePolicyOverlay('transitRoutes'));
+if ($transitStopsToggle)  $transitStopsToggle.addEventListener('click', () => togglePolicyOverlay('transitStops'));
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
@@ -390,6 +398,7 @@ function captureUrlState() {
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     cityOwnedParcelsToggle: false,
+    transitRoutesToggle: false, transitStopsToggle: false,
     contamToggle: false, dimensionsToggle: false,
   };
   const buttons = {
@@ -399,6 +408,8 @@ function captureUrlState() {
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
     cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
+    transitRoutesToggle: $transitRoutesToggle,
+    transitStopsToggle: $transitStopsToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
@@ -453,6 +464,8 @@ function applyUrlState(state) {
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
     cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
+    transitRoutesToggle: $transitRoutesToggle,
+    transitStopsToggle: $transitStopsToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
@@ -516,6 +529,7 @@ for (const btn of [
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
   $cityOwnedParcelsToggle,
+  $transitRoutesToggle, $transitStopsToggle,
   $contamToggle, $dimensionsToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
@@ -839,6 +853,20 @@ const POLICY_OVERLAY_CONFIG = {
     fetch:  fetchCityOwnedParcels,
     onLabel:  'Hide City Owned Parcels',
     offLabel: 'City Owned Parcels',
+  },
+  transitRoutes: {
+    btn:    () => $transitRoutesToggle,
+    src:    'transit-routes',
+    fetch:  fetchTransitRoutes,
+    onLabel:  'Hide Bus Routes',
+    offLabel: 'Bus Routes',
+  },
+  transitStops: {
+    btn:    () => $transitStopsToggle,
+    src:    'transit-stops',
+    fetch:  fetchTransitStops,
+    onLabel:  'Hide Bus Stops',
+    offLabel: 'Bus Stops',
   },
 };
 

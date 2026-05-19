@@ -411,6 +411,65 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Transit overlays (routes + stops). Both source FCs ship as
+      // static GeoJSON under /public, generated from the Winnipeg
+      // Transit GTFS feed by web/scripts/build-transit-geojson.mjs.
+      // Routes carry an official route_color property that the line
+      // paint reads directly; stops carry stop_code / stop_name /
+      // routes that drive the click popup. Both default-hidden.
+      map.addSource('transit-routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('transit-stops',  { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'transit-routes-line', type: 'line', source: 'transit-routes',
+        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': ['coalesce', ['get', 'route_color'], '#6b7280'],
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            10, 1.2,
+            13, 2.0,
+            16, 3.4,
+            18, 4.4,
+          ],
+          'line-opacity': 0.85,
+        },
+      });
+      // White halo behind each stop dot for legibility on any
+      // basemap. Drawn first (wider) then the coloured dot on
+      // top — two layers, single source.
+      map.addLayer({
+        id: 'transit-stops-halo', type: 'circle', source: 'transit-stops',
+        layout: { visibility: 'none' },
+        minzoom: 12,
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            12, 2.5,
+            15, 4.0,
+            18, 6.0,
+          ],
+          'circle-color': '#ffffff',
+          'circle-opacity': 0.95,
+          'circle-stroke-color': '#1f2937',
+          'circle-stroke-width': 1,
+        },
+      });
+      map.addLayer({
+        id: 'transit-stops-circle', type: 'circle', source: 'transit-stops',
+        layout: { visibility: 'none' },
+        minzoom: 13,
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            13, 1.4,
+            16, 2.4,
+            18, 3.4,
+          ],
+          'circle-color': '#0064b1',
+          'circle-opacity': 1,
+        },
+      });
+
       map.addLayer({
         id: 'malls-corridors-fill', type: 'fill', source: 'malls-corridors',
         layout: { visibility: 'none' },
@@ -1126,6 +1185,56 @@ export function initMap(container, { onFeatureClick } = {}) {
             ${areaLine}
           </div>`;
       }));
+      // Transit popups. Stops show stop_code + name + list of
+      // serving routes, with a deep-link to Winnipeg Transit's
+      // live arrival board for that stop. Route lines show the
+      // route's short name + long name + the official colour as
+      // a small swatch.
+      const transitPopup = new maplibregl.Popup({ closeButton: true });
+      map.on('click', 'transit-stops-circle', (e) => {
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        const code = p.stop_code ? escapeHtml(p.stop_code) : '';
+        const name = p.stop_name ? escapeHtml(p.stop_name) : 'Bus stop';
+        const routes = p.routes ? escapeHtml(p.routes) : '';
+        const liveUrl = code
+          ? `https://winnipegtransit.com/en/stop/${encodeURIComponent(p.stop_code)}/schedule/`
+          : null;
+        const html = `
+          <div style="line-height:1.4;max-width:280px">
+            <strong>${name}</strong>
+            ${code ? `<br><small>Stop #${code}</small>` : ''}
+            ${routes ? `<br><strong>Routes</strong> ${routes}` : ''}
+            ${liveUrl ? `<br><a href="${liveUrl}" target="_blank" rel="noreferrer">Live arrivals ↗</a>` : ''}
+          </div>`;
+        transitPopup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
+      map.on('click', 'transit-routes-line', (e) => {
+        // Defer to parcel-fill so a route line draped over a
+        // search-result parcel doesn't steal that click.
+        const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
+        if (parcelHit.length > 0) return;
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        const short = p.route_short_name ? escapeHtml(p.route_short_name) : '';
+        const long = p.route_long_name ? escapeHtml(p.route_long_name) : '';
+        const swatch = p.route_color
+          ? `<span style="display:inline-block;width:14px;height:14px;background:${escapeHtml(p.route_color)};border:1px solid #1f2937;border-radius:2px;vertical-align:middle;margin-right:6px"></span>`
+          : '';
+        transitPopup.setLngLat(e.lngLat).setHTML(`
+          <div style="line-height:1.4;max-width:280px">
+            ${swatch}<strong>${short ? `Route ${short}` : 'Transit route'}</strong>
+            ${long ? `<br>${long}` : ''}
+          </div>`).addTo(map);
+      });
+      for (const layerId of ['transit-stops-circle', 'transit-routes-line']) {
+        map.on('mouseenter', layerId, () => {
+          if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
+            map.getCanvas().style.cursor = 'pointer';
+          }
+        });
+        map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
+      }
 
       const trafficPopup = new maplibregl.Popup({ closeButton: true });
       const trafficClick = (e) => {
