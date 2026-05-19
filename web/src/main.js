@@ -992,26 +992,44 @@ async function setNeighbourhoodsMode(mode) {
   neighbourhoodsMode = mode;
   renderNeighbourhoodButton();
   await mapReady;
+  console.log('[hoods] mode →', mode);
 
   // Visibility first (so a switch from clusters → individual
   // doesn't leave the old layers showing during a fetch).
   setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS,    mode === 'clusters');
   setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, mode === 'individual');
 
+  // Diagnostic — confirm visibility actually took effect on each
+  // layer. If a layer is missing from the map style, getLayer
+  // returns undefined and we log a warn so we can find the bug.
+  for (const id of [...NEIGHBOURHOOD_CLUSTER_LAYERS, ...NEIGHBOURHOOD_INDIVIDUAL_LAYERS]) {
+    const layer = map.getLayer(id);
+    if (!layer) { console.warn('[hoods] layer not on map:', id); continue; }
+    const vis = map.getLayoutProperty(id, 'visibility');
+    console.log('[hoods]', id, '→', vis ?? '(unset)');
+  }
+
   if (mode === 'off') return;
 
   // Lazy-fetch the relevant FC on first reveal.
   const fetchKey = mode === 'clusters' ? 'clusters' : 'individual';
-  if (neighbourhoodsLoaded[fetchKey]) return;
+  if (neighbourhoodsLoaded[fetchKey]) {
+    console.log('[hoods] already loaded:', fetchKey);
+    return;
+  }
   $neighbourhoodsToggle.disabled = true;
   const restoreLabel = $neighbourhoodsToggle.textContent;
   $neighbourhoodsToggle.textContent = 'Loading...';
   try {
     if (mode === 'clusters') {
       const fc = await fetchNeighbourhoodClusters();
+      console.log('[hoods] fetched clusters:', fc?.features?.length ?? 'none', 'features');
       setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
+      const src = map.getSource('wpg-neighbourhood-clusters');
+      console.log('[hoods] cluster source exists?', !!src);
     } else {
       const fc = await fetchNeighbourhoods();
+      console.log('[hoods] fetched individual:', fc?.features?.length ?? 'none', 'features');
       setOverlayData(map, 'wpg-neighbourhoods', fc);
     }
     neighbourhoodsLoaded[fetchKey] = true;

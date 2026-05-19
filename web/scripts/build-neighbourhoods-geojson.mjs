@@ -77,13 +77,46 @@ async function processHoods() {
   };
 }
 
+// Signed-area shoelace. Negative = clockwise (hole in GeoJSON);
+// positive = counter-clockwise (outer ring). Used to clean
+// degenerate/zero-area sub-rings out of the cluster polygons.
+function ringSignedArea(ring) {
+  let sum = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    sum += (ring[j][0] - ring[i][0]) * (ring[j][1] + ring[i][1]);
+  }
+  return sum / 2;
+}
+
+/**
+ * Clean a Polygon geometry: drop degenerate rings (<4 unique
+ * points or zero area). The R-pipeline that produced the source
+ * file collapsed some MultiPolygons into Polygons with tiny
+ * degenerate sub-rings that MapLibre treats as holes — which can
+ * make a feature render as almost-invisible. This strips them so
+ * the visible polygon matches what's actually drawn on the City
+ * system map.
+ */
+function cleanPolygon(geom) {
+  if (geom.type !== 'Polygon') return geom;
+  const kept = [];
+  for (const ring of geom.coordinates) {
+    if (ring.length < 4) continue;
+    const area = Math.abs(ringSignedArea(ring));
+    if (area < 1e-8) continue;
+    kept.push(ring);
+  }
+  if (kept.length === 0) return geom;
+  return { type: 'Polygon', coordinates: kept };
+}
+
 async function processClusters() {
   console.log(`Reading ${SRC_CLUSTERS}`);
   const raw = JSON.parse(await readFile(SRC_CLUSTERS, 'utf-8'));
   if (raw.type !== 'FeatureCollection') throw new Error('Expected FeatureCollection');
   const features = raw.features.map((f) => ({
     type: 'Feature',
-    geometry: f.geometry,
+    geometry: cleanPolygon(f.geometry),
     properties: {
       cluster: f.properties?.cluster ?? '',
       neighbourhood_count: Number(f.properties?.neighbourhood_count ?? 0),
