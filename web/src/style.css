@@ -340,14 +340,14 @@ body {
   gap: 6px;
 }
 
-/* DU row sizing: the dropdown is fixed at a width that fits the
-   longest option ("0 DU only") without truncation, and the number
-   input flexes to fill the rest of the row (min width sized for
-   5 digits + padding). The native spinner buttons on the number
-   input are hidden — saves horizontal real estate and matches the
-   no-spinner pattern used on the address-from/to inputs. */
-.sidebar .du-row .du-mode-field { flex: 0 0 110px; min-width: 0; }
-.sidebar .du-row .du-min-field  { flex: 1 1 auto; min-width: 80px; }
+/* DU row sizing: dropdown and number input split the row 50/50.
+   Both fields claim equal flex-basis with min-width:0 so neither
+   can spill past its half. The native spinner buttons on the
+   number input are hidden — saves horizontal real estate and
+   matches the no-spinner pattern used on the address-from/to
+   inputs. */
+.sidebar .du-row .du-mode-field { flex: 1 1 0; min-width: 0; }
+.sidebar .du-row .du-min-field  { flex: 1 1 0; min-width: 0; }
 .sidebar .du-row .du-min-field input[type="number"] {
   -moz-appearance: textfield;
 }
