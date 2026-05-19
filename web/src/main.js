@@ -92,8 +92,7 @@ const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
 const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $cityOwnedParcelsToggle = document.getElementById('city-owned-parcels-toggle');
-const $transitRoutesToggle  = document.getElementById('transit-routes-toggle');
-const $transitStopsToggle   = document.getElementById('transit-stops-toggle');
+const $transitToggle        = document.getElementById('transit-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
@@ -136,9 +135,13 @@ const policyOverlayState = {
   infill:            { enabled: false, loaded: false },
   mallsCorridors:    { enabled: false, loaded: false },
   cityOwnedParcels:  { enabled: false, loaded: false },
-  transitRoutes:     { enabled: false, loaded: false },
-  transitStops:      { enabled: false, loaded: false },
 };
+// Transit (routes + stops) is a single user-facing toggle backed
+// by two GeoJSON sources. Kept outside policyOverlayState because
+// the framework assumes 1 toggle = 1 source; transit has its own
+// dedicated toggle function below.
+let transitEnabled = false;
+let transitLoaded = false;
 let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
 
@@ -243,8 +246,7 @@ $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secon
 $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 $cityOwnedParcelsToggle.addEventListener('click', () => togglePolicyOverlay('cityOwnedParcels'));
-if ($transitRoutesToggle) $transitRoutesToggle.addEventListener('click', () => togglePolicyOverlay('transitRoutes'));
-if ($transitStopsToggle)  $transitStopsToggle.addEventListener('click', () => togglePolicyOverlay('transitStops'));
+if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
@@ -398,7 +400,7 @@ function captureUrlState() {
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     cityOwnedParcelsToggle: false,
-    transitRoutesToggle: false, transitStopsToggle: false,
+    transitToggle: false,
     contamToggle: false, dimensionsToggle: false,
   };
   const buttons = {
@@ -408,8 +410,7 @@ function captureUrlState() {
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
     cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
-    transitRoutesToggle: $transitRoutesToggle,
-    transitStopsToggle: $transitStopsToggle,
+    transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
@@ -464,8 +465,7 @@ function applyUrlState(state) {
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
     cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
-    transitRoutesToggle: $transitRoutesToggle,
-    transitStopsToggle: $transitStopsToggle,
+    transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
@@ -529,7 +529,7 @@ for (const btn of [
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
   $cityOwnedParcelsToggle,
-  $transitRoutesToggle, $transitStopsToggle,
+  $transitToggle,
   $contamToggle, $dimensionsToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
@@ -854,21 +854,58 @@ const POLICY_OVERLAY_CONFIG = {
     onLabel:  'Hide City Owned Parcels',
     offLabel: 'City Owned Parcels',
   },
-  transitRoutes: {
-    btn:    () => $transitRoutesToggle,
-    src:    'transit-routes',
-    fetch:  fetchTransitRoutes,
-    onLabel:  'Hide Bus Routes',
-    offLabel: 'Bus Routes',
-  },
-  transitStops: {
-    btn:    () => $transitStopsToggle,
-    src:    'transit-stops',
-    fetch:  fetchTransitStops,
-    onLabel:  'Hide Bus Stops',
-    offLabel: 'Bus Stops',
-  },
 };
+
+/**
+ * Combined transit (routes + stops) toggle. Two GeoJSON sources,
+ * one user-facing button. First click fetches both files in
+ * parallel, hands them to the matching map sources, and shows
+ * both layer groups; subsequent clicks just flip visibility.
+ *
+ * Failure of either fetch falls back to "off" with the original
+ * label restored so the button is never wedged in a broken
+ * Loading... state.
+ */
+async function toggleTransit() {
+  if (!$transitToggle) return;
+  transitEnabled = !transitEnabled;
+  $transitToggle.setAttribute('aria-pressed', String(transitEnabled));
+  $transitToggle.classList.toggle('active', transitEnabled);
+  await mapReady;
+  setOverlayVisible(map, 'transit-routes', transitEnabled);
+  setOverlayVisible(map, 'transit-stops',  transitEnabled);
+
+  if (transitEnabled) {
+    if (transitLoaded) {
+      $transitToggle.textContent = 'Hide Transit';
+      return;
+    }
+    $transitToggle.disabled = true;
+    $transitToggle.textContent = 'Loading...';
+    try {
+      const [routesFc, stopsFc] = await Promise.all([
+        fetchTransitRoutes(),
+        fetchTransitStops(),
+      ]);
+      setOverlayData(map, 'transit-routes', routesFc);
+      setOverlayData(map, 'transit-stops',  stopsFc);
+      transitLoaded = true;
+      $transitToggle.textContent = 'Hide Transit';
+    } catch (err) {
+      console.warn('transit overlay failed', err);
+      transitEnabled = false;
+      $transitToggle.classList.remove('active');
+      $transitToggle.setAttribute('aria-pressed', 'false');
+      $transitToggle.textContent = 'Transit';
+      setOverlayVisible(map, 'transit-routes', false);
+      setOverlayVisible(map, 'transit-stops',  false);
+    } finally {
+      $transitToggle.disabled = false;
+    }
+  } else {
+    $transitToggle.textContent = 'Transit';
+  }
+}
 
 // ---------- Parcel-edge dimensions toggle ----------
 // policyOverlayState + dimensionsEnabled hoisted to the top of the

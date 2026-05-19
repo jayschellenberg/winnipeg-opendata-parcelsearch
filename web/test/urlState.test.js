@@ -142,8 +142,7 @@ test('encodeState — every overlay toggle emits its short code', () => {
     infillToggle: true,
     mallsCorridorsToggle: true,
     cityOwnedParcelsToggle: true,
-    transitRoutesToggle: true,
-    transitStopsToggle: true,
+    transitToggle: true,
     contamToggle: true,
     dimensionsToggle: true,
   });
@@ -157,8 +156,7 @@ test('encodeState — every overlay toggle emits its short code', () => {
   assert.equal(params.get('if'), '1');
   assert.equal(params.get('mc'), '1');
   assert.equal(params.get('cp'), '1');
-  assert.equal(params.get('br'), '1');
-  assert.equal(params.get('bs'), '1');
+  assert.equal(params.get('bt'), '1');
   assert.equal(params.get('cn'), '1');
   assert.equal(params.get('dm'), '1');
 });
@@ -259,8 +257,7 @@ test('round-trip — full state survives encode + decode', () => {
     infillToggle: true,
     mallsCorridorsToggle: true,
     cityOwnedParcelsToggle: true,
-    transitRoutesToggle: true,
-    transitStopsToggle: true,
+    transitToggle: true,
     contamToggle: true,
     dimensionsToggle: true,
     sortCol: 'address',
@@ -317,8 +314,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 28 entries (11 inputs + 13 toggles + 2 sort + 1 tab + 1 subjectRoll)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 28);
+test('SCHEMA — has exactly 27 entries (11 inputs + 12 toggles + 2 sort + 1 tab + 1 subjectRoll)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 27);
 });
 
 // ---------- subjectRoll (Phase 7 fu2) ----------
