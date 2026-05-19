@@ -63,18 +63,76 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
     for (const v of values) {
       const chip = document.createElement('span');
       chip.className = 'chip';
-      chip.textContent = v;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'chip-remove';
-      btn.setAttribute('aria-label', `Remove ${v}`);
-      btn.textContent = '×'; // ×
-      btn.addEventListener('click', (e) => {
+      // Chip text sits in its own span so the copy + remove buttons
+      // can flank it without textContent-replacement clobbering them
+      // on the "Copied!" feedback path.
+      const text = document.createElement('span');
+      text.className = 'chip-text';
+      text.textContent = v;
+      chip.appendChild(text);
+      // Copy button — copies this chip's value to clipboard.
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'chip-copy';
+      copyBtn.setAttribute('aria-label', `Copy ${v}`);
+      copyBtn.title = `Copy ${v} to clipboard`;
+      copyBtn.innerHTML = clipboardSvg();
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        copyChipText(v, copyBtn);
+      });
+      chip.appendChild(copyBtn);
+      // Remove button.
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'chip-remove';
+      removeBtn.setAttribute('aria-label', `Remove ${v}`);
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         removeValue(v);
       });
-      chip.appendChild(btn);
+      chip.appendChild(removeBtn);
       wrapperEl.insertBefore(chip, textInput);
+    }
+  }
+
+  function clipboardSvg() {
+    return '<svg viewBox="0 0 16 16" aria-hidden="true">'
+      + '<rect x="4" y="3" width="8" height="11" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/>'
+      + '<rect x="6" y="1.5" width="4" height="2.5" rx="0.6" fill="currentColor"/>'
+      + '</svg>';
+  }
+
+  function checkSvg() {
+    return '<svg viewBox="0 0 16 16" aria-hidden="true">'
+      + '<path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+      + '</svg>';
+  }
+
+  function copyChipText(text, btn) {
+    const flash = () => {
+      btn.innerHTML = checkSvg();
+      btn.classList.add('chip-copy-success');
+      setTimeout(() => {
+        btn.innerHTML = clipboardSvg();
+        btn.classList.remove('chip-copy-success');
+      }, 1200);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(flash, () => { /* swallow */ });
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        flash();
+      } catch { /* no-op */ }
     }
   }
 

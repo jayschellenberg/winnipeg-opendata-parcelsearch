@@ -554,7 +554,8 @@ body {
   max-width: 100%;
   white-space: nowrap;
 }
-.chip-input .chip-remove {
+.chip-input .chip-remove,
+.chip-input .chip-copy {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -569,9 +570,18 @@ body {
   line-height: 1;
   cursor: pointer;
 }
-.chip-input .chip-remove:hover {
+.chip-input .chip-remove:hover,
+.chip-input .chip-copy:hover {
   background: var(--color-primary-100, #e2e8f0);
   color: var(--color-primary-500, #1e293b);
+}
+.chip-input .chip-copy svg {
+  width: 11px;
+  height: 11px;
+}
+.chip-input .chip-copy.chip-copy-success {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.12);
 }
 .chip-input .chip-input-text {
   flex: 1 1 80px;

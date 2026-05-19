@@ -785,6 +785,37 @@ export function initMap(container, { onFeatureClick } = {}) {
         map.on('click', 'assess-context-fill', handle);
       }
 
+      // Click a citywide-parcels polygon → sticky popup with the
+      // roll #, address, an Assessment-page link, and a Coordinates
+      // copy-to-clipboard action. Search-result clicks (parcel-fill
+      // / assess-context-fill) take precedence — the citywide popup
+      // is only for parcels NOT in the active search, since for
+      // active-result parcels the row click + parcel-summary card
+      // already handle the interaction.
+      const citywideClickPopup = new maplibregl.Popup({ closeButton: true });
+      map.on('click', 'citywide-parcels-fill', (e) => {
+        if (map.getLayoutProperty('citywide-parcels-fill', 'visibility') !== 'visible') return;
+        // Search-result layer takes precedence.
+        const overSearchResult =
+             (map.getLayer('parcel-fill')          && map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] }).length > 0)
+          || (map.getLayer('assess-context-fill')  && map.queryRenderedFeatures(e.point, { layers: ['assess-context-fill'] }).length > 0);
+        if (overSearchResult) return;
+        const f = e.features?.[0];
+        if (!f) return;
+        citywideClickPopup
+          .setLngLat(e.lngLat)
+          .setHTML(citywideParcelHtml(f.properties))
+          .addTo(map);
+        // Compute the popup's coordinate-copy target from the actual
+        // polygon (bbox midpoint is a stable approximation of centroid
+        // that doesn't need turf). Falls back to the click point on
+        // the rare case the rendered geometry is empty.
+        const rendered = map.queryRenderedFeatures(e.point, { layers: ['citywide-parcels-fill'] })[0];
+        const center = polygonBboxMidpoint(rendered?.geometry)
+          ?? [e.lngLat.lng, e.lngLat.lat];
+        wireCoordsCopy(citywideClickPopup, center);
+      });
+
       // Click a contaminated-site circle → standalone popup with the
       // site name, address, status pill, and a link out to the
       // Manitoba registry page for that site.
@@ -1168,6 +1199,101 @@ function formatDate(value) {
  * for a roll_number on the props.
  * `context` is the assess-context layer (red) — always assessment data.
  */
+/**
+ * Sticky click popup for a citywide-parcels feature (i.e. a parcel
+ * NOT in the active search). Shows the roll # + full address, a
+ * link out to the Winnipeg Assessment & Taxation page for that
+ * roll, and a Coordinates link that copies the polygon's centroid
+ * (bbox midpoint) to the clipboard. Mirrors the Manitoba sister
+ * app's muniParcelHtml — same action-row layout so users moving
+ * between the two tools see the same UX.
+ */
+function citywideParcelHtml(p) {
+  if (!p) return '';
+  const roll = p.roll_number ? String(p.roll_number) : null;
+  const address = p.full_address || null;
+  const lines = [];
+  if (roll) lines.push(`<strong>Roll #</strong> ${escapeHtml(roll)}`);
+  if (address) lines.push(escapeHtml(address));
+  const actions = [];
+  if (roll) {
+    const url = `https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
+    actions.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Assessment →</a>`);
+  }
+  actions.push(`<a href="#" class="parcel-coords-copy" role="button" title="Copy parcel centroid (lat, lng) to clipboard">Coordinates</a>`);
+  if (actions.length) {
+    lines.push(actions.join(' &nbsp;·&nbsp; '));
+  }
+  return `<div style="max-width:280px;line-height:1.45;font-size:13px">${lines.join('<br>')}</div>`;
+}
+
+/**
+ * Compute the midpoint of a (Multi)Polygon geometry's bounding box.
+ * Stable, fast, no turf dependency. Returns [lng, lat] or null when
+ * the geometry is missing / malformed.
+ */
+function polygonBboxMidpoint(geometry) {
+  if (!geometry) return null;
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  function visit(coords) {
+    if (typeof coords[0] === 'number') {
+      const [lng, lat] = coords;
+      if (Number.isFinite(lng) && Number.isFinite(lat)) {
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      }
+      return;
+    }
+    for (const c of coords) visit(c);
+  }
+  if (geometry.coordinates) visit(geometry.coordinates);
+  if (!Number.isFinite(minLng)) return null;
+  return [(minLng + maxLng) / 2, (minLat + maxLat) / 2];
+}
+
+/**
+ * After a popup with a `.parcel-coords-copy` anchor is mounted,
+ * wire its click to copy "lat, lng" to the clipboard with brief
+ * "Copied!" feedback. Falls back to the legacy execCommand path on
+ * non-secure contexts (http:// dev hosts) where navigator.clipboard
+ * isn't available.
+ */
+function wireCoordsCopy(popup, lngLat) {
+  if (!popup || !Array.isArray(lngLat)) return;
+  const el = popup.getElement?.();
+  const anchor = el?.querySelector('.parcel-coords-copy');
+  if (!anchor) return;
+  const [lng, lat] = lngLat;
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+  const text = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  anchor.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    const onSuccess = () => {
+      const original = anchor.textContent;
+      anchor.textContent = 'Copied!';
+      setTimeout(() => { anchor.textContent = original; }, 1500);
+    };
+    const onFailure = () => { anchor.textContent = 'Copy failed'; };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(onSuccess, onFailure);
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        onSuccess();
+      } catch { onFailure(); }
+    }
+  });
+}
+
 function combinedPopupHtml(primary, context) {
   const blocks = [];
   // Determine which schema `primary` is carrying.
