@@ -426,24 +426,15 @@ export function initMap(container, { onFeatureClick } = {}) {
       map.addLayer({
         id: 'neighbourhood-clusters-fill', type: 'fill', source: 'wpg-neighbourhood-clusters',
         layout: { visibility: 'none' },
-        paint: { 'fill-color': '#fbbf24', 'fill-opacity': 0.22 },
+        paint: { 'fill-color': '#0ea5e9', 'fill-opacity': 0.06 },
       });
       map.addLayer({
         id: 'neighbourhood-clusters-line', type: 'line', source: 'wpg-neighbourhood-clusters',
-        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': '#b45309',
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            8, 2.5,
-            12, 3.5,
-            16, 4.5,
-          ],
-          'line-opacity': 1,
-          // Dashed pattern visually distinguishes clusters from
-          // the solid teal individual-neighbourhood lines.
-          'line-dasharray': [3, 2],
-        },
+        layout: { visibility: 'none', 'line-join': 'round' },
+        // Same teal as the individual-neighbourhood line. Slightly
+        // thicker (2 px vs 1 px) because clusters are broader,
+        // higher-level boundaries and deserve a touch more emphasis.
+        paint: { 'line-color': '#0369a1', 'line-width': 2, 'line-opacity': 0.75 },
       });
       map.addLayer({
         id: 'neighbourhood-clusters-label', type: 'symbol', source: 'wpg-neighbourhood-clusters',

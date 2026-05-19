@@ -987,69 +987,33 @@ async function cycleNeighbourhoods() {
 }
 
 async function setNeighbourhoodsMode(mode) {
-  console.log('[hoods] ENTRY setNeighbourhoodsMode mode=', mode,
-    'loaded=', JSON.stringify(neighbourhoodsLoaded),
-    'currentMode=', neighbourhoodsMode);
-  console.trace('[hoods] call site');
   if (!$neighbourhoodsToggle) return;
   if (mode !== 'off' && mode !== 'clusters' && mode !== 'individual') mode = 'off';
   neighbourhoodsMode = mode;
   renderNeighbourhoodButton();
   await mapReady;
-  console.log('[hoods] mode →', mode,
-    'post-await loaded=', JSON.stringify(neighbourhoodsLoaded));
 
   // Visibility first (so a switch from clusters → individual
   // doesn't leave the old layers showing during a fetch).
   setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS,    mode === 'clusters');
   setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, mode === 'individual');
 
-  // Diagnostic — confirm visibility actually took effect on each
-  // layer. If a layer is missing from the map style, getLayer
-  // returns undefined and we log a warn so we can find the bug.
-  for (const id of [...NEIGHBOURHOOD_CLUSTER_LAYERS, ...NEIGHBOURHOOD_INDIVIDUAL_LAYERS]) {
-    const layer = map.getLayer(id);
-    if (!layer) { console.warn('[hoods] layer not on map:', id); continue; }
-    const vis = map.getLayoutProperty(id, 'visibility');
-    console.log('[hoods]', id, '→', vis ?? '(unset)');
-  }
-
   if (mode === 'off') return;
 
   // Lazy-fetch the relevant FC on first reveal.
   const fetchKey = mode === 'clusters' ? 'clusters' : 'individual';
-  if (neighbourhoodsLoaded[fetchKey]) {
-    console.log('[hoods] already loaded:', fetchKey);
-    return;
-  }
+  if (neighbourhoodsLoaded[fetchKey]) return;
   $neighbourhoodsToggle.disabled = true;
   const restoreLabel = $neighbourhoodsToggle.textContent;
   $neighbourhoodsToggle.textContent = 'Loading...';
   try {
     if (mode === 'clusters') {
       const fc = await fetchNeighbourhoodClusters();
-      console.log('[hoods] fetched clusters:', fc?.features?.length ?? 'none', 'features');
       setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
-      const src = map.getSource('wpg-neighbourhood-clusters');
-      console.log('[hoods] cluster source exists?', !!src);
-      // After setData the worker tessellates async. Wait one
-      // 'idle' event, then ask what's actually on screen.
-      setTimeout(() => {
-        const rendered = map.queryRenderedFeatures({ layers: ['neighbourhood-clusters-fill'] });
-        console.log('[hoods] rendered cluster-fill features:', rendered.length);
-        if (rendered.length === 0) {
-          // Try query the source itself to see if data arrived at the worker.
-          const allRendered = map.querySourceFeatures('wpg-neighbourhood-clusters');
-          console.log('[hoods] querySourceFeatures all (any layer):', allRendered.length);
-          console.log('[hoods] cluster-fill layer object:', map.getLayer('neighbourhood-clusters-fill'));
-        }
-      }, 800);
     } else {
       const fc = await fetchNeighbourhoods();
-      console.log('[hoods] fetched individual:', fc?.features?.length ?? 'none', 'features');
       setOverlayData(map, 'wpg-neighbourhoods', fc);
     }
-    console.log('[hoods] SET loaded[' + fetchKey + '] = true');
     neighbourhoodsLoaded[fetchKey] = true;
     $neighbourhoodsToggle.textContent = restoreLabel;
   } catch (err) {
