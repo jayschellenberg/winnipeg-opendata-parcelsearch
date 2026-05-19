@@ -32,7 +32,7 @@
 import './lib/tailwind.css';
 import { initChipInput } from './lib/chipInput.js';
 import { initInfoIcons } from './lib/infoIcon.js';
-import { initColumns, applyVisibility as applyColumnVisibility } from './lib/columns.js';
+import { initColumns, applyVisibility as applyColumnVisibility, setMode as setColumnMode } from './lib/columns.js';
 import { formatSqFt } from './lib/format.js';
 import { encodeState, decodeState } from './lib/urlState.js';
 import { initSidebarTabs, setActiveTab, onTabChange } from './lib/tabs.js';
@@ -156,6 +156,18 @@ const SORT_KEYS = {
   // Use the raw address as a placeholder key so click-to-sort doesn't error.
   walk:    (r) => strKey(r.assess?.properties?.full_address),
   flood:   (r) => strKey(r.assess?.properties?.full_address),
+  // Phase 7 sales-mode sortable columns.
+  saleDate:     (r) => strKey(r.assess?.properties?._saleDate),
+  salePrice:    (r) => finiteOrNeg(r.assess?.properties?._salePrice),
+  pricePerSf:   (r) => finiteOrNeg(r.assess?.properties?._pricePerSf),
+  saleToAsmt:   (r) => finiteOrNeg(r.assess?.properties?._saleToAsmt),
+  dist:         (r) => finiteOrNeg(r.assess?.properties?._dist),
+  useCode:      (r) => strKey(r.assess?.properties?._saleUseCode),
+  livingArea:   (r) => finiteOrNeg(r.assess?.properties?._saleLivingArea),
+  yearBuilt:    (r) => numOrStr(r.assess?.properties?._saleYearBuilt),
+  instrument:   (r) => strKey(r.assess?.properties?._saleInstrument),
+  propertyType: (r) => strKey(r.assess?.properties?._salePropertyType),
+  groupSize:    (r) => finiteOrNeg(r.assess?.properties?._saleGroupSize),
 };
 
 // Numeric-smart string key: if the value looks like a number, compare it
@@ -492,6 +504,11 @@ for (const th of document.querySelectorAll('#results th[data-col]')) {
 // the URL on the user's next edit.
 
 async function runSearch() {
+  // Property Search flips the body out of sales mode + restores the
+  // property-mode column-visibility set (Quick lookup default or
+  // whatever the user has persisted for property mode).
+  document.body.classList.remove('sales-mode');
+  setColumnMode('property');
   const inputs = {
     lot: $lot.value.trim(),
     block: $block.value.trim(),
@@ -1295,46 +1312,54 @@ function renderTable(rows) {
     // Lot cell can run long for multi-lot merges (e.g. "21-25, 68-75,
     // 120-121 (Pl 129); 39-46 (Pl 24208)"). Truncate with full text
     // available on hover so the table column doesn't blow up.
-    tr.appendChild(truncatedTd(s.lot, 10));
-    tr.appendChild(td(s.block));
-    tr.appendChild(td(s.plan));
-    tr.appendChild(td(s.description));
-    // Roll Number cell links to the same assessment-page record as the
-     // Assessment dollar-value column — gives the user two ways to land
-     // on the source record from a row without having to scan across.
+    // Cell-append order MUST match the thead in index.html:
+    //   roll, address, saleDate, useCode (PUCS), livingArea,
+    //   yearBuilt, area, propertyType, groupSize, salePrice,
+    //   pricePerSf, saleToAsmt, dist, instrument,
+    //   lot, block, plan, desc,
+    //   zoning, zoningPct, zoning2, lat, lon,
+    //   value, walk, flood.
+    //
+    // Roll Number cell links to the same assessment-page record as
+    // the Assessment dollar-value column.
     tr.appendChild(linkTd(assessmentUrl(a), a.roll_number));
     // Multi-address parcels can have long comma-joined address lists
     // (e.g. "400 HARGRAVE STREET, 400 HARGRAVE ST, 440 HARGRAVE ST").
     // Truncate at 40 chars with full text on hover.
     tr.appendChild(truncatedTd(a.full_address, 40));
+    // Sales-only block (CSS .sales-only hides them in property mode).
+    tr.appendChild(td(a._saleDate || null));
+    tr.appendChild(td(a._saleUseCode || null));
+    tr.appendChild(td(formatSqFt(a._saleLivingArea), 'num'));
+    tr.appendChild(td(a._saleYearBuilt || null));
+    // Lot Size (sf) lives in the lead block per the user's preferred
+    // sales-mode order; it's still useful in property mode too.
+    tr.appendChild(td(formatSqFt(a.assessed_land_area), 'num'));
+    // More sales-only fields.
+    tr.appendChild(td(a._salePropertyType || null));
+    tr.appendChild(td(a._saleGroupSize != null ? String(a._saleGroupSize) : null, 'num'));
+    tr.appendChild(td(formatDollars(a._salePrice), 'num'));
+    tr.appendChild(td(formatDollars(a._pricePerSf), 'num'));
+    tr.appendChild(td(formatPct(a._saleToAsmt), 'num'));
+    tr.appendChild(td(formatDist(a._dist), 'num'));
+    tr.appendChild(td(a._saleInstrument || null));
+    // Property-mode tail block (legal + zoning + coords + ext links).
+    tr.appendChild(truncatedTd(s.lot, 10));
+    tr.appendChild(td(s.block));
+    tr.appendChild(td(s.plan));
+    tr.appendChild(td(s.description));
     // Prefer the area-weighted top-1 zoning code; fall back to the
     // assessment dataset's primary `zoning` text if enrichment hasn't
-    // populated zoning_top1 (no overlap, fetch failed, etc.). The
-    // d4mq-wa44 fallback ships in a verbose "R1M - RES - S F - MEDIUM"
-    // form — strip everything after " - " so the column shows just
-    // the code (R1M, RMF-S, etc.). zoning_top1 from dxrp-w6re is
-    // already in code-only form, so the strip is a no-op there.
+    // populated zoning_top1. d4mq-wa44 fallback strips the verbose
+    // "R1M - RES - S F - MEDIUM" form down to just the code.
     tr.appendChild(td(stripZoningCode(a.zoning_top1 ?? a.zoning)));
     tr.appendChild(td(formatPct(a.zoning_top1_pct), 'num'));
     tr.appendChild(td(formatZone2(a.zoning_top2, a.zoning_top2_pct)));
-    tr.appendChild(td(formatSqFt(a.assessed_land_area), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lat), 'num'));
     tr.appendChild(td(formatCoord(a.centroid_lon), 'num'));
     tr.appendChild(assessmentTd(a));
     tr.appendChild(linkTd(walkscoreUrl(a.full_address), 'Walk'));
     tr.appendChild(linkTd(floodToolUrl(a), 'Flood'));
-    // Phase 7 sales-only cells (always appended; CSS .sales-only
-    // hides them when body lacks .sales-mode).
-    tr.appendChild(td(a._saleDate || null));
-    tr.appendChild(td(formatDollars(a._salePrice), 'num'));
-    tr.appendChild(td(a._saleGroupSize != null ? String(a._saleGroupSize) : null, 'num'));
-    tr.appendChild(td(formatDollars(a._pricePerSf), 'num'));
-    tr.appendChild(td(formatPct(a._saleToAsmt), 'num'));
-    tr.appendChild(td(formatDist(a._dist), 'num'));
-    tr.appendChild(td(a._saleUseCode || null));
-    tr.appendChild(td(formatSqFt(a._saleLivingArea), 'num'));
-    tr.appendChild(td(a._saleYearBuilt || null));
-    tr.appendChild(td(a._saleInstrument || null));
     frag.appendChild(tr);
   }
   $tbody.appendChild(frag);
@@ -2091,12 +2116,16 @@ async function runSalesAnalysis() {
       true,
     );
     document.body.classList.remove('sales-mode');
+    setColumnMode('property');
     clearTable();
     setParcels(EMPTY_FC, EMPTY_FC);
     return;
   }
   setSalesCount(`Fetching live data for ${visibleSales.length} parcels…`);
   document.body.classList.add('sales-mode');
+  // Swap the column-visibility set to the Sales Analysis default
+  // (or whatever the user's persisted sales-mode customization is).
+  setColumnMode('sales');
 
   const rolls = [...new Set(visibleSales.map((s) => s.roll))];
   let assessFc;
@@ -2161,6 +2190,7 @@ async function runSalesAnalysis() {
     p._saleInstrument = sale.instrument;
     p._saleGroupSize = group.length;
     p._saleUseCode = sale.useCode;
+    p._salePropertyType = sale.propertyType;
     p._saleLivingArea = sale.livingArea > 0 ? sale.livingArea : null;
     p._saleYearBuilt = sale.yearBuilt;
     // $/Lot SF: divide by group land for multi-parcel sales.
@@ -2206,6 +2236,7 @@ async function runSalesAnalysis() {
         _salePrice: sale.salePrice > 0 ? sale.salePrice : null,
         _saleInstrument: sale.instrument,
         _saleUseCode: sale.useCode,
+        _salePropertyType: sale.propertyType,
         _saleLivingArea: sale.livingArea > 0 ? sale.livingArea : null,
         _saleYearBuilt: sale.yearBuilt,
       },

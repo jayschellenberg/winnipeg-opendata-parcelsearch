@@ -64,11 +64,16 @@ function formatBool(b) {
 // Known data-col keys on the results table. sortCol is restricted to
 // this set so a malformed URL can't push junk into the sort handler.
 const SORT_COLS = [
+  // Base columns.
   'lot', 'block', 'plan', 'desc',
   'roll', 'address',
   'zoning', 'zoningPct', 'zoning2',
   'area', 'lat', 'lon',
   'value', 'walk', 'flood',
+  // Phase 7 sales-mode columns.
+  'saleDate', 'salePrice', 'pricePerSf', 'saleToAsmt',
+  'dist', 'useCode', 'livingArea', 'yearBuilt',
+  'instrument', 'propertyType', 'groupSize',
 ];
 
 export const SCHEMA = {

@@ -1,64 +1,102 @@
 /*
  * Results-table column visibility. Walks the thead's data-col
- * attributes to enumerate every column, then maintains a Set of
- * visible keys persisted to localStorage. Applies visibility by
- * stamping `.col-hidden` on both the matching th(s) AND every td
- * in those columns (positionally matched, since the tds don't
- * carry their own data-col attribute).
+ * attributes to enumerate every column, then maintains TWO Sets
+ * of visible keys (one per mode: 'property' / 'sales') so the
+ * Sales Analysis tab can ship a different default-visible set
+ * than the Property Search tab.
  *
- * Three presets are baked in (Phase 5 decision):
- *   - Quick lookup: lot, block, plan, roll, address, area
- *   - Zoning detail: lot, block, plan, roll, address, zoning,
- *     zoningPct, zoning2, area
- *   - Full detail: null (everything)
+ * Each mode's visible-set persists to its own localStorage key —
+ * so the appraiser's gear-customizations in sales mode don't
+ * trample their property-mode preferences and vice versa.
  *
- * Quick lookup is also the default-visible set on first load.
+ * Four presets are baked in:
+ *   - Quick lookup:    lot, block, plan, roll, address, area
+ *   - Zoning detail:   lot, block, plan, roll, address, zoning,
+ *                      zoningPct, zoning2, area
+ *   - Full detail:     null (everything)
+ *   - Sales analysis:  the sales-mode default (roll, address,
+ *                      saleDate, useCode, livingArea, yearBuilt,
+ *                      area, propertyType, groupSize, salePrice,
+ *                      pricePerSf, saleToAsmt, dist)
+ *
+ * Quick lookup is the property-mode default; Sales analysis is the
+ * sales-mode default. The active mode is controlled via setMode()
+ * — main.js calls setMode('sales') from runSalesAnalysis and
+ * setMode('property') from runSearch.
  */
 
-const STORAGE_KEY = 'wps_table_columns_v1';
+const STORAGE_KEY_PROPERTY = 'wps_table_columns_v1';
+const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
 
-// Phase 5 default-visible set = the Quick lookup preset. Lifted to
-// a const so the preset map can re-use it without duplicating.
 const QUICK_LOOKUP = ['lot', 'block', 'plan', 'roll', 'address', 'area'];
 const ZONING_DETAIL = [
   'lot', 'block', 'plan', 'roll', 'address',
   'zoning', 'zoningPct', 'zoning2', 'area',
 ];
+const SALES_DEFAULT = [
+  'roll', 'address', 'saleDate', 'useCode',
+  'livingArea', 'yearBuilt', 'area',
+  'propertyType', 'groupSize',
+  'salePrice', 'pricePerSf', 'saleToAsmt', 'dist',
+];
 
 export const DEFAULT_VISIBLE = new Set(QUICK_LOOKUP);
 
-// Column presets — `null` value means "everything that the current
-// mode would show" (Full detail). Keys match the dropdown options.
 export const PRESETS = {
-  'Quick lookup':  new Set(QUICK_LOOKUP),
-  'Zoning detail': new Set(ZONING_DETAIL),
-  'Full detail':   null,
+  'Quick lookup':    new Set(QUICK_LOOKUP),
+  'Zoning detail':   new Set(ZONING_DETAIL),
+  'Full detail':     null,
+  'Sales analysis':  new Set(SALES_DEFAULT),
 };
 
-let visible = new Set(DEFAULT_VISIBLE);
+// Per-mode visible sets. Each entry can be null (Full detail =
+// everything visible) or a Set of column keys.
+let mode = 'property';
+const visibleByMode = {
+  property: new Set(QUICK_LOOKUP),
+  sales:    new Set(SALES_DEFAULT),
+};
 const listeners = new Set();
 
-function readStored() {
+function storageKeyForMode(m) {
+  return m === 'sales' ? STORAGE_KEY_SALES : STORAGE_KEY_PROPERTY;
+}
+
+function readStored(key) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return null;
-    return new Set(arr);
-  } catch { return null; }
+    const raw = localStorage.getItem(key);
+    if (raw == null) return undefined;
+    const parsed = JSON.parse(raw);
+    if (parsed === null) return null;             // Full detail
+    if (!Array.isArray(parsed)) return undefined; // malformed -> defaults
+    return new Set(parsed);
+  } catch { return undefined; }
 }
 
 function writeStored() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...visible]));
+    const v = visibleByMode[mode];
+    const payload = v == null ? null : [...v];
+    localStorage.setItem(storageKeyForMode(mode), JSON.stringify(payload));
   } catch { /* localStorage quota or disabled — silently no-op */ }
 }
 
 function emit() {
   for (const fn of listeners) {
-    try { fn(visible); } catch (err) { console.warn('columns listener failed', err); }
+    try { fn(visibleByMode[mode]); } catch (err) { console.warn('columns listener failed', err); }
   }
 }
+
+/** Switch the active mode and reapply visibility. Idempotent. */
+export function setMode(name) {
+  if (name !== 'sales' && name !== 'property') return;
+  if (mode === name) return;
+  mode = name;
+  applyVisibility();
+  emit();
+}
+
+export function getMode() { return mode; }
 
 /**
  * Enumerate every column key from the thead. Multiple ths can
@@ -79,14 +117,15 @@ export function listAllColumns() {
 }
 
 export function isColumnVisible(key) {
-  // `null` preset = full-detail mode; treat as everything visible.
-  return visible == null ? true : visible.has(key);
+  // `null` set = full-detail mode; treat as everything visible.
+  const v = visibleByMode[mode];
+  return v == null ? true : v.has(key);
 }
 
 export function setColumnVisible(key, on) {
-  if (visible == null) visible = new Set();
-  if (on) visible.add(key);
-  else visible.delete(key);
+  if (visibleByMode[mode] == null) visibleByMode[mode] = new Set();
+  if (on) visibleByMode[mode].add(key);
+  else visibleByMode[mode].delete(key);
   writeStored();
   applyVisibility();
   emit();
@@ -95,14 +134,14 @@ export function setColumnVisible(key, on) {
 export function applyPreset(name) {
   const preset = PRESETS[name];
   if (preset === undefined) return; // unknown
-  visible = preset == null ? null : new Set(preset);
+  visibleByMode[mode] = preset == null ? null : new Set(preset);
   writeStored();
   applyVisibility();
   emit();
 }
 
 /**
- * Apply the current visible-set to the live DOM. Idempotent;
+ * Apply the active mode's visible-set to the live DOM. Idempotent;
  * safe to call after each table render so newly-built rows pick
  * up the hidden state.
  */
@@ -132,13 +171,17 @@ export function onColumnsChange(fn) {
 
 /**
  * Wire up the column-visibility gear popover + presets dropdown.
- * Reads stored visibility from localStorage; falls back to the
- * default-visible set on first load. Returns false if the toolbar
- * markup isn't present.
+ * Reads stored visibility from localStorage (per-mode); falls back
+ * to each mode's preset default on first load. Returns false if
+ * the toolbar markup isn't present.
  */
 export function initColumns() {
-  const stored = readStored();
-  if (stored) visible = stored;
+  // Read each mode's persisted set; if missing, keep the default.
+  const storedProperty = readStored(STORAGE_KEY_PROPERTY);
+  if (storedProperty !== undefined) visibleByMode.property = storedProperty;
+  const storedSales = readStored(STORAGE_KEY_SALES);
+  if (storedSales !== undefined) visibleByMode.sales = storedSales;
+
   const gear = document.getElementById('columns-gear');
   const popover = document.getElementById('columns-popover');
   const presetSelect = document.getElementById('columns-preset');
@@ -191,6 +234,10 @@ export function initColumns() {
       presetSelect.value = '';
     });
   }
+
+  // Rebuild the checklist on mode change so the gear popover stays
+  // in sync with whatever set is now active.
+  onColumnsChange(() => buildChecklist());
 
   applyVisibility();
   return true;

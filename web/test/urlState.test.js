@@ -172,9 +172,14 @@ test('decodeState — bad sortDir dropped', () => {
 });
 
 test('encodeState — every valid sortCol round-trips', () => {
-  const cols = ['lot', 'block', 'plan', 'desc', 'roll', 'address',
-                'zoning', 'zoningPct', 'zoning2', 'area',
-                'lat', 'lon', 'value', 'walk', 'flood'];
+  const cols = [
+    'lot', 'block', 'plan', 'desc', 'roll', 'address',
+    'zoning', 'zoningPct', 'zoning2', 'area',
+    'lat', 'lon', 'value', 'walk', 'flood',
+    'saleDate', 'salePrice', 'pricePerSf', 'saleToAsmt',
+    'dist', 'useCode', 'livingArea', 'yearBuilt',
+    'instrument', 'propertyType', 'groupSize',
+  ];
   for (const c of cols) {
     const decoded = decodeState(encodeState({ sortCol: c }));
     assert.deepEqual(decoded, { sortCol: c }, `sortCol=${c} failed`);
