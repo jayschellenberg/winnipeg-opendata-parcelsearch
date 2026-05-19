@@ -426,12 +426,24 @@ export function initMap(container, { onFeatureClick } = {}) {
       map.addLayer({
         id: 'neighbourhood-clusters-fill', type: 'fill', source: 'wpg-neighbourhood-clusters',
         layout: { visibility: 'none' },
-        paint: { 'fill-color': '#fbbf24', 'fill-opacity': 0.12 },
+        paint: { 'fill-color': '#fbbf24', 'fill-opacity': 0.22 },
       });
       map.addLayer({
         id: 'neighbourhood-clusters-line', type: 'line', source: 'wpg-neighbourhood-clusters',
-        layout: { visibility: 'none', 'line-join': 'round' },
-        paint: { 'line-color': '#b45309', 'line-width': 2, 'line-opacity': 0.85 },
+        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#b45309',
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            8, 2.5,
+            12, 3.5,
+            16, 4.5,
+          ],
+          'line-opacity': 1,
+          // Dashed pattern visually distinguishes clusters from
+          // the solid teal individual-neighbourhood lines.
+          'line-dasharray': [3, 2],
+        },
       });
       map.addLayer({
         id: 'neighbourhood-clusters-label', type: 'symbol', source: 'wpg-neighbourhood-clusters',
@@ -1339,13 +1351,45 @@ export function initMap(container, { onFeatureClick } = {}) {
       // correct popup constant. (Kept hoodPopup for parity even
       // though policyClick uses its own internal popup.)
       void hoodPopup;
+      // Follow-the-mouse hover tooltip showing just the
+      // neighbourhood / cluster name. Distinct from the click
+      // popup (which shows full info). Uses closeButton:false +
+      // closeOnClick:false so it doesn't interfere with the
+      // click handler, and a small offset so the cursor stays
+      // visible.
+      const hoodHoverPopup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 8,
+        className: 'hood-hover-popup',
+      });
+      const hoverHandler = (labelKey) => (e) => {
+        const layerId = e.features?.[0]?.layer?.id;
+        if (!layerId || map.getLayoutProperty(layerId, 'visibility') !== 'visible') {
+          hoodHoverPopup.remove();
+          return;
+        }
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        const label = p[labelKey];
+        if (!label) return;
+        hoodHoverPopup
+          .setLngLat(e.lngLat)
+          .setHTML(`<span class="hood-hover-label">${escapeHtml(String(label))}</span>`)
+          .addTo(map);
+      };
+      map.on('mousemove', 'neighbourhood-clusters-fill', hoverHandler('cluster'));
+      map.on('mousemove', 'neighbourhoods-fill',         hoverHandler('name'));
       for (const layerId of ['neighbourhood-clusters-fill', 'neighbourhoods-fill']) {
         map.on('mouseenter', layerId, () => {
           if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
             map.getCanvas().style.cursor = 'help';
           }
         });
-        map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
+        map.on('mouseleave', layerId, () => {
+          map.getCanvas().style.cursor = '';
+          hoodHoverPopup.remove();
+        });
       }
 
       const trafficPopup = new maplibregl.Popup({ closeButton: true });
