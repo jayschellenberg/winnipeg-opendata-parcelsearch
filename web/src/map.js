@@ -9,6 +9,20 @@
 import maplibregl from 'maplibre-gl';
 import { Protocol } from 'pmtiles';
 import bbox from '@turf/bbox';
+import turfArea from '@turf/area';
+import turfLength from '@turf/length';
+import MapboxDraw from '@mapbox/mapbox-gl-draw';
+import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+
+// mapbox-gl-draw was written against the Mapbox GL `mapboxgl-*` DOM
+// class names; MapLibre uses `maplibregl-*`. Patch the lookup table
+// before construction so the control mounts cleanly into MapLibre's
+// control container (and inherits our `.maplibregl-ctrl-group` styling).
+MapboxDraw.constants.classes.CANVAS         = 'maplibregl-canvas';
+MapboxDraw.constants.classes.CONTROL_BASE   = 'maplibregl-ctrl';
+MapboxDraw.constants.classes.CONTROL_PREFIX = 'maplibregl-ctrl-';
+MapboxDraw.constants.classes.CONTROL_GROUP  = 'maplibregl-ctrl-group';
+MapboxDraw.constants.classes.ATTRIBUTION    = 'maplibregl-ctrl-attrib';
 
 // Register the pmtiles:// protocol so MapLibre can read vector tiles
 // from a single .pmtiles archive served as a static asset on Vercel.
@@ -183,6 +197,67 @@ const BASEMAP_STYLE = {
   ],
 };
 
+// mapbox-gl-draw style spec for the measurement tool. High-contrast
+// orange (#ff4d00) reads cleanly on both the cream CARTO Positron
+// streets basemap and the dark Esri imagery; white halo around each
+// vertex keeps the click-targets visible. A single set of unfiltered
+// styles per geometry kind avoids the active/inactive-filter
+// rendering gap mapbox-gl-draw's default theme has on MapLibre 4.x.
+const MEASURE_DRAW_COLOR = '#ff4d00';
+const MEASURE_DRAW_STYLES = [
+  {
+    id: 'gl-draw-polygon-fill',
+    type: 'fill',
+    filter: ['all', ['==', '$type', 'Polygon']],
+    paint: {
+      'fill-color': MEASURE_DRAW_COLOR,
+      'fill-outline-color': MEASURE_DRAW_COLOR,
+      'fill-opacity': 0.18,
+    },
+  },
+  {
+    id: 'gl-draw-polygon-stroke',
+    type: 'line',
+    filter: ['all', ['==', '$type', 'Polygon']],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': MEASURE_DRAW_COLOR, 'line-width': 2 },
+  },
+  {
+    id: 'gl-draw-line',
+    type: 'line',
+    filter: ['all', ['==', '$type', 'LineString']],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': MEASURE_DRAW_COLOR, 'line-width': 2 },
+  },
+  {
+    id: 'gl-draw-vertex-halo',
+    type: 'circle',
+    filter: ['all', ['==', 'meta', 'vertex'], ['==', '$type', 'Point']],
+    paint: {
+      'circle-radius': 6,
+      'circle-color': '#fff',
+      'circle-stroke-width': 1,
+      'circle-stroke-color': MEASURE_DRAW_COLOR,
+    },
+  },
+  {
+    id: 'gl-draw-vertex',
+    type: 'circle',
+    filter: ['all', ['==', 'meta', 'vertex'], ['==', '$type', 'Point']],
+    paint: { 'circle-radius': 3.5, 'circle-color': MEASURE_DRAW_COLOR },
+  },
+  {
+    id: 'gl-draw-midpoint',
+    type: 'circle',
+    filter: ['all', ['==', 'meta', 'midpoint'], ['==', '$type', 'Point']],
+    paint: {
+      'circle-radius': 3,
+      'circle-color': MEASURE_DRAW_COLOR,
+      'circle-opacity': 0.55,
+    },
+  },
+];
+
 export function initMap(container, { onFeatureClick } = {}) {
   const map = new maplibregl.Map({
     container,
@@ -208,6 +283,19 @@ export function initMap(container, { onFeatureClick } = {}) {
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new BasemapToggleControl(), 'top-right');
+  // Distance / area measurement tool. mapbox-gl-draw owns the
+  // in-progress geometry; MeasureControl wraps it in a small panel
+  // with mode switches and a live readout. Explicit unfiltered
+  // styles (above) sidestep the active/inactive split that breaks
+  // vertex rendering on MapLibre 4.x with mapbox-gl-draw's default
+  // theme.
+  const measureDraw = new MapboxDraw({
+    displayControlsDefault: false,
+    controls: {},
+    styles: MEASURE_DRAW_STYLES,
+  });
+  map.addControl(measureDraw);
+  map.addControl(new MeasureControl(measureDraw), 'top-right');
 
   const ready = new Promise((resolve) => {
     map.on('load', () => {
@@ -1483,4 +1571,152 @@ class BasemapToggleControl {
     this._container.parentNode?.removeChild(this._container);
     this._map = null;
   }
+}
+
+/**
+ * Distance / area measurement control. Sits in the top-right gutter
+ * next to BasemapToggle. Opens a small panel with two mode buttons
+ * (Distance / Area), a live readout, and Clear / Done actions.
+ * Drawing is delegated to mapbox-gl-draw (compatible with MapLibre
+ * after the class-name patch at the top of this file); we listen
+ * for draw events and recompute length (@turf/length) or area
+ * (@turf/area) on every render.
+ */
+class MeasureControl {
+  constructor(draw) {
+    this._draw = draw;
+    this._mode = null;
+  }
+  onAdd(map) {
+    this._map = map;
+    this._container = document.createElement('div');
+    this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group measure-control';
+
+    this._btn = document.createElement('button');
+    this._btn.type = 'button';
+    this._btn.title = 'Measure distance or area';
+    this._btn.setAttribute('aria-label', 'Measure distance or area');
+    this._btn.textContent = 'Measure';
+    this._btn.addEventListener('click', () => this._togglePanel());
+    this._container.appendChild(this._btn);
+
+    this._panel = document.createElement('div');
+    this._panel.className = 'measure-panel';
+    this._panel.style.display = 'none';
+    this._panel.innerHTML = `
+      <div class="measure-modes">
+        <button type="button" data-mode="distance">Distance</button>
+        <button type="button" data-mode="area">Area</button>
+      </div>
+      <div class="measure-readout" aria-live="polite">Pick a mode to start.</div>
+      <div class="measure-actions">
+        <button type="button" class="measure-clear">Clear</button>
+        <button type="button" class="measure-done">Done</button>
+      </div>
+    `;
+    this._container.appendChild(this._panel);
+
+    this._panel.querySelectorAll('.measure-modes button').forEach((btn) => {
+      btn.addEventListener('click', () => this._setMode(btn.dataset.mode));
+    });
+    this._panel.querySelector('.measure-clear').addEventListener('click', () => {
+      // Re-running _setMode with the same mode is the cleanest reset:
+      // deletes everything, re-enters the draw mode, and refreshes
+      // the readout instructions.
+      if (this._mode) {
+        this._setMode(this._mode);
+      } else {
+        this._draw.deleteAll();
+        this._setReadout('Pick a mode to start.');
+      }
+    });
+    this._panel.querySelector('.measure-done').addEventListener('click', () => this._close());
+
+    const onChange = () => this._update();
+    map.on('draw.create', onChange);
+    map.on('draw.update', onChange);
+    map.on('draw.render', onChange);
+    map.on('draw.delete', onChange);
+
+    return this._container;
+  }
+  _togglePanel() {
+    const open = this._panel.style.display === 'none';
+    if (open) {
+      this._panel.style.display = 'block';
+      this._btn.classList.add('active');
+    } else {
+      this._close();
+    }
+  }
+  _close() {
+    this._draw.deleteAll();
+    try { this._draw.changeMode('simple_select'); } catch { /* already simple_select */ }
+    this._panel.style.display = 'none';
+    this._btn.classList.remove('active');
+    this._setMode(null, { skipModeChange: true });
+    this._setReadout('Pick a mode to start.');
+  }
+  _setMode(mode, { skipModeChange = false } = {}) {
+    this._mode = mode;
+    this._panel.querySelectorAll('.measure-modes button').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    if (skipModeChange) return;
+    this._draw.deleteAll();
+    if (mode === 'distance') {
+      this._draw.changeMode('draw_line_string');
+      this._setReadout('Click to add points. Double-click to finish.');
+    } else if (mode === 'area') {
+      this._draw.changeMode('draw_polygon');
+      this._setReadout('Click to add points. Double-click to close polygon.');
+    }
+  }
+  _setReadout(html) {
+    this._panel.querySelector('.measure-readout').innerHTML = html;
+  }
+  _update() {
+    if (!this._mode) return;
+    const data = this._draw.getAll();
+    const f = data.features[0];
+    if (!f) return;
+    const g = f.geometry;
+    if (this._mode === 'distance' && (g.type === 'LineString' || g.type === 'MultiLineString')) {
+      const coords = g.type === 'LineString' ? g.coordinates : (g.coordinates[0] || []);
+      if (!coords || coords.length < 2) return;
+      const km = turfLength(f, { units: 'kilometers' });
+      const m  = km * 1000;
+      const mi = km / 1.609344;
+      const ft = m * 3.28084;
+      this._setReadout(
+        `<strong>Distance</strong>` +
+        `${fmtNum(m, m < 10 ? 2 : 1)} m &nbsp;(${fmtNum(km, 3)} km)<br>` +
+        `${fmtNum(ft, 0)} ft &nbsp;(${fmtNum(mi, 3)} mi)`
+      );
+    } else if (this._mode === 'area' && (g.type === 'Polygon' || g.type === 'MultiPolygon')) {
+      const ring = g.type === 'Polygon' ? g.coordinates[0] : (g.coordinates[0]?.[0] || []);
+      if (!ring || ring.length < 4) return;
+      const sqm   = turfArea(f);
+      const ha    = sqm / 10000;
+      const sqft  = sqm * 10.7639104167;
+      const acres = sqm / 4046.8564224;
+      this._setReadout(
+        `<strong>Area</strong>` +
+        `${fmtNum(sqm, 0)} m² &nbsp;(${fmtNum(ha, 4)} ha)<br>` +
+        `${fmtNum(sqft, 0)} sf &nbsp;(${fmtNum(acres, 3)} acres)`
+      );
+    }
+  }
+  onRemove() {
+    this._container.parentNode?.removeChild(this._container);
+    this._map = null;
+  }
+}
+
+function fmtNum(n, decimals) {
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString('en-CA', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 }

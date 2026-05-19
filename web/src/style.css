@@ -1084,6 +1084,113 @@ body {
   border-color: #bfdbfe;
 }
 
+/* Distance / area measurement control. Shares the .basemap-toggle
+   visual language so all our custom top-right controls look
+   consistent. The .measure-panel is the dropdown that appears
+   under the button when Measure is active. */
+.maplibregl-ctrl.measure-control {
+  position: relative;
+}
+.maplibregl-ctrl.measure-control > button {
+  width: auto;
+  min-width: 72px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #1a2a4a;
+  background: #fff;
+  border: none;
+  cursor: pointer;
+  height: 29px;
+  line-height: 1;
+}
+.maplibregl-ctrl.measure-control > button:hover {
+  background: #eef6fb;
+}
+.maplibregl-ctrl.measure-control > button.active {
+  background: #1a2a4a;
+  color: #fff;
+}
+.maplibregl-ctrl.measure-control .measure-panel {
+  position: absolute;
+  top: 33px;
+  right: 0;
+  min-width: 220px;
+  padding: 8px 10px 10px;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  color: #1a2a4a;
+  z-index: 5;
+}
+.maplibregl-ctrl.measure-control .measure-modes {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.maplibregl-ctrl.measure-control .measure-modes button {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #1a2a4a;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  cursor: pointer;
+  height: 26px;
+  line-height: 1;
+}
+.maplibregl-ctrl.measure-control .measure-modes button:hover {
+  background: #eef6fb;
+}
+.maplibregl-ctrl.measure-control .measure-modes button.active {
+  background: #1a2a4a;
+  color: #fff;
+  border-color: #1a2a4a;
+}
+.maplibregl-ctrl.measure-control .measure-readout {
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  line-height: 1.5;
+  min-height: 24px;
+}
+.maplibregl-ctrl.measure-control .measure-readout strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #475569;
+}
+.maplibregl-ctrl.measure-control .measure-actions {
+  display: flex;
+  gap: 4px;
+}
+.maplibregl-ctrl.measure-control .measure-actions button {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #1a2a4a;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  cursor: pointer;
+  height: 26px;
+  line-height: 1;
+}
+.maplibregl-ctrl.measure-control .measure-actions button:hover {
+  background: #eef6fb;
+}
+
 /* MapLibre control button for the Streets/Satellite basemap toggle.
    Inherits the maplibregl-ctrl-group styling for the dark border + group
    look; we just style the inner button to be wider with a label. */
