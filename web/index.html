@@ -307,6 +307,17 @@
             <span>Hide $0 / $1 non-arms-length transfers</span>
           </label>
 
+          <!-- Sale date range. Either bound can be left empty for an
+               open-ended filter. CSV dates land as ISO YYYY-MM-DD so
+               string comparison against the native <input type="date">
+               value works without any parsing. -->
+          <div class="sales-date-range">
+            <span class="sales-date-label">Sale date:</span>
+            <input type="date" id="sales-date-from" class="sales-date-input" aria-label="Sale date from" />
+            <span class="sales-date-sep" aria-hidden="true">–</span>
+            <input type="date" id="sales-date-to" class="sales-date-input" aria-label="Sale date to" />
+          </div>
+
           <!-- PUCS multi-select. Button opens a popover listing every
                distinct Par Use Code in the loaded CSV; user ticks the
                ones to keep. All-checked = no filter. -->

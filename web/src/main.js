@@ -2080,6 +2080,17 @@ function wireSalesTab() {
     });
   }
 
+  // Sale-date range. Either bound can stay empty for an open-ended
+  // filter. Re-runs the analysis on every change.
+  const $dateFrom = document.getElementById('sales-date-from');
+  const $dateTo   = document.getElementById('sales-date-to');
+  if ($dateFrom) {
+    $dateFrom.addEventListener('change', () => { if (salesData) runSalesAnalysis(); });
+  }
+  if ($dateTo) {
+    $dateTo.addEventListener('change', () => { if (salesData) runSalesAnalysis(); });
+  }
+
   // PUCS multi-select filter. Button toggles the popover; the
   // popover's checkboxes drive salesPucsFilter and re-run the
   // analysis on change. Click-away + Esc dismiss.
@@ -2362,12 +2373,23 @@ async function runSalesAnalysis() {
   if (salesPucsFilter != null) {
     visibleSales = visibleSales.filter((s) => salesPucsFilter.has(s.useCode || '(blank)'));
   }
+  // Sale-date range. CSV dates are ISO YYYY-MM-DD so lexical >= / <=
+  // comparison works without parsing.
+  const dateFrom = (document.getElementById('sales-date-from')?.value || '').trim();
+  const dateTo   = (document.getElementById('sales-date-to')?.value || '').trim();
+  if (dateFrom) visibleSales = visibleSales.filter((s) => s.saleDate && s.saleDate >= dateFrom);
+  if (dateTo)   visibleSales = visibleSales.filter((s) => s.saleDate && s.saleDate <= dateTo);
   if (!visibleSales.length) {
-    const msg = salesPucsFilter && salesPucsFilter.size === 0
-      ? `No PUCS selected — click All in the Filter by PUCS popover, or pick one or more codes.`
-      : salesPucsFilter
-        ? `${salesData.sales.length} sales loaded, but none match the current PUCS filter.`
-        : `All ${salesData.sales.length} sales are $0 / $1 transfers — uncheck "Hide non-arms-length" to view.`;
+    let msg;
+    if (salesPucsFilter && salesPucsFilter.size === 0) {
+      msg = `No PUCS selected — click All in the Filter by PUCS popover, or pick one or more codes.`;
+    } else if (dateFrom || dateTo) {
+      msg = `${salesData.sales.length} sales loaded, but none fall inside the selected date range.`;
+    } else if (salesPucsFilter) {
+      msg = `${salesData.sales.length} sales loaded, but none match the current PUCS filter.`;
+    } else {
+      msg = `All ${salesData.sales.length} sales are $0 / $1 transfers — uncheck "Hide non-arms-length" to view.`;
+    }
     setSalesCount(msg, true);
     document.body.classList.remove('sales-mode');
     setColumnMode('property');

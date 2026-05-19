@@ -1756,6 +1756,43 @@ body {
   cursor: pointer;
 }
 
+/* Sale-date range — Date label + From input + dash + To input on
+   one row. Inputs flex to share the remaining width; on narrow
+   sidebars they shrink to the browser's native minimum date-input
+   width (~110 px) which still fits MM/DD/YYYY. */
+.sales-date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--color-primary-500, #1e293b);
+}
+.sales-date-label {
+  font-weight: 600;
+  color: var(--color-neutral-700, #3f3f46);
+  flex: 0 0 auto;
+}
+.sales-date-sep {
+  color: var(--color-neutral-500, #71717a);
+  flex: 0 0 auto;
+}
+.sales-date-input {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--color-primary-500, #1e293b);
+  background: #fff;
+}
+.sales-date-input:focus {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: -1px;
+  border-color: var(--color-accent-500, #2563eb);
+}
+
 /* PUCS multi-select. Button opens an inline popover listing every
    distinct Par Use Code in the loaded CSV; the popover positions
    absolute so opening it doesn't reflow the sidebar. */
