@@ -1246,7 +1246,11 @@ function setBusy(busy) {
  *  drift bugs where stale state could leak through; a reload sidesteps
  *  the whole class of issue. */
 function clearAll() {
-  window.location.reload();
+  // Navigate to the bare URL (no query string) and reload so URL-
+  // state-driven values (roll #, sort, toggles, subject roll, etc.)
+  // don't re-populate. Without the pathname rewrite, applyUrlState
+  // would re-apply whatever was in ?r=...&zo=1&... on next load.
+  window.location.href = window.location.pathname;
 }
 
 function clearTable() {
