@@ -973,7 +973,7 @@ export function initMap(container, { onFeatureClick } = {}) {
       // polygon edge with `length_label` already pre-formatted. The
       // symbol layer uses `symbol-placement: 'line'` so each label
       // auto-rotates along the edge it describes (looks like a survey
-      // plat). minzoom 17 keeps the labels suppressed at city-wide
+      // plat). minzoom 16 keeps the labels suppressed at city-wide
       // views where they'd just clutter the map.
       map.addSource('dimensions', {
         type: 'geojson',
@@ -983,7 +983,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         id: 'dimensions-label',
         type: 'symbol',
         source: 'dimensions',
-        minzoom: 17,
+        minzoom: 16,
         layout: {
           visibility: 'none',
           'text-field': ['get', 'length_label'],
