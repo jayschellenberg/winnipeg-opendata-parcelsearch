@@ -272,6 +272,12 @@ body {
   min-height: 320px;
 }
 
+/* Hide-map toggle (Manitoba alignment). When the user clicks the
+   Hide map button in the results toolbar, .map-collapsed lands on
+   the workspace and the map-pane drops out of the layout so the
+   table claims the full workspace. */
+.workspace.map-collapsed .map-pane { display: none; }
+
 .table-pane {
   /* Padding matches what #results-wrap used to carry; the table
      itself sits inside .table-scroll so the thead can stay pinned
@@ -1004,6 +1010,80 @@ body {
   background: transparent;
 }
 
+/* Multi-parcel sale grouping (Manitoba alignment). When two or
+   more rows in the current sort order share an Instrument Number,
+   they get a light tint + an accent-blue left stripe so the
+   appraiser sees at a glance that these N rows describe one
+   transaction. `solo` (group has >1 parcel but the sort order
+   broke them apart) gets only the stripe — still part of a
+   group, just not adjacent. */
+#results tbody tr[data-group-pos] td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-accent-500, #2563eb);
+}
+#results tbody tr[data-group-pos="first"],
+#results tbody tr[data-group-pos="middle"],
+#results tbody tr[data-group-pos="last"] {
+  background: #eff6ff;
+}
+#results tbody tr[data-group-pos="first"] td,
+#results tbody tr[data-group-pos="middle"] td {
+  /* Hide the inter-row border for adjacent group members so the
+     three rows read as one block. */
+  border-bottom-color: transparent;
+}
+#results tbody tr[data-group-pos]:hover { background: #dbeafe; }
+#results tbody tr[data-group-pos]:hover td:first-child {
+  background: #dbeafe;
+}
+#results tbody tr[data-group-pos] td:first-child {
+  background: #eff6ff;
+}
+
+/* Categorical-cell badges (Manitoba alignment). Each badge is a
+   small pill at the same font size as the cell text; the colour
+   carries the categorical meaning so the user can scan a column
+   without reading each value. Variants:
+     .badge-zoning        — zoning code (slate-grey)
+     .badge-pucs          — Par Use Code (slate-grey)
+     .badge-property-type — high-level type, colour-coded by family
+                            (Residential, Industrial, Commercial). */
+#results .badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+}
+#results .badge-zoning,
+#results .badge-pucs {
+  background: var(--color-neutral-100, #f4f4f5);
+  color: var(--color-neutral-700, #3f3f46);
+  border-color: var(--color-neutral-200, #e4e4e7);
+}
+#results .badge-property-type {
+  background: var(--color-neutral-100, #f4f4f5);
+  color: var(--color-neutral-700, #3f3f46);
+  border-color: var(--color-neutral-200, #e4e4e7);
+}
+#results .badge-property-type.badge-pt-residential {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+#results .badge-property-type.badge-pt-industrial {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+#results .badge-property-type.badge-pt-commercial {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #bfdbfe;
+}
+
 /* MapLibre control button for the Streets/Satellite basemap toggle.
    Inherits the maplibregl-ctrl-group styling for the dark border + group
    look; we just style the inner button to be wider with a label. */
@@ -1203,6 +1283,41 @@ body {
   background: #fff;
   font-family: inherit;
   color: var(--color-primary-500, #1e293b);
+}
+
+/* Hide-map toggle. Same visual weight as the gear button so the
+   pair reads as a small action cluster on the right of the
+   toolbar. Pressed state lights up in accent blue. */
+.map-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: #fff;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-primary-500, #1e293b);
+  cursor: pointer;
+  font-family: inherit;
+}
+.map-toggle-btn:hover {
+  border-color: var(--color-accent-500, #2563eb);
+  color: var(--color-accent-600, #1d4ed8);
+}
+.map-toggle-btn:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: 1px;
+}
+.map-toggle-btn[aria-pressed="true"] {
+  background: #eff6ff;
+  border-color: var(--color-accent-500, #2563eb);
+  color: var(--color-accent-600, #1d4ed8);
+}
+.map-toggle-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Columns gear button + dropdown popover. The popover is

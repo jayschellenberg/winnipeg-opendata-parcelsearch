@@ -306,6 +306,35 @@ if ($psClose && $parcelSummary) {
   $psClose.addEventListener('click', () => { $parcelSummary.hidden = true; });
 }
 
+// Hide-map toggle. Adds .map-collapsed to the workspace so the
+// .map-pane drops out of layout and the table claims the full
+// width. Choice persists to localStorage so a page refresh keeps
+// it consistent. Restoring the map needs a deferred map.resize()
+// so MapLibre recomputes the canvas dimensions.
+const MAP_HIDE_KEY = 'wps_map_collapsed_v1';
+const $workspaceEl = document.getElementById('workspace');
+const $mapToggleBtn = document.getElementById('map-toggle-btn');
+const $mapToggleLabel = $mapToggleBtn?.querySelector('.map-toggle-label');
+function applyMapCollapsed(collapsed) {
+  if (!$workspaceEl || !$mapToggleBtn) return;
+  $workspaceEl.classList.toggle('map-collapsed', collapsed);
+  $mapToggleBtn.setAttribute('aria-pressed', String(collapsed));
+  if ($mapToggleLabel) $mapToggleLabel.textContent = collapsed ? 'Show map' : 'Hide map';
+  if (!collapsed) {
+    mapReady.then(() => map.resize());
+  }
+  try { localStorage.setItem(MAP_HIDE_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
+}
+if ($mapToggleBtn) {
+  $mapToggleBtn.addEventListener('click', () => {
+    const next = !$workspaceEl?.classList.contains('map-collapsed');
+    applyMapCollapsed(next);
+  });
+  try {
+    if (localStorage.getItem(MAP_HIDE_KEY) === '1') applyMapCollapsed(true);
+  } catch { /* ignore */ }
+}
+
 // Empty-state visible on initial load (before any search). renderTable
 // hides it once results land, clearAll re-shows it.
 const $resultsEmpty = document.getElementById('results-empty');
@@ -1285,7 +1314,8 @@ function renderTable(rows) {
     }
   }
   const frag = document.createDocumentFragment();
-  for (const row of sorted) {
+  for (let sortedIdx = 0; sortedIdx < sorted.length; sortedIdx++) {
+    const row = sorted[sortedIdx];
     // Either side can be null depending on the flow, so optional-chain both.
     const s = row.survey?.properties || {};
     const a = row.assess?.properties || {};
@@ -1313,6 +1343,28 @@ function renderTable(rows) {
       // have to reach back into rows[].
       showParcelSummary(a, s);
     });
+    // Multi-parcel-sale grouping. When two or more rows in the
+    // CURRENT sort order share an Instrument Number, stamp
+    // first/middle/last/solo so the table can visually connect
+    // them via the data-group-pos CSS in style.css. `solo` =
+    // group has >1 parcel but sort order broke the run.
+    const inst = a._saleInstrument;
+    const gsize = Number(a._saleGroupSize) || 0;
+    if (inst && gsize > 1) {
+      const prevInst = sortedIdx > 0
+        ? sorted[sortedIdx - 1].assess?.properties?._saleInstrument : null;
+      const nextInst = sortedIdx < sorted.length - 1
+        ? sorted[sortedIdx + 1].assess?.properties?._saleInstrument : null;
+      const prevSame = prevInst === inst;
+      const nextSame = nextInst === inst;
+      let pos;
+      if (!prevSame && nextSame) pos = 'first';
+      else if (prevSame && nextSame) pos = 'middle';
+      else if (prevSame && !nextSame) pos = 'last';
+      else pos = 'solo';
+      tr.dataset.groupPos = pos;
+      tr.dataset.groupSize = String(gsize);
+    }
     // Lot cell can run long for multi-lot merges (e.g. "21-25, 68-75,
     // 120-121 (Pl 129); 39-46 (Pl 24208)"). Truncate with full text
     // available on hover so the table column doesn't blow up.
@@ -1333,14 +1385,14 @@ function renderTable(rows) {
     tr.appendChild(truncatedTd(a.full_address, 40));
     // Sales-only block (CSS .sales-only hides them in property mode).
     tr.appendChild(td(a._saleDate || null));
-    tr.appendChild(td(a._saleUseCode || null));
+    tr.appendChild(badgeTd(a._saleUseCode || null, 'badge-pucs'));
     tr.appendChild(td(formatSqFt(a._saleLivingArea), 'num'));
     tr.appendChild(td(a._saleYearBuilt || null));
     // Lot Size (sf) lives in the lead block per the user's preferred
     // sales-mode order; it's still useful in property mode too.
     tr.appendChild(td(formatSqFt(a.assessed_land_area), 'num'));
     // More sales-only fields.
-    tr.appendChild(td(a._salePropertyType || null));
+    tr.appendChild(badgeTd(a._salePropertyType || null, propertyTypeBadgeClass(a._salePropertyType)));
     tr.appendChild(td(a._saleGroupSize != null ? String(a._saleGroupSize) : null, 'num'));
     tr.appendChild(td(formatDollars(a._salePrice), 'num'));
     tr.appendChild(td(formatDollars(a._pricePerSf), 'num'));
@@ -1356,7 +1408,7 @@ function renderTable(rows) {
     // assessment dataset's primary `zoning` text if enrichment hasn't
     // populated zoning_top1. d4mq-wa44 fallback strips the verbose
     // "R1M - RES - S F - MEDIUM" form down to just the code.
-    tr.appendChild(td(stripZoningCode(a.zoning_top1 ?? a.zoning)));
+    tr.appendChild(badgeTd(stripZoningCode(a.zoning_top1 ?? a.zoning), 'badge-zoning'));
     tr.appendChild(td(formatPct(a.zoning_top1_pct), 'num'));
     tr.appendChild(td(formatZone2(a.zoning_top2, a.zoning_top2_pct)));
     tr.appendChild(td(formatCoord(a.centroid_lat), 'num'));
@@ -1566,6 +1618,42 @@ function td(value, className) {
   }
   if (className) el.classList.add(className);
   return el;
+}
+
+/**
+ * Cell with a pill-style categorical badge wrapping its value.
+ * Empty values fall back to the em-dash empty cell (no badge).
+ * `badgeClass` is the modifier (e.g. "badge-zoning"); a base
+ * "badge" class is added automatically. `extraTdClass` lets the
+ * caller add a num / left-align class to the td itself.
+ */
+function badgeTd(value, badgeClass, extraTdClass) {
+  const el = document.createElement('td');
+  if (extraTdClass) el.classList.add(extraTdClass);
+  if (value == null || value === '') {
+    el.textContent = '—';
+    el.classList.add('empty');
+    return el;
+  }
+  const span = document.createElement('span');
+  span.className = `badge ${badgeClass}`;
+  span.textContent = String(value);
+  el.appendChild(span);
+  return el;
+}
+
+/**
+ * Map a Property Type string (Residential / Industrial / Commercial)
+ * to the matching badge-pt-* modifier. Unknown values get the base
+ * pill (no colour family).
+ */
+function propertyTypeBadgeClass(value) {
+  if (!value) return 'badge-property-type';
+  const v = String(value).trim().toLowerCase();
+  if (v === 'residential') return 'badge-property-type badge-pt-residential';
+  if (v === 'industrial')  return 'badge-property-type badge-pt-industrial';
+  if (v === 'commercial')  return 'badge-property-type badge-pt-commercial';
+  return 'badge-property-type';
 }
 
 /**

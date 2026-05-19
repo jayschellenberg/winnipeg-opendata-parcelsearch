@@ -354,7 +354,7 @@
         <p class="overlay-note">* Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.</p>
       </aside>
 
-      <main class="workspace">
+      <main class="workspace" id="workspace">
         <div id="map" class="map-pane">
           <div id="zoning-legend" class="map-legend zoning-legend" hidden>
             <strong>Zoning</strong>
@@ -426,6 +426,18 @@
               </select>
             </label>
             <div class="results-toolbar-spacer"></div>
+            <button
+              type="button"
+              id="map-toggle-btn"
+              class="map-toggle-btn"
+              aria-pressed="false"
+              title="Hide the map to give the results table the full workspace"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M2 4l4-2 4 2 4-2v10l-4 2-4-2-4 2zm4 0v8m4-6v8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span class="map-toggle-label">Hide map</span>
+            </button>
             <div class="columns-popover-wrap">
               <button
                 type="button"
