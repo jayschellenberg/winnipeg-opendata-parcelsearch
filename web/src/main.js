@@ -64,6 +64,7 @@ import {
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
   setCitywideParcelsVisible, probeCitywideParcels,
   setContamData, setContamVisible,
+  setSubjectData,
 } from './map.js';
 
 const $lot = document.getElementById('lot');
@@ -537,7 +538,11 @@ async function runSearch() {
   // property-mode column-visibility set (Quick lookup default or
   // whatever the user has persisted for property mode).
   document.body.classList.remove('sales-mode');
+  document.body.classList.remove('subject-set');
   setColumnMode('property');
+  // Clear the sales-tab subject highlight when switching to a
+  // property search so the blue parcel doesn't linger on the map.
+  mapReady.then(() => setSubjectData(map, null));
   const inputs = {
     lot: $lot.value.trim(),
     block: $block.value.trim(),
@@ -2399,21 +2404,37 @@ async function runSalesAnalysis() {
   const subjectRollRaw = (document.getElementById('subject-roll')?.value || '').trim();
   const subjectRoll = normalizeRoll(subjectRollRaw);
   let subjectCentroid = null;
+  let subjectFeature = null;
   if (subjectRoll) {
     const hit = assessFc.features.find((f) => String(f.properties?.roll_number) === subjectRoll);
     if (hit) {
+      subjectFeature = hit;
       subjectCentroid = featureCentroid(hit);
     } else {
       try {
         const subFc = await searchAssessmentParcels({ roll: subjectRoll });
         const sf = subFc.features[0];
-        if (sf) subjectCentroid = featureCentroid(sf);
+        if (sf) {
+          subjectFeature = sf;
+          subjectCentroid = featureCentroid(sf);
+        }
       } catch (err) {
         console.warn('Subject roll fetch failed:', err);
       }
     }
   }
   document.body.classList.toggle('subject-set', subjectCentroid != null);
+
+  // Paint the subject parcel as a blue highlight over the yellow
+  // sale-results assess-context layer. Push the geometry-bearing
+  // feature (not just the centroid) so the polygon outline lights
+  // up — appraisers like to see the subject's footprint, not just
+  // a point. Clear the layer when no subject is set.
+  mapReady.then(() => {
+    setSubjectData(map, subjectFeature
+      ? { type: 'FeatureCollection', features: [subjectFeature] }
+      : null);
+  });
 
   // Stamp sale + computed fields onto every matching feature.
   // Multi-parcel sales (>1 distinct Parcel ID sharing an Instrument

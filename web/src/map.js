@@ -645,6 +645,37 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Subject parcel (sales tab) — separate source / layers so the
+      // blue highlight stands out against the yellow sale-results
+      // highlight. Drawn AFTER assess-context-line so the blue
+      // outline reads on top even when the subject is itself one
+      // of the loaded sales (an appraiser may legitimately set a
+      // recent comp as the subject). Source stays empty until
+      // runSalesAnalysis resolves a subject roll via
+      // setSubjectData().
+      map.addSource('subject', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'subject-fill',
+        type: 'fill',
+        source: 'subject',
+        paint: {
+          'fill-color': '#1e6fd9',
+          'fill-opacity': 0.32,
+        },
+      });
+      map.addLayer({
+        id: 'subject-line',
+        type: 'line',
+        source: 'subject',
+        paint: {
+          'line-color': '#0c3a78',
+          'line-width': 3.5,
+        },
+      });
+
       map.addSource('parcel-results', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -1139,6 +1170,17 @@ export function flyToFeature(map, feature) {
 export function setAssessContext(map, fc) {
   const src = map.getSource('assess-context');
   if (src) src.setData(fc);
+}
+
+/**
+ * Push the sales-tab subject parcel onto its dedicated map layer.
+ * Pass an empty / null FC to clear the highlight. Drawn above the
+ * yellow assess-context layer so the blue subject stays visible
+ * even when the subject roll is itself one of the loaded sales.
+ */
+export function setSubjectData(map, fc) {
+  const src = map.getSource('subject');
+  if (src) src.setData(fc || { type: 'FeatureCollection', features: [] });
 }
 
 /**
