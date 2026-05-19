@@ -454,9 +454,9 @@ export function initMap(container, { onFeatureClick } = {}) {
           'symbol-placement': 'point',
         },
         paint: {
-          'text-color': '#7c2d12',
-          'text-halo-color': '#fff7ed',
-          'text-halo-width': 1.6,
+          'text-color': '#0c4a6e',
+          'text-halo-color': '#f0f9ff',
+          'text-halo-width': 1.4,
         },
       });
       map.addLayer({
