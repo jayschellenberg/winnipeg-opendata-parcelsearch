@@ -222,12 +222,12 @@ body {
   border-top: 1px solid var(--color-neutral-200, #e4e4e7);
 }
 
-/* Collapsible "Search by legal description" section — used for the
-   secondary lot/block/plan/description search that's accessed
-   occasionally rather than every session. Style the <summary> to
-   match the .sidebar h2 visual while keeping the native disclosure
-   triangle so the user knows it's expandable. */
-.sidebar details.legal-search > summary {
+/* Collapsible "Additional Searches" section — secondary fields
+   (lot/block/plan/desc legal description + Zoning text + DU
+   filter) that aren't part of the primary address/roll workflow.
+   Style the <summary> to match the .sidebar h2 visual while keeping
+   the native disclosure triangle so the user knows it's expandable. */
+.sidebar details.additional-searches > summary {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -239,11 +239,11 @@ body {
   list-style-position: outside;
 }
 
-.sidebar details.legal-search[open] > summary {
+.sidebar details.additional-searches[open] > summary {
   margin-bottom: 6px;
 }
 
-.sidebar details.legal-search > summary:hover {
+.sidebar details.additional-searches > summary:hover {
   color: #1a1a1a;
 }
 
@@ -349,10 +349,10 @@ body {
 
 .sidebar .address-row .address-from-field,
 .sidebar .address-row .address-to-field {
-  /* Sized to fit five digits comfortably (e.g. 12345). With the
-     reduced input padding below, the content area is ~60 px which
-     leaves a small comfort margin on either side. */
-  flex: 0 0 72px;
+  /* Sized to fit six digits comfortably. With the reduced input
+     padding below, the content area is ~68 px — enough room for
+     a six-digit street number plus a hair of margin. */
+  flex: 0 0 80px;
   min-width: 0;
 }
 

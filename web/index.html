@@ -207,8 +207,8 @@
           <span class="tip">Roll # — partial match for a single value, or a comma-separated list for exact multi-roll lookup. Press Enter or type a comma to commit; Backspace on an empty input removes the last chip. Leading zeros optional.</span>
         </span>
 
-        <details class="legal-search">
-          <summary>Search by legal description</summary>
+        <details class="additional-searches">
+          <summary>Additional Searches</summary>
           <span class="field">
             <input id="lot"     type="text" placeholder="Lot (or River Lot or Section)" />
             <span class="tip">Lot (or River Lot or Section)</span>
@@ -225,26 +225,25 @@
             <input id="desc"    type="text" placeholder="Description (contains)" />
             <span class="tip">Description (contains)</span>
           </span>
+          <span class="field">
+            <input id="zoning"  type="text" placeholder="Zoning (contains)" />
+            <span class="tip">Zoning (contains)</span>
+          </span>
+          <div class="du-row">
+            <span class="field du-mode-field">
+              <select id="du-mode">
+                <option value="">Any DU</option>
+                <option value="zero">0 DU only</option>
+                <option value="min">Min DU</option>
+              </select>
+              <span class="tip">Dwelling units filter (Any · 0 · Min N)</span>
+            </span>
+            <span class="field du-min-field">
+              <input id="du-min" type="number" min="1" step="1" placeholder="#" disabled />
+              <span class="tip">Minimum dwelling units (when 'Min DU')</span>
+            </span>
+          </div>
         </details>
-
-        <span class="field">
-          <input id="zoning"  type="text" placeholder="Zoning (contains)" />
-          <span class="tip">Zoning (contains)</span>
-        </span>
-        <div class="du-row">
-          <span class="field du-mode-field">
-            <select id="du-mode">
-              <option value="">Any DU</option>
-              <option value="zero">0 DU only</option>
-              <option value="min">Min DU</option>
-            </select>
-            <span class="tip">Dwelling units filter (Any · 0 · Min N)</span>
-          </span>
-          <span class="field du-min-field">
-            <input id="du-min" type="number" min="1" step="1" placeholder="#" disabled />
-            <span class="tip">Minimum dwelling units (when 'Min DU')</span>
-          </span>
-        </div>
 
         <div class="action-row">
           <button id="search" type="button">Search</button>
@@ -345,12 +344,12 @@
           <button id="secondary-plans-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Sec. Plans</button>
           <button id="infill-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Infill Area</button>
           <button id="malls-corridors-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
+          <button id="dimensions-toggle" type="button" class="secondary" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
           <button id="contam-toggle" type="button" class="secondary" aria-pressed="false" title="Manitoba Contaminated Sites Registry — designated and impacted sites in Winnipeg. Click any circle for details + a link to the official registry record.">Enviro Sites</button>
           <a class="overlay-link secondary" href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer" title="City of Winnipeg index of all 42 adopted Local Area Plans (Secondary Plans)">Sec Plan Index</a>
           <a class="overlay-link secondary" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" title="City of Winnipeg Planning, Property &amp; Development Property Map">PP&amp;D Property Map</a>
           <a class="overlay-link secondary" href="https://dmis.winnipeg.ca/" target="_blank" rel="noreferrer" title="City of Winnipeg Development Management Information System (development applications, permits, plans)">DMIS</a>
           <button id="static-map-btn" type="button" class="secondary danger-outline" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the image &amp; choose Save Image As to drop it into a report.">Generate Map</button>
-          <button id="dimensions-toggle" type="button" class="secondary" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
         </div>
         <p class="overlay-note">* Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.</p>
       </aside>
