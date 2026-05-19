@@ -55,6 +55,7 @@ import {
   fetchSecondaryPlans,
   fetchInfillGuidelineArea,
   fetchMallsAndCorridors,
+  fetchCityOwnedParcels,
   fetchTrafficVolumes,
   fetchContaminatedSites,
 } from './soda.js';
@@ -88,6 +89,7 @@ const $assessToggle = document.getElementById('assess-toggle');
 const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
 const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
+const $cityOwnedParcelsToggle = document.getElementById('city-owned-parcels-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
@@ -126,9 +128,10 @@ let contamLoaded = false;
 // applyUrlState() can synchronously click any toggle button at init
 // without tripping a Cannot access 'X' before initialization throw.
 const policyOverlayState = {
-  secondaryPlans: { enabled: false, loaded: false },
-  infill:         { enabled: false, loaded: false },
-  mallsCorridors: { enabled: false, loaded: false },
+  secondaryPlans:    { enabled: false, loaded: false },
+  infill:            { enabled: false, loaded: false },
+  mallsCorridors:    { enabled: false, loaded: false },
+  cityOwnedParcels:  { enabled: false, loaded: false },
 };
 let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
@@ -233,6 +236,7 @@ $assessToggle.addEventListener('click', () => toggleLayer('assess'));
 $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secondaryPlans'));
 $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
+$cityOwnedParcelsToggle.addEventListener('click', () => togglePolicyOverlay('cityOwnedParcels'));
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
@@ -385,6 +389,7 @@ function captureUrlState() {
     surveyToggle: false, assessToggle: true, allParcelsToggle: false,
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
+    cityOwnedParcelsToggle: false,
     contamToggle: false, dimensionsToggle: false,
   };
   const buttons = {
@@ -393,6 +398,7 @@ function captureUrlState() {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
+    cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
@@ -446,6 +452,7 @@ function applyUrlState(state) {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
+    cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
@@ -508,6 +515,7 @@ for (const btn of [
   $surveyToggle, $assessToggle, $allParcelsToggle,
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
+  $cityOwnedParcelsToggle,
   $contamToggle, $dimensionsToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
@@ -800,7 +808,8 @@ async function refreshZoning() {
  * session — see fetchAllAndCache in soda.js — so toggling on/off after
  * the first hit is instant.
  *
- * `name` is one of 'secondaryPlans' / 'infill' / 'mallsCorridors'.
+ * `name` is one of 'secondaryPlans' / 'infill' / 'mallsCorridors' /
+ * 'cityOwnedParcels'.
  */
 const POLICY_OVERLAY_CONFIG = {
   secondaryPlans: {
@@ -823,6 +832,13 @@ const POLICY_OVERLAY_CONFIG = {
     fetch:  fetchMallsAndCorridors,
     onLabel:  'Hide Malls/Corridors',
     offLabel: 'Malls/Corridors',
+  },
+  cityOwnedParcels: {
+    btn:    () => $cityOwnedParcelsToggle,
+    src:    'city-owned-parcels',
+    fetch:  fetchCityOwnedParcels,
+    onLabel:  'Hide City Parcels',
+    offLabel: 'City Parcels',
   },
 };
 

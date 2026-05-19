@@ -9,12 +9,12 @@
  * Empty / default values aren't emitted so a fresh page load
  * produces a clean URL.
  *
- * The schema covers 25 keys:
+ * The schema covers 26 keys:
  *   - 11 search inputs (lot, block, plan, desc, roll, addressFrom,
  *     addressTo, addressStreet, zoning, duMode, duMin)
- *   - 10 overlay toggles (survey, assess, allParcels, zoning,
- *     traffic, secondaryPlans, infill, mallsCorridors, contam,
- *     dimensions) — each a boolean
+ *   - 11 overlay toggles (survey, assess, allParcels, zoning,
+ *     traffic, secondaryPlans, infill, mallsCorridors,
+ *     cityOwnedParcels, contam, dimensions) — each a boolean
  *   - 2 sort (sortCol, sortDir)
  *   - 1 tab (property | sales) — Phase 7
  *   - 1 subjectRoll (the sales-tab subject parcel) — Phase 7 fu2
@@ -90,21 +90,22 @@ export const SCHEMA = {
   duMode:        { param: 'du', validate: oneOf(['zero', 'min']), format: (v) => v },
   duMin:         { param: 'dn', validate: cleanInt(1, 9999),      format: (v) => String(v) },
 
-  // --- Overlay toggles (10) ---
+  // --- Overlay toggles (11) ---
   // Each is a boolean; the caller-side captureState() only emits a
   // toggle when its current value differs from the page default
   // (assess starts ON; everything else starts OFF). That keeps
   // default-state URLs clean.
-  surveyToggle:         { param: 'sv', validate: cleanBool, format: formatBool },
-  assessToggle:         { param: 'av', validate: cleanBool, format: formatBool },
-  allParcelsToggle:     { param: 'ap', validate: cleanBool, format: formatBool },
-  zoningToggle:         { param: 'zo', validate: cleanBool, format: formatBool },
-  trafficToggle:        { param: 'tr', validate: cleanBool, format: formatBool },
-  secondaryPlansToggle: { param: 'sp', validate: cleanBool, format: formatBool },
-  infillToggle:         { param: 'if', validate: cleanBool, format: formatBool },
-  mallsCorridorsToggle: { param: 'mc', validate: cleanBool, format: formatBool },
-  contamToggle:         { param: 'cn', validate: cleanBool, format: formatBool },
-  dimensionsToggle:     { param: 'dm', validate: cleanBool, format: formatBool },
+  surveyToggle:           { param: 'sv', validate: cleanBool, format: formatBool },
+  assessToggle:           { param: 'av', validate: cleanBool, format: formatBool },
+  allParcelsToggle:       { param: 'ap', validate: cleanBool, format: formatBool },
+  zoningToggle:           { param: 'zo', validate: cleanBool, format: formatBool },
+  trafficToggle:          { param: 'tr', validate: cleanBool, format: formatBool },
+  secondaryPlansToggle:   { param: 'sp', validate: cleanBool, format: formatBool },
+  infillToggle:           { param: 'if', validate: cleanBool, format: formatBool },
+  mallsCorridorsToggle:   { param: 'mc', validate: cleanBool, format: formatBool },
+  cityOwnedParcelsToggle: { param: 'cp', validate: cleanBool, format: formatBool },
+  contamToggle:           { param: 'cn', validate: cleanBool, format: formatBool },
+  dimensionsToggle:       { param: 'dm', validate: cleanBool, format: formatBool },
 
   // --- Sort (2) ---
   sortCol: { param: 'sc', validate: oneOf(SORT_COLS),       format: (v) => v },
