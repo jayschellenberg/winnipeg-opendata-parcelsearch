@@ -949,6 +949,80 @@ const NEIGHBOURHOOD_INDIVIDUAL_LAYERS = [
   'neighbourhoods-label',
 ];
 
+/**
+ * Area-weighted polygon centroid via the shoelace formula.
+ * Input: a closed ring [[lon, lat], ..., [lon0, lat0]].
+ * Falls back to unweighted vertex mean if the signed area is
+ * effectively zero (degenerate ring) — that case shouldn't fire
+ * because cleanPolygon in the build script strips zero-area
+ * sub-rings, but the fallback keeps the function total.
+ */
+function polygonRingCentroid(ring) {
+  let sumX = 0, sumY = 0, twoArea = 0;
+  const n = ring.length - 1;
+  for (let i = 0; i < n; i++) {
+    const x1 = ring[i][0], y1 = ring[i][1];
+    const x2 = ring[i + 1][0], y2 = ring[i + 1][1];
+    const cross = x1 * y2 - x2 * y1;
+    twoArea += cross;
+    sumX += (x1 + x2) * cross;
+    sumY += (y1 + y2) * cross;
+  }
+  if (Math.abs(twoArea) < 1e-12) {
+    let mx = 0, my = 0;
+    for (let i = 0; i < n; i++) { mx += ring[i][0]; my += ring[i][1]; }
+    return [mx / n, my / n];
+  }
+  const factor = 1 / (3 * twoArea);
+  return [sumX * factor, sumY * factor];
+}
+
+/**
+ * Build a Point FeatureCollection — one centroid per polygon
+ * feature — so a MapLibre symbol layer placed on this FC renders
+ * exactly one label per source feature regardless of how many
+ * tiles the polygon spans. `labelKey` is the property name copied
+ * onto each output point (the text-field reads it).
+ */
+function buildLabelPointFc(polygonFc, labelKey) {
+  if (!polygonFc || !Array.isArray(polygonFc.features)) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  const features = [];
+  for (const f of polygonFc.features) {
+    const geom = f.geometry;
+    if (!geom) continue;
+    let outerRing = null;
+    if (geom.type === 'Polygon') {
+      outerRing = geom.coordinates?.[0];
+    } else if (geom.type === 'MultiPolygon') {
+      // Pick the largest-area polygon piece so the label lands on
+      // the dominant chunk rather than a tiny outlier island.
+      let bestArea = -Infinity, bestRing = null;
+      for (const poly of geom.coordinates) {
+        const ring = poly?.[0];
+        if (!ring || ring.length < 4) continue;
+        let twoArea = 0;
+        for (let i = 0, m = ring.length - 1; i < m; i++) {
+          twoArea += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+        }
+        const area = Math.abs(twoArea);
+        if (area > bestArea) { bestArea = area; bestRing = ring; }
+      }
+      outerRing = bestRing;
+    }
+    if (!outerRing || outerRing.length < 4) continue;
+    const [lon, lat] = polygonRingCentroid(outerRing);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lon, lat] },
+      properties: { [labelKey]: f.properties?.[labelKey] ?? '' },
+    });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
 function setNeighbourhoodLayerVisibility(layerIds, visible) {
   const v = visible ? 'visible' : 'none';
   for (const id of layerIds) {
@@ -1012,9 +1086,16 @@ async function setNeighbourhoodsMode(mode) {
     if (mode === 'clusters') {
       const fc = await fetchNeighbourhoodClusters();
       setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
+      // Build a 1-point-per-feature FC for the label layer so
+      // MapLibre places exactly one label per cluster (rather
+      // than one per tile-chunk that the polygon overlaps).
+      setOverlayData(map, 'wpg-neighbourhood-cluster-labels',
+        buildLabelPointFc(fc, 'cluster'));
     } else {
       const fc = await fetchNeighbourhoods();
       setOverlayData(map, 'wpg-neighbourhoods', fc);
+      setOverlayData(map, 'wpg-neighbourhood-labels',
+        buildLabelPointFc(fc, 'name'));
     }
     neighbourhoodsLoaded[fetchKey] = true;
     $neighbourhoodsToggle.textContent = restoreLabel;

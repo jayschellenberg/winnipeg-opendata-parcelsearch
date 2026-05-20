@@ -423,6 +423,16 @@ export function initMap(container, { onFeatureClick } = {}) {
       // Neighbourhoods → Off.
       map.addSource('wpg-neighbourhoods',         { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addSource('wpg-neighbourhood-clusters', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      // Label sources are SEPARATE FCs holding one Point per
+      // polygon (computed client-side from the polygon centroid).
+      // Without a dedicated point source, MapLibre's
+      // symbol-placement: 'point' renders one label per tile
+      // chunk a polygon overlaps — and large clusters like
+      // River Heights East span 3-4 tiles, producing duplicate
+      // on-screen labels. The point source guarantees one label
+      // per feature.
+      map.addSource('wpg-neighbourhood-cluster-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('wpg-neighbourhood-labels',         { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({
         id: 'neighbourhood-clusters-fill', type: 'fill', source: 'wpg-neighbourhood-clusters',
         layout: { visibility: 'none' },
@@ -447,18 +457,23 @@ export function initMap(container, { onFeatureClick } = {}) {
         paint: { 'line-color': '#0369a1', 'line-width': 2.5, 'line-opacity': 0.95 },
       });
       map.addLayer({
-        id: 'neighbourhood-clusters-label', type: 'symbol', source: 'wpg-neighbourhood-clusters',
+        // Sourced from the point-centroid FC (see comment on
+        // wpg-neighbourhood-cluster-labels above) so MapLibre
+        // renders exactly one label per cluster, not one per
+        // tile-chunk.
+        id: 'neighbourhood-clusters-label', type: 'symbol', source: 'wpg-neighbourhood-cluster-labels',
         layout: {
           visibility: 'none',
           'text-field': ['get', 'cluster'],
           'text-font': ['Open Sans Semibold'],
-          // Doubled from the original 10/13/15 stops so cluster
-          // names are legible from a city-wide viewport.
+          // Reduced 25% from the previous 20/26/30 stops at the
+          // user's request — still bold enough to read across a
+          // city-wide viewport without dominating the map.
           'text-size': [
             'interpolate', ['linear'], ['zoom'],
-            9,  20,
-            12, 26,
-            15, 30,
+            9,  15,
+            12, 20,
+            15, 22,
           ],
           'text-anchor': 'center',
           'text-allow-overlap': false,
@@ -491,7 +506,10 @@ export function initMap(container, { onFeatureClick } = {}) {
         paint: { 'line-color': '#0369a1', 'line-width': 1.5, 'line-opacity': 0.9 },
       });
       map.addLayer({
-        id: 'neighbourhoods-label', type: 'symbol', source: 'wpg-neighbourhoods',
+        // Sourced from the point-centroid FC so MapLibre renders
+        // exactly one label per neighbourhood, matching the cluster
+        // pattern above.
+        id: 'neighbourhoods-label', type: 'symbol', source: 'wpg-neighbourhood-labels',
         layout: {
           visibility: 'none',
           'text-field': ['get', 'name'],
