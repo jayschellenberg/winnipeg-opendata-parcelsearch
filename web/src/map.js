@@ -1453,6 +1453,27 @@ export function initMap(container, { onFeatureClick } = {}) {
       if (map.getLayer('esri-transportation')) map.moveLayer('esri-transportation');
       if (map.getLayer('esri-reference'))      map.moveLayer('esri-reference');
 
+      // Neighbourhood boundary lines + casing + labels need to sit
+      // ABOVE the Esri reference raster (street labels) so on
+      // Satellite view the cluster/hood names aren't obscured by
+      // street names and the dark teal borders aren't washed out
+      // by the lighter road overlay. Fills stay underneath because
+      // they're a faint sky-blue wash and shouldn't override the
+      // road network. Order in this block puts hood layers above
+      // cluster layers, with the label as the topmost element of
+      // each group.
+      const NEIGHBOURHOOD_TOP_LAYERS = [
+        'neighbourhood-clusters-line-casing',
+        'neighbourhood-clusters-line',
+        'neighbourhood-clusters-label',
+        'neighbourhoods-line-casing',
+        'neighbourhoods-line',
+        'neighbourhoods-label',
+      ];
+      for (const id of NEIGHBOURHOOD_TOP_LAYERS) {
+        if (map.getLayer(id)) map.moveLayer(id);
+      }
+
       resolve();
     });
   });
