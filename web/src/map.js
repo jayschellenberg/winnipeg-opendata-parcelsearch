@@ -428,13 +428,23 @@ export function initMap(container, { onFeatureClick } = {}) {
         layout: { visibility: 'none' },
         paint: { 'fill-color': '#0ea5e9', 'fill-opacity': 0.06 },
       });
+      // White casing UNDER the coloured line. Standard cartography
+      // trick: a wider, semi-opaque white stroke gives the
+      // narrower coloured line on top enough contrast to read
+      // against any basemap — the dark green/brown of Esri
+      // Imagery in particular swallows a single thin teal line.
+      map.addLayer({
+        id: 'neighbourhood-clusters-line-casing', type: 'line', source: 'wpg-neighbourhood-clusters',
+        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.7 },
+      });
       map.addLayer({
         id: 'neighbourhood-clusters-line', type: 'line', source: 'wpg-neighbourhood-clusters',
         layout: { visibility: 'none', 'line-join': 'round' },
         // Same teal as the individual-neighbourhood line. Slightly
         // thicker (2 px vs 1 px) because clusters are broader,
         // higher-level boundaries and deserve a touch more emphasis.
-        paint: { 'line-color': '#0369a1', 'line-width': 2, 'line-opacity': 0.75 },
+        paint: { 'line-color': '#0369a1', 'line-width': 2.5, 'line-opacity': 0.95 },
       });
       map.addLayer({
         id: 'neighbourhood-clusters-label', type: 'symbol', source: 'wpg-neighbourhood-clusters',
@@ -442,11 +452,13 @@ export function initMap(container, { onFeatureClick } = {}) {
           visibility: 'none',
           'text-field': ['get', 'cluster'],
           'text-font': ['Open Sans Semibold'],
+          // Doubled from the original 10/13/15 stops so cluster
+          // names are legible from a city-wide viewport.
           'text-size': [
             'interpolate', ['linear'], ['zoom'],
-            9,  10,
-            12, 13,
-            15, 15,
+            9,  20,
+            12, 26,
+            15, 30,
           ],
           'text-anchor': 'center',
           'text-allow-overlap': false,
@@ -455,8 +467,10 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
         paint: {
           'text-color': '#0c4a6e',
-          'text-halo-color': '#f0f9ff',
-          'text-halo-width': 1.4,
+          // White halo at 2.5 px instead of pale blue at 1.4 — text
+          // pops on Carto Positron AND Esri Imagery.
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 2.5,
         },
       });
       map.addLayer({
@@ -464,10 +478,17 @@ export function initMap(container, { onFeatureClick } = {}) {
         layout: { visibility: 'none' },
         paint: { 'fill-color': '#0ea5e9', 'fill-opacity': 0.06 },
       });
+      // White casing under the individual-hood line (see comment
+      // on the cluster casing above for rationale).
+      map.addLayer({
+        id: 'neighbourhoods-line-casing', type: 'line', source: 'wpg-neighbourhoods',
+        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 3.5, 'line-opacity': 0.65 },
+      });
       map.addLayer({
         id: 'neighbourhoods-line', type: 'line', source: 'wpg-neighbourhoods',
         layout: { visibility: 'none', 'line-join': 'round' },
-        paint: { 'line-color': '#0369a1', 'line-width': 1, 'line-opacity': 0.75 },
+        paint: { 'line-color': '#0369a1', 'line-width': 1.5, 'line-opacity': 0.9 },
       });
       map.addLayer({
         id: 'neighbourhoods-label', type: 'symbol', source: 'wpg-neighbourhoods',
@@ -475,11 +496,12 @@ export function initMap(container, { onFeatureClick } = {}) {
           visibility: 'none',
           'text-field': ['get', 'name'],
           'text-font': ['Open Sans Semibold'],
+          // Doubled from 9/11/13 → 18/22/26.
           'text-size': [
             'interpolate', ['linear'], ['zoom'],
-            12, 9,
-            14, 11,
-            17, 13,
+            12, 18,
+            14, 22,
+            17, 26,
           ],
           'text-anchor': 'center',
           'text-allow-overlap': false,
@@ -489,8 +511,8 @@ export function initMap(container, { onFeatureClick } = {}) {
         minzoom: 12,
         paint: {
           'text-color': '#0c4a6e',
-          'text-halo-color': '#f0f9ff',
-          'text-halo-width': 1.4,
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 2.5,
         },
       });
 

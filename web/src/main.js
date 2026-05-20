@@ -938,11 +938,13 @@ async function toggleTransit() {
 
 const NEIGHBOURHOOD_CLUSTER_LAYERS = [
   'neighbourhood-clusters-fill',
+  'neighbourhood-clusters-line-casing',
   'neighbourhood-clusters-line',
   'neighbourhood-clusters-label',
 ];
 const NEIGHBOURHOOD_INDIVIDUAL_LAYERS = [
   'neighbourhoods-fill',
+  'neighbourhoods-line-casing',
   'neighbourhoods-line',
   'neighbourhoods-label',
 ];
