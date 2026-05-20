@@ -831,20 +831,47 @@ export function initMap(container, { onFeatureClick } = {}) {
         layout: { visibility: 'visible' },
         // Yellow highlight (Mat. yellow-A400) lifted from the
         // Manitoba sister app so a selected assessment parcel
-        // reads identically across both tools.
+        // reads identically across both tools. Fill opacity
+        // bumped a touch above Manitoba's 0.3 because Winnipeg
+        // parcels are often small enough that a faint yellow
+        // wash gets lost on a busy basemap.
         paint: {
           'fill-color': '#ffea00',
-          'fill-opacity': 0.3,
+          'fill-opacity': 0.42,
+        },
+      });
+      // Dark navy outer casing UNDER the yellow dashed line.
+      // Two-layer "construction tape" treatment so the parcel
+      // outline reads on every basemap: the solid dark stroke
+      // gives the shape on bright satellite/Carto AND on shadowed
+      // satellite, and the yellow dashes painted on top of it
+      // mark the polygon as a selection (not just any random
+      // boundary). Width is wider than the dashed yellow on top
+      // so a hairline of dark shows on either side of every dash.
+      map.addLayer({
+        id: 'assess-context-line-outer',
+        type: 'line',
+        source: 'assess-context',
+        layout: {
+          visibility: 'visible',
+          'line-cap': 'butt',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': '#0a1530',
+          'line-width': 4.5,
+          'line-opacity': 0.85,
         },
       });
       map.addLayer({
         id: 'assess-context-line',
         type: 'line',
         source: 'assess-context',
-        // Dashed outline so the highlight reads as a "selection"
-        // rather than competing with solid parcel-fabric lines.
-        // Manitoba uses [3, 2] (3-width dash, 2-width gap) at
-        // 2.5 px stroke — match exactly.
+        // Dashed yellow on top of the dark casing — reads as
+        // selection tape against the continuous dark stroke
+        // underneath. Manitoba's dasharray [3, 2] preserved,
+        // width bumped from 2.5 → 3 so the dashes register on
+        // satellite at higher zoom.
         layout: {
           visibility: 'visible',
           'line-cap': 'butt',
@@ -852,7 +879,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
         paint: {
           'line-color': '#ffea00',
-          'line-width': 2.5,
+          'line-width': 3,
           'line-dasharray': [3, 2],
         },
       });

@@ -681,8 +681,13 @@ function setParcels(surveyFc, assessFc = EMPTY_FC) {
  */
 function toggleLayer(which) {
   const btn = which === 'survey' ? $surveyToggle : $assessToggle;
-  const fillId = which === 'survey' ? 'parcel-fill' : 'assess-context-fill';
-  const lineId = which === 'survey' ? 'parcel-line' : 'assess-context-line';
+  // Layer IDs per group. The assess group has THREE layers since
+  // the yellow highlight uses a fill + dark outer casing + yellow
+  // dashed inner — all three need to flip together so the
+  // selection vanishes cleanly when the user hides assessment.
+  const layerIds = which === 'survey'
+    ? ['parcel-fill', 'parcel-line']
+    : ['assess-context-fill', 'assess-context-line-outer', 'assess-context-line'];
   const labelOn = which === 'survey' ? 'Hide Survey' : 'Hide Assessment';
   const labelOff = which === 'survey' ? 'Survey' : 'Assessment';
   const wasActive = btn.classList.contains('active');
@@ -692,8 +697,9 @@ function toggleLayer(which) {
   btn.textContent = nowVisible ? labelOn : labelOff;
   mapReady.then(() => {
     const v = nowVisible ? 'visible' : 'none';
-    if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', v);
-    if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', v);
+    for (const id of layerIds) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+    }
   });
 }
 
