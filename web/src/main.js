@@ -370,17 +370,31 @@ if ($psOpenPpd) {
   $psOpenPpd.title = 'Copies this parcel’s civic address to clipboard, then opens the City PP&D Property Map in a new tab. Paste into PP&D’s search bar to view the parcel on the City’s higher-resolution ortho imagery.';
 }
 
-// Hide-map toggle. Adds .map-collapsed to the workspace so the
-// .map-pane drops out of layout and the table claims the full
-// width. Choice persists to localStorage so a page refresh keeps
-// it consistent. Restoring the map needs a deferred map.resize()
-// so MapLibre recomputes the canvas dimensions.
-const MAP_HIDE_KEY = 'wps_map_collapsed_v1';
-const $workspaceEl = document.getElementById('workspace');
-const $mapToggleBtn = document.getElementById('map-toggle-btn');
+// Hide / Expand map toggles. Hide adds .map-collapsed to the
+// workspace so the .map-pane drops out of layout and the table
+// claims the full width. Expand adds .map-expanded so the map
+// drops its 16:9 ratio + width cap and fills the viewport
+// vertically. Mutually exclusive — apply* helpers below clear
+// one when setting the other so the workspace never carries
+// both classes. Each choice persists to its own localStorage
+// key. Restoring or expanding the map needs a deferred
+// map.resize() so MapLibre recomputes the canvas.
+const MAP_HIDE_KEY   = 'wps_map_collapsed_v1';
+const MAP_EXPAND_KEY = 'wps_map_expanded_v1';
+const $workspaceEl   = document.getElementById('workspace');
+const $mapToggleBtn  = document.getElementById('map-toggle-btn');
 const $mapToggleLabel = $mapToggleBtn?.querySelector('.map-toggle-label');
+const $mapExpandBtn  = document.getElementById('map-expand-btn');
+const $mapExpandLabel = $mapExpandBtn?.querySelector('.map-expand-label');
+
 function applyMapCollapsed(collapsed) {
   if (!$workspaceEl || !$mapToggleBtn) return;
+  // Hide and Expand are mutually exclusive — hiding implicitly
+  // un-expands so we don't leave the workspace carrying two
+  // contradictory layout classes.
+  if (collapsed && $workspaceEl.classList.contains('map-expanded')) {
+    applyMapExpanded(false, { silent: true });
+  }
   $workspaceEl.classList.toggle('map-collapsed', collapsed);
   $mapToggleBtn.setAttribute('aria-pressed', String(collapsed));
   if ($mapToggleLabel) $mapToggleLabel.textContent = collapsed ? 'Show map' : 'Hide map';
@@ -389,6 +403,26 @@ function applyMapCollapsed(collapsed) {
   }
   try { localStorage.setItem(MAP_HIDE_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
 }
+
+function applyMapExpanded(expanded, { silent = false } = {}) {
+  if (!$workspaceEl || !$mapExpandBtn) return;
+  // Expand and Hide are mutually exclusive — expanding implicitly
+  // un-hides so a refresh that restored both prefs from localStorage
+  // doesn't render with the map both hidden AND expanded.
+  if (expanded && $workspaceEl.classList.contains('map-collapsed')) {
+    applyMapCollapsed(false);
+  }
+  $workspaceEl.classList.toggle('map-expanded', expanded);
+  $mapExpandBtn.setAttribute('aria-pressed', String(expanded));
+  if ($mapExpandLabel) $mapExpandLabel.textContent = expanded ? 'Restore map' : 'Expand map';
+  // MapLibre needs to recompute its canvas size now that the
+  // container's aspect-ratio + width-cap have changed.
+  mapReady.then(() => map.resize());
+  if (!silent) {
+    try { localStorage.setItem(MAP_EXPAND_KEY, expanded ? '1' : '0'); } catch { /* ignore */ }
+  }
+}
+
 if ($mapToggleBtn) {
   $mapToggleBtn.addEventListener('click', () => {
     const next = !$workspaceEl?.classList.contains('map-collapsed');
@@ -396,6 +430,16 @@ if ($mapToggleBtn) {
   });
   try {
     if (localStorage.getItem(MAP_HIDE_KEY) === '1') applyMapCollapsed(true);
+  } catch { /* ignore */ }
+}
+
+if ($mapExpandBtn) {
+  $mapExpandBtn.addEventListener('click', () => {
+    const next = !$workspaceEl?.classList.contains('map-expanded');
+    applyMapExpanded(next);
+  });
+  try {
+    if (localStorage.getItem(MAP_EXPAND_KEY) === '1') applyMapExpanded(true);
   } catch { /* ignore */ }
 }
 

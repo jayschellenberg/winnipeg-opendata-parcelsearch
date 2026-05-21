@@ -273,10 +273,26 @@ body {
 }
 
 /* Hide-map toggle (Manitoba alignment). When the user clicks the
-   Hide map button in the results toolbar, .map-collapsed lands on
-   the workspace and the map-pane drops out of the layout so the
+   Hide map button in the topbar, .map-collapsed lands on the
+   workspace and the map-pane drops out of the layout so the
    table claims the full workspace. */
 .workspace.map-collapsed .map-pane { display: none; }
+
+/* Expand-map toggle (Manitoba alignment). When the user clicks
+   the Expand map button in the topbar, .map-expanded lands on
+   the workspace. The map drops its 16:9 aspect-ratio and width
+   cap so it claims the workspace's full horizontal width and
+   fills the viewport vertically. The table still flows below
+   the map; the user scrolls the page to reach it. Mutually
+   exclusive with .map-collapsed — main.js's apply* helpers
+   clear one when setting the other. Generate Map captures the
+   canvas as-is, so an expanded map produces a wide PNG snapshot;
+   restoring the default brings the 16:9 framing back. */
+.workspace.map-expanded .map-pane {
+  max-width: none;
+  aspect-ratio: auto;
+  height: calc(100vh - 16px);
+}
 
 .table-pane {
   /* Padding matches what #results-wrap used to carry; the table
@@ -387,12 +403,14 @@ body {
   min-width: 0;
 }
 
-/* Action row keeps Search / Clear / Export CSV together as a group. */
+/* Action row keeps Search / Clear / Export CSV together as a group.
+   Tightened to match Manitoba's denser sidebar spacing — gap 4 px
+   between buttons, top margin 4 px (was 6 each). */
 .sidebar .action-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 .sidebar .action-row button {
@@ -400,18 +418,23 @@ body {
 }
 
 /* Map-overlay buttons sit in a 2-column grid inside the sidebar so the
-   six toggles stay compact. Each button stretches to its grid cell. */
+   six toggles stay compact. Each button stretches to its grid cell.
+   Sizing matched to Manitoba's overlay grid: 3 px row / 4 px col gap,
+   6 px vertical × 8 px horizontal padding, 12 px font at weight 500
+   so half-width labels read cleanly even at 2-line wraps. */
 .sidebar .overlay-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 3px 4px;
 }
 
 .sidebar .overlay-grid button,
 .sidebar .overlay-grid .overlay-link {
   width: 100%;
-  padding: 8px 6px;
-  font-size: 12.5px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 /* Span-the-row helper for the orphan button at the end of each
@@ -1475,6 +1498,29 @@ body {
 .map-toggle-btn svg {
   width: 14px;
   height: 14px;
+}
+
+/* Topbar variant of .map-toggle-btn — sits in the dark navy
+   topbar so it needs a translucent dark fill and light text
+   instead of the light-toolbar default above. Mirrors the
+   .topbar-link weight so the cluster reads as one navbar group.
+   The base .map-toggle-btn rules above still apply (display,
+   padding, gap, font-size, font-family); only the colours
+   change. */
+.topbar .map-toggle-btn.topbar-map-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #d8e3f4;
+}
+.topbar .map-toggle-btn.topbar-map-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #fff;
+}
+.topbar .map-toggle-btn.topbar-map-btn[aria-pressed="true"] {
+  background: rgba(37, 99, 235, 0.28);
+  border-color: var(--color-accent-500, #2563eb);
+  color: #fff;
 }
 
 /* Columns gear button + dropdown popover. The popover is
