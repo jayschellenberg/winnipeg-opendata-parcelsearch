@@ -83,7 +83,7 @@ const USER_SEARCH_LIMIT = 1000;
 const SODA_PAGE_SIZE = 5000;
 const SODA_MAX_ROWS = 100000;
 const TRAFFIC_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV4';
+const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV5';
 
 /**
  * Query Survey Parcels by attribute. Any provided field is partial-matched
@@ -1133,9 +1133,33 @@ function roadNameAliases(p) {
   aliases.add(normalizeStreetName([p.st_name, p.st_type, p.st_dir].filter(Boolean).join(' ')));
   aliases.add(normalizeStreetName([p.st_name, p.st_type].filter(Boolean).join(' ')));
   aliases.add(normalizeStreetName(p.st_name));
+  // Apply STREET_RENAMES so legacy datasets that still
+  // reference the old name (e.g. Midblock Traffic Counts study
+  // logs created before the rename) can still join to the
+  // current road geometry. Bidirectional — also handles the
+  // rare case where the legacy dataset has switched but the
+  // Road Network hasn't.
+  for (const a of [...aliases]) {
+    const renamed = STREET_RENAMES.get(a);
+    if (renamed) aliases.add(renamed);
+  }
   aliases.delete('');
   return aliases;
 }
+
+// Historical Winnipeg street renames. Each entry maps one
+// normalized name to an alias added when the road network has
+// that name. Listed as ordered pairs so adding a new rename is
+// a two-line append. Apply ONLY at the road-index alias step
+// (not in normalizeStreetName) so unrelated address-search
+// logic is untouched.
+const STREET_RENAMES = new Map([
+  // Bishop Grandin Boulevard → Abinojii Mikanah (City of
+  // Winnipeg renamed 2024-06; Midblock Traffic Counts
+  // dataset still uses "Bishop Grandin Blvd" for all studies).
+  ['ABINOJII MIKANAH',    'BISHOP GRANDIN BLVD'],
+  ['BISHOP GRANDIN BLVD', 'ABINOJII MIKANAH'],
+]);
 
 function findStreetCrossing(mainGroup, crossStreet, roadIndex, cache) {
   const crossKey = normalizeStreetName(crossStreet);
