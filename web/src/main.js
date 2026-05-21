@@ -334,6 +334,42 @@ if ($psClose && $parcelSummary) {
   $psClose.addEventListener('click', () => { $parcelSummary.hidden = true; });
 }
 
+// PP&D Property Map link in the parcel-summary card. PP&D's
+// legacy page can't be deep-linked with parameters, so the click
+// copies the currently-shown civic address to the clipboard
+// FIRST, then the link's normal target="_blank" navigates. User
+// pastes into PP&D's search bar to view the parcel on the City's
+// higher-resolution ortho imagery.
+const $psOpenPpd = document.getElementById('ps-open-ppd');
+if ($psOpenPpd) {
+  $psOpenPpd.addEventListener('click', () => {
+    const addressEl = document.getElementById('ps-address');
+    const address = (addressEl?.textContent || '').trim();
+    if (!address || address === '—') return;
+    const writeClipboard = (text) => {
+      if (navigator.clipboard?.writeText) {
+        return navigator.clipboard.writeText(text).catch(() => false);
+      }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        return Promise.resolve(true);
+      } catch { return Promise.resolve(false); }
+    };
+    writeClipboard(address);
+    const original = $psOpenPpd.textContent;
+    $psOpenPpd.textContent = 'Copied — paste in PP&D';
+    setTimeout(() => { $psOpenPpd.textContent = original; }, 1800);
+  });
+  $psOpenPpd.title = 'Copies this parcel’s civic address to clipboard, then opens the City PP&D Property Map in a new tab. Paste into PP&D’s search bar to view the parcel on the City’s higher-resolution ortho imagery.';
+}
+
 // Hide-map toggle. Adds .map-collapsed to the workspace so the
 // .map-pane drops out of layout and the table claims the full
 // width. Choice persists to localStorage so a page refresh keeps

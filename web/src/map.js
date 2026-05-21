@@ -1231,6 +1231,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         const center = polygonBboxMidpoint(rendered?.geometry)
           ?? [e.lngLat.lng, e.lngLat.lat];
         wireCoordsCopy(citywideClickPopup, center);
+        wirePpdAddressCopy(citywideClickPopup);
       });
 
       // Click a contaminated-site circle → standalone popup with the
@@ -1811,6 +1812,12 @@ function citywideParcelHtml(p) {
     const url = `https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
     actions.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Assessment →</a>`);
   }
+  if (address) {
+    // PP&D Property Map doesn't accept URL params, so this link
+    // copies the civic address to clipboard FIRST, then opens
+    // the legacy map. User pastes into PP&D's search box.
+    actions.push(`<a href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" class="parcel-ppd-copy" data-address="${escapeHtml(address)}" title="Copy address to clipboard, then open the City PP&D Property Map. Paste into PP&D's search bar to view this parcel on City ortho imagery.">PP&amp;D Map →</a>`);
+  }
   actions.push(`<a href="#" class="parcel-coords-copy" role="button" title="Copy parcel centroid (lat, lng) to clipboard">Coordinates</a>`);
   if (actions.length) {
     lines.push(actions.join(' &nbsp;·&nbsp; '));
@@ -1882,6 +1889,44 @@ function wireCoordsCopy(popup, lngLat) {
         onSuccess();
       } catch { onFailure(); }
     }
+  });
+}
+
+/**
+ * Wire any `.parcel-ppd-copy` anchor inside the given popup so a
+ * click copies the anchor's `data-address` to clipboard before
+ * navigation. The link's normal `target="_blank"` + href opens
+ * PP&D Property Map in a new tab; this just primes the clipboard
+ * so the user can paste straight into PP&D's search bar (their
+ * legacy page doesn't accept URL parameters for pre-fill).
+ */
+function wirePpdAddressCopy(popup) {
+  if (!popup) return;
+  const el = popup.getElement?.();
+  const anchor = el?.querySelector('.parcel-ppd-copy');
+  if (!anchor) return;
+  const address = anchor.getAttribute('data-address');
+  if (!address) return;
+  anchor.addEventListener('click', () => {
+    // Don't preventDefault — let the link still open PP&D in a
+    // new tab. Just copy the address synchronously beforehand.
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(address).catch(() => { /* ignore */ });
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = address;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch { /* ignore */ }
+    }
+    const original = anchor.textContent;
+    anchor.textContent = 'Copied — paste in PP&D';
+    setTimeout(() => { anchor.textContent = original; }, 1800);
   });
 }
 
