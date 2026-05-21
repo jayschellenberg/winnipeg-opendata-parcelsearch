@@ -2085,14 +2085,43 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
   return featureCollection(merged, meta);
 }
 
-async function fetchSoda(url) {
+async function fetchSoda(url, { retries = 2, retryDelayMs = 1200 } = {}) {
   const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, { headers });
+      if (res.ok) return await res.json();
+      const body = await res.text();
+      // 5xx is a Socrata-side blip — backend timeout, planner
+      // crash, transient internal error like the "Internal error:
+      // please include code <uuid>" message they return. Retry
+      // once or twice with a short delay before bubbling up; most
+      // of these clear within a couple seconds.
+      // 4xx is our fault (bad query, missing token, etc.) — don't
+      // retry, surface immediately so the user sees the real
+      // problem.
+      if (res.status >= 500 && attempt < retries) {
+        lastErr = new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
+        console.warn(`fetchSoda: retrying after ${res.status} (attempt ${attempt + 1}/${retries + 1})`);
+        await new Promise((r) => setTimeout(r, retryDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
+    } catch (err) {
+      // Network errors (fetch rejection) are also retryable — DNS
+      // hiccup, flaky wifi, etc.
+      const isNetworkError = err instanceof TypeError;
+      if (isNetworkError && attempt < retries) {
+        lastErr = err;
+        console.warn(`fetchSoda: retrying after network error (attempt ${attempt + 1}/${retries + 1})`, err);
+        await new Promise((r) => setTimeout(r, retryDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
   }
-  return res.json();
+  throw lastErr || new Error('SODA: exhausted retries');
 }
 
 async function fetchSodaPaged(baseUrl, params, options = {}) {
