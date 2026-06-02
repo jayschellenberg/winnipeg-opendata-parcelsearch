@@ -473,7 +473,16 @@ function applyUrlState(state) {
   if ('block' in state)         $block.value         = state.block;
   if ('plan' in state)          $plan.value          = state.plan;
   if ('desc' in state)          $desc.value          = state.desc;
-  if ('roll' in state)          $roll.value          = state.roll;
+  if ('roll' in state) {
+    $roll.value = state.roll;
+    // The Roll # input is a hidden <input> backing a chip-input UI
+    // whose `values` array is captured in a closure at init time
+    // — a plain `el.value = …` assignment updates the DOM but not
+    // the chip layer, so a shared URL like `?r=12345,67890` would
+    // leave the roll field visually empty. The reseed event tells
+    // the chip layer to re-read the hidden value and re-render.
+    $roll.dispatchEvent(new CustomEvent('chip-input:reseed', { bubbles: true }));
+  }
   if ('addressFrom' in state)   $addressFrom.value   = state.addressFrom;
   if ('addressTo' in state)     $addressTo.value     = state.addressTo;
   if ('addressStreet' in state) $addressStreet.value = state.addressStreet;
