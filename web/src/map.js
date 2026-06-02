@@ -1232,6 +1232,7 @@ export function initMap(container, { onFeatureClick } = {}) {
           ?? [e.lngLat.lng, e.lngLat.lat];
         wireCoordsCopy(citywideClickPopup, center);
         wirePpdAddressCopy(citywideClickPopup);
+        wireRollCopy(citywideClickPopup);
       });
 
       // Click a contaminated-site circle → standalone popup with the
@@ -1805,7 +1806,13 @@ function citywideParcelHtml(p) {
   const roll = p.roll_number ? String(p.roll_number) : null;
   const address = p.full_address || null;
   const lines = [];
-  if (roll) lines.push(`<strong>Roll #</strong> ${escapeHtml(roll)}`);
+  if (roll) {
+    // Roll # value is a click-to-copy link styled with a subtle
+    // dotted underline so the user sees it's actionable without
+    // it screaming for attention. Title attribute spells out
+    // the copy behaviour. wireRollCopy below handles the click.
+    lines.push(`<strong>Roll #</strong> <a href="#" class="parcel-roll-copy" data-roll="${escapeHtml(roll)}" title="Copy roll number to clipboard" style="color:inherit;border-bottom:1px dotted currentColor;text-decoration:none">${escapeHtml(roll)}</a>`);
+  }
   if (address) lines.push(escapeHtml(address));
   const actions = [];
   if (roll) {
@@ -1880,6 +1887,45 @@ function wireCoordsCopy(popup, lngLat) {
       try {
         const ta = document.createElement('textarea');
         ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        onSuccess();
+      } catch { onFailure(); }
+    }
+  });
+}
+
+/**
+ * Wire a `.parcel-roll-copy` anchor in the popup so a click
+ * copies the roll number to the clipboard and flashes "Copied!"
+ * for ~1.5 s before reverting. Same UX as wireCoordsCopy. The
+ * data-roll attribute on the anchor carries the actual value.
+ */
+function wireRollCopy(popup) {
+  if (!popup) return;
+  const el = popup.getElement?.();
+  const anchor = el?.querySelector('.parcel-roll-copy');
+  if (!anchor) return;
+  const roll = anchor.getAttribute('data-roll');
+  if (!roll) return;
+  anchor.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    const original = anchor.textContent;
+    const onSuccess = () => {
+      anchor.textContent = 'Copied!';
+      setTimeout(() => { anchor.textContent = original; }, 1500);
+    };
+    const onFailure = () => { anchor.textContent = 'Copy failed'; };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(roll).then(onSuccess, onFailure);
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = roll;
         ta.style.position = 'fixed';
         ta.style.opacity = '0';
         document.body.appendChild(ta);
