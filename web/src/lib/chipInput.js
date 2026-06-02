@@ -12,14 +12,20 @@
  *   </div>
  *
  * Chips render as <span class="chip"> children inserted before the
- * text input. The text input is where new values are typed; Enter
- * or comma commits, Backspace on empty input removes the last
- * chip, paste of "1,2,3" expands into three chips immediately.
+ * text input. The text input is where new values are typed; Enter,
+ * comma, space, OR ampersand commits, Backspace on empty input
+ * removes the last chip, paste of multi-token text (any of the
+ * accepted delimiters) expands into chips immediately.
  *
  * Callers can pass `onEnterEmpty` to forward Enter-on-empty events
  * (the existing main.js binds Enter-runs-search on every search
  * input; this hook keeps that behaviour without main.js needing
  * to know about the chip-input details).
+ *
+ * Behaviour ported verbatim from the Manitoba sister app
+ * (mb-opendata-parcelsearch). Tab is NOT a search trigger — it
+ * just commits any in-progress text via the blur safety net and
+ * moves focus, leaving the user to press Enter or click Search.
  */
 
 /**
@@ -40,17 +46,18 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
   // calling init.
   let values = parseList(hidden.value);
 
-  // Treat commas, semicolons, ampersands, and any whitespace as
-  // value separators. Lets the user paste "12345 & 67890",
-  // "12345 67890", "12345, 67890", "12345; 67890", or any mix
-  // and get one chip per token. soda.js's rollClause already
-  // tokenizes on [\s,;] on the query side, so this just teaches
-  // the chip UI the same tolerance plus the "&" the user uses
-  // when copying from sale listings or address-block notes.
-  const SPLIT_RE = /[\s,;&]+/;
   function parseList(s) {
+    // Split on commas, ampersands, OR any whitespace (spaces, tabs,
+    // newlines). Lets the user paste a column copied straight out
+    // of a spreadsheet — each cell ends up on its own row separated
+    // by a newline — and have every value land as its own chip
+    // without any pre-formatting. Ampersand covers the "Roll A &
+    // Roll B" style listing some folks use when typing two roll
+    // numbers from memory. Multiple consecutive delimiters are
+    // collapsed by the `+` quantifier so "  a,, b\n\nc & d " becomes
+    // ['a', 'b', 'c', 'd'].
     return String(s ?? '')
-      .split(SPLIT_RE)
+      .split(/[,&\s]+/)
       .map((x) => x.trim())
       .filter(Boolean);
   }
@@ -72,17 +79,19 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
       const chip = document.createElement('span');
       chip.className = 'chip';
       // Chip text sits in its own span so the copy + remove buttons
-      // can flank it without textContent-replacement clobbering them
-      // on the "Copied!" feedback path.
-      const text = document.createElement('span');
-      text.className = 'chip-text';
-      text.textContent = v;
-      chip.appendChild(text);
-      // Copy button — copies this chip's value to clipboard.
+      // can flank it without textContent-replacement (e.g. the
+      // "Copied!" flash) clobbering them.
+      const textEl = document.createElement('span');
+      textEl.className = 'chip-text';
+      textEl.textContent = v;
+      chip.appendChild(textEl);
+      // Copy-to-clipboard button. Useful for pasting a roll #
+      // straight into another tool / a report. Clipboard SVG
+      // flashes to a check for ~1.2 s on success.
       const copyBtn = document.createElement('button');
       copyBtn.type = 'button';
       copyBtn.className = 'chip-copy';
-      copyBtn.setAttribute('aria-label', `Copy ${v}`);
+      copyBtn.setAttribute('aria-label', `Copy ${v} to clipboard`);
       copyBtn.title = `Copy ${v} to clipboard`;
       copyBtn.innerHTML = clipboardSvg();
       copyBtn.addEventListener('click', (e) => {
@@ -90,30 +99,29 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
         copyChipText(v, copyBtn);
       });
       chip.appendChild(copyBtn);
-      // Remove button.
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'chip-remove';
-      removeBtn.setAttribute('aria-label', `Remove ${v}`);
-      removeBtn.textContent = '×';
-      removeBtn.addEventListener('click', (e) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chip-remove';
+      btn.setAttribute('aria-label', `Remove ${v}`);
+      btn.textContent = '×';
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
         removeValue(v);
       });
-      chip.appendChild(removeBtn);
+      chip.appendChild(btn);
       wrapperEl.insertBefore(chip, textInput);
     }
   }
 
   function clipboardSvg() {
-    return '<svg viewBox="0 0 16 16" aria-hidden="true">'
+    return '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">'
       + '<rect x="4" y="3" width="8" height="11" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/>'
       + '<rect x="6" y="1.5" width="4" height="2.5" rx="0.6" fill="currentColor"/>'
       + '</svg>';
   }
 
   function checkSvg() {
-    return '<svg viewBox="0 0 16 16" aria-hidden="true">'
+    return '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">'
       + '<path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
       + '</svg>';
   }
@@ -130,6 +138,7 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(flash, () => { /* swallow */ });
     } else {
+      // Legacy / non-secure-context fallback: hidden textarea + execCommand.
       try {
         const ta = document.createElement('textarea');
         ta.value = text;
@@ -169,14 +178,6 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
     return added;
   }
 
-  // Keys that should commit the current token into a chip:
-  // comma, semicolon, ampersand, and any whitespace key (space).
-  // Tab/Enter handled separately so they keep their default
-  // focus-shift / form-submit semantics. Space here means the
-  // literal " " key — fine for roll numbers since they're digit-
-  // only; if the chipInput is reused for a free-text field later,
-  // pass an opt-out via opts.
-  const COMMIT_KEYS = new Set([',', ';', '&', ' ']);
   textInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       const committed = commit();
@@ -188,18 +189,13 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
         e.preventDefault();
         onEnterEmpty();
       }
-    } else if (e.key === 'Tab' && !e.shiftKey) {
-      // Plain Tab (not Shift+Tab) acts as "I'm done entering this
-      // list — finish it and run". Commits any in-progress text
-      // first so a half-typed token chips before focus leaves,
-      // then triggers onEnterEmpty (the same hook Enter uses) so
-      // a paste-and-Tab flow runs search the same way paste-and-
-      // Enter would. Doesn't preventDefault — Tab still moves
-      // focus to the next field. Shift+Tab is left alone so the
-      // user can navigate backwards without firing search.
-      commit();
-      if (values.length > 0 && onEnterEmpty) onEnterEmpty();
-    } else if (COMMIT_KEYS.has(e.key)) {
+    } else if (e.key === ',' || e.key === ' ' || e.key === '&') {
+      // Comma, space, OR ampersand commits the current token. Roll
+      // numbers are numeric so none of these are real characters
+      // inside a value — and matching the same separator set the
+      // parser accepts keeps the mental model simple ("any of those
+      // ends a chip"). Ampersand covers the "Roll A & Roll B"
+      // listing style.
       e.preventDefault();
       commit();
     } else if (e.key === 'Backspace' && !textInput.value && values.length) {
@@ -215,16 +211,18 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
     setTimeout(() => { commit(); }, 50);
   });
 
-  // Paste of multi-token text expands immediately. Any separator
-  // in SPLIT_RE (whitespace, comma, semicolon, ampersand) triggers
-  // the split — so "12345 67890", "12345 & 67890", "12345,67890",
-  // and "12345; 67890" all expand to two chips on paste. The
-  // native paste fires the keydown listener too, but the input
-  // value hasn't updated yet at that point — easier to handle
-  // here.
+  // Paste of multi-value text expands immediately. The native
+  // paste fires the keydown listener too, but the input value
+  // hasn't updated yet at that point — easier to handle here.
+  // Triggered on any delimiter we know about (comma, ampersand, OR
+  // any whitespace including newlines / tabs) so a column copied
+  // straight out of a spreadsheet — one value per row separated
+  // by newlines — explodes into one chip per row. Plain
+  // single-token pastes fall through to the browser's default.
   textInput.addEventListener('paste', (e) => {
     const text = e.clipboardData?.getData('text');
-    if (!text || !SPLIT_RE.test(text)) return; // single token → let default handle
+    if (!text) return;
+    if (!/[,&\s]/.test(text)) return; // single token → let default handle
     e.preventDefault();
     const before = textInput.value;
     textInput.value = before + text;
@@ -236,6 +234,24 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
   wrapperEl.addEventListener('click', (e) => {
     if (e.target.closest('.chip-remove')) return;
     textInput.focus();
+  });
+
+  // External-update hook. The hidden input's `values` array is held
+  // in this function's closure — once initChipInput has run, later
+  // code that does `hidden.value = 'X'` (e.g. main.js's
+  // applyUrlStateToInputs on page load with a `?r=...` URL) updates
+  // the DOM but NOT this closure, so the chip layer keeps showing
+  // whatever was first parsed (often nothing on page load). Listen
+  // for a `chip-input:reseed` event on the hidden input so callers
+  // who set the value externally can ask the chip layer to re-read
+  // and re-render. Not wired to plain `input`/`change` events
+  // because `sync()` above dispatches those itself; reusing them
+  // would create a feedback loop.
+  hidden.addEventListener('chip-input:reseed', () => {
+    const next = parseList(hidden.value);
+    if (next.join(',') === values.join(',')) return;
+    values = next;
+    render();
   });
 
   // Initial render so any preloaded value (from URL state, etc.) shows.
