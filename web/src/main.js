@@ -55,11 +55,6 @@ import {
   fetchSecondaryPlans,
   fetchInfillGuidelineArea,
   fetchMallsAndCorridors,
-  fetchCityOwnedParcels,
-  fetchTransitRoutes,
-  fetchTransitStops,
-  fetchNeighbourhoods,
-  fetchNeighbourhoodClusters,
   fetchTrafficVolumes,
   fetchContaminatedSites,
 } from './soda.js';
@@ -93,9 +88,6 @@ const $assessToggle = document.getElementById('assess-toggle');
 const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
 const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
-const $cityOwnedParcelsToggle = document.getElementById('city-owned-parcels-toggle');
-const $transitToggle        = document.getElementById('transit-toggle');
-const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
@@ -134,26 +126,10 @@ let contamLoaded = false;
 // applyUrlState() can synchronously click any toggle button at init
 // without tripping a Cannot access 'X' before initialization throw.
 const policyOverlayState = {
-  secondaryPlans:    { enabled: false, loaded: false },
-  infill:            { enabled: false, loaded: false },
-  mallsCorridors:    { enabled: false, loaded: false },
-  cityOwnedParcels:  { enabled: false, loaded: false },
+  secondaryPlans: { enabled: false, loaded: false },
+  infill:         { enabled: false, loaded: false },
+  mallsCorridors: { enabled: false, loaded: false },
 };
-// Transit (routes + stops) is a single user-facing toggle backed
-// by two GeoJSON sources. Kept outside policyOverlayState because
-// the framework assumes 1 toggle = 1 source; transit has its own
-// dedicated toggle function below.
-let transitEnabled = false;
-let transitLoaded = false;
-
-// Neighbourhoods 3-state cycle:
-//   'off'         — nothing shown (default)
-//   'clusters'    — 23 cluster polygons + labels
-//   'individual'  — 235 neighbourhood polygons + labels
-// Loaded flags are independent because the two GeoJSON files
-// are fetched on first reveal of their respective state.
-let neighbourhoodsMode = 'off';
-let neighbourhoodsLoaded = { clusters: false, individual: false };
 let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
 
@@ -257,9 +233,6 @@ $assessToggle.addEventListener('click', () => toggleLayer('assess'));
 $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secondaryPlans'));
 $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
-$cityOwnedParcelsToggle.addEventListener('click', () => togglePolicyOverlay('cityOwnedParcels'));
-if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
-if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
@@ -334,67 +307,17 @@ if ($psClose && $parcelSummary) {
   $psClose.addEventListener('click', () => { $parcelSummary.hidden = true; });
 }
 
-// PP&D Property Map link in the parcel-summary card. PP&D's
-// legacy page can't be deep-linked with parameters, so the click
-// copies the currently-shown civic address to the clipboard
-// FIRST, then the link's normal target="_blank" navigates. User
-// pastes into PP&D's search bar to view the parcel on the City's
-// higher-resolution ortho imagery.
-const $psOpenPpd = document.getElementById('ps-open-ppd');
-if ($psOpenPpd) {
-  $psOpenPpd.addEventListener('click', () => {
-    const addressEl = document.getElementById('ps-address');
-    const address = (addressEl?.textContent || '').trim();
-    if (!address || address === '—') return;
-    const writeClipboard = (text) => {
-      if (navigator.clipboard?.writeText) {
-        return navigator.clipboard.writeText(text).catch(() => false);
-      }
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        return Promise.resolve(true);
-      } catch { return Promise.resolve(false); }
-    };
-    writeClipboard(address);
-    const original = $psOpenPpd.textContent;
-    $psOpenPpd.textContent = 'Copied — paste in PP&D';
-    setTimeout(() => { $psOpenPpd.textContent = original; }, 1800);
-  });
-  $psOpenPpd.title = 'Copies this parcel’s civic address to clipboard, then opens the City PP&D Property Map in a new tab. Paste into PP&D’s search bar to view the parcel on the City’s higher-resolution ortho imagery.';
-}
-
-// Hide / Expand map toggles. Hide adds .map-collapsed to the
-// workspace so the .map-pane drops out of layout and the table
-// claims the full width. Expand adds .map-expanded so the map
-// drops its 16:9 ratio + width cap and fills the viewport
-// vertically. Mutually exclusive — apply* helpers below clear
-// one when setting the other so the workspace never carries
-// both classes. Each choice persists to its own localStorage
-// key. Restoring or expanding the map needs a deferred
-// map.resize() so MapLibre recomputes the canvas.
-const MAP_HIDE_KEY   = 'wps_map_collapsed_v1';
-const MAP_EXPAND_KEY = 'wps_map_expanded_v1';
-const $workspaceEl   = document.getElementById('workspace');
-const $mapToggleBtn  = document.getElementById('map-toggle-btn');
+// Hide-map toggle. Adds .map-collapsed to the workspace so the
+// .map-pane drops out of layout and the table claims the full
+// width. Choice persists to localStorage so a page refresh keeps
+// it consistent. Restoring the map needs a deferred map.resize()
+// so MapLibre recomputes the canvas dimensions.
+const MAP_HIDE_KEY = 'wps_map_collapsed_v1';
+const $workspaceEl = document.getElementById('workspace');
+const $mapToggleBtn = document.getElementById('map-toggle-btn');
 const $mapToggleLabel = $mapToggleBtn?.querySelector('.map-toggle-label');
-const $mapExpandBtn  = document.getElementById('map-expand-btn');
-const $mapExpandLabel = $mapExpandBtn?.querySelector('.map-expand-label');
-
 function applyMapCollapsed(collapsed) {
   if (!$workspaceEl || !$mapToggleBtn) return;
-  // Hide and Expand are mutually exclusive — hiding implicitly
-  // un-expands so we don't leave the workspace carrying two
-  // contradictory layout classes.
-  if (collapsed && $workspaceEl.classList.contains('map-expanded')) {
-    applyMapExpanded(false, { silent: true });
-  }
   $workspaceEl.classList.toggle('map-collapsed', collapsed);
   $mapToggleBtn.setAttribute('aria-pressed', String(collapsed));
   if ($mapToggleLabel) $mapToggleLabel.textContent = collapsed ? 'Show map' : 'Hide map';
@@ -403,26 +326,6 @@ function applyMapCollapsed(collapsed) {
   }
   try { localStorage.setItem(MAP_HIDE_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
 }
-
-function applyMapExpanded(expanded, { silent = false } = {}) {
-  if (!$workspaceEl || !$mapExpandBtn) return;
-  // Expand and Hide are mutually exclusive — expanding implicitly
-  // un-hides so a refresh that restored both prefs from localStorage
-  // doesn't render with the map both hidden AND expanded.
-  if (expanded && $workspaceEl.classList.contains('map-collapsed')) {
-    applyMapCollapsed(false);
-  }
-  $workspaceEl.classList.toggle('map-expanded', expanded);
-  $mapExpandBtn.setAttribute('aria-pressed', String(expanded));
-  if ($mapExpandLabel) $mapExpandLabel.textContent = expanded ? 'Restore map' : 'Expand map';
-  // MapLibre needs to recompute its canvas size now that the
-  // container's aspect-ratio + width-cap have changed.
-  mapReady.then(() => map.resize());
-  if (!silent) {
-    try { localStorage.setItem(MAP_EXPAND_KEY, expanded ? '1' : '0'); } catch { /* ignore */ }
-  }
-}
-
 if ($mapToggleBtn) {
   $mapToggleBtn.addEventListener('click', () => {
     const next = !$workspaceEl?.classList.contains('map-collapsed');
@@ -430,16 +333,6 @@ if ($mapToggleBtn) {
   });
   try {
     if (localStorage.getItem(MAP_HIDE_KEY) === '1') applyMapCollapsed(true);
-  } catch { /* ignore */ }
-}
-
-if ($mapExpandBtn) {
-  $mapExpandBtn.addEventListener('click', () => {
-    const next = !$workspaceEl?.classList.contains('map-expanded');
-    applyMapExpanded(next);
-  });
-  try {
-    if (localStorage.getItem(MAP_EXPAND_KEY) === '1') applyMapExpanded(true);
   } catch { /* ignore */ }
 }
 
@@ -492,8 +385,6 @@ function captureUrlState() {
     surveyToggle: false, assessToggle: true, allParcelsToggle: false,
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
-    cityOwnedParcelsToggle: false,
-    transitToggle: false,
     contamToggle: false, dimensionsToggle: false,
   };
   const buttons = {
@@ -502,19 +393,12 @@ function captureUrlState() {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
-    cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
-    transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
     if (!btn) continue;
     const on = btn.getAttribute('aria-pressed') === 'true';
     if (on !== defaults[key]) s[key] = on;
-  }
-
-  // Neighbourhoods mode: only emit when not in the 'off' default.
-  if (neighbourhoodsMode === 'clusters' || neighbourhoodsMode === 'individual') {
-    s.neighbourhoodsMode = neighbourhoodsMode;
   }
 
   if (currentSort?.col) s.sortCol = currentSort.col;
@@ -562,22 +446,12 @@ function applyUrlState(state) {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
-    cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
-    transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
     if (!btn || !(key in state)) continue;
     const cur = btn.getAttribute('aria-pressed') === 'true';
     if (cur !== state[key]) btn.click();
-  }
-
-  // Neighbourhoods mode (3-state cycle): apply directly rather than
-  // simulate N clicks. Validator on the urlState side already
-  // restricts to 'clusters' / 'individual'.
-  if (state.neighbourhoodsMode === 'clusters' || state.neighbourhoodsMode === 'individual') {
-    // Fire-and-forget; the async fetch resolves on its own.
-    setNeighbourhoodsMode(state.neighbourhoodsMode);
   }
 
   if (state.sortCol) {
@@ -634,9 +508,6 @@ for (const btn of [
   $surveyToggle, $assessToggle, $allParcelsToggle,
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
-  $cityOwnedParcelsToggle,
-  $transitToggle,
-  $neighbourhoodsToggle,
   $contamToggle, $dimensionsToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
@@ -761,13 +632,8 @@ function setParcels(surveyFc, assessFc = EMPTY_FC) {
  */
 function toggleLayer(which) {
   const btn = which === 'survey' ? $surveyToggle : $assessToggle;
-  // Layer IDs per group. The assess group has THREE layers since
-  // the yellow highlight uses a fill + dark outer casing + yellow
-  // dashed inner — all three need to flip together so the
-  // selection vanishes cleanly when the user hides assessment.
-  const layerIds = which === 'survey'
-    ? ['parcel-fill', 'parcel-line']
-    : ['assess-context-fill', 'assess-context-line-outer', 'assess-context-line'];
+  const fillId = which === 'survey' ? 'parcel-fill' : 'assess-context-fill';
+  const lineId = which === 'survey' ? 'parcel-line' : 'assess-context-line';
   const labelOn = which === 'survey' ? 'Hide Survey' : 'Hide Assessment';
   const labelOff = which === 'survey' ? 'Survey' : 'Assessment';
   const wasActive = btn.classList.contains('active');
@@ -777,9 +643,8 @@ function toggleLayer(which) {
   btn.textContent = nowVisible ? labelOn : labelOff;
   mapReady.then(() => {
     const v = nowVisible ? 'visible' : 'none';
-    for (const id of layerIds) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
-    }
+    if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', v);
+    if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', v);
   });
 }
 
@@ -856,7 +721,7 @@ async function toggleContam() {
 
   if (contamEnabled) {
     if (contamLoaded) {
-      $contamToggle.textContent = 'Hide Environmental Sites';
+      $contamToggle.textContent = 'Hide Enviro Sites';
       return;
     }
     $contamToggle.disabled = true;
@@ -865,19 +730,19 @@ async function toggleContam() {
       const fc = await fetchContaminatedSites();
       setContamData(map, fc);
       contamLoaded = true;
-      $contamToggle.textContent = 'Hide Environmental Sites';
+      $contamToggle.textContent = 'Hide Enviro Sites';
     } catch (err) {
       console.warn('contaminated-sites overlay failed', err);
       contamEnabled = false;
       $contamToggle.classList.remove('active');
       $contamToggle.setAttribute('aria-pressed', 'false');
-      $contamToggle.textContent = 'Environmental Sites';
+      $contamToggle.textContent = 'Enviro Sites';
       setContamVisible(map, false);
     } finally {
       $contamToggle.disabled = false;
     }
   } else {
-    $contamToggle.textContent = 'Environmental Sites';
+    $contamToggle.textContent = 'Enviro Sites';
   }
 }
 
@@ -935,16 +800,15 @@ async function refreshZoning() {
  * session — see fetchAllAndCache in soda.js — so toggling on/off after
  * the first hit is instant.
  *
- * `name` is one of 'secondaryPlans' / 'infill' / 'mallsCorridors' /
- * 'cityOwnedParcels'.
+ * `name` is one of 'secondaryPlans' / 'infill' / 'mallsCorridors'.
  */
 const POLICY_OVERLAY_CONFIG = {
   secondaryPlans: {
     btn:    () => $secondaryPlansToggle,
     src:    'secondary-plans',
     fetch:  fetchSecondaryPlans,
-    onLabel:  'Hide Secondary Plans',
-    offLabel: 'Secondary Plans',
+    onLabel:  'Hide Sec. Plans',
+    offLabel: 'Sec. Plans',
   },
   infill: {
     btn:    () => $infillToggle,
@@ -960,242 +824,7 @@ const POLICY_OVERLAY_CONFIG = {
     onLabel:  'Hide Malls/Corridors',
     offLabel: 'Malls/Corridors',
   },
-  cityOwnedParcels: {
-    btn:    () => $cityOwnedParcelsToggle,
-    src:    'city-owned-parcels',
-    fetch:  fetchCityOwnedParcels,
-    onLabel:  'Hide City Owned Parcels',
-    offLabel: 'City Owned Parcels',
-  },
 };
-
-/**
- * Combined transit (routes + stops) toggle. Two GeoJSON sources,
- * one user-facing button. First click fetches both files in
- * parallel, hands them to the matching map sources, and shows
- * both layer groups; subsequent clicks just flip visibility.
- *
- * Failure of either fetch falls back to "off" with the original
- * label restored so the button is never wedged in a broken
- * Loading... state.
- */
-async function toggleTransit() {
-  if (!$transitToggle) return;
-  transitEnabled = !transitEnabled;
-  $transitToggle.setAttribute('aria-pressed', String(transitEnabled));
-  $transitToggle.classList.toggle('active', transitEnabled);
-  await mapReady;
-  setOverlayVisible(map, 'transit-routes', transitEnabled);
-  setOverlayVisible(map, 'transit-stops',  transitEnabled);
-
-  if (transitEnabled) {
-    if (transitLoaded) {
-      $transitToggle.textContent = 'Hide Transit';
-      return;
-    }
-    $transitToggle.disabled = true;
-    $transitToggle.textContent = 'Loading...';
-    try {
-      const [routesFc, stopsFc] = await Promise.all([
-        fetchTransitRoutes(),
-        fetchTransitStops(),
-      ]);
-      setOverlayData(map, 'transit-routes', routesFc);
-      setOverlayData(map, 'transit-stops',  stopsFc);
-      transitLoaded = true;
-      $transitToggle.textContent = 'Hide Transit';
-    } catch (err) {
-      console.warn('transit overlay failed', err);
-      transitEnabled = false;
-      $transitToggle.classList.remove('active');
-      $transitToggle.setAttribute('aria-pressed', 'false');
-      $transitToggle.textContent = 'Transit';
-      setOverlayVisible(map, 'transit-routes', false);
-      setOverlayVisible(map, 'transit-stops',  false);
-    } finally {
-      $transitToggle.disabled = false;
-    }
-  } else {
-    $transitToggle.textContent = 'Transit';
-  }
-}
-
-// ---------- Neighbourhoods 3-state cycler ----------
-
-const NEIGHBOURHOOD_CLUSTER_LAYERS = [
-  'neighbourhood-clusters-fill',
-  'neighbourhood-clusters-line-casing',
-  'neighbourhood-clusters-line',
-  'neighbourhood-clusters-label',
-];
-const NEIGHBOURHOOD_INDIVIDUAL_LAYERS = [
-  'neighbourhoods-fill',
-  'neighbourhoods-line-casing',
-  'neighbourhoods-line',
-  'neighbourhoods-label',
-];
-
-/**
- * Area-weighted polygon centroid via the shoelace formula.
- * Input: a closed ring [[lon, lat], ..., [lon0, lat0]].
- * Falls back to unweighted vertex mean if the signed area is
- * effectively zero (degenerate ring) — that case shouldn't fire
- * because cleanPolygon in the build script strips zero-area
- * sub-rings, but the fallback keeps the function total.
- */
-function polygonRingCentroid(ring) {
-  let sumX = 0, sumY = 0, twoArea = 0;
-  const n = ring.length - 1;
-  for (let i = 0; i < n; i++) {
-    const x1 = ring[i][0], y1 = ring[i][1];
-    const x2 = ring[i + 1][0], y2 = ring[i + 1][1];
-    const cross = x1 * y2 - x2 * y1;
-    twoArea += cross;
-    sumX += (x1 + x2) * cross;
-    sumY += (y1 + y2) * cross;
-  }
-  if (Math.abs(twoArea) < 1e-12) {
-    let mx = 0, my = 0;
-    for (let i = 0; i < n; i++) { mx += ring[i][0]; my += ring[i][1]; }
-    return [mx / n, my / n];
-  }
-  const factor = 1 / (3 * twoArea);
-  return [sumX * factor, sumY * factor];
-}
-
-/**
- * Build a Point FeatureCollection — one centroid per polygon
- * feature — so a MapLibre symbol layer placed on this FC renders
- * exactly one label per source feature regardless of how many
- * tiles the polygon spans. `labelKey` is the property name copied
- * onto each output point (the text-field reads it).
- */
-function buildLabelPointFc(polygonFc, labelKey) {
-  if (!polygonFc || !Array.isArray(polygonFc.features)) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-  const features = [];
-  for (const f of polygonFc.features) {
-    const geom = f.geometry;
-    if (!geom) continue;
-    let outerRing = null;
-    if (geom.type === 'Polygon') {
-      outerRing = geom.coordinates?.[0];
-    } else if (geom.type === 'MultiPolygon') {
-      // Pick the largest-area polygon piece so the label lands on
-      // the dominant chunk rather than a tiny outlier island.
-      let bestArea = -Infinity, bestRing = null;
-      for (const poly of geom.coordinates) {
-        const ring = poly?.[0];
-        if (!ring || ring.length < 4) continue;
-        let twoArea = 0;
-        for (let i = 0, m = ring.length - 1; i < m; i++) {
-          twoArea += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
-        }
-        const area = Math.abs(twoArea);
-        if (area > bestArea) { bestArea = area; bestRing = ring; }
-      }
-      outerRing = bestRing;
-    }
-    if (!outerRing || outerRing.length < 4) continue;
-    const [lon, lat] = polygonRingCentroid(outerRing);
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [lon, lat] },
-      properties: { [labelKey]: f.properties?.[labelKey] ?? '' },
-    });
-  }
-  return { type: 'FeatureCollection', features };
-}
-
-function setNeighbourhoodLayerVisibility(layerIds, visible) {
-  const v = visible ? 'visible' : 'none';
-  for (const id of layerIds) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
-  }
-}
-
-function renderNeighbourhoodButton() {
-  if (!$neighbourhoodsToggle) return;
-  if (neighbourhoodsMode === 'off') {
-    $neighbourhoodsToggle.textContent = 'Neighbourhoods';
-    $neighbourhoodsToggle.classList.remove('active');
-    $neighbourhoodsToggle.setAttribute('aria-pressed', 'false');
-  } else if (neighbourhoodsMode === 'clusters') {
-    $neighbourhoodsToggle.textContent = 'Clusters';
-    $neighbourhoodsToggle.classList.add('active');
-    $neighbourhoodsToggle.setAttribute('aria-pressed', 'true');
-  } else {
-    $neighbourhoodsToggle.textContent = 'Neighbourhoods';
-    $neighbourhoodsToggle.classList.add('active');
-    $neighbourhoodsToggle.setAttribute('aria-pressed', 'true');
-  }
-}
-
-/**
- * Cycle the neighbourhoods overlay through Off → Clusters →
- * Individual → Off. Each "on" state lazily fetches its source FC
- * the first time it's reached and caches it for the session.
- */
-async function cycleNeighbourhoods() {
-  if (!$neighbourhoodsToggle) return;
-  const next = neighbourhoodsMode === 'off'
-    ? 'clusters'
-    : neighbourhoodsMode === 'clusters'
-      ? 'individual'
-      : 'off';
-  await setNeighbourhoodsMode(next);
-}
-
-async function setNeighbourhoodsMode(mode) {
-  if (!$neighbourhoodsToggle) return;
-  if (mode !== 'off' && mode !== 'clusters' && mode !== 'individual') mode = 'off';
-  neighbourhoodsMode = mode;
-  renderNeighbourhoodButton();
-  await mapReady;
-
-  // Visibility first (so a switch from clusters → individual
-  // doesn't leave the old layers showing during a fetch).
-  setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS,    mode === 'clusters');
-  setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, mode === 'individual');
-
-  if (mode === 'off') return;
-
-  // Lazy-fetch the relevant FC on first reveal.
-  const fetchKey = mode === 'clusters' ? 'clusters' : 'individual';
-  if (neighbourhoodsLoaded[fetchKey]) return;
-  $neighbourhoodsToggle.disabled = true;
-  const restoreLabel = $neighbourhoodsToggle.textContent;
-  $neighbourhoodsToggle.textContent = 'Loading...';
-  try {
-    if (mode === 'clusters') {
-      const fc = await fetchNeighbourhoodClusters();
-      setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
-      // Build a 1-point-per-feature FC for the label layer so
-      // MapLibre places exactly one label per cluster (rather
-      // than one per tile-chunk that the polygon overlaps).
-      setOverlayData(map, 'wpg-neighbourhood-cluster-labels',
-        buildLabelPointFc(fc, 'cluster'));
-    } else {
-      const fc = await fetchNeighbourhoods();
-      setOverlayData(map, 'wpg-neighbourhoods', fc);
-      setOverlayData(map, 'wpg-neighbourhood-labels',
-        buildLabelPointFc(fc, 'name'));
-    }
-    neighbourhoodsLoaded[fetchKey] = true;
-    $neighbourhoodsToggle.textContent = restoreLabel;
-  } catch (err) {
-    console.warn(`neighbourhoods (${mode}) fetch failed`, err);
-    // Roll back to off so the button isn't wedged.
-    neighbourhoodsMode = 'off';
-    renderNeighbourhoodButton();
-    setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS, false);
-    setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, false);
-  } finally {
-    $neighbourhoodsToggle.disabled = false;
-  }
-}
 
 // ---------- Parcel-edge dimensions toggle ----------
 // policyOverlayState + dimensionsEnabled hoisted to the top of the
@@ -1440,7 +1069,7 @@ async function toggleCitywideParcels() {
     return;
   }
   citywideParcelsEnabled = !citywideParcelsEnabled;
-  $allParcelsToggle.textContent = citywideParcelsEnabled ? 'Hide All Assessment Parcels' : 'All Assessment Parcels';
+  $allParcelsToggle.textContent = citywideParcelsEnabled ? 'Hide All Assess. Parcels' : 'All Assess. Parcels';
   $allParcelsToggle.setAttribute('aria-pressed', String(citywideParcelsEnabled));
   $allParcelsToggle.classList.toggle('active', citywideParcelsEnabled);
   setCitywideParcelsVisible(map, citywideParcelsEnabled);

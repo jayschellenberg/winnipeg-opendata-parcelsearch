@@ -25,38 +25,6 @@
     <header class="topbar" role="banner">
       <h1 class="topbar-title">Winnipeg Parcel Search</h1>
       <nav class="topbar-nav" aria-label="App navigation">
-        <!-- Map workspace toggles. Hide collapses the map so the
-             results table claims the full workspace; Expand drops
-             the 16:9 ratio + width cap so the map fills the
-             viewport. They sit in the topbar (rather than the
-             results toolbar) so the Expand button is still
-             reachable when the map is occupying the whole screen.
-             Mutually exclusive — main.js's apply* helpers clear
-             one when setting the other. -->
-        <button
-          type="button"
-          id="map-toggle-btn"
-          class="map-toggle-btn topbar-map-btn"
-          aria-pressed="false"
-          title="Hide the map to give the results table the full workspace"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M2 4l4-2 4 2 4-2v10l-4 2-4-2-4 2zm4 0v8m4-6v8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <span class="map-toggle-label">Hide map</span>
-        </button>
-        <button
-          type="button"
-          id="map-expand-btn"
-          class="map-toggle-btn topbar-map-btn"
-          aria-pressed="false"
-          title="Expand the map to fill the screen. Click again to restore the default 16:9 view."
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <span class="map-expand-label">Expand map</span>
-        </button>
         <a
           class="topbar-link"
           href="https://manitoba-opendata-parcelsearch.vercel.app/"
@@ -379,21 +347,16 @@
 
         <h2 class="sidebar-section-title sidebar-section-title-second">Map Layers</h2>
         <div class="overlay-grid">
-          <button id="all-parcels-toggle" type="button" class="secondary" aria-pressed="false" title="Show every assessment parcel in the city as a faint grey wash. Search results highlight in yellow on top.">All Assessment Parcels</button>
-          <button id="assess-toggle" type="button" class="secondary active" aria-pressed="true" title="Show / hide red assessment-parcel polygons">Hide Assessment</button>
           <button id="survey-toggle" type="button" class="secondary" aria-pressed="false" title="Show / hide blue survey-lot polygons">Survey</button>
-          <button id="dimensions-toggle" type="button" class="secondary" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 16+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
-          <div class="overlay-divider" role="separator" aria-label="Planning Layers"><span>Planning Layers</span></div>
+          <button id="assess-toggle" type="button" class="secondary active" aria-pressed="true" title="Show / hide red assessment-parcel polygons">Hide Assessment</button>
+          <button id="all-parcels-toggle" type="button" class="secondary" aria-pressed="false" title="Show every assessment parcel in the city as a faint grey wash. Search results highlight in yellow on top.">All Assess. Parcels</button>
           <button id="zoning-toggle" type="button" class="secondary" aria-pressed="false" title="City-wide zoning by-law polygons (cached for 7 days)">Zoning</button>
-          <button id="secondary-plans-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Secondary Plans</button>
+          <button id="traffic-toggle" type="button" class="secondary" aria-pressed="false" title="Latest available 24-hour average traffic volumes from City midblock and permanent count stations">Traffic</button>
+          <button id="secondary-plans-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Sec. Plans</button>
           <button id="infill-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Infill Area</button>
           <button id="malls-corridors-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
-          <div class="overlay-divider" role="separator" aria-label="Reference Layers"><span>Reference Layers</span></div>
-          <button id="contam-toggle" type="button" class="secondary" aria-pressed="false" title="Manitoba Contaminated Sites Registry — designated and impacted sites in Winnipeg. Click any circle for details + a link to the official registry record.">Environmental Sites</button>
-          <button id="traffic-toggle" type="button" class="secondary" aria-pressed="false" title="Latest available 24-hour average traffic volumes from City midblock and permanent count stations">Traffic</button>
-          <button id="transit-toggle" type="button" class="secondary" aria-pressed="false" title="Winnipeg Transit bus route lines + stops. Routes coloured per official route_color from the agency's GTFS feed; stops appear from zoom 12+. Click a route or stop for details.">Transit</button>
-          <button id="neighbourhoods-toggle" type="button" class="secondary" aria-pressed="false" title="Winnipeg neighbourhood boundaries. Click cycles: Off → Clusters (23 regional groupings, amber outlines) → Neighbourhoods (235 individual hoods, blue outlines, labelled from zoom 12+) → Off. Click a polygon for the name and cluster.">Neighbourhoods</button>
-          <button id="city-owned-parcels-toggle" type="button" class="secondary overlay-span-2" aria-pressed="false" title="Map of PPD City-Owned Parcels (Planning, Property &amp; Development) from Winnipeg Open Data. Click any parcel for owner, zoning, and area.">City Owned Parcels</button>
+          <button id="dimensions-toggle" type="button" class="secondary" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
+          <button id="contam-toggle" type="button" class="secondary" aria-pressed="false" title="Manitoba Contaminated Sites Registry — designated and impacted sites in Winnipeg. Click any circle for details + a link to the official registry record.">Enviro Sites</button>
           <a class="overlay-link secondary" href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer" title="City of Winnipeg index of all 42 adopted Local Area Plans (Secondary Plans)">Sec Plan Index</a>
           <a class="overlay-link secondary" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" title="City of Winnipeg Planning, Property &amp; Development Property Map">PP&amp;D Property Map</a>
           <a class="overlay-link secondary" href="https://dmis.winnipeg.ca/" target="_blank" rel="noreferrer" title="City of Winnipeg Development Management Information System (development applications, permits, plans)">DMIS</a>
@@ -474,6 +437,18 @@
               </select>
             </label>
             <div class="results-toolbar-spacer"></div>
+            <button
+              type="button"
+              id="map-toggle-btn"
+              class="map-toggle-btn"
+              aria-pressed="false"
+              title="Hide the map to give the results table the full workspace"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M2 4l4-2 4 2 4-2v10l-4 2-4-2-4 2zm4 0v8m4-6v8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span class="map-toggle-label">Hide map</span>
+            </button>
             <div class="columns-popover-wrap">
               <button
                 type="button"

@@ -381,218 +381,6 @@ export function initMap(container, { onFeatureClick } = {}) {
       // Urban Mixed Use Corridor + Regional Mixed Use Corridor). Each
       // sub-kind gets its own colour via a `pdo_kind` match expression.
       map.addSource('malls-corridors', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      // City-owned parcels (PPD). Violet fills so the layer is
-      // distinct from every other overlay — yellow assess-context,
-      // blue subject, grey citywide-parcels, etc. — and reads
-      // clean on both basemaps.
-      map.addSource('city-owned-parcels', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-      map.addLayer({
-        id: 'city-owned-parcels-fill',
-        type: 'fill',
-        source: 'city-owned-parcels',
-        layout: { visibility: 'none' },
-        paint: {
-          'fill-color': '#7c3aed',
-          'fill-opacity': 0.28,
-        },
-      });
-      map.addLayer({
-        id: 'city-owned-parcels-line',
-        type: 'line',
-        source: 'city-owned-parcels',
-        layout: { visibility: 'none' },
-        paint: {
-          'line-color': '#5b21b6',
-          'line-width': 1.5,
-          'line-opacity': 0.9,
-        },
-      });
-
-      // Neighbourhood overlays — two source FCs ship as static
-      // GeoJSON under /public, processed from BaseFiles by
-      // build-neighbourhoods-geojson.mjs. Two visual treatments:
-      //   - Clusters (23): warm amber line + light wash, name
-      //     label at every zoom for context.
-      //   - Individual neighbourhoods (235): cool teal line +
-      //     fainter wash, name label visible at zoom 13+.
-      // Both layer groups start hidden — the single user-facing
-      // 3-state toggle in main.js cycles Off → Clusters →
-      // Neighbourhoods → Off.
-      map.addSource('wpg-neighbourhoods',         { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addSource('wpg-neighbourhood-clusters', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      // Label sources are SEPARATE FCs holding one Point per
-      // polygon (computed client-side from the polygon centroid).
-      // Without a dedicated point source, MapLibre's
-      // symbol-placement: 'point' renders one label per tile
-      // chunk a polygon overlaps — and large clusters like
-      // River Heights East span 3-4 tiles, producing duplicate
-      // on-screen labels. The point source guarantees one label
-      // per feature.
-      map.addSource('wpg-neighbourhood-cluster-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addSource('wpg-neighbourhood-labels',         { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({
-        id: 'neighbourhood-clusters-fill', type: 'fill', source: 'wpg-neighbourhood-clusters',
-        layout: { visibility: 'none' },
-        paint: { 'fill-color': '#0ea5e9', 'fill-opacity': 0.06 },
-      });
-      // White casing UNDER the coloured line. Standard cartography
-      // trick: a wider, semi-opaque white stroke gives the
-      // narrower coloured line on top enough contrast to read
-      // against any basemap — the dark green/brown of Esri
-      // Imagery in particular swallows a single thin teal line.
-      map.addLayer({
-        id: 'neighbourhood-clusters-line-casing', type: 'line', source: 'wpg-neighbourhood-clusters',
-        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.7 },
-      });
-      map.addLayer({
-        id: 'neighbourhood-clusters-line', type: 'line', source: 'wpg-neighbourhood-clusters',
-        layout: { visibility: 'none', 'line-join': 'round' },
-        // Same teal as the individual-neighbourhood line. Slightly
-        // thicker (2 px vs 1 px) because clusters are broader,
-        // higher-level boundaries and deserve a touch more emphasis.
-        paint: { 'line-color': '#0369a1', 'line-width': 2.5, 'line-opacity': 0.95 },
-      });
-      map.addLayer({
-        // Sourced from the point-centroid FC (see comment on
-        // wpg-neighbourhood-cluster-labels above) so MapLibre
-        // renders exactly one label per cluster, not one per
-        // tile-chunk.
-        id: 'neighbourhood-clusters-label', type: 'symbol', source: 'wpg-neighbourhood-cluster-labels',
-        layout: {
-          visibility: 'none',
-          'text-field': ['get', 'cluster'],
-          'text-font': ['Open Sans Semibold'],
-          // Reduced 25% from the previous 20/26/30 stops at the
-          // user's request — still bold enough to read across a
-          // city-wide viewport without dominating the map.
-          'text-size': [
-            'interpolate', ['linear'], ['zoom'],
-            9,  15,
-            12, 20,
-            15, 22,
-          ],
-          'text-anchor': 'center',
-          'text-allow-overlap': false,
-          'text-padding': 4,
-          'symbol-placement': 'point',
-        },
-        paint: {
-          'text-color': '#0c4a6e',
-          // White halo at 2.5 px instead of pale blue at 1.4 — text
-          // pops on Carto Positron AND Esri Imagery.
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 2.5,
-        },
-      });
-      map.addLayer({
-        id: 'neighbourhoods-fill', type: 'fill', source: 'wpg-neighbourhoods',
-        layout: { visibility: 'none' },
-        paint: { 'fill-color': '#0ea5e9', 'fill-opacity': 0.06 },
-      });
-      // White casing under the individual-hood line (see comment
-      // on the cluster casing above for rationale).
-      map.addLayer({
-        id: 'neighbourhoods-line-casing', type: 'line', source: 'wpg-neighbourhoods',
-        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#ffffff', 'line-width': 3.5, 'line-opacity': 0.65 },
-      });
-      map.addLayer({
-        id: 'neighbourhoods-line', type: 'line', source: 'wpg-neighbourhoods',
-        layout: { visibility: 'none', 'line-join': 'round' },
-        paint: { 'line-color': '#0369a1', 'line-width': 1.5, 'line-opacity': 0.9 },
-      });
-      map.addLayer({
-        // Sourced from the point-centroid FC so MapLibre renders
-        // exactly one label per neighbourhood, matching the cluster
-        // pattern above.
-        id: 'neighbourhoods-label', type: 'symbol', source: 'wpg-neighbourhood-labels',
-        layout: {
-          visibility: 'none',
-          'text-field': ['get', 'name'],
-          'text-font': ['Open Sans Semibold'],
-          // Doubled from 9/11/13 → 18/22/26.
-          'text-size': [
-            'interpolate', ['linear'], ['zoom'],
-            12, 18,
-            14, 22,
-            17, 26,
-          ],
-          'text-anchor': 'center',
-          'text-allow-overlap': false,
-          'text-padding': 3,
-          'symbol-placement': 'point',
-        },
-        minzoom: 12,
-        paint: {
-          'text-color': '#0c4a6e',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 2.5,
-        },
-      });
-
-      // Transit overlays (routes + stops). Both source FCs ship as
-      // static GeoJSON under /public, generated from the Winnipeg
-      // Transit GTFS feed by web/scripts/build-transit-geojson.mjs.
-      // Routes carry an official route_color property that the line
-      // paint reads directly; stops carry stop_code / stop_name /
-      // routes that drive the click popup. Both default-hidden.
-      map.addSource('transit-routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addSource('transit-stops',  { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({
-        id: 'transit-routes-line', type: 'line', source: 'transit-routes',
-        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': ['coalesce', ['get', 'route_color'], '#6b7280'],
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            10, 1.2,
-            13, 2.0,
-            16, 3.4,
-            18, 4.4,
-          ],
-          'line-opacity': 0.85,
-        },
-      });
-      // White halo behind each stop dot for legibility on any
-      // basemap. Drawn first (wider) then the coloured dot on
-      // top — two layers, single source.
-      map.addLayer({
-        id: 'transit-stops-halo', type: 'circle', source: 'transit-stops',
-        layout: { visibility: 'none' },
-        minzoom: 12,
-        paint: {
-          'circle-radius': [
-            'interpolate', ['linear'], ['zoom'],
-            12, 2.5,
-            15, 4.0,
-            18, 6.0,
-          ],
-          'circle-color': '#ffffff',
-          'circle-opacity': 0.95,
-          'circle-stroke-color': '#1f2937',
-          'circle-stroke-width': 1,
-        },
-      });
-      map.addLayer({
-        id: 'transit-stops-circle', type: 'circle', source: 'transit-stops',
-        layout: { visibility: 'none' },
-        minzoom: 13,
-        paint: {
-          'circle-radius': [
-            'interpolate', ['linear'], ['zoom'],
-            13, 1.4,
-            16, 2.4,
-            18, 3.4,
-          ],
-          'circle-color': '#0064b1',
-          'circle-opacity': 1,
-        },
-      });
-
       map.addLayer({
         id: 'malls-corridors-fill', type: 'fill', source: 'malls-corridors',
         layout: { visibility: 'none' },
@@ -831,47 +619,20 @@ export function initMap(container, { onFeatureClick } = {}) {
         layout: { visibility: 'visible' },
         // Yellow highlight (Mat. yellow-A400) lifted from the
         // Manitoba sister app so a selected assessment parcel
-        // reads identically across both tools. Fill opacity
-        // bumped a touch above Manitoba's 0.3 because Winnipeg
-        // parcels are often small enough that a faint yellow
-        // wash gets lost on a busy basemap.
+        // reads identically across both tools.
         paint: {
           'fill-color': '#ffea00',
-          'fill-opacity': 0.42,
-        },
-      });
-      // Dark navy outer casing UNDER the yellow dashed line.
-      // Two-layer "construction tape" treatment so the parcel
-      // outline reads on every basemap: the solid dark stroke
-      // gives the shape on bright satellite/Carto AND on shadowed
-      // satellite, and the yellow dashes painted on top of it
-      // mark the polygon as a selection (not just any random
-      // boundary). Width is wider than the dashed yellow on top
-      // so a hairline of dark shows on either side of every dash.
-      map.addLayer({
-        id: 'assess-context-line-outer',
-        type: 'line',
-        source: 'assess-context',
-        layout: {
-          visibility: 'visible',
-          'line-cap': 'butt',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': '#0a1530',
-          'line-width': 4.5,
-          'line-opacity': 0.85,
+          'fill-opacity': 0.3,
         },
       });
       map.addLayer({
         id: 'assess-context-line',
         type: 'line',
         source: 'assess-context',
-        // Dashed yellow on top of the dark casing — reads as
-        // selection tape against the continuous dark stroke
-        // underneath. Manitoba's dasharray [3, 2] preserved,
-        // width bumped from 2.5 → 3 so the dashes register on
-        // satellite at higher zoom.
+        // Dashed outline so the highlight reads as a "selection"
+        // rather than competing with solid parcel-fabric lines.
+        // Manitoba uses [3, 2] (3-width dash, 2-width gap) at
+        // 2.5 px stroke — match exactly.
         layout: {
           visibility: 'visible',
           'line-cap': 'butt',
@@ -879,7 +640,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
         paint: {
           'line-color': '#ffea00',
-          'line-width': 3,
+          'line-width': 2.5,
           'line-dasharray': [3, 2],
         },
       });
@@ -1040,7 +801,7 @@ export function initMap(container, { onFeatureClick } = {}) {
       // polygon edge with `length_label` already pre-formatted. The
       // symbol layer uses `symbol-placement: 'line'` so each label
       // auto-rotates along the edge it describes (looks like a survey
-      // plat). minzoom 16 keeps the labels suppressed at city-wide
+      // plat). minzoom 17 keeps the labels suppressed at city-wide
       // views where they'd just clutter the map.
       map.addSource('dimensions', {
         type: 'geojson',
@@ -1050,7 +811,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         id: 'dimensions-label',
         type: 'symbol',
         source: 'dimensions',
-        minzoom: 16,
+        minzoom: 17,
         layout: {
           visibility: 'none',
           'text-field': ['get', 'length_label'],
@@ -1231,8 +992,6 @@ export function initMap(container, { onFeatureClick } = {}) {
         const center = polygonBboxMidpoint(rendered?.geometry)
           ?? [e.lngLat.lng, e.lngLat.lat];
         wireCoordsCopy(citywideClickPopup, center);
-        wirePpdAddressCopy(citywideClickPopup);
-        wireRollCopy(citywideClickPopup);
       });
 
       // Click a contaminated-site circle → standalone popup with the
@@ -1320,137 +1079,6 @@ export function initMap(container, { onFeatureClick } = {}) {
           <strong>${escapeHtml(p.pdo_kind ?? 'Malls and Corridors PDO')}</strong>
           ${p.feature_name ? `<br>${escapeHtml(p.feature_name)}` : ''}
         </div>`));
-      // City-owned parcels (PPD). Source schema gives us owner /
-      // zoning code / area in m². Convert area to sf for the popup
-      // because every other surface in this app already speaks sf.
-      map.on('click', 'city-owned-parcels-fill', policyClick((p) => {
-        const ownerLabel = p.parcel_owner ? ` (${escapeHtml(p.parcel_owner)})` : '';
-        const zoningLine = p.zoning ? `<br><strong>Zoning</strong> ${escapeHtml(p.zoning)}` : '';
-        const areaNum = Number(p.area);
-        const areaLine = Number.isFinite(areaNum) && areaNum > 0
-          ? `<br><strong>Area</strong> ~${Math.round(areaNum * 10.7639).toLocaleString('en-CA')} sf`
-          : '';
-        return `
-          <div style="line-height:1.4;max-width:280px">
-            <strong>City-Owned Parcel</strong>${ownerLabel}
-            ${zoningLine}
-            ${areaLine}
-          </div>`;
-      }));
-      // Transit popups. Stops show stop_code + name + list of
-      // serving routes, with a deep-link to Winnipeg Transit's
-      // live arrival board for that stop. Route lines show the
-      // route's short name + long name + the official colour as
-      // a small swatch.
-      const transitPopup = new maplibregl.Popup({ closeButton: true });
-      map.on('click', 'transit-stops-circle', (e) => {
-        const p = e.features?.[0]?.properties;
-        if (!p) return;
-        const code = p.stop_code ? escapeHtml(p.stop_code) : '';
-        const name = p.stop_name ? escapeHtml(p.stop_name) : 'Bus stop';
-        const routes = p.routes ? escapeHtml(p.routes) : '';
-        const liveUrl = code
-          ? `https://winnipegtransit.com/en/stop/${encodeURIComponent(p.stop_code)}/schedule/`
-          : null;
-        const html = `
-          <div style="line-height:1.4;max-width:280px">
-            <strong>${name}</strong>
-            ${code ? `<br><small>Stop #${code}</small>` : ''}
-            ${routes ? `<br><strong>Routes</strong> ${routes}` : ''}
-            ${liveUrl ? `<br><a href="${liveUrl}" target="_blank" rel="noreferrer">Live arrivals ↗</a>` : ''}
-          </div>`;
-        transitPopup.setLngLat(e.lngLat).setHTML(html).addTo(map);
-      });
-      map.on('click', 'transit-routes-line', (e) => {
-        // Defer to parcel-fill so a route line draped over a
-        // search-result parcel doesn't steal that click.
-        const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
-        if (parcelHit.length > 0) return;
-        const p = e.features?.[0]?.properties;
-        if (!p) return;
-        const short = p.route_short_name ? escapeHtml(p.route_short_name) : '';
-        const long = p.route_long_name ? escapeHtml(p.route_long_name) : '';
-        const swatch = p.route_color
-          ? `<span style="display:inline-block;width:14px;height:14px;background:${escapeHtml(p.route_color)};border:1px solid #1f2937;border-radius:2px;vertical-align:middle;margin-right:6px"></span>`
-          : '';
-        transitPopup.setLngLat(e.lngLat).setHTML(`
-          <div style="line-height:1.4;max-width:280px">
-            ${swatch}<strong>${short ? `Route ${short}` : 'Transit route'}</strong>
-            ${long ? `<br>${long}` : ''}
-          </div>`).addTo(map);
-      });
-      for (const layerId of ['transit-stops-circle', 'transit-routes-line']) {
-        map.on('mouseenter', layerId, () => {
-          if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
-            map.getCanvas().style.cursor = 'pointer';
-          }
-        });
-        map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
-      }
-      // Neighbourhood popups. Cluster shows name + count + the
-      // comma-separated list of hoods inside it; individual
-      // neighbourhood shows name + parent cluster.
-      const hoodPopup = new maplibregl.Popup({ closeButton: true });
-      map.on('click', 'neighbourhood-clusters-fill', policyClick((p) => {
-        const list = p.neighbourhoods
-          ? String(p.neighbourhoods).split(';').map((s) => escapeHtml(s.trim())).join(', ')
-          : '';
-        return `
-          <div style="line-height:1.4;max-width:300px">
-            <strong>Cluster:</strong> ${escapeHtml(p.cluster || '')}
-            ${p.neighbourhood_count ? `<br><small>${escapeHtml(String(p.neighbourhood_count))} neighbourhoods</small>` : ''}
-            ${list ? `<br><small style="color:#475569">${list}</small>` : ''}
-          </div>`;
-      }));
-      map.on('click', 'neighbourhoods-fill', policyClick((p) => `
-        <div style="line-height:1.4;max-width:280px">
-          <strong>Neighbourhood:</strong> ${escapeHtml(p.name || '')}
-          ${p.cluster ? `<br><small>Cluster: ${escapeHtml(p.cluster)}</small>` : ''}
-        </div>`));
-      // Re-bind popup variable so the next handler block sees the
-      // correct popup constant. (Kept hoodPopup for parity even
-      // though policyClick uses its own internal popup.)
-      void hoodPopup;
-      // Follow-the-mouse hover tooltip showing just the
-      // neighbourhood / cluster name. Distinct from the click
-      // popup (which shows full info). Uses closeButton:false +
-      // closeOnClick:false so it doesn't interfere with the
-      // click handler, and a small offset so the cursor stays
-      // visible.
-      const hoodHoverPopup = new maplibregl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        offset: 8,
-        className: 'hood-hover-popup',
-      });
-      const hoverHandler = (labelKey) => (e) => {
-        const layerId = e.features?.[0]?.layer?.id;
-        if (!layerId || map.getLayoutProperty(layerId, 'visibility') !== 'visible') {
-          hoodHoverPopup.remove();
-          return;
-        }
-        const p = e.features?.[0]?.properties;
-        if (!p) return;
-        const label = p[labelKey];
-        if (!label) return;
-        hoodHoverPopup
-          .setLngLat(e.lngLat)
-          .setHTML(`<span class="hood-hover-label">${escapeHtml(String(label))}</span>`)
-          .addTo(map);
-      };
-      map.on('mousemove', 'neighbourhood-clusters-fill', hoverHandler('cluster'));
-      map.on('mousemove', 'neighbourhoods-fill',         hoverHandler('name'));
-      for (const layerId of ['neighbourhood-clusters-fill', 'neighbourhoods-fill']) {
-        map.on('mouseenter', layerId, () => {
-          if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
-            map.getCanvas().style.cursor = 'help';
-          }
-        });
-        map.on('mouseleave', layerId, () => {
-          map.getCanvas().style.cursor = '';
-          hoodHoverPopup.remove();
-        });
-      }
 
       const trafficPopup = new maplibregl.Popup({ closeButton: true });
       const trafficClick = (e) => {
@@ -1481,27 +1109,6 @@ export function initMap(container, { onFeatureClick } = {}) {
       // last, putting place names on top.
       if (map.getLayer('esri-transportation')) map.moveLayer('esri-transportation');
       if (map.getLayer('esri-reference'))      map.moveLayer('esri-reference');
-
-      // Neighbourhood boundary lines + casing + labels need to sit
-      // ABOVE the Esri reference raster (street labels) so on
-      // Satellite view the cluster/hood names aren't obscured by
-      // street names and the dark teal borders aren't washed out
-      // by the lighter road overlay. Fills stay underneath because
-      // they're a faint sky-blue wash and shouldn't override the
-      // road network. Order in this block puts hood layers above
-      // cluster layers, with the label as the topmost element of
-      // each group.
-      const NEIGHBOURHOOD_TOP_LAYERS = [
-        'neighbourhood-clusters-line-casing',
-        'neighbourhood-clusters-line',
-        'neighbourhood-clusters-label',
-        'neighbourhoods-line-casing',
-        'neighbourhoods-line',
-        'neighbourhoods-label',
-      ];
-      for (const id of NEIGHBOURHOOD_TOP_LAYERS) {
-        if (map.getLayer(id)) map.moveLayer(id);
-      }
 
       resolve();
     });
@@ -1806,24 +1413,12 @@ function citywideParcelHtml(p) {
   const roll = p.roll_number ? String(p.roll_number) : null;
   const address = p.full_address || null;
   const lines = [];
-  if (roll) {
-    // Roll # value is a click-to-copy link styled with a subtle
-    // dotted underline so the user sees it's actionable without
-    // it screaming for attention. Title attribute spells out
-    // the copy behaviour. wireRollCopy below handles the click.
-    lines.push(`<strong>Roll #</strong> <a href="#" class="parcel-roll-copy" data-roll="${escapeHtml(roll)}" title="Copy roll number to clipboard" style="color:inherit;border-bottom:1px dotted currentColor;text-decoration:none">${escapeHtml(roll)}</a>`);
-  }
+  if (roll) lines.push(`<strong>Roll #</strong> ${escapeHtml(roll)}`);
   if (address) lines.push(escapeHtml(address));
   const actions = [];
   if (roll) {
     const url = `https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
     actions.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Assessment →</a>`);
-  }
-  if (address) {
-    // PP&D Property Map doesn't accept URL params, so this link
-    // copies the civic address to clipboard FIRST, then opens
-    // the legacy map. User pastes into PP&D's search box.
-    actions.push(`<a href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" class="parcel-ppd-copy" data-address="${escapeHtml(address)}" title="Copy address to clipboard, then open the City PP&D Property Map. Paste into PP&D's search bar to view this parcel on City ortho imagery.">PP&amp;D Map →</a>`);
   }
   actions.push(`<a href="#" class="parcel-coords-copy" role="button" title="Copy parcel centroid (lat, lng) to clipboard">Coordinates</a>`);
   if (actions.length) {
@@ -1896,83 +1491,6 @@ function wireCoordsCopy(popup, lngLat) {
         onSuccess();
       } catch { onFailure(); }
     }
-  });
-}
-
-/**
- * Wire a `.parcel-roll-copy` anchor in the popup so a click
- * copies the roll number to the clipboard and flashes "Copied!"
- * for ~1.5 s before reverting. Same UX as wireCoordsCopy. The
- * data-roll attribute on the anchor carries the actual value.
- */
-function wireRollCopy(popup) {
-  if (!popup) return;
-  const el = popup.getElement?.();
-  const anchor = el?.querySelector('.parcel-roll-copy');
-  if (!anchor) return;
-  const roll = anchor.getAttribute('data-roll');
-  if (!roll) return;
-  anchor.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    const original = anchor.textContent;
-    const onSuccess = () => {
-      anchor.textContent = 'Copied!';
-      setTimeout(() => { anchor.textContent = original; }, 1500);
-    };
-    const onFailure = () => { anchor.textContent = 'Copy failed'; };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(roll).then(onSuccess, onFailure);
-    } else {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = roll;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        onSuccess();
-      } catch { onFailure(); }
-    }
-  });
-}
-
-/**
- * Wire any `.parcel-ppd-copy` anchor inside the given popup so a
- * click copies the anchor's `data-address` to clipboard before
- * navigation. The link's normal `target="_blank"` + href opens
- * PP&D Property Map in a new tab; this just primes the clipboard
- * so the user can paste straight into PP&D's search bar (their
- * legacy page doesn't accept URL parameters for pre-fill).
- */
-function wirePpdAddressCopy(popup) {
-  if (!popup) return;
-  const el = popup.getElement?.();
-  const anchor = el?.querySelector('.parcel-ppd-copy');
-  if (!anchor) return;
-  const address = anchor.getAttribute('data-address');
-  if (!address) return;
-  anchor.addEventListener('click', () => {
-    // Don't preventDefault — let the link still open PP&D in a
-    // new tab. Just copy the address synchronously beforehand.
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(address).catch(() => { /* ignore */ });
-    } else {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = address;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      } catch { /* ignore */ }
-    }
-    const original = anchor.textContent;
-    anchor.textContent = 'Copied — paste in PP&D';
-    setTimeout(() => { anchor.textContent = original; }, 1800);
   });
 }
 

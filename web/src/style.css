@@ -273,26 +273,10 @@ body {
 }
 
 /* Hide-map toggle (Manitoba alignment). When the user clicks the
-   Hide map button in the topbar, .map-collapsed lands on the
-   workspace and the map-pane drops out of the layout so the
+   Hide map button in the results toolbar, .map-collapsed lands on
+   the workspace and the map-pane drops out of the layout so the
    table claims the full workspace. */
 .workspace.map-collapsed .map-pane { display: none; }
-
-/* Expand-map toggle (Manitoba alignment). When the user clicks
-   the Expand map button in the topbar, .map-expanded lands on
-   the workspace. The map drops its 16:9 aspect-ratio and width
-   cap so it claims the workspace's full horizontal width and
-   fills the viewport vertically. The table still flows below
-   the map; the user scrolls the page to reach it. Mutually
-   exclusive with .map-collapsed — main.js's apply* helpers
-   clear one when setting the other. Generate Map captures the
-   canvas as-is, so an expanded map produces a wide PNG snapshot;
-   restoring the default brings the 16:9 framing back. */
-.workspace.map-expanded .map-pane {
-  max-width: none;
-  aspect-ratio: auto;
-  height: calc(100vh - 16px);
-}
 
 .table-pane {
   /* Padding matches what #results-wrap used to carry; the table
@@ -356,22 +340,8 @@ body {
   gap: 6px;
 }
 
-/* DU row sizing: dropdown and number input split the row 50/50.
-   Both fields claim equal flex-basis with min-width:0 so neither
-   can spill past its half. The native spinner buttons on the
-   number input are hidden — saves horizontal real estate and
-   matches the no-spinner pattern used on the address-from/to
-   inputs. */
-.sidebar .du-row .du-mode-field { flex: 1 1 0; min-width: 0; }
-.sidebar .du-row .du-min-field  { flex: 1 1 0; min-width: 0; }
-.sidebar .du-row .du-min-field input[type="number"] {
-  -moz-appearance: textfield;
-}
-.sidebar .du-row .du-min-field input[type="number"]::-webkit-inner-spin-button,
-.sidebar .du-row .du-min-field input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
+.sidebar .du-row .du-mode-field { flex: 1 1 auto; min-width: 0; }
+.sidebar .du-row .du-min-field  { flex: 0 0 64px; min-width: 0; }
 
 /* From-#, To-#, Street Name all share a single row inside the sidebar.
    The two number boxes are fixed-narrow (room for ~5 digits each);
@@ -403,14 +373,12 @@ body {
   min-width: 0;
 }
 
-/* Action row keeps Search / Clear / Export CSV together as a group.
-   Tightened to match Manitoba's denser sidebar spacing — gap 4 px
-   between buttons, top margin 4 px (was 6 each). */
+/* Action row keeps Search / Clear / Export CSV together as a group. */
 .sidebar .action-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 .sidebar .action-row button {
@@ -418,59 +386,18 @@ body {
 }
 
 /* Map-overlay buttons sit in a 2-column grid inside the sidebar so the
-   six toggles stay compact. Each button stretches to its grid cell.
-   Sizing matched to Manitoba's overlay grid: 3 px row / 4 px col gap,
-   6 px vertical × 8 px horizontal padding, 12 px font at weight 500
-   so half-width labels read cleanly even at 2-line wraps. */
+   six toggles stay compact. Each button stretches to its grid cell. */
 .sidebar .overlay-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 3px 4px;
+  gap: 6px;
 }
 
 .sidebar .overlay-grid button,
 .sidebar .overlay-grid .overlay-link {
   width: 100%;
-  padding: 6px 8px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.25;
-}
-
-/* Span-the-row helper for the orphan button at the end of each
-   odd-count overlay group (Survey, City Owned Parcels, Generate
-   Map). Keeps the grid visually balanced without forcing a stray
-   empty cell next to the lone item. */
-.sidebar .overlay-grid .overlay-span-2 {
-  grid-column: 1 / -1;
-}
-
-/* Inline divider with a subtitle that breaks the overlay grid into
-   named sections (e.g. "Planning Layers", "Reference Layers"). The
-   divider spans both columns and the title sits over a hairline so
-   the section heading + line render as one element. */
-.sidebar .overlay-grid .overlay-divider {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 4px 0 2px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #5a6478;
-}
-
-.sidebar .overlay-grid .overlay-divider::before,
-.sidebar .overlay-grid .overlay-divider::after {
-  content: "";
-  flex: 1 1 auto;
-  border-top: 1px solid #cbd2dc;
-}
-
-.sidebar .overlay-grid .overlay-divider span {
-  flex: 0 0 auto;
+  padding: 8px 6px;
+  font-size: 12.5px;
 }
 
 /* Small italic caveat under the overlay grid — currently used to flag
@@ -1500,29 +1427,6 @@ body {
   height: 14px;
 }
 
-/* Topbar variant of .map-toggle-btn — sits in the dark navy
-   topbar so it needs a translucent dark fill and light text
-   instead of the light-toolbar default above. Mirrors the
-   .topbar-link weight so the cluster reads as one navbar group.
-   The base .map-toggle-btn rules above still apply (display,
-   padding, gap, font-size, font-family); only the colours
-   change. */
-.topbar .map-toggle-btn.topbar-map-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
-  color: #d8e3f4;
-}
-.topbar .map-toggle-btn.topbar-map-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
-  border-color: rgba(255, 255, 255, 0.32);
-  color: #fff;
-}
-.topbar .map-toggle-btn.topbar-map-btn[aria-pressed="true"] {
-  background: rgba(37, 99, 235, 0.28);
-  border-color: var(--color-accent-500, #2563eb);
-  color: #fff;
-}
-
 /* Columns gear button + dropdown popover. The popover is
    positioned absolute beneath the gear so opening it doesn't
    reflow the table; click-away dismissal lives in columns.js. */
@@ -2002,26 +1906,920 @@ body:not(.subject-set) .subj-col {
   display: none !important;
 }
 
-/* Neighbourhood hover tooltip — tiny pill that follows the mouse
-   when the Clusters or individual Neighbourhoods layer is on.
-   Distinct from the click popup so a hover doesn't replace the
-   pinned detail popup. */
-.maplibregl-popup.hood-hover-popup {
-  pointer-events: none;
+/* -----------------------------------------------------------------
+   Visual refresh: Treadwell-inspired operational interface.
+   Kept as a final override layer so existing JS hooks and layout
+   structure stay unchanged.
+   ----------------------------------------------------------------- */
+:root {
+  --topbar-height: 52px;
+  --ui-bg: #f3f5f2;
+  --ui-bg-alt: #eaf0ed;
+  --ui-panel: #ffffff;
+  --ui-panel-muted: #f8f9f6;
+  --ui-ink: #151916;
+  --ui-ink-soft: #4d5752;
+  --ui-muted: #6d7771;
+  --ui-line: #d7ded7;
+  --ui-line-strong: #b8c3ba;
+  --ui-brand: #121613;
+  --ui-brand-hover: #222c27;
+  --ui-accent: #2f6f6a;
+  --ui-accent-dark: #1f5752;
+  --ui-accent-soft: #e4f1ef;
+  --ui-focus: #3867d6;
+  --ui-danger: #8f3530;
+  --ui-danger-soft: #fbefee;
+  --ui-radius: 6px;
+  --ui-shadow-soft: 0 12px 28px rgba(18, 22, 19, 0.08);
+  --ui-shadow-popover: 0 18px 42px rgba(18, 22, 19, 0.18);
+  --color-primary-50: #f1f4f1;
+  --color-primary-100: #e1e8e2;
+  --color-primary-200: #c9d4cc;
+  --color-primary-300: #a9b7ad;
+  --color-primary-400: #718078;
+  --color-primary-500: var(--ui-brand);
+  --color-primary-600: #0e120f;
+  --color-primary-700: #090c0a;
+  --color-accent-400: #5f9f9a;
+  --color-accent-500: var(--ui-accent);
+  --color-accent-600: var(--ui-accent-dark);
+  --color-accent-700: #163f3b;
+  --color-neutral-50: #fafaf8;
+  --color-neutral-100: #f1f3ef;
+  --color-neutral-200: var(--ui-line);
+  --color-neutral-300: var(--ui-line-strong);
+  --color-neutral-400: #95a19a;
+  --color-neutral-500: var(--ui-muted);
+  --color-neutral-600: var(--ui-ink-soft);
+  --color-neutral-700: #313a35;
+  --color-neutral-800: #222823;
+  --color-neutral-900: var(--ui-ink);
 }
-.maplibregl-popup.hood-hover-popup .maplibregl-popup-content {
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: rgba(15, 23, 42, 0.88);
-  color: #fff;
-  font-size: 11.5px;
+
+html,
+body {
+  color: var(--ui-ink);
+  background:
+    linear-gradient(180deg, rgba(47, 111, 106, 0.05), transparent 260px),
+    var(--ui-bg);
+  letter-spacing: 0;
+}
+
+.topbar {
+  min-height: var(--topbar-height);
+  padding: 10px 22px;
+  background: linear-gradient(180deg, #151a16 0%, #0e120f 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(14, 18, 15, 0.22);
+}
+
+.topbar-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #f7f8f4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.topbar-title::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 22px;
+  background: var(--ui-accent);
+  border-radius: 3px;
+}
+
+.topbar-nav {
+  gap: 10px;
+}
+
+.topbar-link,
+.topbar-summary {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  color: rgba(247, 248, 244, 0.78);
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius);
+  font-size: 12.5px;
   font-weight: 600;
-  line-height: 1.2;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  letter-spacing: 0;
 }
-.maplibregl-popup.hood-hover-popup .maplibregl-popup-tip {
+
+.topbar-link:hover,
+.topbar-summary:hover,
+.topbar-details[open] .topbar-summary {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.13);
+}
+
+.topbar-link:focus-visible,
+.topbar-summary:focus-visible {
+  outline: 2px solid #91d2cd;
+}
+
+.topbar-panel,
+.columns-popover,
+.sales-pucs-popover {
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-popover);
+}
+
+.topbar-panel {
+  top: calc(100% + 8px);
+  padding: 16px 18px;
+}
+
+.topbar-panel-section + .topbar-panel-section {
+  border-top-color: var(--ui-line);
+}
+
+.topbar-panel-section h2,
+.sidebar h2,
+.sidebar h2.sidebar-section-title,
+.sidebar details.additional-searches > summary,
+.parcel-summary-fields dt,
+.parcel-summary-verify > summary,
+.maplibregl-ctrl.measure-control .measure-readout strong,
+#results .badge,
+.sidebar-tab {
+  letter-spacing: 0;
+}
+
+.topbar-panel-section h2 {
+  color: var(--ui-accent-dark);
+}
+
+.topbar-panel-section a,
+.hint a,
+.disclaimer a {
+  color: var(--ui-accent-dark);
+}
+
+.app-shell {
+  background: var(--ui-bg);
+}
+
+.sidebar {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 249, 246, 0.98)),
+    var(--ui-panel);
+  border-right: 1px solid var(--ui-line);
+  box-shadow: 12px 0 30px rgba(18, 22, 19, 0.05);
+  gap: 8px;
+}
+
+@media (min-width: 768px) {
+  .sidebar {
+    min-width: 336px;
+  }
+}
+
+.sidebar h2,
+.sidebar h2.sidebar-section-title,
+.sidebar details.additional-searches > summary {
+  color: var(--ui-ink-soft);
+  font-size: 12px;
+}
+
+.sidebar h2.sidebar-section-title-second {
+  border-top-color: var(--ui-line);
+}
+
+.sidebar details.additional-searches {
+  margin-top: 2px;
+  padding-top: 2px;
+}
+
+.sidebar details.additional-searches > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  margin: 6px 0 2px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  background: var(--ui-panel-muted);
+  list-style: none;
+}
+
+.sidebar details.additional-searches > summary::-webkit-details-marker {
   display: none;
 }
-.maplibregl-popup.hood-hover-popup .hood-hover-label {
-  white-space: nowrap;
+
+.sidebar details.additional-searches > summary::before {
+  content: ">";
+  color: var(--ui-muted);
+  font-size: 11px;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+
+.sidebar details.additional-searches[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.sidebar details.additional-searches > summary:hover {
+  color: var(--ui-ink);
+  border-color: var(--ui-line-strong);
+  background: #fff;
+}
+
+.workspace {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(234, 240, 237, 0.78)),
+    var(--ui-bg-alt);
+}
+
+.map-pane {
+  max-width: 100%;
+  background: #dfe6e2;
+  border-bottom: 1px solid var(--ui-line);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.table-pane {
+  padding: 14px 20px 34px;
+}
+
+.table-scroll {
+  background: var(--ui-panel);
+  border-color: var(--ui-line);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+.controls .field {
+  gap: 5px;
+}
+
+.controls input[type="text"],
+.controls input[type="number"],
+.controls select,
+.sales-date-input,
+.results-toolbar-presets select {
+  min-height: 36px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--ui-radius);
+  background: var(--ui-panel);
+  color: var(--ui-ink);
+  box-shadow: inset 0 1px 0 rgba(18, 22, 19, 0.03);
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.controls input[type="text"]::placeholder,
+.controls input[type="number"]::placeholder,
+.chip-input .chip-input-text::placeholder {
+  color: #88938d;
+}
+
+.controls input[type="text"]:hover,
+.controls input[type="number"]:hover,
+.controls select:hover,
+.chip-input:hover,
+.sales-date-input:hover,
+.results-toolbar-presets select:hover {
+  border-color: #98a69e;
+}
+
+.controls input[type="text"]:focus,
+.controls input[type="number"]:focus,
+.controls select:focus,
+.sales-date-input:focus,
+.results-toolbar-presets select:focus,
+.chip-input:focus-within {
+  outline: none;
+  border-color: var(--ui-accent);
+  box-shadow:
+    0 0 0 3px rgba(47, 111, 106, 0.16),
+    inset 0 1px 0 rgba(18, 22, 19, 0.03);
+}
+
+.chip-input {
+  min-height: 36px;
+  padding: 4px 7px;
+  border-color: var(--ui-line-strong);
+  border-radius: var(--ui-radius);
+  background: var(--ui-panel);
+}
+
+.chip-input .chip {
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-dark);
+  border-color: rgba(47, 111, 106, 0.24);
+  border-radius: 5px;
+  font-weight: 600;
+}
+
+.chip-input .chip-remove,
+.chip-input .chip-copy {
+  color: var(--ui-accent-dark);
+}
+
+.chip-input .chip-remove:hover,
+.chip-input .chip-copy:hover {
+  background: rgba(47, 111, 106, 0.14);
+}
+
+.controls .field .info-icon {
+  color: var(--ui-muted);
+}
+
+.controls .field .info-icon:hover,
+.controls .field.popover-pinned .info-icon {
+  color: var(--ui-accent-dark);
+  background: var(--ui-accent-soft);
+}
+
+.controls .field .tip {
+  background: var(--ui-brand);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-popover);
+}
+
+.controls .field .tip::before {
+  border-bottom-color: var(--ui-brand);
+}
+
+.controls button,
+.sidebar .overlay-grid .overlay-link,
+.parcel-summary .ps-action,
+.sales-pucs-btn,
+.sales-pucs-popover-actions button,
+.map-toggle-btn,
+.columns-gear-btn,
+.maplibregl-ctrl.basemap-toggle button,
+.maplibregl-ctrl.measure-control > button,
+.maplibregl-ctrl.measure-control .measure-modes button,
+.maplibregl-ctrl.measure-control .measure-actions button {
+  border-radius: var(--ui-radius);
+  font-family: inherit;
+  letter-spacing: 0;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.controls button {
+  min-height: 36px;
+  padding: 8px 14px;
+  background: var(--ui-brand);
+  color: #fff;
+  border: 1px solid var(--ui-brand);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.16) inset, 0 8px 18px rgba(18, 22, 19, 0.12);
+}
+
+.controls button:hover:not(:disabled) {
+  background: var(--ui-brand-hover);
+  border-color: var(--ui-brand-hover);
+  transform: translateY(-1px);
+}
+
+.controls button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+}
+
+.controls button:disabled {
+  background: #e7ebe7;
+  color: #8b958f;
+  border-color: var(--ui-line);
+  box-shadow: none;
+}
+
+.controls button.secondary,
+.sidebar .overlay-grid .overlay-link,
+.parcel-summary .ps-action {
+  background: #fff;
+  color: var(--ui-ink);
+  border: 1px solid var(--ui-line-strong);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.78) inset;
+}
+
+.controls button.secondary:hover:not(:disabled),
+.sidebar .overlay-grid .overlay-link:hover,
+.parcel-summary .ps-action:hover {
+  background: var(--ui-panel-muted);
+  color: var(--ui-accent-dark);
+  border-color: var(--ui-accent);
+}
+
+.controls button.secondary.active {
+  background: var(--ui-accent-dark);
+  color: #fff;
+  border-color: var(--ui-accent-dark);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 8px 18px rgba(31, 87, 82, 0.18);
+}
+
+.controls button.secondary.active:hover:not(:disabled) {
+  background: #184844;
+  border-color: #184844;
+}
+
+.controls button.secondary:disabled {
+  background: #f3f5f2;
+  color: #a0aaa4;
+  border-color: var(--ui-line);
+}
+
+.controls button.secondary.danger-outline {
+  color: var(--ui-danger);
+  border-color: rgba(143, 53, 48, 0.42);
+  background: #fff;
+}
+
+.controls button.secondary.danger-outline:hover:not(:disabled) {
+  color: #6f2824;
+  border-color: #6f2824;
+  background: var(--ui-danger-soft);
+}
+
+.controls button:focus-visible,
+.sidebar .overlay-grid .overlay-link:focus-visible,
+.parcel-summary .ps-action:focus-visible,
+.sales-pucs-btn:focus-visible,
+.map-toggle-btn:focus-visible,
+.columns-gear-btn:focus-visible,
+.maplibregl-ctrl button:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+.sidebar .overlay-grid {
+  gap: 8px;
+}
+
+.sidebar .overlay-grid button,
+.sidebar .overlay-grid .overlay-link {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+}
+
+.sidebar .overlay-note {
+  color: var(--ui-muted);
+}
+
+.count,
+.results-status {
+  background: var(--ui-accent-soft);
+  border-color: rgba(47, 111, 106, 0.22);
+  color: var(--ui-accent-dark);
+  border-radius: var(--ui-radius);
+}
+
+.hint,
+.results-empty {
+  background: var(--ui-panel);
+  border-color: var(--ui-line);
+  border-radius: var(--ui-radius);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
+}
+
+.hint > summary::before {
+  color: var(--ui-accent-dark);
+}
+
+.hint-body code {
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-dark);
+}
+
+.map-legend {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: var(--ui-line-strong);
+  border-radius: var(--ui-radius);
+  color: var(--ui-ink);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+.map-legend strong {
+  color: var(--ui-ink);
+}
+
+#results {
+  border: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--ui-ink);
+}
+
+#results th,
+#results td {
+  border-bottom: 1px solid #edf0ec;
+}
+
+#results th {
+  background: #eef3ef;
+  color: #27312c;
+  border-bottom: 1px solid var(--ui-line-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#results th:first-child,
+#results td:first-child {
+  background: #fff;
+  box-shadow: 1px 0 0 #edf0ec;
+}
+
+#results thead th:first-child {
+  background: #eef3ef;
+}
+
+#results tbody tr:nth-child(even) {
+  background: #fbfcfa;
+}
+
+#results tbody tr:hover,
+#results tbody tr:hover td:first-child {
+  background: #edf7f5;
+}
+
+#results th[data-col]:hover {
+  background: #e2ece7;
+}
+
+#results th[data-col]::after {
+  color: #7d8a83;
+}
+
+#results th[data-col][aria-sort="ascending"]::after,
+#results th[data-col][aria-sort="descending"]::after {
+  color: var(--ui-accent-dark);
+}
+
+#results tbody tr[data-group-pos="first"],
+#results tbody tr[data-group-pos="middle"],
+#results tbody tr[data-group-pos="last"],
+#results tbody tr[data-group-pos] td:first-child {
+  background: var(--ui-accent-soft);
+}
+
+#results tbody tr[data-group-pos] td:first-child {
+  box-shadow: inset 3px 0 0 var(--ui-accent-dark), 1px 0 0 #d9e9e6;
+}
+
+#results tbody tr[data-group-pos]:hover,
+#results tbody tr[data-group-pos]:hover td:first-child {
+  background: #d9eeea;
+}
+
+#results .badge {
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+#results .badge-zoning,
+#results .badge-pucs,
+#results .badge-property-type {
+  background: #edf1ec;
+  color: #35423b;
+  border-color: #d6ded7;
+}
+
+#results .badge-property-type.badge-pt-residential {
+  background: #e3f5e7;
+  color: #21623a;
+  border-color: #c4e7cc;
+}
+
+#results .badge-property-type.badge-pt-industrial {
+  background: #f7ecd8;
+  color: #785421;
+  border-color: #ead4ae;
+}
+
+#results .badge-property-type.badge-pt-commercial {
+  background: #e3edf7;
+  color: #29547e;
+  border-color: #c8d9ea;
+}
+
+.results-toolbar {
+  flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.9);
+  border-color: var(--ui-line);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+.results-toolbar-label {
+  color: var(--ui-ink-soft);
+}
+
+.map-toggle-btn,
+.columns-gear-btn,
+.sales-pucs-btn {
+  min-height: 32px;
+  background: #fff;
+  border-color: var(--ui-line-strong);
+  color: var(--ui-ink);
+}
+
+.map-toggle-btn:hover,
+.columns-gear-btn:hover,
+.sales-pucs-btn:hover:not(:disabled) {
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-dark);
+  background: var(--ui-panel-muted);
+}
+
+.map-toggle-btn[aria-pressed="true"],
+.columns-gear-btn[aria-expanded="true"],
+.sales-pucs-btn[aria-expanded="true"] {
+  background: var(--ui-accent-soft);
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-dark);
+}
+
+.columns-popover,
+.sales-pucs-popover {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.columns-popover-item,
+.sales-pucs-popover-item {
+  border-radius: 4px;
+}
+
+.columns-popover-item:hover,
+.sales-pucs-popover-item:hover {
+  background: var(--ui-accent-soft);
+}
+
+.parcel-summary {
+  background: var(--ui-panel);
+  border-color: var(--ui-line);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+.parcel-summary-title,
+.parcel-summary-fields dd,
+.parcel-summary-verify-list li label {
+  color: var(--ui-ink);
+}
+
+.parcel-summary-close {
+  color: var(--ui-muted);
+  border-radius: var(--ui-radius);
+}
+
+.parcel-summary-close:hover {
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-dark);
+}
+
+.parcel-summary-actions,
+.parcel-summary-verify {
+  border-top-color: var(--ui-line);
+}
+
+.parcel-summary .ps-action {
+  color: var(--ui-accent-dark);
+}
+
+.parcel-summary .ps-action.disabled,
+.parcel-summary .ps-action[aria-disabled="true"] {
+  color: #9aa59e;
+  border-color: var(--ui-line);
+}
+
+.sidebar-tabs {
+  background: #eef2ee;
+  border-bottom-color: var(--ui-line);
+  padding: 5px;
+  gap: 4px;
+}
+
+.sidebar-tab {
+  min-height: 34px;
+  padding: 8px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius);
+  color: var(--ui-ink-soft);
+  box-shadow: none;
+}
+
+.sidebar-tab:hover {
+  color: var(--ui-ink);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.sidebar-tab[aria-selected="true"] {
+  color: #fff;
+  background: var(--ui-brand);
+  border-color: var(--ui-brand);
+  box-shadow: 0 7px 16px rgba(18, 22, 19, 0.14);
+}
+
+.sidebar-tab:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+.sales-dropzone {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(248, 249, 246, 0.92)),
+    var(--ui-panel-muted);
+  border-color: var(--ui-line-strong);
+  border-radius: var(--ui-radius);
+  color: var(--ui-ink-soft);
+}
+
+.sales-dropzone:hover,
+.sales-dropzone.drag-over {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-dark);
+}
+
+.sales-dropzone-icon,
+.sales-dropzone:hover .sales-dropzone-icon,
+.sales-dropzone.drag-over .sales-dropzone-icon {
+  color: var(--ui-accent-dark);
+}
+
+.sales-filter-row,
+.sales-date-range {
+  color: var(--ui-ink);
+}
+
+.sales-date-label {
+  color: var(--ui-ink-soft);
+}
+
+.sales-pucs-popover-actions {
+  border-bottom-color: var(--ui-line);
+}
+
+.sales-pucs-popover-actions button {
+  border-color: var(--ui-line-strong);
+}
+
+.sales-pucs-popover-actions button:hover {
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-dark);
+  background: var(--ui-panel-muted);
+}
+
+.static-map-output,
+.disclaimer {
+  border-color: var(--ui-line);
+}
+
+.static-map-output {
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+.disclaimer {
+  background: #f7f3e8;
+  color: #594d33;
+}
+
+.disclaimer strong {
+  color: #322811;
+}
+
+.maplibregl-ctrl-group {
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-soft);
+  overflow: hidden;
+}
+
+.maplibregl-ctrl-group button {
+  border-radius: 0;
+}
+
+.maplibregl-ctrl.basemap-toggle button,
+.maplibregl-ctrl.measure-control > button {
+  color: var(--ui-ink);
+  background: #fff;
+}
+
+.maplibregl-ctrl.basemap-toggle button:hover,
+.maplibregl-ctrl.measure-control > button:hover {
+  background: var(--ui-panel-muted);
+}
+
+.maplibregl-ctrl.basemap-toggle button.active,
+.maplibregl-ctrl.measure-control > button.active,
+.maplibregl-ctrl.measure-control .measure-modes button.active {
+  background: var(--ui-brand);
+  color: #fff;
+}
+
+.maplibregl-ctrl.measure-control .measure-panel {
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-popover);
+  color: var(--ui-ink);
+}
+
+.maplibregl-ctrl.measure-control .measure-modes button,
+.maplibregl-ctrl.measure-control .measure-actions button {
+  border-color: var(--ui-line-strong);
+  color: var(--ui-ink);
+}
+
+.maplibregl-ctrl.measure-control .measure-modes button:hover,
+.maplibregl-ctrl.measure-control .measure-actions button:hover {
+  background: var(--ui-panel-muted);
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-dark);
+}
+
+.maplibregl-ctrl.measure-control .measure-readout {
+  background: var(--ui-panel-muted);
+  border-color: var(--ui-line);
+  border-radius: var(--ui-radius);
+}
+
+@media (max-width: 767px) {
+  .topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+  }
+
+  .topbar-nav {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .topbar-details {
+    position: static;
+  }
+
+  .topbar-panel {
+    left: 14px;
+    right: 14px;
+    width: auto;
+  }
+
+  .sidebar {
+    max-height: none;
+    border-bottom-color: var(--ui-line);
+  }
+
+  .table-pane {
+    padding: 12px 12px 28px;
+  }
+
+  .results-toolbar {
+    gap: 8px;
+  }
+
+  .results-toolbar-presets {
+    flex: 1 1 100%;
+  }
+
+  .results-toolbar-presets select {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar .address-row {
+    flex-wrap: wrap;
+  }
+
+  .sidebar .address-row .address-street-field {
+    flex-basis: 100%;
+  }
+
+  .sidebar .overlay-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .map-toggle-label,
+  .columns-gear-label {
+    display: none;
+  }
 }

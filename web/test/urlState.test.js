@@ -141,8 +141,6 @@ test('encodeState — every overlay toggle emits its short code', () => {
     secondaryPlansToggle: true,
     infillToggle: true,
     mallsCorridorsToggle: true,
-    cityOwnedParcelsToggle: true,
-    transitToggle: true,
     contamToggle: true,
     dimensionsToggle: true,
   });
@@ -155,8 +153,6 @@ test('encodeState — every overlay toggle emits its short code', () => {
   assert.equal(params.get('sp'), '1');
   assert.equal(params.get('if'), '1');
   assert.equal(params.get('mc'), '1');
-  assert.equal(params.get('cp'), '1');
-  assert.equal(params.get('bt'), '1');
   assert.equal(params.get('cn'), '1');
   assert.equal(params.get('dm'), '1');
 });
@@ -256,8 +252,6 @@ test('round-trip — full state survives encode + decode', () => {
     secondaryPlansToggle: true,
     infillToggle: true,
     mallsCorridorsToggle: true,
-    cityOwnedParcelsToggle: true,
-    transitToggle: true,
     contamToggle: true,
     dimensionsToggle: true,
     sortCol: 'address',
@@ -314,31 +308,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 28 entries (11 inputs + 12 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 subjectRoll)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 28);
-});
-
-// ---------- neighbourhoodsMode (3-state cycle) ----------
-
-test('decodeState — neighbourhoodsMode=clusters accepted', () => {
-  assert.deepEqual(decodeState('nh=clusters'), { neighbourhoodsMode: 'clusters' });
-});
-
-test('decodeState — neighbourhoodsMode=individual accepted', () => {
-  assert.deepEqual(decodeState('nh=individual'), { neighbourhoodsMode: 'individual' });
-});
-
-test('decodeState — neighbourhoodsMode=off dropped (default state)', () => {
-  assert.deepEqual(decodeState('nh=off'), {});
-});
-
-test('decodeState — neighbourhoodsMode=junk dropped', () => {
-  assert.deepEqual(decodeState('nh=foo'), {});
-});
-
-test('round-trip — neighbourhoodsMode=clusters survives', () => {
-  const state = { neighbourhoodsMode: 'clusters', roll: '12345' };
-  assert.deepEqual(decodeState(encodeState(state)), state);
+test('SCHEMA — has exactly 25 entries (11 inputs + 10 toggles + 2 sort + 1 tab + 1 subjectRoll)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 25);
 });
 
 // ---------- subjectRoll (Phase 7 fu2) ----------
