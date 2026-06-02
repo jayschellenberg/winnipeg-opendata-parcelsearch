@@ -9,12 +9,14 @@
  * Empty / default values aren't emitted so a fresh page load
  * produces a clean URL.
  *
- * The schema covers 26 keys:
+ * The schema covers 27 keys:
  *   - 11 search inputs (lot, block, plan, desc, roll, addressFrom,
  *     addressTo, addressStreet, zoning, duMode, duMin)
  *   - 11 overlay toggles (survey, assess, allParcels, zoning,
  *     traffic, secondaryPlans, infill, mallsCorridors, transit,
  *     contam, dimensions) — each a boolean
+ *   - 1 neighbourhoods mode (3-state cycle: clusters / individual;
+ *     omitted means off)
  *   - 2 sort (sortCol, sortDir)
  *   - 1 tab (property | sales) — Phase 7
  *   - 1 subjectRoll (the sales-tab subject parcel) — Phase 7 fu2
@@ -106,6 +108,9 @@ export const SCHEMA = {
   transitToggle:        { param: 'bt', validate: cleanBool, format: formatBool },
   contamToggle:         { param: 'cn', validate: cleanBool, format: formatBool },
   dimensionsToggle:     { param: 'dm', validate: cleanBool, format: formatBool },
+
+  // --- Neighbourhoods mode (1) ---
+  neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },
 
   // --- Sort (2) ---
   sortCol: { param: 'sc', validate: oneOf(SORT_COLS),       format: (v) => v },

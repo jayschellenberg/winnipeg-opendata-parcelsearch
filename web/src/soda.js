@@ -1419,6 +1419,8 @@ function tagPdoKind(feature, kind) {
 // deploys work without rebuilding.
 const TRANSIT_ROUTES_URL = '/transit-routes.geojson';
 const TRANSIT_STOPS_URL = '/transit-stops.geojson';
+const NEIGHBOURHOODS_URL = '/wpg-neighbourhoods.geojson';
+const NEIGHBOURHOOD_CLUSTERS_URL = '/wpg-neighbourhood-clusters.geojson';
 
 const STATIC_GEOJSON_CACHE = new Map();
 
@@ -1444,6 +1446,14 @@ export async function fetchTransitRoutes() {
 
 export async function fetchTransitStops() {
   return fetchStaticGeoJson('transitStops', TRANSIT_STOPS_URL);
+}
+
+export async function fetchNeighbourhoods() {
+  return fetchStaticGeoJson('neighbourhoods', NEIGHBOURHOODS_URL);
+}
+
+export async function fetchNeighbourhoodClusters() {
+  return fetchStaticGeoJson('neighbourhoodClusters', NEIGHBOURHOOD_CLUSTERS_URL);
 }
 
 // Session cache for the small whole-dataset overlay fetches above.

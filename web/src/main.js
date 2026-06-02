@@ -59,6 +59,8 @@ import {
   fetchContaminatedSites,
   fetchTransitRoutes,
   fetchTransitStops,
+  fetchNeighbourhoods,
+  fetchNeighbourhoodClusters,
 } from './soda.js';
 import {
   initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
@@ -94,6 +96,7 @@ const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
+const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
@@ -125,6 +128,8 @@ let contamEnabled = false;
 let contamLoaded = false;
 let transitEnabled = false;
 let transitLoaded = false;
+let neighbourhoodsMode = 'off';
+let neighbourhoodsLoaded = { clusters: false, individual: false };
 
 // Phase 8 TDZ audit: these three were previously declared mid-file
 // next to their toggle handlers. Hoisted up here so the Phase 8 (2/2)
@@ -242,6 +247,7 @@ $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
+if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 // Tab-into-To auto-fill: when the user types a number in From and
 // then focuses To (by Tab or click), pre-fill To with the same value
@@ -434,6 +440,11 @@ function captureUrlState() {
     if (on !== defaults[key]) s[key] = on;
   }
 
+  const neighbourhoodMode = $neighbourhoodsToggle?.dataset?.mode || neighbourhoodsMode;
+  if (neighbourhoodMode === 'clusters' || neighbourhoodMode === 'individual') {
+    s.neighbourhoodsMode = neighbourhoodMode;
+  }
+
   if (currentSort?.col) s.sortCol = currentSort.col;
   if (currentSort?.dir) s.sortDir = currentSort.dir;
 
@@ -488,6 +499,10 @@ function applyUrlState(state) {
     if (cur !== state[key]) btn.click();
   }
 
+  if (state.neighbourhoodsMode === 'clusters' || state.neighbourhoodsMode === 'individual') {
+    setNeighbourhoodsMode(state.neighbourhoodsMode);
+  }
+
   if (state.sortCol) {
     currentSort = { col: state.sortCol, dir: state.sortDir === 'desc' ? 'desc' : 'asc' };
     updateSortIndicators();
@@ -511,18 +526,22 @@ function applyUrlState(state) {
 // into a single history write so typing in an input doesn't spam
 // browser history.
 let urlWritePending = false;
+function writeUrlStateNow() {
+  try {
+    const qs = encodeState(captureUrlState());
+    const url = qs ? `${location.pathname}?${qs}` : location.pathname;
+    history.replaceState(null, '', url);
+  } catch (err) {
+    console.warn('URL state write failed (non-fatal):', err);
+  }
+}
+
 function queueUrlWrite() {
   if (urlWritePending) return;
   urlWritePending = true;
   requestAnimationFrame(() => {
     urlWritePending = false;
-    try {
-      const qs = encodeState(captureUrlState());
-      const url = qs ? `${location.pathname}?${qs}` : location.pathname;
-      history.replaceState(null, '', url);
-    } catch (err) {
-      console.warn('queueUrlWrite failed (non-fatal):', err);
-    }
+    writeUrlStateNow();
   });
 }
 
@@ -543,6 +562,7 @@ for (const btn of [
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
   $transitToggle,
+  $neighbourhoodsToggle,
   $contamToggle, $dimensionsToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
@@ -860,6 +880,156 @@ async function toggleTransit() {
     }
   } else {
     $transitToggle.textContent = 'Transit';
+  }
+}
+
+// ---------- Neighbourhoods 3-state cycler ----------
+
+const NEIGHBOURHOOD_CLUSTER_LAYERS = [
+  'neighbourhood-clusters-fill',
+  'neighbourhood-clusters-line-casing',
+  'neighbourhood-clusters-line',
+  'neighbourhood-clusters-label',
+];
+const NEIGHBOURHOOD_INDIVIDUAL_LAYERS = [
+  'neighbourhoods-fill',
+  'neighbourhoods-line-casing',
+  'neighbourhoods-line',
+  'neighbourhoods-label',
+];
+
+function polygonRingCentroid(ring) {
+  let sumX = 0, sumY = 0, twoArea = 0;
+  const n = ring.length - 1;
+  for (let i = 0; i < n; i++) {
+    const x1 = ring[i][0], y1 = ring[i][1];
+    const x2 = ring[i + 1][0], y2 = ring[i + 1][1];
+    const cross = x1 * y2 - x2 * y1;
+    twoArea += cross;
+    sumX += (x1 + x2) * cross;
+    sumY += (y1 + y2) * cross;
+  }
+  if (Math.abs(twoArea) < 1e-12) {
+    let mx = 0, my = 0;
+    for (let i = 0; i < n; i++) { mx += ring[i][0]; my += ring[i][1]; }
+    return [mx / n, my / n];
+  }
+  const factor = 1 / (3 * twoArea);
+  return [sumX * factor, sumY * factor];
+}
+
+function buildLabelPointFc(polygonFc, labelKey) {
+  if (!polygonFc || !Array.isArray(polygonFc.features)) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  const features = [];
+  for (const f of polygonFc.features) {
+    const geom = f.geometry;
+    if (!geom) continue;
+    let outerRing = null;
+    if (geom.type === 'Polygon') {
+      outerRing = geom.coordinates?.[0];
+    } else if (geom.type === 'MultiPolygon') {
+      let bestArea = -Infinity, bestRing = null;
+      for (const poly of geom.coordinates) {
+        const ring = poly?.[0];
+        if (!ring || ring.length < 4) continue;
+        let twoArea = 0;
+        for (let i = 0, m = ring.length - 1; i < m; i++) {
+          twoArea += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+        }
+        const area = Math.abs(twoArea);
+        if (area > bestArea) { bestArea = area; bestRing = ring; }
+      }
+      outerRing = bestRing;
+    }
+    if (!outerRing || outerRing.length < 4) continue;
+    const [lon, lat] = polygonRingCentroid(outerRing);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lon, lat] },
+      properties: { [labelKey]: f.properties?.[labelKey] ?? '' },
+    });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+function setNeighbourhoodLayerVisibility(layerIds, visible) {
+  const v = visible ? 'visible' : 'none';
+  for (const id of layerIds) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+  }
+}
+
+function renderNeighbourhoodButton() {
+  if (!$neighbourhoodsToggle) return;
+  $neighbourhoodsToggle.dataset.mode = neighbourhoodsMode;
+  if (neighbourhoodsMode === 'off') {
+    $neighbourhoodsToggle.textContent = 'Neighbourhoods';
+    $neighbourhoodsToggle.classList.remove('active');
+    $neighbourhoodsToggle.setAttribute('aria-pressed', 'false');
+  } else if (neighbourhoodsMode === 'clusters') {
+    $neighbourhoodsToggle.textContent = 'Clusters';
+    $neighbourhoodsToggle.classList.add('active');
+    $neighbourhoodsToggle.setAttribute('aria-pressed', 'true');
+  } else {
+    $neighbourhoodsToggle.textContent = 'Neighbourhoods';
+    $neighbourhoodsToggle.classList.add('active');
+    $neighbourhoodsToggle.setAttribute('aria-pressed', 'true');
+  }
+}
+
+async function cycleNeighbourhoods() {
+  if (!$neighbourhoodsToggle) return;
+  const next = neighbourhoodsMode === 'off'
+    ? 'clusters'
+    : neighbourhoodsMode === 'clusters'
+      ? 'individual'
+      : 'off';
+  await setNeighbourhoodsMode(next);
+  writeUrlStateNow();
+}
+
+async function setNeighbourhoodsMode(mode) {
+  if (!$neighbourhoodsToggle) return;
+  if (mode !== 'off' && mode !== 'clusters' && mode !== 'individual') mode = 'off';
+  neighbourhoodsMode = mode;
+  renderNeighbourhoodButton();
+  await mapReady;
+
+  setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS, mode === 'clusters');
+  setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, mode === 'individual');
+
+  if (mode === 'off') return;
+
+  const fetchKey = mode === 'clusters' ? 'clusters' : 'individual';
+  if (neighbourhoodsLoaded[fetchKey]) return;
+  $neighbourhoodsToggle.disabled = true;
+  const restoreLabel = $neighbourhoodsToggle.textContent;
+  $neighbourhoodsToggle.textContent = 'Loading...';
+  try {
+    if (mode === 'clusters') {
+      const fc = await fetchNeighbourhoodClusters();
+      setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
+      setOverlayData(map, 'wpg-neighbourhood-cluster-labels',
+        buildLabelPointFc(fc, 'cluster'));
+    } else {
+      const fc = await fetchNeighbourhoods();
+      setOverlayData(map, 'wpg-neighbourhoods', fc);
+      setOverlayData(map, 'wpg-neighbourhood-labels',
+        buildLabelPointFc(fc, 'name'));
+    }
+    neighbourhoodsLoaded[fetchKey] = true;
+    $neighbourhoodsToggle.textContent = restoreLabel;
+  } catch (err) {
+    console.warn(`neighbourhoods (${mode}) fetch failed`, err);
+    neighbourhoodsMode = 'off';
+    renderNeighbourhoodButton();
+    setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS, false);
+    setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, false);
+  } finally {
+    $neighbourhoodsToggle.disabled = false;
   }
 }
 

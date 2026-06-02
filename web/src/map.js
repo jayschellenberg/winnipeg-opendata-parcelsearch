@@ -460,6 +460,92 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Neighbourhood overlays — two source FCs ship as static
+      // GeoJSON under /public, processed by
+      // build-neighbourhoods-geojson.mjs. The user-facing button
+      // cycles Off -> Clusters -> Neighbourhoods -> Off.
+      map.addSource('wpg-neighbourhoods', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('wpg-neighbourhood-clusters', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('wpg-neighbourhood-cluster-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('wpg-neighbourhood-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'neighbourhood-clusters-fill', type: 'fill', source: 'wpg-neighbourhood-clusters',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#0ea5e9', 'fill-opacity': 0.06 },
+      });
+      map.addLayer({
+        id: 'neighbourhood-clusters-line-casing', type: 'line', source: 'wpg-neighbourhood-clusters',
+        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.7 },
+      });
+      map.addLayer({
+        id: 'neighbourhood-clusters-line', type: 'line', source: 'wpg-neighbourhood-clusters',
+        layout: { visibility: 'none', 'line-join': 'round' },
+        paint: { 'line-color': '#0369a1', 'line-width': 2.5, 'line-opacity': 0.95 },
+      });
+      map.addLayer({
+        id: 'neighbourhood-clusters-label', type: 'symbol', source: 'wpg-neighbourhood-cluster-labels',
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'cluster'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            9, 15,
+            12, 20,
+            15, 22,
+          ],
+          'text-anchor': 'center',
+          'text-allow-overlap': false,
+          'text-padding': 4,
+          'symbol-placement': 'point',
+        },
+        paint: {
+          'text-color': '#0c4a6e',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 2.5,
+        },
+      });
+      map.addLayer({
+        id: 'neighbourhoods-fill', type: 'fill', source: 'wpg-neighbourhoods',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#0ea5e9', 'fill-opacity': 0.06 },
+      });
+      map.addLayer({
+        id: 'neighbourhoods-line-casing', type: 'line', source: 'wpg-neighbourhoods',
+        layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 3.5, 'line-opacity': 0.65 },
+      });
+      map.addLayer({
+        id: 'neighbourhoods-line', type: 'line', source: 'wpg-neighbourhoods',
+        layout: { visibility: 'none', 'line-join': 'round' },
+        paint: { 'line-color': '#0369a1', 'line-width': 1.5, 'line-opacity': 0.9 },
+      });
+      map.addLayer({
+        id: 'neighbourhoods-label', type: 'symbol', source: 'wpg-neighbourhood-labels',
+        minzoom: 12,
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            12, 18,
+            14, 22,
+            17, 26,
+          ],
+          'text-anchor': 'center',
+          'text-allow-overlap': false,
+          'text-padding': 3,
+          'symbol-placement': 'point',
+        },
+        paint: {
+          'text-color': '#0c4a6e',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 2.5,
+        },
+      });
+
       // Source starts empty; main.js populates it when the user toggles
       // zoning on. `visibility: none` keeps it hidden until then.
       map.addSource('zoning', {
@@ -1179,6 +1265,60 @@ export function initMap(container, { onFeatureClick } = {}) {
         map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
       }
 
+      const hoodPopup = new maplibregl.Popup({ closeButton: true });
+      map.on('click', 'neighbourhood-clusters-fill', policyClick((p) => {
+        const list = p.neighbourhoods
+          ? String(p.neighbourhoods).split(';').map((s) => escapeHtml(s.trim())).join(', ')
+          : '';
+        return `
+          <div style="line-height:1.4;max-width:300px">
+            <strong>Cluster:</strong> ${escapeHtml(p.cluster || '')}
+            ${p.neighbourhood_count ? `<br><small>${escapeHtml(String(p.neighbourhood_count))} neighbourhoods</small>` : ''}
+            ${list ? `<br><small style="color:#475569">${list}</small>` : ''}
+          </div>`;
+      }));
+      map.on('click', 'neighbourhoods-fill', policyClick((p) => `
+        <div style="line-height:1.4;max-width:280px">
+          <strong>Neighbourhood:</strong> ${escapeHtml(p.name || '')}
+          ${p.cluster ? `<br><small>Cluster: ${escapeHtml(p.cluster)}</small>` : ''}
+        </div>`));
+      void hoodPopup;
+
+      const hoodHoverPopup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 8,
+        className: 'hood-hover-popup',
+      });
+      const hoodHoverHandler = (labelKey) => (e) => {
+        const layerId = e.features?.[0]?.layer?.id;
+        if (!layerId || map.getLayoutProperty(layerId, 'visibility') !== 'visible') {
+          hoodHoverPopup.remove();
+          return;
+        }
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        const label = p[labelKey];
+        if (!label) return;
+        hoodHoverPopup
+          .setLngLat(e.lngLat)
+          .setHTML(`<span class="hood-hover-label">${escapeHtml(String(label))}</span>`)
+          .addTo(map);
+      };
+      map.on('mousemove', 'neighbourhood-clusters-fill', hoodHoverHandler('cluster'));
+      map.on('mousemove', 'neighbourhoods-fill', hoodHoverHandler('name'));
+      for (const layerId of ['neighbourhood-clusters-fill', 'neighbourhoods-fill']) {
+        map.on('mouseenter', layerId, () => {
+          if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
+            map.getCanvas().style.cursor = 'help';
+          }
+        });
+        map.on('mouseleave', layerId, () => {
+          map.getCanvas().style.cursor = '';
+          hoodHoverPopup.remove();
+        });
+      }
+
       const trafficPopup = new maplibregl.Popup({ closeButton: true });
       const trafficClick = (e) => {
         const p = e.features?.[0]?.properties;
@@ -1208,6 +1348,18 @@ export function initMap(container, { onFeatureClick } = {}) {
       // last, putting place names on top.
       if (map.getLayer('esri-transportation')) map.moveLayer('esri-transportation');
       if (map.getLayer('esri-reference'))      map.moveLayer('esri-reference');
+
+      const NEIGHBOURHOOD_TOP_LAYERS = [
+        'neighbourhood-clusters-line-casing',
+        'neighbourhood-clusters-line',
+        'neighbourhood-clusters-label',
+        'neighbourhoods-line-casing',
+        'neighbourhoods-line',
+        'neighbourhoods-label',
+      ];
+      for (const id of NEIGHBOURHOOD_TOP_LAYERS) {
+        if (map.getLayer(id)) map.moveLayer(id);
+      }
 
       resolve();
     });

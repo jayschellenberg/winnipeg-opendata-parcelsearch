@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node test/urlState.test.js",
-    "refresh:transit": "node scripts/build-transit-geojson.mjs"
+    "refresh:transit": "node scripts/build-transit-geojson.mjs",
+    "refresh:neighbourhoods": "node scripts/build-neighbourhoods-geojson.mjs"
   },
   "dependencies": {
     "@mapbox/mapbox-gl-draw": "^1.5.1",

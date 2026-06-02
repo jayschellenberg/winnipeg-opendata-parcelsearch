@@ -257,6 +257,7 @@ test('round-trip — full state survives encode + decode', () => {
     transitToggle: true,
     contamToggle: true,
     dimensionsToggle: true,
+    neighbourhoodsMode: 'individual',
     sortCol: 'address',
     sortDir: 'desc',
   };
@@ -311,8 +312,31 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 26 entries (11 inputs + 11 toggles + 2 sort + 1 tab + 1 subjectRoll)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 26);
+test('SCHEMA — has exactly 27 entries (11 inputs + 11 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 subjectRoll)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 27);
+});
+
+// ---------- neighbourhoodsMode (3-state cycle) ----------
+
+test('decodeState — neighbourhoodsMode=clusters accepted', () => {
+  assert.deepEqual(decodeState('nh=clusters'), { neighbourhoodsMode: 'clusters' });
+});
+
+test('decodeState — neighbourhoodsMode=individual accepted', () => {
+  assert.deepEqual(decodeState('nh=individual'), { neighbourhoodsMode: 'individual' });
+});
+
+test('decodeState — neighbourhoodsMode=off dropped (default state)', () => {
+  assert.deepEqual(decodeState('nh=off'), {});
+});
+
+test('decodeState — neighbourhoodsMode=junk dropped', () => {
+  assert.deepEqual(decodeState('nh=junk'), {});
+});
+
+test('round-trip — neighbourhoodsMode=clusters survives', () => {
+  const state = { neighbourhoodsMode: 'clusters', roll: '12345' };
+  assert.deepEqual(decodeState(encodeState(state)), state);
 });
 
 // ---------- subjectRoll (Phase 7 fu2) ----------
