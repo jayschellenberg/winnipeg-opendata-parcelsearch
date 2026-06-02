@@ -308,16 +308,22 @@ if ($psClose && $parcelSummary) {
 }
 
 // Hide-map toggle. Adds .map-collapsed to the workspace so the
-// .map-pane drops out of layout and the table claims the full
-// width. Choice persists to localStorage so a page refresh keeps
-// it consistent. Restoring the map needs a deferred map.resize()
-// so MapLibre recomputes the canvas dimensions.
+// .map-pane drops out of layout, while expand lets the map take the
+// viewport height. Both choices persist to localStorage. Restoring or
+// expanding the map needs a deferred map.resize() so MapLibre recomputes
+// the canvas dimensions.
 const MAP_HIDE_KEY = 'wps_map_collapsed_v1';
+const MAP_EXPAND_KEY = 'wps_map_expanded_v1';
 const $workspaceEl = document.getElementById('workspace');
 const $mapToggleBtn = document.getElementById('map-toggle-btn');
 const $mapToggleLabel = $mapToggleBtn?.querySelector('.map-toggle-label');
+const $mapExpandBtn = document.getElementById('map-expand-btn');
+const $mapExpandLabel = $mapExpandBtn?.querySelector('.map-expand-label');
 function applyMapCollapsed(collapsed) {
   if (!$workspaceEl || !$mapToggleBtn) return;
+  if (collapsed && $workspaceEl.classList.contains('map-expanded')) {
+    applyMapExpanded(false);
+  }
   $workspaceEl.classList.toggle('map-collapsed', collapsed);
   $mapToggleBtn.setAttribute('aria-pressed', String(collapsed));
   if ($mapToggleLabel) $mapToggleLabel.textContent = collapsed ? 'Show map' : 'Hide map';
@@ -326,6 +332,17 @@ function applyMapCollapsed(collapsed) {
   }
   try { localStorage.setItem(MAP_HIDE_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
 }
+function applyMapExpanded(expanded) {
+  if (!$workspaceEl || !$mapExpandBtn) return;
+  if (expanded && $workspaceEl.classList.contains('map-collapsed')) {
+    applyMapCollapsed(false);
+  }
+  $workspaceEl.classList.toggle('map-expanded', expanded);
+  $mapExpandBtn.setAttribute('aria-pressed', String(expanded));
+  if ($mapExpandLabel) $mapExpandLabel.textContent = expanded ? 'Restore map' : 'Expand map';
+  mapReady.then(() => map.resize());
+  try { localStorage.setItem(MAP_EXPAND_KEY, expanded ? '1' : '0'); } catch { /* ignore */ }
+}
 if ($mapToggleBtn) {
   $mapToggleBtn.addEventListener('click', () => {
     const next = !$workspaceEl?.classList.contains('map-collapsed');
@@ -333,6 +350,15 @@ if ($mapToggleBtn) {
   });
   try {
     if (localStorage.getItem(MAP_HIDE_KEY) === '1') applyMapCollapsed(true);
+  } catch { /* ignore */ }
+}
+if ($mapExpandBtn) {
+  $mapExpandBtn.addEventListener('click', () => {
+    const next = !$workspaceEl?.classList.contains('map-expanded');
+    applyMapExpanded(next);
+  });
+  try {
+    if (localStorage.getItem(MAP_EXPAND_KEY) === '1') applyMapExpanded(true);
   } catch { /* ignore */ }
 }
 

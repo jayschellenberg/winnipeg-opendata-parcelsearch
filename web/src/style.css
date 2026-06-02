@@ -278,6 +278,12 @@ body {
    table claims the full workspace. */
 .workspace.map-collapsed .map-pane { display: none; }
 
+.workspace.map-expanded .map-pane {
+  max-width: none;
+  aspect-ratio: auto;
+  height: calc(100vh - 16px);
+}
+
 .table-pane {
   /* Padding matches what #results-wrap used to carry; the table
      itself sits inside .table-scroll so the thead can stay pinned
@@ -2760,6 +2766,34 @@ body {
   border-radius: var(--ui-radius);
 }
 
+.topbar .map-toggle-btn.topbar-map-btn {
+  min-height: 30px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.13);
+  color: rgba(247, 248, 244, 0.86);
+  box-shadow: none;
+}
+
+.topbar .map-toggle-btn.topbar-map-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #fff;
+  transform: none;
+}
+
+.topbar .map-toggle-btn.topbar-map-btn[aria-pressed="true"] {
+  background: #d9a441;
+  border-color: #d9a441;
+  color: #1f261f;
+}
+
+.workspace.map-expanded .map-pane {
+  max-width: none;
+  aspect-ratio: auto;
+  height: calc(100vh - 16px);
+}
+
 @media (max-width: 767px) {
   .topbar {
     align-items: flex-start;
@@ -2803,6 +2837,11 @@ body {
   .results-toolbar-presets select {
     flex: 1 1 auto;
   }
+
+  .topbar .map-toggle-btn.topbar-map-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
 }
 
 @media (max-width: 480px) {
@@ -2819,6 +2858,7 @@ body {
   }
 
   .map-toggle-label,
+  .map-expand-label,
   .columns-gear-label {
     display: none;
   }
