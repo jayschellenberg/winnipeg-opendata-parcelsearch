@@ -760,20 +760,47 @@ export function initMap(container, { onFeatureClick } = {}) {
         layout: { visibility: 'visible' },
         // Yellow highlight (Mat. yellow-A400) lifted from the
         // Manitoba sister app so a selected assessment parcel
-        // reads identically across both tools.
+        // reads identically across both tools. Fill opacity
+        // bumped a touch above Manitoba's 0.3 because Winnipeg
+        // parcels are often small enough that a faint yellow
+        // wash gets lost on a busy basemap.
         paint: {
           'fill-color': '#ffea00',
-          'fill-opacity': 0.3,
+          'fill-opacity': 0.42,
+        },
+      });
+      // Dark navy outer casing UNDER the yellow dashed line.
+      // Two-layer "construction tape" treatment so the parcel
+      // outline reads on every basemap: the solid dark stroke
+      // gives the shape on bright satellite/Carto AND on shadowed
+      // satellite, and the yellow dashes painted on top of it
+      // mark the polygon as a selection (not just any random
+      // boundary). Width is wider than the dashed yellow on top
+      // so a hairline of dark shows on either side of every dash.
+      map.addLayer({
+        id: 'assess-context-line-outer',
+        type: 'line',
+        source: 'assess-context',
+        layout: {
+          visibility: 'visible',
+          'line-cap': 'butt',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': '#0a1530',
+          'line-width': 4.5,
+          'line-opacity': 0.85,
         },
       });
       map.addLayer({
         id: 'assess-context-line',
         type: 'line',
         source: 'assess-context',
-        // Dashed outline so the highlight reads as a "selection"
-        // rather than competing with solid parcel-fabric lines.
-        // Manitoba uses [3, 2] (3-width dash, 2-width gap) at
-        // 2.5 px stroke — match exactly.
+        // Dashed yellow on top of the dark casing — reads as
+        // selection tape against the continuous dark stroke
+        // underneath. Manitoba's dasharray [3, 2] preserved,
+        // width bumped from 2.5 → 3 so the dashes register on
+        // satellite at higher zoom.
         layout: {
           visibility: 'visible',
           'line-cap': 'butt',
@@ -781,7 +808,7 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
         paint: {
           'line-color': '#ffea00',
-          'line-width': 2.5,
+          'line-width': 3,
           'line-dasharray': [3, 2],
         },
       });
@@ -1133,6 +1160,8 @@ export function initMap(container, { onFeatureClick } = {}) {
         const center = polygonBboxMidpoint(rendered?.geometry)
           ?? [e.lngLat.lng, e.lngLat.lat];
         wireCoordsCopy(citywideClickPopup, center);
+        wirePpdAddressCopy(citywideClickPopup);
+        wireRollCopy(citywideClickPopup);
       });
 
       // Click a contaminated-site circle → standalone popup with the
@@ -1664,12 +1693,24 @@ function citywideParcelHtml(p) {
   const roll = p.roll_number ? String(p.roll_number) : null;
   const address = p.full_address || null;
   const lines = [];
-  if (roll) lines.push(`<strong>Roll #</strong> ${escapeHtml(roll)}`);
+  if (roll) {
+    // Roll # value is a click-to-copy link styled with a subtle
+    // dotted underline so the user sees it's actionable without
+    // it screaming for attention. Title attribute spells out
+    // the copy behaviour. wireRollCopy below handles the click.
+    lines.push(`<strong>Roll #</strong> <a href="#" class="parcel-roll-copy" data-roll="${escapeHtml(roll)}" title="Copy roll number to clipboard" style="color:inherit;border-bottom:1px dotted currentColor;text-decoration:none">${escapeHtml(roll)}</a>`);
+  }
   if (address) lines.push(escapeHtml(address));
   const actions = [];
   if (roll) {
     const url = `https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
     actions.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Assessment →</a>`);
+  }
+  if (address) {
+    // PP&D Property Map doesn't accept URL params, so this link
+    // copies the civic address to clipboard FIRST, then opens
+    // the legacy map. User pastes into PP&D's search box.
+    actions.push(`<a href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" class="parcel-ppd-copy" data-address="${escapeHtml(address)}" title="Copy address to clipboard, then open the City PP&D Property Map. Paste into PP&D's search bar to view this parcel on City ortho imagery.">PP&amp;D Map →</a>`);
   }
   actions.push(`<a href="#" class="parcel-coords-copy" role="button" title="Copy parcel centroid (lat, lng) to clipboard">Coordinates</a>`);
   if (actions.length) {
@@ -1711,6 +1752,81 @@ function polygonBboxMidpoint(geometry) {
  * non-secure contexts (http:// dev hosts) where navigator.clipboard
  * isn't available.
  */
+/**
+ * Wire a `.parcel-roll-copy` anchor in the popup so a click
+ * copies the roll number to the clipboard and flashes "Copied!"
+ * for ~1.5 s before reverting. Same UX as wireCoordsCopy. The
+ * data-roll attribute on the anchor carries the actual value.
+ */
+function wireRollCopy(popup) {
+  if (!popup) return;
+  const el = popup.getElement?.();
+  const anchor = el?.querySelector('.parcel-roll-copy');
+  if (!anchor) return;
+  const roll = anchor.getAttribute('data-roll');
+  if (!roll) return;
+  anchor.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    const original = anchor.textContent;
+    const onSuccess = () => {
+      anchor.textContent = 'Copied!';
+      setTimeout(() => { anchor.textContent = original; }, 1500);
+    };
+    const onFailure = () => { anchor.textContent = 'Copy failed'; };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(roll).then(onSuccess, onFailure);
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = roll;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        onSuccess();
+      } catch { onFailure(); }
+    }
+  });
+}
+
+/**
+ * Wire any `.parcel-ppd-copy` anchor inside the given popup so a
+ * click copies the anchor's `data-address` to clipboard before
+ * navigation. The link's normal `target="_blank"` + href opens
+ * PP&D Property Map in a new tab; this just primes the clipboard
+ * so the user can paste straight into PP&D's search bar (their
+ * legacy page doesn't accept URL parameters for pre-fill).
+ */
+function wirePpdAddressCopy(popup) {
+  if (!popup) return;
+  const el = popup.getElement?.();
+  const anchor = el?.querySelector('.parcel-ppd-copy');
+  if (!anchor) return;
+  const address = anchor.getAttribute('data-address');
+  if (!address) return;
+  anchor.addEventListener('click', () => {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(address).catch(() => { /* ignore */ });
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = address;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch { /* ignore */ }
+    }
+    const original = anchor.textContent;
+    anchor.textContent = 'Copied — paste in PP&D';
+    setTimeout(() => { anchor.textContent = original; }, 1800);
+  });
+}
+
 function wireCoordsCopy(popup, lngLat) {
   if (!popup || !Array.isArray(lngLat)) return;
   const el = popup.getElement?.();

@@ -28,10 +28,10 @@
 const STORAGE_KEY_PROPERTY = 'wps_table_columns_v1';
 const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
 
-const QUICK_LOOKUP = ['lot', 'block', 'plan', 'roll', 'address', 'area'];
+const QUICK_LOOKUP = ['lot', 'block', 'plan', 'roll', 'address', 'area', 'walk'];
 const ZONING_DETAIL = [
   'lot', 'block', 'plan', 'roll', 'address',
-  'zoning', 'zoningPct', 'zoning2', 'area',
+  'zoning', 'zoningPct', 'zoning2', 'area', 'walk',
 ];
 const SALES_DEFAULT = [
   'roll', 'address', 'saleDate', 'useCode',
@@ -181,6 +181,26 @@ export function initColumns() {
   if (storedProperty !== undefined) visibleByMode.property = storedProperty;
   const storedSales = readStored(STORAGE_KEY_SALES);
   if (storedSales !== undefined) visibleByMode.sales = storedSales;
+
+  // One-time additive migration: when Walkscore was added to the
+  // default Quick lookup preset, existing localStorage stores didn't
+  // include it. Add it to the property-mode stored set (if any)
+  // exactly once, gated by a separate flag so the user can still
+  // hide it via the gear popover and have that stick.
+  try {
+    const WALK_FLAG = 'wps_table_columns_walk_migrated_v1';
+    if (!localStorage.getItem(WALK_FLAG)) {
+      const s = visibleByMode.property;
+      if (s instanceof Set && !s.has('walk')) {
+        s.add('walk');
+        const m0 = mode;
+        mode = 'property';
+        writeStored();
+        mode = m0;
+      }
+      localStorage.setItem(WALK_FLAG, '1');
+    }
+  } catch { /* localStorage disabled — first-load defaults already include walk */ }
 
   const gear = document.getElementById('columns-gear');
   const popover = document.getElementById('columns-popover');
