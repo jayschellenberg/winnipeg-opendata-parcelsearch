@@ -40,9 +40,17 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
   // calling init.
   let values = parseList(hidden.value);
 
+  // Treat commas, semicolons, ampersands, and any whitespace as
+  // value separators. Lets the user paste "12345 & 67890",
+  // "12345 67890", "12345, 67890", "12345; 67890", or any mix
+  // and get one chip per token. soda.js's rollClause already
+  // tokenizes on [\s,;] on the query side, so this just teaches
+  // the chip UI the same tolerance plus the "&" the user uses
+  // when copying from sale listings or address-block notes.
+  const SPLIT_RE = /[\s,;&]+/;
   function parseList(s) {
     return String(s ?? '')
-      .split(',')
+      .split(SPLIT_RE)
       .map((x) => x.trim())
       .filter(Boolean);
   }
@@ -161,6 +169,14 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
     return added;
   }
 
+  // Keys that should commit the current token into a chip:
+  // comma, semicolon, ampersand, and any whitespace key (space).
+  // Tab/Enter handled separately so they keep their default
+  // focus-shift / form-submit semantics. Space here means the
+  // literal " " key — fine for roll numbers since they're digit-
+  // only; if the chipInput is reused for a free-text field later,
+  // pass an opt-out via opts.
+  const COMMIT_KEYS = new Set([',', ';', '&', ' ']);
   textInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       const committed = commit();
@@ -172,7 +188,7 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
         e.preventDefault();
         onEnterEmpty();
       }
-    } else if (e.key === ',') {
+    } else if (COMMIT_KEYS.has(e.key)) {
       e.preventDefault();
       commit();
     } else if (e.key === 'Backspace' && !textInput.value && values.length) {
@@ -188,12 +204,16 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
     setTimeout(() => { commit(); }, 50);
   });
 
-  // Paste of comma-separated text expands immediately. The native
-  // paste fires the keydown listener too, but the input value
-  // hasn't updated yet at that point — easier to handle here.
+  // Paste of multi-token text expands immediately. Any separator
+  // in SPLIT_RE (whitespace, comma, semicolon, ampersand) triggers
+  // the split — so "12345 67890", "12345 & 67890", "12345,67890",
+  // and "12345; 67890" all expand to two chips on paste. The
+  // native paste fires the keydown listener too, but the input
+  // value hasn't updated yet at that point — easier to handle
+  // here.
   textInput.addEventListener('paste', (e) => {
     const text = e.clipboardData?.getData('text');
-    if (!text || !text.includes(',')) return; // single token → let default handle
+    if (!text || !SPLIT_RE.test(text)) return; // single token → let default handle
     e.preventDefault();
     const before = textInput.value;
     textInput.value = before + text;
