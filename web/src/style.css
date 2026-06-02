@@ -1117,7 +1117,16 @@ body {
 /* Distance / area measurement control. Shares the .basemap-toggle
    visual language so all our custom top-right controls look
    consistent. The .measure-panel is the dropdown that appears
-   under the button when Measure is active. */
+   under the button when Measure is active. Keep it visually attached
+   to the Streets/Satellite toggle above. */
+.maplibregl-ctrl-top-right .maplibregl-ctrl.measure-control {
+  margin-top: 2px;
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group:empty {
+  display: none;
+}
+
 .maplibregl-ctrl.measure-control {
   position: relative;
 }
