@@ -370,22 +370,30 @@
         </section><!-- /tab-panel-sales -->
 
         <h2 class="sidebar-section-title sidebar-section-title-second">Map Layers</h2>
-        <div class="overlay-grid">
-          <button id="survey-toggle" type="button" class="secondary" aria-pressed="false" title="Show / hide blue survey-lot polygons">Survey</button>
-          <button id="assess-toggle" type="button" class="secondary active" aria-pressed="true" title="Show / hide red assessment-parcel polygons">Hide Assessment</button>
-          <button id="all-parcels-toggle" type="button" class="secondary" aria-pressed="false" title="Show every assessment parcel in the city as a faint grey wash. Search results highlight in yellow on top.">All Assess. Parcels</button>
+        <div class="overlay-grid overlay-grid-grouped">
+          <h3 class="overlay-group-title">Parcel layers</h3>
+          <button id="all-parcels-toggle" type="button" class="secondary" aria-pressed="false" title="Show every assessment parcel in the city as a faint grey wash. Search results highlight in yellow on top.">All Assessment Parcels</button>
+          <button id="survey-toggle" type="button" class="secondary" aria-pressed="false" title="Show / hide blue survey-lot polygons">Survey Parcel Results</button>
+          <button id="assess-toggle" type="button" class="secondary active" aria-pressed="true" title="Show / hide red assessment-parcel polygons">Hide Assessment Results</button>
+
+          <h3 class="overlay-group-title">Planning</h3>
           <button id="zoning-toggle" type="button" class="secondary" aria-pressed="false" title="City-wide zoning by-law polygons (cached for 7 days)">Zoning</button>
-          <button id="traffic-toggle" type="button" class="secondary" aria-pressed="false" title="Latest available 24-hour average traffic volumes from City midblock and permanent count stations">Traffic</button>
-          <button id="secondary-plans-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Sec. Plans</button>
+          <button id="secondary-plans-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Secondary Plans</button>
           <button id="infill-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Infill Area</button>
           <button id="malls-corridors-toggle" type="button" class="secondary" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
+
+          <h3 class="overlay-group-title">Reference</h3>
+          <button id="traffic-toggle" type="button" class="secondary" aria-pressed="false" title="Latest available 24-hour average traffic volumes from City midblock and permanent count stations">Traffic</button>
           <button id="dimensions-toggle" type="button" class="secondary" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
-          <button id="contam-toggle" type="button" class="secondary" aria-pressed="false" title="Manitoba Contaminated Sites Registry — designated and impacted sites in Winnipeg. Click any circle for details + a link to the official registry record.">Enviro Sites</button>
-          <a class="overlay-link secondary" href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer" title="City of Winnipeg index of all 42 adopted Local Area Plans (Secondary Plans)">Sec Plan Index</a>
+          <button id="contam-toggle" type="button" class="secondary" aria-pressed="false" title="Manitoba Contaminated Sites Registry — designated and impacted sites in Winnipeg. Click any circle for details + a link to the official registry record.">Environmentally Tracked Sites</button>
+          <button id="transit-toggle" type="button" class="secondary" aria-pressed="false" title="Winnipeg Transit bus route lines and stops. Routes use colours from the agency GTFS feed; stops appear from zoom 12+. Click a route or stop for details.">Transit</button>
+
+          <h3 class="overlay-group-title">Quick links</h3>
+          <a class="overlay-link secondary" href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer" title="City of Winnipeg index of all 42 adopted Local Area Plans (Secondary Plans)">Secondary Plan Index</a>
           <a class="overlay-link secondary" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" title="City of Winnipeg Planning, Property &amp; Development Property Map">PP&amp;D Property Map</a>
           <a class="overlay-link secondary" href="https://dmis.winnipeg.ca/" target="_blank" rel="noreferrer" title="City of Winnipeg Development Management Information System (development applications, permits, plans)">DMIS</a>
-          <button id="static-map-btn" type="button" class="secondary danger-outline" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the image &amp; choose Save Image As to drop it into a report.">Generate Map</button>
         </div>
+        <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the rendered image below the table and Save Image As to drop into a report.">Generate Map</button>
         <p class="overlay-note">* Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.</p>
       </aside>
 

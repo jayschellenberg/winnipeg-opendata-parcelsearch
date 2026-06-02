@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node test/urlState.test.js"
+    "test": "node test/urlState.test.js",
+    "refresh:transit": "node scripts/build-transit-geojson.mjs"
   },
   "dependencies": {
     "@mapbox/mapbox-gl-draw": "^1.5.1",

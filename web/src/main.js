@@ -57,6 +57,8 @@ import {
   fetchMallsAndCorridors,
   fetchTrafficVolumes,
   fetchContaminatedSites,
+  fetchTransitRoutes,
+  fetchTransitStops,
 } from './soda.js';
 import {
   initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
@@ -91,6 +93,7 @@ const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
+const $transitToggle        = document.getElementById('transit-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 const $mapEl = document.getElementById('map');
@@ -120,6 +123,8 @@ let trafficEnabled = false;
 let trafficLoaded = false;
 let contamEnabled = false;
 let contamLoaded = false;
+let transitEnabled = false;
+let transitLoaded = false;
 
 // Phase 8 TDZ audit: these three were previously declared mid-file
 // next to their toggle handlers. Hoisted up here so the Phase 8 (2/2)
@@ -236,6 +241,7 @@ $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('malls
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
+if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 // Tab-into-To auto-fill: when the user types a number in From and
 // then focuses To (by Tab or click), pre-fill To with the same value
@@ -386,7 +392,7 @@ buildZoningLegend();
 
 // ---------- Phase 8 URL state (encode/decode/apply) ----------
 //
-// Read all 23 schema fields from the current UI into a plain state
+// Read schema fields from the current UI into a plain state
 // object. Toggles are only emitted when their state differs from
 // the page default (assess defaults ON; everything else OFF), which
 // keeps default-state URLs clean.
@@ -411,7 +417,7 @@ function captureUrlState() {
     surveyToggle: false, assessToggle: true, allParcelsToggle: false,
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
-    contamToggle: false, dimensionsToggle: false,
+    transitToggle: false, contamToggle: false, dimensionsToggle: false,
   };
   const buttons = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
@@ -419,6 +425,7 @@ function captureUrlState() {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
+    transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
@@ -472,6 +479,7 @@ function applyUrlState(state) {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
+    transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
@@ -534,6 +542,7 @@ for (const btn of [
   $surveyToggle, $assessToggle, $allParcelsToggle,
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
+  $transitToggle,
   $contamToggle, $dimensionsToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
@@ -660,8 +669,8 @@ function toggleLayer(which) {
   const btn = which === 'survey' ? $surveyToggle : $assessToggle;
   const fillId = which === 'survey' ? 'parcel-fill' : 'assess-context-fill';
   const lineId = which === 'survey' ? 'parcel-line' : 'assess-context-line';
-  const labelOn = which === 'survey' ? 'Hide Survey' : 'Hide Assessment';
-  const labelOff = which === 'survey' ? 'Survey' : 'Assessment';
+  const labelOn = which === 'survey' ? 'Hide Survey Parcel Results' : 'Hide Assessment Results';
+  const labelOff = which === 'survey' ? 'Survey Parcel Results' : 'Assessment Results';
   const wasActive = btn.classList.contains('active');
   const nowVisible = !wasActive;
   btn.classList.toggle('active', nowVisible);
@@ -747,7 +756,7 @@ async function toggleContam() {
 
   if (contamEnabled) {
     if (contamLoaded) {
-      $contamToggle.textContent = 'Hide Enviro Sites';
+      $contamToggle.textContent = 'Hide Environmentally Tracked Sites';
       return;
     }
     $contamToggle.disabled = true;
@@ -756,19 +765,19 @@ async function toggleContam() {
       const fc = await fetchContaminatedSites();
       setContamData(map, fc);
       contamLoaded = true;
-      $contamToggle.textContent = 'Hide Enviro Sites';
+      $contamToggle.textContent = 'Hide Environmentally Tracked Sites';
     } catch (err) {
       console.warn('contaminated-sites overlay failed', err);
       contamEnabled = false;
       $contamToggle.classList.remove('active');
       $contamToggle.setAttribute('aria-pressed', 'false');
-      $contamToggle.textContent = 'Enviro Sites';
+      $contamToggle.textContent = 'Environmentally Tracked Sites';
       setContamVisible(map, false);
     } finally {
       $contamToggle.disabled = false;
     }
   } else {
-    $contamToggle.textContent = 'Enviro Sites';
+    $contamToggle.textContent = 'Environmentally Tracked Sites';
   }
 }
 
@@ -809,6 +818,52 @@ async function toggleTraffic() {
 }
 
 /**
+ * Combined Transit toggle. Two static GeoJSON sources (routes + stops)
+ * are shipped under web/public and loaded together on first use; after
+ * that this is just a visibility flip.
+ */
+async function toggleTransit() {
+  if (!$transitToggle) return;
+  transitEnabled = !transitEnabled;
+  $transitToggle.setAttribute('aria-pressed', String(transitEnabled));
+  $transitToggle.classList.toggle('active', transitEnabled);
+  await mapReady;
+  setOverlayVisible(map, 'transit-routes', transitEnabled);
+  setOverlayVisible(map, 'transit-stops', transitEnabled);
+
+  if (transitEnabled) {
+    if (transitLoaded) {
+      $transitToggle.textContent = 'Hide Transit';
+      return;
+    }
+    $transitToggle.disabled = true;
+    $transitToggle.textContent = 'Loading...';
+    try {
+      const [routesFc, stopsFc] = await Promise.all([
+        fetchTransitRoutes(),
+        fetchTransitStops(),
+      ]);
+      setOverlayData(map, 'transit-routes', routesFc);
+      setOverlayData(map, 'transit-stops', stopsFc);
+      transitLoaded = true;
+      $transitToggle.textContent = 'Hide Transit';
+    } catch (err) {
+      console.warn('transit overlay failed', err);
+      transitEnabled = false;
+      $transitToggle.classList.remove('active');
+      $transitToggle.setAttribute('aria-pressed', 'false');
+      $transitToggle.textContent = 'Transit';
+      setOverlayVisible(map, 'transit-routes', false);
+      setOverlayVisible(map, 'transit-stops', false);
+    } finally {
+      $transitToggle.disabled = false;
+    }
+  } else {
+    $transitToggle.textContent = 'Transit';
+  }
+}
+
+/**
  * Fetch the citywide zoning layer (cached for 7 days in IndexedDB) and
  * push it into the map source. No-op when the toggle is off. Failures
  * are logged and re-thrown so toggleZoning can roll back the button
@@ -833,8 +888,8 @@ const POLICY_OVERLAY_CONFIG = {
     btn:    () => $secondaryPlansToggle,
     src:    'secondary-plans',
     fetch:  fetchSecondaryPlans,
-    onLabel:  'Hide Sec. Plans',
-    offLabel: 'Sec. Plans',
+    onLabel:  'Hide Secondary Plans',
+    offLabel: 'Secondary Plans',
   },
   infill: {
     btn:    () => $infillToggle,
@@ -1095,7 +1150,7 @@ async function toggleCitywideParcels() {
     return;
   }
   citywideParcelsEnabled = !citywideParcelsEnabled;
-  $allParcelsToggle.textContent = citywideParcelsEnabled ? 'Hide All Assess. Parcels' : 'All Assess. Parcels';
+  $allParcelsToggle.textContent = citywideParcelsEnabled ? 'Hide All Assessment Parcels' : 'All Assessment Parcels';
   $allParcelsToggle.setAttribute('aria-pressed', String(citywideParcelsEnabled));
   $allParcelsToggle.classList.toggle('active', citywideParcelsEnabled);
   setCitywideParcelsVisible(map, citywideParcelsEnabled);
