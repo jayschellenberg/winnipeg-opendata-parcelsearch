@@ -188,6 +188,17 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
         e.preventDefault();
         onEnterEmpty();
       }
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      // Plain Tab (not Shift+Tab) acts as "I'm done entering this
+      // list — finish it and run". Commits any in-progress text
+      // first so a half-typed token chips before focus leaves,
+      // then triggers onEnterEmpty (the same hook Enter uses) so
+      // a paste-and-Tab flow runs search the same way paste-and-
+      // Enter would. Doesn't preventDefault — Tab still moves
+      // focus to the next field. Shift+Tab is left alone so the
+      // user can navigate backwards without firing search.
+      commit();
+      if (values.length > 0 && onEnterEmpty) onEnterEmpty();
     } else if (COMMIT_KEYS.has(e.key)) {
       e.preventDefault();
       commit();
