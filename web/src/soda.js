@@ -57,6 +57,11 @@ const INFILL_GUIDELINE_URL         = 'https://data.winnipeg.ca/resource/5guk-f7x
 const MALLS_REGIONAL_CENTRE_URL    = 'https://data.winnipeg.ca/resource/wv32-jdtk.geojson';  // OurWPG Regional Mixed Use Centre
 const CORRIDORS_URBAN_URL          = 'https://data.winnipeg.ca/resource/t4kh-5gtd.geojson';  // OurWPG Urban Mixed Use Corridor
 const CORRIDORS_REGIONAL_URL       = 'https://data.winnipeg.ca/resource/ahzi-uwu2.geojson';  // OurWPG Regional Mixed Use Corridor
+// City-Owned Parcels (PPD). The 9xvz-3uyg "Map of PPD City Owned
+// Parcels" view backs the 55p4-e5t9 underlying resource — that's
+// the one the .geojson endpoint actually serves. Columns:
+//   id, parcel_owner, zoning, area (m²), location (Polygon)
+const CITY_OWNED_PARCELS_URL       = 'https://data.winnipeg.ca/resource/55p4-e5t9.geojson';
 
 // Traffic-volume overlays. Midblock counts are 15-minute portable-count rows
 // keyed by study/corridor but have no geometry. Road Network supplies the
@@ -1447,6 +1452,18 @@ export async function fetchMallsAndCorridors() {
   for (const f of urbanCorr.features)    features.push(tagPdoKind(f, 'Urban Corridor'));
   for (const f of regionalCorr.features) features.push(tagPdoKind(f, 'Regional Corridor'));
   return { type: 'FeatureCollection', features };
+}
+
+/**
+ * Fetch the "Map of PPD City Owned Parcels" overlay (Winnipeg
+ * Open Data 9xvz-3uyg / underlying resource 55p4-e5t9). Each
+ * feature is a polygon with parcel_owner (typically "PPD"),
+ * zoning code, and area in square metres. Memoised via the
+ * shared fetchAllAndCache helper so subsequent toggles read
+ * from in-memory cache without re-hitting Socrata.
+ */
+export async function fetchCityOwnedParcels() {
+  return fetchAllAndCache('cityOwnedParcels', CITY_OWNED_PARCELS_URL);
 }
 
 /**

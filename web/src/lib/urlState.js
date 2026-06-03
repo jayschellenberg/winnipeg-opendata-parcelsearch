@@ -92,22 +92,23 @@ export const SCHEMA = {
   duMode:        { param: 'du', validate: oneOf(['zero', 'min']), format: (v) => v },
   duMin:         { param: 'dn', validate: cleanInt(1, 9999),      format: (v) => String(v) },
 
-  // --- Overlay toggles (11) ---
+  // --- Overlay toggles (12) ---
   // Each is a boolean; the caller-side captureState() only emits a
   // toggle when its current value differs from the page default
   // (assess starts ON; everything else starts OFF). That keeps
   // default-state URLs clean.
-  surveyToggle:         { param: 'sv', validate: cleanBool, format: formatBool },
-  assessToggle:         { param: 'av', validate: cleanBool, format: formatBool },
-  allParcelsToggle:     { param: 'ap', validate: cleanBool, format: formatBool },
-  zoningToggle:         { param: 'zo', validate: cleanBool, format: formatBool },
-  trafficToggle:        { param: 'tr', validate: cleanBool, format: formatBool },
-  secondaryPlansToggle: { param: 'sp', validate: cleanBool, format: formatBool },
-  infillToggle:         { param: 'if', validate: cleanBool, format: formatBool },
-  mallsCorridorsToggle: { param: 'mc', validate: cleanBool, format: formatBool },
-  transitToggle:        { param: 'bt', validate: cleanBool, format: formatBool },
-  contamToggle:         { param: 'cn', validate: cleanBool, format: formatBool },
-  dimensionsToggle:     { param: 'dm', validate: cleanBool, format: formatBool },
+  surveyToggle:           { param: 'sv', validate: cleanBool, format: formatBool },
+  assessToggle:           { param: 'av', validate: cleanBool, format: formatBool },
+  allParcelsToggle:       { param: 'ap', validate: cleanBool, format: formatBool },
+  zoningToggle:           { param: 'zo', validate: cleanBool, format: formatBool },
+  trafficToggle:          { param: 'tr', validate: cleanBool, format: formatBool },
+  secondaryPlansToggle:   { param: 'sp', validate: cleanBool, format: formatBool },
+  infillToggle:           { param: 'if', validate: cleanBool, format: formatBool },
+  mallsCorridorsToggle:   { param: 'mc', validate: cleanBool, format: formatBool },
+  cityOwnedParcelsToggle: { param: 'cp', validate: cleanBool, format: formatBool },
+  transitToggle:          { param: 'bt', validate: cleanBool, format: formatBool },
+  contamToggle:           { param: 'cn', validate: cleanBool, format: formatBool },
+  dimensionsToggle:       { param: 'dm', validate: cleanBool, format: formatBool },
 
   // --- Neighbourhoods mode (1) ---
   neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },

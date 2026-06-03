@@ -405,6 +405,26 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // City-owned parcels (PPD). Violet fills so the layer is
+      // distinct from every other overlay — yellow assess-context,
+      // blue subject, grey citywide-parcels, etc. — and reads
+      // clean on both basemaps.
+      map.addSource('city-owned-parcels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'city-owned-parcels-fill', type: 'fill', source: 'city-owned-parcels',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.28 },
+      });
+      map.addLayer({
+        id: 'city-owned-parcels-line', type: 'line', source: 'city-owned-parcels',
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#5b21b6',
+          'line-width': 1.5,
+          'line-opacity': 0.9,
+        },
+      });
+
       // Transit overlays (routes + stops). Both source FCs ship as
       // static GeoJSON under /public, generated from the Winnipeg
       // Transit GTFS feed by web/scripts/build-transit-geojson.mjs.
@@ -1249,6 +1269,23 @@ export function initMap(container, { onFeatureClick } = {}) {
           <strong>${escapeHtml(p.pdo_kind ?? 'Malls and Corridors PDO')}</strong>
           ${p.feature_name ? `<br>${escapeHtml(p.feature_name)}` : ''}
         </div>`));
+      // City-owned parcels (PPD). Schema gives us parcel_owner /
+      // zoning code / area in m². Convert area to sf for the popup
+      // because every other surface in this app already speaks sf.
+      map.on('click', 'city-owned-parcels-fill', policyClick((p) => {
+        const ownerLabel = p.parcel_owner ? ` (${escapeHtml(p.parcel_owner)})` : '';
+        const zoningLine = p.zoning ? `<br><strong>Zoning</strong> ${escapeHtml(p.zoning)}` : '';
+        const areaNum = Number(p.area);
+        const areaLine = Number.isFinite(areaNum) && areaNum > 0
+          ? `<br><strong>Area</strong> ~${Math.round(areaNum * 10.7639).toLocaleString('en-CA')} sf`
+          : '';
+        return `
+          <div style="line-height:1.4;max-width:280px">
+            <strong>City-Owned Parcel</strong>${ownerLabel}
+            ${zoningLine}
+            ${areaLine}
+          </div>`;
+      }));
 
       const transitPopup = new maplibregl.Popup({ closeButton: true });
       map.on('click', 'transit-stops-circle', (e) => {
