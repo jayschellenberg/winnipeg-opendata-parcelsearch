@@ -41,7 +41,7 @@ SQFT_PER_M2  <- 10.7639104
 # field name emitted in the JSON; out = output subdir under OUTPUT_ROOT.
 LAYERS <- list(
   list(name = "assessment", pattern = "^AssessmentParcels_\\d{8}\\.gpkg$", key_col = "roll_number", key_json = "roll", out = "lineage"),
-  list(name = "survey",     pattern = "^SurveyParcels_\\d{8}\\.gpkg$",     key_col = "id",          key_json = "id",   out = "survey-lineage")
+  list(name = "survey",     pattern = "^SurveyParcels_\\d{8}\\.gpkg$",     key_col = "id",          key_json = "survey_id", out = "survey-lineage")
 )
 
 `%||%` <- function(a, b) if (is.null(a) || (length(a) == 1 && is.na(a))) b else a

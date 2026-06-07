@@ -3018,3 +3018,64 @@ body {
     display: none;
   }
 }
+
+/* ---------- Historical (as-of-date) overlay ---------- */
+
+/* Neighbourhood + "As of" pickers under the Historical group in the sidebar. */
+.overlay-select-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  font-size: 12.5px;
+  color: #374151;
+}
+.overlay-select-field > span {
+  flex: 0 0 84px;
+  font-weight: 600;
+}
+.overlay-select-field select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12.5px;
+}
+
+/* Banner pinned to the top-centre of the map while the overlay is active.
+   Amber/brown = "historical", matching the dashed amber parcel outline. */
+.historical-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #b45309;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.historical-banner[hidden] { display: none; }
+.historical-banner.is-stale { background: #92400e; }
+.historical-banner .hb-verify {
+  font-weight: 500;
+  font-style: italic;
+  opacity: 0.9;
+}
+.historical-banner .hb-stale-tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  font-weight: 700;
+}

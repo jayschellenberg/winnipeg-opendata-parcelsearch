@@ -68,7 +68,9 @@ SIMPLIFY_NOISE_DEG     <- 0.000003
 ASMT_FIELDS   <- c("roll_number", "full_address", "neighbourhood_area",
                    "market_region", "zoning", "assessed_land_area",
                    "total_assessed_value", "property_use_code", "detail_url")
-SURVEY_FIELDS <- c("plan", "lot", "block", "description")
+# `survey_id` is the City's stable per-lot id (renamed from `id` to avoid the
+# GeoJSON feature-id promotion) — the key the survey lineage popup looks up.
+SURVEY_FIELDS <- c("survey_id", "plan", "lot", "block", "description")
 
 # ---- args ------------------------------------------------------------
 args      <- commandArgs(trailingOnly = TRUE)
@@ -287,6 +289,7 @@ process_survey <- function(f, out_dir) {
   cat("  survey  :", basename(f), "\n")
   s <- read_layer_repair(f)
   names(s)[names(s) != "geometry"] <- normalize_names(names(s)[names(s) != "geometry"])
+  names(s)[names(s) == "id"] <- "survey_id"   # stable per-lot id; avoid GeoJSON feature-id promotion
   require_fields(names(s), c("plan"), "survey")
   keepS <- intersect(SURVEY_FIELDS, names(s))
   s <- s[, c(keepS, "geometry")]

@@ -61,6 +61,11 @@ import {
   fetchTransitStops,
   fetchNeighbourhoods,
   fetchNeighbourhoodClusters,
+  fetchHistoricalIndex,
+  fetchHistoricalManifest,
+  fetchHistoricalShard,
+  fetchHistoricalLineage,
+  fetchCurrentAssessmentInBbox,
 } from './soda.js';
 import {
   initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
@@ -69,7 +74,9 @@ import {
   setCitywideParcelsVisible, probeCitywideParcels,
   setContamData, setContamVisible,
   setSubjectData,
+  setHistoricalData, setHistoricalVisible,
 } from './map.js';
+import { computeSizeChanges } from './lib/sizeChange.js';
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
@@ -104,6 +111,10 @@ const $staticMapBtn = document.getElementById('static-map-btn');
 const $staticMapOutput = document.getElementById('static-map-output');
 const $zoningLegend = document.getElementById('zoning-legend');
 const $trafficLegend = document.getElementById('traffic-legend');
+const $historicalToggle = document.getElementById('historical-toggle');
+const $historicalNbhd   = document.getElementById('historical-nbhd');
+const $historicalDate   = document.getElementById('historical-date');
+const $historicalBanner = document.getElementById('historical-banner');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
@@ -249,6 +260,13 @@ if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
+// Historical (as-of-date) overlay: a neighbourhood picker + date picker feed
+// the toggle, which loads that neighbourhood's parcel + survey shards (and
+// lineage) from the wpg-parcel-history CDN.
+if ($historicalToggle) $historicalToggle.addEventListener('click', () => toggleHistorical());
+if ($historicalNbhd)   $historicalNbhd.addEventListener('change', onHistoricalInputChange);
+if ($historicalDate)   $historicalDate.addEventListener('change', onHistoricalInputChange);
+initHistoricalControls();
 // Tab-into-To auto-fill: when the user types a number in From and
 // then focuses To (by Tab or click), pre-fill To with the same value
 // and select it. Default behaviour for typing a single number is
@@ -1478,6 +1496,215 @@ async function runAssessmentSearch(inputs) {
     console.warn('partial-lot detection failed', err);
   }
   setCount(countMsg);
+}
+
+// ---------- Historical (as-of-date) overlay ----------
+
+let historicalActive = false;
+let historicalIndexCache = null;
+
+// Populate the neighbourhood + date pickers from the CDN discovery index and
+// the newest snapshot's manifest (its neighbourhoods map supplies name → slug).
+async function initHistoricalControls() {
+  if (!$historicalDate || !$historicalNbhd) return;
+  const idx = await fetchHistoricalIndex().catch(() => null);
+  historicalIndexCache = idx;
+  const snaps = idx?.snapshots
+    ? Object.keys(idx.snapshots).filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)).sort().reverse()
+    : [];
+  if (!snaps.length) { console.warn('[historical] no snapshots in index — overlay unavailable.'); return; }
+
+  // Date picker, grouped by year, tagged with which layers each date carries.
+  $historicalDate.innerHTML = '';
+  let curYear = null, grp = null;
+  for (const s of snaps) {
+    const yr = s.slice(0, 4);
+    if (yr !== curYear) { grp = document.createElement('optgroup'); grp.label = yr; $historicalDate.appendChild(grp); curYear = yr; }
+    const layers = idx.snapshots[s]?.layers || {};
+    const tags = [];
+    if (layers.parcels) tags.push('assessment');
+    if (layers.survey)  tags.push('survey');
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = tags.length ? `${s} (${tags.join(' + ')})` : s;
+    grp.appendChild(opt);
+  }
+
+  // Neighbourhood picker from the newest snapshot's manifest (slug → name).
+  const man = await fetchHistoricalManifest(snaps[0]).catch(() => null);
+  const hoods = man?.neighbourhoods || {};
+  const entries = Object.entries(hoods)
+    .map(([slug, info]) => ({ slug, name: info?.name || slug }))
+    .filter((e) => e.slug !== 'UNASSIGNED')
+    .sort((a, b) => a.name.localeCompare(b.name));
+  $historicalNbhd.innerHTML = '<option value="">— pick a neighbourhood —</option>'
+    + entries.map((e) => `<option value="${e.slug}">${e.name}</option>`).join('');
+
+  if ($historicalToggle) $historicalToggle.disabled = false;
+}
+
+// Live-reload when the overlay is active and the user changes either picker.
+function onHistoricalInputChange() {
+  if (historicalActive && $historicalNbhd?.value && $historicalDate?.value) {
+    loadHistorical($historicalDate.value, $historicalNbhd.value);
+  }
+}
+
+async function toggleHistorical() {
+  if (!$historicalToggle) return;
+  await mapReady;
+  if (historicalActive) { deactivateHistorical(); return; }
+  const slug = $historicalNbhd?.value;
+  const snap = $historicalDate?.value;
+  if (!slug) { setCount('Historical: pick a neighbourhood first.'); return; }
+  if (!snap) { setCount('Historical: no snapshots available.'); return; }
+  await loadHistorical(snap, slug);
+}
+
+function deactivateHistorical() {
+  historicalActive = false;
+  mapReady.then(() => setHistoricalVisible(map, false));
+  if ($historicalToggle) {
+    $historicalToggle.classList.remove('active');
+    $historicalToggle.setAttribute('aria-pressed', 'false');
+    $historicalToggle.textContent = 'Historical';
+  }
+  if ($historicalBanner) $historicalBanner.hidden = true;
+}
+
+// Match each historical parcel to today's parcel of the same roll by assessed
+// land area (roll-vs-roll — immune to display-geometry simplification) and stamp
+// _sizeBand / _histArea / _curArea / _deltaPct. Harvests roll → today's
+// detail_url for the popup links. Loud on a key mismatch (Lesson F).
+async function stampHistoricalSizeChanges(parcels, slug) {
+  try {
+    const histByRoll = new Map();
+    for (const f of parcels.features || []) {
+      const roll = f.properties?.roll_number;
+      const a = Number(f.properties?.assessed_land_area);
+      if (roll && a > 0) histByRoll.set(roll, a);
+    }
+    // Current assessment parcels in the shard's bbox — lean fields, one paged
+    // within_box query (no per-feature overlap). Gives roll → today's area +
+    // detail_url for the size-change classification + popup links.
+    let curRows = [];
+    try { curRows = await fetchCurrentAssessmentInBbox(bbox(parcels)); }
+    catch (e) { console.warn(`[historical] size-change: current fetch threw for "${slug}" — highlight disabled.`, e); }
+    const curByRoll = new Map();
+    const curUrlByRoll = new Map();
+    for (const r of curRows) {
+      const roll = r.roll_number;
+      if (!roll) continue;
+      const a = Number(r.assessed_land_area);
+      if (a > 0) curByRoll.set(roll, a);
+      if (r.detail_url && !curUrlByRoll.has(roll)) curUrlByRoll.set(roll, r.detail_url);
+    }
+    if (curByRoll.size === 0) {
+      console.warn(`[historical] size-change: no current parcels in bbox for "${slug}" (fetched ${curRows.length} rows) — highlight disabled.`);
+      return { summary: null, curUrlByRoll };
+    }
+    const { byRoll, summary } = computeSizeChanges(histByRoll, curByRoll);
+    const matched = histByRoll.size - summary.gone;
+    if (histByRoll.size > 0 && matched === 0) {
+      const sample = (m) => Array.from(m.keys()).slice(0, 3).join(', ') || '(none)';
+      console.warn(`[historical] size-change: ${histByRoll.size} hist / ${curByRoll.size} current parcels but ZERO roll overlap for "${slug}" — likely a roll_number format mismatch. hist: [${sample(histByRoll)}] cur: [${sample(curByRoll)}]`);
+    } else {
+      console.info(`[historical] size-change "${slug}": ${matched} matched, ${summary.gone} gone, ${summary.appeared} new · ${summary.major} major, ${summary.minor} minor.`);
+    }
+    for (const f of parcels.features || []) {
+      if (!f.properties) continue;
+      const rec = byRoll.get(f.properties.roll_number);
+      if (!rec) continue;
+      f.properties._sizeBand = rec.band;
+      if (rec.histArea != null) f.properties._histArea = rec.histArea;
+      if (rec.curArea  != null) f.properties._curArea  = rec.curArea;
+      if (rec.deltaPct != null) f.properties._deltaPct = rec.deltaPct;
+    }
+    return { summary, curUrlByRoll };
+  } catch (err) {
+    console.warn('historical size-change stamp failed', err);
+    return null;
+  }
+}
+
+async function loadHistorical(snap, slug) {
+  if (!$historicalToggle) return;
+  $historicalToggle.disabled = true;
+  $historicalToggle.textContent = 'Loading…';
+  try {
+    await mapReady;
+    const [parcels, survey, lineage, surveyLineage] = await Promise.all([
+      fetchHistoricalShard(snap, 'parcels', slug),
+      fetchHistoricalShard(snap, 'survey', slug),
+      fetchHistoricalLineage('lineage', slug),
+      fetchHistoricalLineage('survey-lineage', slug),
+    ]);
+    if (!parcels && !survey) {
+      setCount(`Historical: no ${snap} data for this neighbourhood.`);
+      deactivateHistorical();
+      return;
+    }
+    // Enrich the assessment layer with size-change bands + current-page links
+    // BEFORE setHistoricalData, so the colour expression + popups see them.
+    const enrich = parcels ? await stampHistoricalSizeChanges(parcels, slug) : null;
+    setHistoricalData(map, {
+      parcels, survey, snap,
+      lineage: lineage?.by_roll || null,
+      surveyLineage: surveyLineage?.by_survey_id || null,
+      currentUrls: enrich?.curUrlByRoll || null,
+    });
+    setHistoricalVisible(map, true);
+    historicalActive = true;
+    $historicalToggle.classList.add('active');
+    $historicalToggle.setAttribute('aria-pressed', 'true');
+    updateHistoricalBanner(snap);
+    const np = parcels?.features?.length || 0;
+    const ns = survey?.features?.length || 0;
+    const sum = enrich?.summary;
+    let changeNote = '';
+    if (sum) {
+      const parts = [];
+      if (sum.major) parts.push(`${sum.major} major`);
+      if (sum.minor) parts.push(`${sum.minor} minor`);
+      if (sum.gone)  parts.push(`${sum.gone} gone`);
+      if (parts.length) changeNote = ` Size changes: ${parts.join(', ')} (red >25%, orange >5%, grey = roll gone).`;
+    }
+    const bits = [];
+    if (np) bits.push(`${np} assessment parcel${np === 1 ? '' : 's'}`);
+    if (ns) bits.push(`${ns} survey lot${ns === 1 ? '' : 's'}`);
+    setCount(`Historical as of ${snap} — ${bits.join(' + ')}, dashed over today's lots. Click one for its as-of details.${changeNote} Verify against by-law / title.`);
+  } catch (err) {
+    console.warn('historical load failed', err);
+    setCount('Historical: load failed.');
+    deactivateHistorical();
+  } finally {
+    $historicalToggle.disabled = false;
+    $historicalToggle.textContent = historicalActive ? 'Hide Historical' : 'Historical';
+  }
+}
+
+function updateHistoricalBanner(snap) {
+  if (!$historicalBanner) return;
+  const layers = historicalIndexCache?.snapshots?.[snap]?.layers || {};
+  const parts = [];
+  if (layers.parcels) parts.push(`Assessment ${layers.parcels.source_date || snap}`);
+  if (layers.survey)  parts.push(`Survey ${layers.survey.source_date || snap}`);
+  const stale = historicalIsStale();
+  $historicalBanner.classList.toggle('is-stale', stale);
+  // snap + source dates are our own controlled YYYY-MM-DD strings (no user input).
+  $historicalBanner.innerHTML =
+    `HISTORICAL as of ${snap}${parts.length ? ' · ' + parts.join(' · ') : ''}`
+    + ' · <span class="hb-verify">verify vs by-law / title</span>'
+    + (stale ? '<span class="hb-stale-tag">archive &gt; 12 mo old</span>' : '');
+  $historicalBanner.hidden = false;
+}
+
+function historicalIsStale() {
+  const snaps = historicalIndexCache?.snapshots;
+  const keys = snaps ? Object.keys(snaps).filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)) : [];
+  if (!keys.length) return false;
+  const newest = keys.sort().reverse()[0];
+  return (Date.now() - Date.parse(newest)) > 365 * 24 * 60 * 60 * 1000;
 }
 
 // ---------- UI helpers ----------

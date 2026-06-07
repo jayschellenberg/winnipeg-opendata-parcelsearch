@@ -389,6 +389,19 @@
           <button id="transit-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg Transit bus route lines and stops. Routes use colours from the agency GTFS feed; stops appear from zoom 12+. Click a route or stop for details.">Transit</button>
           <button id="neighbourhoods-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg neighbourhood boundaries. Click cycles: Off to Clusters to Neighbourhoods to Off. Click a polygon for the name and cluster.">Neighbourhoods</button>
 
+          <h3 class="overlay-group-title">Historical (as-of-date)</h3>
+          <label class="overlay-select-field" data-layer-set="historical">
+            <span>Neighbourhood</span>
+            <select id="historical-nbhd" aria-label="Historical neighbourhood">
+              <option value="">— pick a neighbourhood —</option>
+            </select>
+          </label>
+          <label class="overlay-select-field" data-layer-set="historical">
+            <span>As of</span>
+            <select id="historical-date" aria-label="Historical snapshot date"></select>
+          </label>
+          <button id="historical-toggle" type="button" class="secondary" data-layer-set="historical" aria-pressed="false" disabled title="Overlay an earlier snapshot's assessment parcels (dashed amber, tinted by size change) and survey lots (dashed violet) for the chosen neighbourhood, to compare against today — e.g. a lot's size/shape before a subdivision. Pick a neighbourhood + date, then toggle. Click a parcel for its as-of roll / area / value, inferred lineage, and a link to the current assessment page.">Historical</button>
+
           <h3 class="overlay-group-title">Quick links</h3>
           <a class="overlay-link secondary" data-layer-set="quick" href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer" title="City of Winnipeg index of all 42 adopted Local Area Plans (Secondary Plans)">Secondary Plan Index</a>
           <a class="overlay-link secondary" data-layer-set="quick" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" title="City of Winnipeg Planning, Property &amp; Development Property Map">PP&amp;D Property Map</a>
@@ -400,6 +413,7 @@
 
       <main class="workspace" id="workspace">
         <div id="map" class="map-pane">
+          <div id="historical-banner" class="historical-banner" role="status" aria-live="polite" hidden></div>
           <div id="zoning-legend" class="map-legend zoning-legend" hidden>
             <strong>Zoning</strong>
             <ul></ul>

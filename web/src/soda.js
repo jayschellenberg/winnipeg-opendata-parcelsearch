@@ -816,6 +816,99 @@ function parcelSetCacheKey(fc) {
   return parts.join('|');
 }
 
+// ---------- Historical (as-of-date) overlay — CDN fetchers ----------
+//
+// The historical shards + lineage live in the data-only repo
+// jayschellenberg/wpg-parcel-history, served free via the jsDelivr CDN. The URL
+// is PINNED to an immutable commit SHA — never @main: jsDelivr's branch-HEAD
+// view lags per-file and purging doesn't fix it, whereas a commit SHA is served
+// correctly + instantly. Bump HISTORICAL_CDN on every republish of
+// wpg-parcel-history (rebuild the shards, push, copy the new SHA here).
+const HISTORICAL_CDN =
+  'https://cdn.jsdelivr.net/gh/jayschellenberg/wpg-parcel-history@fa2110d782fd751e388ccba6ef2e42c0a3791124';
+
+// Self-invalidating cache: a hard refresh does NOT clear IndexedDB, so a stale
+// shard would otherwise persist for weeks. Every cache key embeds HIST_VER
+// (derived from the pinned SHA), so bumping the SHA on republish changes every
+// key and clients auto-refetch — no manual cache-version bumps, ever.
+const HIST_VER = HISTORICAL_CDN.slice(-12);
+const HISTORICAL_INDEX_TTL_MS = 24 * 60 * 60 * 1000;        // 1 day (discovery)
+const HISTORICAL_LONG_TTL_MS  = 30 * 24 * 60 * 60 * 1000;   // 30 days (immutable within a SHA)
+
+async function fetchHistJson(path) {
+  try {
+    const res = await fetch(`${HISTORICAL_CDN}/${path}`);
+    if (!res.ok) return null;          // 404 (e.g. a neighbourhood with no shard) → null
+    return await res.json();
+  } catch { return null; }
+}
+
+async function fetchHistCached(path, key, ttlMs) {
+  const cached = await idbReadCache(key, ttlMs).catch(() => null);
+  if (cached) return cached;
+  const data = await fetchHistJson(path);
+  if (data) await idbWriteCache(key, data).catch(() => {});
+  return data;
+}
+
+/** Discovery index: which snapshots exist + each layer's source date. */
+export function fetchHistoricalIndex() {
+  return fetchHistCached('index.json', `wpg_hist_${HIST_VER}_index`, HISTORICAL_INDEX_TTL_MS);
+}
+
+/** A snapshot's manifest — provenance + per-neighbourhood counts. */
+export function fetchHistoricalManifest(snap) {
+  return fetchHistCached(`${snap}/manifest.json`, `wpg_hist_${HIST_VER}_man_${snap}`, HISTORICAL_LONG_TTL_MS);
+}
+
+/** A parcel/survey shard FeatureCollection. layer = 'parcels' | 'survey'. */
+export function fetchHistoricalShard(snap, layer, slug) {
+  return fetchHistCached(`${snap}/${layer}/${slug}.json`,
+    `wpg_hist_${HIST_VER}_${snap}_${layer}_${slug}`, HISTORICAL_LONG_TTL_MS);
+}
+
+/** Lineage for one neighbourhood. dir = 'lineage' (assessment, by roll) |
+ *  'survey-lineage' (survey, by id). Returns { events, by_roll | by_id, ... }. */
+export function fetchHistoricalLineage(dir, slug) {
+  return fetchHistCached(`${dir}/${slug}.json`,
+    `wpg_hist_${HIST_VER}_${dir}_${slug}`, HISTORICAL_LONG_TTL_MS);
+}
+
+/**
+ * Current assessment parcels within a bbox — LEAN fields only (roll +
+ * assessed_land_area + detail_url, no geometry), for historical size-change
+ * enrichment. One paged within_box query against d4mq-wa44 (.json so no
+ * geometry is parsed), far cheaper than the per-feature overlap machinery.
+ * bbox is turf order: [minLon, minLat, maxLon, maxLat]. Returns plain rows.
+ */
+export async function fetchCurrentAssessmentInBbox(bbox4) {
+  if (!Array.isArray(bbox4) || bbox4.length < 4 || bbox4.some((n) => !Number.isFinite(n))) return [];
+  const [minLon, minLat, maxLon, maxLat] = bbox4;
+  const PAD = 0.001;
+  const round = (n) => n.toFixed(6);
+  // within_box(geom, nwLat, nwLon, seLat, seLon)
+  const where = `within_box(geometry,${round(maxLat + PAD)},${round(minLon - PAD)},${round(minLat - PAD)},${round(maxLon + PAD)})`;
+  const base = ASSESS_URL.replace('.geojson', '.json');
+  const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
+  const rows = [];
+  let offset = 0;
+  for (let page = 0; page < 30; page++) {            // cap ~150k rows
+    const url = `${base}?$select=roll_number,assessed_land_area,detail_url`
+      + `&$where=${encodeURIComponent(where)}&$limit=${SODA_PAGE_SIZE}&$offset=${offset}`;
+    let batch;
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) break;
+      batch = await res.json();
+    } catch { break; }
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    rows.push(...batch);
+    if (batch.length < SODA_PAGE_SIZE) break;
+    offset += batch.length;
+  }
+  return rows;
+}
+
 /**
  * Fetch traffic-volume overlays:
  *   - midblock traffic counts joined onto road-network line geometry

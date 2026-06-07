@@ -1338,6 +1338,77 @@ export function initMap(container, { onFeatureClick } = {}) {
         });
       }
 
+      // ---------- Historical (as-of-date) overlay ----------
+      // Two layers drawn over today's parcels from the wpg-parcel-history CDN
+      // (pushed via setHistoricalData): assessment parcels (dashed amber, tinted
+      // by size-change band) and survey lots (dashed violet). Added here, after
+      // the live layers, so they render on top.
+      try {
+      map.addSource('historical-parcels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('historical-survey',  { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+
+      // Assessment parcels — fill + dashed line coloured by `_sizeBand` (stamped
+      // in main.js by matching each historical roll to today's parcel of the
+      // same roll): major (|Δ|>25%) red, minor (>5%) orange, gone grey, else amber.
+      map.addLayer({
+        id: 'historical-parcels-fill', type: 'fill', source: 'historical-parcels',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': HIST_SIZE_COLOR,
+          'fill-opacity': ['match', ['get', '_sizeBand'], 'major', 0.16, 'minor', 0.11, 0.06],
+        },
+      });
+      map.addLayer({
+        id: 'historical-parcels-line', type: 'line', source: 'historical-parcels',
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': HIST_SIZE_COLOR,
+          'line-width': ['match', ['get', '_sizeBand'], 'major', 2.6, 'minor', 2.2, 1.8],
+          'line-opacity': 0.95,
+          'line-dasharray': [3, 2],
+        },
+      });
+      // Survey lots — dashed violet (distinct from amber assessment + live blue).
+      map.addLayer({
+        id: 'historical-survey-fill', type: 'fill', source: 'historical-survey',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.05 },
+      });
+      map.addLayer({
+        id: 'historical-survey-line', type: 'line', source: 'historical-survey',
+        layout: { visibility: 'none' },
+        paint: { 'line-color': '#7c3aed', 'line-width': 1.6, 'line-opacity': 0.9, 'line-dasharray': [2, 2] },
+      });
+
+      // Click priority: an assessment-parcel click must take precedence over the
+      // survey lot beneath it. Each layer defers to higher-priority historical
+      // layers rendered under the same point.
+      const histClickPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
+      const wireHist = (layerId, htmlFn, deferTo = []) => {
+        map.on('click', layerId, (e) => {
+          if (map.getLayoutProperty(layerId, 'visibility') !== 'visible') return;
+          for (const other of deferTo) {
+            if (map.getLayer(other)
+                && map.getLayoutProperty(other, 'visibility') === 'visible'
+                && map.queryRenderedFeatures(e.point, { layers: [other] }).length > 0) return;
+          }
+          const p = e.features?.[0]?.properties;
+          if (!p) return;
+          histClickPopup.setLngLat(e.lngLat).setHTML(htmlFn(p, historicalSnap ?? '')).addTo(map);
+        });
+        map.on('mouseenter', layerId, () => {
+          if (map.getLayoutProperty(layerId, 'visibility') === 'visible') map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
+      };
+      wireHist('historical-parcels-fill', historicalParcelHtml);
+      wireHist('historical-survey-fill',  historicalSurveyHtml, ['historical-parcels-fill']);
+      } catch (e) {
+        // The historical overlay is additive — never let a problem setting it
+        // up prevent the base map from finishing load.
+        console.warn('historical overlay layer setup failed:', e);
+      }
+
       // Hybrid satellite: move the two Esri reference rasters
       // (transportation + place names) to the TOP of the layer
       // stack so they paint above any parcel / zoning / policy
@@ -2012,4 +2083,145 @@ function fmtNum(n, decimals) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
+}
+
+// ---------- Historical (as-of-date) overlay — state, popups, exports ----------
+
+// Snapshot date the historical layers currently show (YYYY-MM-DD) — read by the
+// popups so each tooltip can state its as-of date.
+let historicalSnap = null;
+// Lineage by-key lookups for the loaded neighbourhood: assessment keyed by
+// roll_number, survey keyed by id. Each entry = { type, confidence,
+// predecessors[], successors[] }.
+let historicalLineage = null;
+let historicalSurveyLineage = null;
+// roll → today's winnipegassessment.com detail_url (Map), harvested from the
+// current-data fetch in main.js, so popups can link a historical roll (and its
+// lineage "→ became" rolls) to the CURRENT assessment page.
+let historicalCurrentUrls = null;
+
+// Size-change colour ramp (shared by the parcel fill + line): major red, minor
+// orange, gone grey, else historical amber. `_sizeBand` is stamped in main.js.
+const HIST_SIZE_COLOR = ['match', ['get', '_sizeBand'],
+  'major', '#dc2626', 'minor', '#ea580c', 'gone', '#6b7280', '#b45309'];
+
+/**
+ * Push historical layer data + lineage context onto the map.
+ * data = { parcels, survey, snap, lineage, surveyLineage, currentUrls }.
+ * Any field omitted is left unchanged; FCs default to empty.
+ */
+export function setHistoricalData(map, data = {}) {
+  if ('snap' in data)          historicalSnap = data.snap;
+  if ('lineage' in data)       historicalLineage = data.lineage;
+  if ('surveyLineage' in data) historicalSurveyLineage = data.surveyLineage;
+  if ('currentUrls' in data)   historicalCurrentUrls = data.currentUrls;
+  const set = (srcId, fc) => {
+    const s = map.getSource(srcId);
+    if (s) s.setData(fc || { type: 'FeatureCollection', features: [] });
+  };
+  set('historical-parcels', data.parcels);
+  set('historical-survey',  data.survey);
+}
+
+export function setHistoricalVisible(map, on) {
+  const vis = on ? 'visible' : 'none';
+  for (const id of ['historical-parcels-fill', 'historical-parcels-line',
+                    'historical-survey-fill', 'historical-survey-line']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  }
+}
+
+// Today's assessment page for a roll (if it still exists), else null.
+function currentDetailUrl(roll) {
+  if (!roll || !historicalCurrentUrls) return null;
+  const u = historicalCurrentUrls.get ? historicalCurrentUrls.get(roll) : historicalCurrentUrls[roll];
+  return safeExternalUrl(u);
+}
+function rollDetailLink(roll, title) {
+  const safe = currentDetailUrl(roll);
+  const txt = escapeHtml(roll);
+  return safe
+    ? `<a href="${safe}" target="_blank" rel="noreferrer" title="${escapeHtml(title)}">${txt}</a>`
+    : txt;
+}
+
+const fmtSqftHist = (v) => (Number.isFinite(Number(v))
+  ? Math.round(Number(v)).toLocaleString('en-US') + ' sq ft' : '—');
+
+function sizeChangeHtml(p) {
+  const band = p._sizeBand;
+  if (!band || band === 'same' || band === 'unknown') return '';
+  const color = band === 'major' ? '#dc2626' : band === 'minor' ? '#ea580c' : '#6b7280';
+  let body;
+  if (band === 'gone') {
+    body = 'roll not present in current data (removed / merged away)';
+  } else {
+    const d = Number(p._deltaPct);
+    const sign = d > 0 ? '+' : '';
+    body = `${fmtSqftHist(p._histArea)} → ${fmtSqftHist(p._curArea)} `
+      + `(<strong>${sign}${Number.isFinite(d) ? d.toFixed(0) : '?'}%</strong>)`;
+  }
+  return `<div style="margin-top:5px;border-top:1px solid #eee;padding-top:4px">`
+    + `<strong style="color:${color}">Size change</strong> ${body}`
+    + `<br><small style="color:#888">Could be subdivision/consolidation, re-survey, or a simplification artifact — verify against the registered plan / title.</small></div>`;
+}
+
+// Lineage block. recMap is historicalLineage (by roll) or historicalSurveyLineage
+// (by id); keyField is the JSON field on predecessor/successor entries ('roll'
+// or 'id'); linkSucc links successors to the current assessment page (only
+// meaningful for assessment rolls).
+function lineageHtml(recMap, key, keyField, linkSucc) {
+  const rec = (recMap && key) ? recMap[key] : null;
+  if (!rec) return '';
+  const list = (arr, max = 6, linked = false) => {
+    if (!arr?.length) return '';
+    const items = arr.slice(0, max).map((x) => {
+      const v = String(x[keyField] ?? '');
+      return linked ? rollDetailLink(v, `Open ${v} on winnipegassessment.com`) : escapeHtml(v);
+    }).join(', ');
+    return items + (arr.length > max ? ` <span style="color:#888">+${arr.length - max} more</span>` : '');
+  };
+  const conf = rec.confidence != null ? ` · conf ${escapeHtml(String(rec.confidence))}` : '';
+  const rows = [];
+  if (rec.predecessors?.length) rows.push(`<strong style="color:#888">← from</strong> ${list(rec.predecessors)}`);
+  if (rec.successors?.length)   rows.push(`<strong style="color:#0d9488">→ became</strong> ${list(rec.successors, 6, linkSucc)}`);
+  if (!rows.length) return '';
+  return `<div style="margin-top:5px;border-top:1px solid #eee;padding-top:4px">`
+    + `<strong style="color:#b45309">Lineage</strong> <span style="color:#888">(${escapeHtml(rec.type || '')}${conf})</span><br>`
+    + rows.join('<br>')
+    + `<br><small style="color:#888">Inferred from geometry overlap — verify against the registered plan / title.</small></div>`;
+}
+
+function historicalParcelHtml(p, snap) {
+  const lines = [`<strong style="color:#b45309">Historical parcel${snap ? ` (${escapeHtml(snap)})` : ''}</strong>`];
+  const roll = p.roll_number;
+  if (roll) {
+    // Link to TODAY's assessment page (harvested) if the roll still exists; else
+    // the as-of detail_url carried on the snapshot; else plain text.
+    const cur = currentDetailUrl(roll);
+    const safe = cur || safeExternalUrl(p.detail_url);
+    lines.push(`<strong>Roll #</strong> ` + (safe
+      ? `<a href="${safe}" target="_blank" rel="noreferrer" title="Open this roll on winnipegassessment.com${cur ? ' (current)' : ' (as-of snapshot)'}">${escapeHtml(roll)}</a>`
+      : escapeHtml(roll)));
+  }
+  if (p.full_address)         lines.push(escapeHtml(p.full_address));
+  if (p.neighbourhood_area)   lines.push(`<em>${escapeHtml(p.neighbourhood_area)}</em>`);
+  if (p.zoning)               lines.push(`<strong>Zoning</strong> ${escapeHtml(p.zoning)}`);
+  if (p.assessed_land_area)   lines.push(`<strong>Land area</strong> ${fmtSqftHist(p.assessed_land_area)}`);
+  if (p.total_assessed_value) lines.push(`<strong>Assessed</strong> $${escapeHtml(Number(p.total_assessed_value).toLocaleString('en-US'))}`);
+  lines.push('<small style="color:#888">Display geometry simplified — verify boundary/area against the registered plan / title.</small>');
+  return `<div class="parcel-popup">${lines.join('<br>')}${sizeChangeHtml(p)}${lineageHtml(historicalLineage, roll || '', 'roll', true)}</div>`;
+}
+
+function historicalSurveyHtml(p, snap) {
+  const lines = [`<strong style="color:#7c3aed">Historical survey lot${snap ? ` (${escapeHtml(snap)})` : ''}</strong>`];
+  const legal = [
+    p.lot   ? `Lot ${escapeHtml(p.lot)}`     : '',
+    p.block ? `Block ${escapeHtml(p.block)}` : '',
+    p.plan  ? `Plan ${escapeHtml(p.plan)}`   : '',
+  ].filter(Boolean).join(', ');
+  if (legal)         lines.push(`<strong>${legal}</strong>`);
+  if (p.description) lines.push(escapeHtml(p.description));
+  lines.push('<small style="color:#888">Display geometry simplified — verify against the registered plan of survey / title.</small>');
+  return `<div class="parcel-popup">${lines.join('<br>')}${lineageHtml(historicalSurveyLineage, String(p.survey_id ?? ''), 'survey_id', false)}</div>`;
 }
