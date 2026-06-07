@@ -72,6 +72,19 @@ for (sd in snaps) {
   }
 }
 
+# Lineage (if built): non-zero events proves the cross-snapshot CRS reprojection
+# + intersection worked (0 events usually means a CRS/intersection failure).
+lin_idx <- file.path(OUTPUT_ROOT, "lineage", "_index.json")
+if (file.exists(lin_idx)) {
+  li  <- jsonlite::read_json(lin_idx)
+  nev <- sum(vapply(li$neighbourhoods, function(x) x$events, 0L))
+  cat(sprintf("\n  lineage: %d neighbourhoods, %d events  (snapshots %s)\n",
+              length(li$neighbourhoods), nev, paste(unlist(li$snapshots), collapse = " -> ")))
+  if (nev == 0) warnings <- c(warnings, "lineage _index.json has 0 events (CRS/intersection failure?)")
+} else {
+  cat("\n  lineage: (not built yet)\n")
+}
+
 cat(sprintf("\nTOTAL features=%d  size=%.1fMB  triangle=%.2f%%  nonpoly=%d  maxshard=%.1fMB\n",
             tot$feat, tot$bytes / 1024^2, 100 * tot$tri / max(tot$n, 1), tot$nonpoly, tot$maxshard / 1024^2))
 if (length(warnings)) { cat("\nWARNINGS (", length(warnings), "):\n", sep = ""); for (w in warnings) cat("  !!", w, "\n") } else
