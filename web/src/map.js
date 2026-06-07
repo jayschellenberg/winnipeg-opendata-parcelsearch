@@ -2095,10 +2095,6 @@ let historicalSnap = null;
 // predecessors[], successors[] }.
 let historicalLineage = null;
 let historicalSurveyLineage = null;
-// roll → today's winnipegassessment.com detail_url (Map), harvested from the
-// current-data fetch in main.js, so popups can link a historical roll (and its
-// lineage "→ became" rolls) to the CURRENT assessment page.
-let historicalCurrentUrls = null;
 
 // Size-change colour ramp (shared by the parcel fill + line): major red, minor
 // orange, gone grey, else historical amber. `_sizeBand` is stamped in main.js.
@@ -2107,14 +2103,13 @@ const HIST_SIZE_COLOR = ['match', ['get', '_sizeBand'],
 
 /**
  * Push historical layer data + lineage context onto the map.
- * data = { parcels, survey, snap, lineage, surveyLineage, currentUrls }.
+ * data = { parcels, survey, snap, lineage, surveyLineage }.
  * Any field omitted is left unchanged; FCs default to empty.
  */
 export function setHistoricalData(map, data = {}) {
   if ('snap' in data)          historicalSnap = data.snap;
   if ('lineage' in data)       historicalLineage = data.lineage;
   if ('surveyLineage' in data) historicalSurveyLineage = data.surveyLineage;
-  if ('currentUrls' in data)   historicalCurrentUrls = data.currentUrls;
   const set = (srcId, fc) => {
     const s = map.getSource(srcId);
     if (s) s.setData(fc || { type: 'FeatureCollection', features: [] });
@@ -2131,17 +2126,22 @@ export function setHistoricalVisible(map, on) {
   }
 }
 
-// Today's assessment page for a roll (if it still exists), else null.
-function currentDetailUrl(roll) {
-  if (!roll || !historicalCurrentUrls) return null;
-  const u = historicalCurrentUrls.get ? historicalCurrentUrls.get(roll) : historicalCurrentUrls[roll];
-  return safeExternalUrl(u);
+// Assessment page for a roll, rebuilt from the roll against the City's canonical
+// cert-valid host. The dataset's own detail_url points at winnipegassessment.com,
+// whose HTTPS cert is mismatched (ERR_CERT_COMMON_NAME_INVALID) — so, like the
+// rest of the app (assessmentUrl in main.js), we rebuild from roll_number.
+// Resolves for any roll that still exists today; a since-removed roll just won't
+// be found on the site.
+function rollAssessmentUrl(roll) {
+  if (roll == null || roll === '') return null;
+  return 'https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx'
+    + `?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
 }
 function rollDetailLink(roll, title) {
-  const safe = currentDetailUrl(roll);
-  const txt = escapeHtml(roll);
-  return safe
-    ? `<a href="${safe}" target="_blank" rel="noreferrer" title="${escapeHtml(title)}">${txt}</a>`
+  const url = rollAssessmentUrl(roll);
+  const txt = escapeHtml(String(roll));
+  return url
+    ? `<a href="${url}" target="_blank" rel="noreferrer" title="${escapeHtml(title)}">${txt}</a>`
     : txt;
 }
 
@@ -2195,14 +2195,11 @@ function lineageHtml(recMap, key, keyField, linkSucc) {
 function historicalParcelHtml(p, snap) {
   const lines = [`<strong style="color:#b45309">Historical parcel${snap ? ` (${escapeHtml(snap)})` : ''}</strong>`];
   const roll = p.roll_number;
-  if (roll) {
-    // Link to TODAY's assessment page (harvested) if the roll still exists; else
-    // the as-of detail_url carried on the snapshot; else plain text.
-    const cur = currentDetailUrl(roll);
-    const safe = cur || safeExternalUrl(p.detail_url);
-    lines.push(`<strong>Roll #</strong> ` + (safe
-      ? `<a href="${safe}" target="_blank" rel="noreferrer" title="Open this roll on winnipegassessment.com${cur ? ' (current)' : ' (as-of snapshot)'}">${escapeHtml(roll)}</a>`
-      : escapeHtml(roll)));
+  if (roll != null && roll !== '') {
+    const url = rollAssessmentUrl(roll);
+    lines.push(`<strong>Roll #</strong> ` + (url
+      ? `<a href="${url}" target="_blank" rel="noreferrer" title="Open Roll ${escapeHtml(String(roll))} on the City assessment site">${escapeHtml(String(roll))}</a>`
+      : escapeHtml(String(roll))));
   }
   if (p.full_address)         lines.push(escapeHtml(p.full_address));
   if (p.neighbourhood_area)   lines.push(`<em>${escapeHtml(p.neighbourhood_area)}</em>`);

@@ -867,19 +867,20 @@ export function fetchHistoricalShard(snap, layer, slug) {
     `wpg_hist_${HIST_VER}_${snap}_${layer}_${slug}`, HISTORICAL_LONG_TTL_MS);
 }
 
-/** Lineage for one neighbourhood. dir = 'lineage' (assessment, by roll) |
- *  'survey-lineage' (survey, by id). Returns { events, by_roll | by_id, ... }. */
+/** Lineage for one neighbourhood. dir = 'lineage' (assessment, by roll_number) |
+ *  'survey-lineage' (survey, by survey_id). Returns { events, by_roll |
+ *  by_survey_id, ... }. */
 export function fetchHistoricalLineage(dir, slug) {
   return fetchHistCached(`${dir}/${slug}.json`,
     `wpg_hist_${HIST_VER}_${dir}_${slug}`, HISTORICAL_LONG_TTL_MS);
 }
 
 /**
- * Current assessment parcels within a bbox — LEAN fields only (roll +
- * assessed_land_area + detail_url, no geometry), for historical size-change
- * enrichment. One paged within_box query against d4mq-wa44 (.json so no
- * geometry is parsed), far cheaper than the per-feature overlap machinery.
- * bbox is turf order: [minLon, minLat, maxLon, maxLat]. Returns plain rows.
+ * Current assessment parcels within a bbox — LEAN fields only (roll_number +
+ * assessed_land_area, no geometry), for historical size-change enrichment. One
+ * paged within_box query against d4mq-wa44 (.json so no geometry is parsed),
+ * far cheaper than the per-feature overlap machinery. bbox is turf order:
+ * [minLon, minLat, maxLon, maxLat]. Returns plain rows.
  */
 export async function fetchCurrentAssessmentInBbox(bbox4) {
   if (!Array.isArray(bbox4) || bbox4.length < 4 || bbox4.some((n) => !Number.isFinite(n))) return [];
@@ -893,7 +894,7 @@ export async function fetchCurrentAssessmentInBbox(bbox4) {
   const rows = [];
   let offset = 0;
   for (let page = 0; page < 30; page++) {            // cap ~150k rows
-    const url = `${base}?$select=roll_number,assessed_land_area,detail_url`
+    const url = `${base}?$select=roll_number,assessed_land_area`
       + `&$where=${encodeURIComponent(where)}&$limit=${SODA_PAGE_SIZE}&$offset=${offset}`;
     let batch;
     try {

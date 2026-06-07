@@ -1502,6 +1502,11 @@ async function runAssessmentSearch(inputs) {
 
 let historicalActive = false;
 let historicalIndexCache = null;
+// Monotonic load id: each loadHistorical captures its own; a later load (e.g. a
+// picker change mid-load) increments it, so a slower earlier response detects
+// it's been superseded and skips rendering — prevents an out-of-order overwrite
+// where the map shows neighbourhood A while the picker reads B.
+let historicalLoadId = 0;
 
 // Populate the neighbourhood + date pickers from the CDN discovery index and
 // the newest snapshot's manifest (its neighbourhoods map supplies name → slug).
@@ -1582,7 +1587,9 @@ async function stampHistoricalSizeChanges(parcels, slug) {
     for (const f of parcels.features || []) {
       const roll = f.properties?.roll_number;
       const a = Number(f.properties?.assessed_land_area);
-      if (roll && a > 0) histByRoll.set(roll, a);
+      // Coerce roll to string: shards may serialize it as a number while SODA
+      // returns a string — Map keys must match exactly (the app coerces too).
+      if (roll != null && roll !== '' && a > 0) histByRoll.set(String(roll), a);
     }
     // Current assessment parcels in the shard's bbox — lean fields, one paged
     // within_box query (no per-feature overlap). Gives roll → today's area +
@@ -1591,17 +1598,15 @@ async function stampHistoricalSizeChanges(parcels, slug) {
     try { curRows = await fetchCurrentAssessmentInBbox(bbox(parcels)); }
     catch (e) { console.warn(`[historical] size-change: current fetch threw for "${slug}" — highlight disabled.`, e); }
     const curByRoll = new Map();
-    const curUrlByRoll = new Map();
     for (const r of curRows) {
       const roll = r.roll_number;
-      if (!roll) continue;
+      if (roll == null || roll === '') continue;
       const a = Number(r.assessed_land_area);
-      if (a > 0) curByRoll.set(roll, a);
-      if (r.detail_url && !curUrlByRoll.has(roll)) curUrlByRoll.set(roll, r.detail_url);
+      if (a > 0) curByRoll.set(String(roll), a);
     }
     if (curByRoll.size === 0) {
       console.warn(`[historical] size-change: no current parcels in bbox for "${slug}" (fetched ${curRows.length} rows) — highlight disabled.`);
-      return { summary: null, curUrlByRoll };
+      return { summary: null };
     }
     const { byRoll, summary } = computeSizeChanges(histByRoll, curByRoll);
     const matched = histByRoll.size - summary.gone;
@@ -1613,14 +1618,14 @@ async function stampHistoricalSizeChanges(parcels, slug) {
     }
     for (const f of parcels.features || []) {
       if (!f.properties) continue;
-      const rec = byRoll.get(f.properties.roll_number);
+      const rec = byRoll.get(String(f.properties.roll_number));
       if (!rec) continue;
       f.properties._sizeBand = rec.band;
       if (rec.histArea != null) f.properties._histArea = rec.histArea;
       if (rec.curArea  != null) f.properties._curArea  = rec.curArea;
       if (rec.deltaPct != null) f.properties._deltaPct = rec.deltaPct;
     }
-    return { summary, curUrlByRoll };
+    return { summary };
   } catch (err) {
     console.warn('historical size-change stamp failed', err);
     return null;
@@ -1629,6 +1634,7 @@ async function stampHistoricalSizeChanges(parcels, slug) {
 
 async function loadHistorical(snap, slug) {
   if (!$historicalToggle) return;
+  const myId = ++historicalLoadId;
   $historicalToggle.disabled = true;
   $historicalToggle.textContent = 'Loading…';
   try {
@@ -1639,19 +1645,20 @@ async function loadHistorical(snap, slug) {
       fetchHistoricalLineage('lineage', slug),
       fetchHistoricalLineage('survey-lineage', slug),
     ]);
+    if (myId !== historicalLoadId) return;             // a newer load superseded this one
     if (!parcels && !survey) {
       setCount(`Historical: no ${snap} data for this neighbourhood.`);
       deactivateHistorical();
       return;
     }
-    // Enrich the assessment layer with size-change bands + current-page links
-    // BEFORE setHistoricalData, so the colour expression + popups see them.
+    // Enrich the assessment layer with size-change bands BEFORE setHistoricalData,
+    // so the colour expression + popups see them on first render.
     const enrich = parcels ? await stampHistoricalSizeChanges(parcels, slug) : null;
+    if (myId !== historicalLoadId) return;             // superseded during enrichment
     setHistoricalData(map, {
       parcels, survey, snap,
       lineage: lineage?.by_roll || null,
       surveyLineage: surveyLineage?.by_survey_id || null,
-      currentUrls: enrich?.curUrlByRoll || null,
     });
     setHistoricalVisible(map, true);
     historicalActive = true;
@@ -1678,8 +1685,11 @@ async function loadHistorical(snap, slug) {
     setCount('Historical: load failed.');
     deactivateHistorical();
   } finally {
-    $historicalToggle.disabled = false;
-    $historicalToggle.textContent = historicalActive ? 'Hide Historical' : 'Historical';
+    // Only the most-recent load owns the toggle button's state.
+    if (myId === historicalLoadId) {
+      $historicalToggle.disabled = false;
+      $historicalToggle.textContent = historicalActive ? 'Hide Historical' : 'Historical';
+    }
   }
 }
 
