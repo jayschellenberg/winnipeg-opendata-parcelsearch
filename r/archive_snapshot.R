@@ -46,16 +46,19 @@ SRC_DIR      <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
 SOURCE_AGENCY  <- "City of Winnipeg Open Data"
 SOURCE_LICENSE <- "City of Winnipeg Open Data — verify current terms"
 
-# Source layer types. Each is discovered in SRC_DIR by a dated glob. `active`
-# gates a plain run; layer/dataset/source_url feed the provenance sidecar.
+# Source layer types. Each is discovered in SRC_DIR by a dated regex `pattern`.
+# Patterns tolerate the space/underscore naming variants seen in real downloads
+# ("Assessment Parcels_…", "Survey_Parcels_…"); norm_name() canonicalizes the
+# archived filename. `active` gates a plain run; layer/dataset/source_url feed
+# the provenance sidecar.
 source_types <- list(
-  list(active = TRUE,  glob = "AssessmentParcels_*.gpkg", layer = "assessment_parcels",
+  list(active = TRUE,  pattern = "^Assessment[ _]?Parcels_\\d{8}\\.gpkg$", layer = "assessment_parcels",
        dataset    = "City of Winnipeg — Map of Assessment Parcels (d4mq-wa44)",
        source_url = "https://data.winnipeg.ca/resource/d4mq-wa44"),
-  list(active = TRUE,  glob = "SurveyParcels_*.gpkg", layer = "survey_parcels",
+  list(active = TRUE,  pattern = "^Survey[ _]?Parcels_\\d{8}\\.gpkg$", layer = "survey_parcels",
        dataset    = "City of Winnipeg — Map of Survey Parcels (sjjm-nj47)",
        source_url = "https://data.winnipeg.ca/resource/sjjm-nj47"),
-  list(active = FALSE, glob = "Zoning_*.geojson", layer = "zoning",
+  list(active = FALSE, pattern = "^Zoning_\\d{8}\\.geojson$", layer = "zoning",
        dataset    = "City of Winnipeg — Zoning (dxrp-w6re)",
        source_url = "https://data.winnipeg.ca/resource/dxrp-w6re")
 )
@@ -109,17 +112,24 @@ date_from_name <- function(fname) {
   m
 }
 
-# Strip whitespace from a basename so "Assessment Parcels_20250226.gpkg"
-# normalizes to "AssessmentParcels_20250226.gpkg" (downstream globs are spaceless).
-norm_name <- function(fname) gsub("\\s+", "", fname)
+# Canonicalize a source filename to the spaceless, no-split form so downstream
+# tooling sees one name per dataset: "Assessment Parcels_20250226.gpkg" and
+# "Survey_Parcels_20250314.gpkg" both normalize to "AssessmentParcels_…" /
+# "SurveyParcels_…".
+norm_name <- function(fname) {
+  s <- gsub("\\s+", "", fname)
+  s <- gsub("Survey_Parcels", "SurveyParcels", s, fixed = TRUE)
+  s <- gsub("Assessment_Parcels", "AssessmentParcels", s, fixed = TRUE)
+  s
+}
 
 # Match an archived filename to a logical layer label (for the backfill path).
 layer_for <- function(fname) {
-  if (grepl("^AssessmentParcels", fname)) {
+  if (grepl("^Assessment[ _]?Parcels", fname)) {
     list(layer = "assessment_parcels",
          dataset = "City of Winnipeg — Map of Assessment Parcels (d4mq-wa44)",
          source_url = "https://data.winnipeg.ca/resource/d4mq-wa44")
-  } else if (grepl("^SurveyParcels", fname)) {
+  } else if (grepl("^Survey[ _]?Parcels", fname)) {
     list(layer = "survey_parcels",
          dataset = "City of Winnipeg — Map of Survey Parcels (sjjm-nj47)",
          source_url = "https://data.winnipeg.ca/resource/sjjm-nj47")
@@ -221,9 +231,9 @@ archive_one <- function(src, st) {
 }
 
 archive_type <- function(st) {
-  srcs <- list.files(SRC_DIR, pattern = utils::glob2rx(st$glob), full.names = TRUE)
+  srcs <- list.files(SRC_DIR, pattern = st$pattern, full.names = TRUE)
   if (!length(srcs)) {
-    cat(sprintf("  none  %-45s (no matching downloads in src dir)\n", st$glob))
+    cat(sprintf("  none  %-45s (no matching downloads in src dir)\n", st$pattern))
     return(invisible(FALSE))
   }
   for (s in srcs) archive_one(s, st)
