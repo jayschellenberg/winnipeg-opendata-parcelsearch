@@ -52,7 +52,6 @@ import {
   enrichAssessmentZoning,
   filterMatchedSurveys,
   filterMatchedAssessments,
-  fetchCityOwnedParcels,
   fetchSecondaryPlans,
   fetchInfillGuidelineArea,
   fetchMallsAndCorridors,
@@ -93,7 +92,6 @@ const $assessToggle = document.getElementById('assess-toggle');
 const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
 const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
-const $cityOwnedParcelsToggle = document.getElementById('city-owned-parcels-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
@@ -138,10 +136,9 @@ let neighbourhoodsLoaded = { clusters: false, individual: false };
 // applyUrlState() can synchronously click any toggle button at init
 // without tripping a Cannot access 'X' before initialization throw.
 const policyOverlayState = {
-  secondaryPlans:   { enabled: false, loaded: false },
-  infill:           { enabled: false, loaded: false },
-  mallsCorridors:   { enabled: false, loaded: false },
-  cityOwnedParcels: { enabled: false, loaded: false },
+  secondaryPlans: { enabled: false, loaded: false },
+  infill:         { enabled: false, loaded: false },
+  mallsCorridors: { enabled: false, loaded: false },
 };
 let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
@@ -246,7 +243,6 @@ $assessToggle.addEventListener('click', () => toggleLayer('assess'));
 $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secondaryPlans'));
 $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
-if ($cityOwnedParcelsToggle) $cityOwnedParcelsToggle.addEventListener('click', () => togglePolicyOverlay('cityOwnedParcels'));
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
@@ -427,7 +423,6 @@ function captureUrlState() {
     surveyToggle: false, assessToggle: true, allParcelsToggle: false,
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
-    cityOwnedParcelsToggle: false,
     transitToggle: false, contamToggle: false, dimensionsToggle: false,
   };
   const buttons = {
@@ -436,7 +431,6 @@ function captureUrlState() {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
-    cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
@@ -479,16 +473,7 @@ function applyUrlState(state) {
   if ('block' in state)         $block.value         = state.block;
   if ('plan' in state)          $plan.value          = state.plan;
   if ('desc' in state)          $desc.value          = state.desc;
-  if ('roll' in state) {
-    $roll.value = state.roll;
-    // The Roll # input is a hidden <input> backing a chip-input UI
-    // whose `values` array is captured in a closure at init time
-    // — a plain `el.value = …` assignment updates the DOM but not
-    // the chip layer, so a shared URL like `?r=12345,67890` would
-    // leave the roll field visually empty. The reseed event tells
-    // the chip layer to re-read the hidden value and re-render.
-    $roll.dispatchEvent(new CustomEvent('chip-input:reseed', { bubbles: true }));
-  }
+  if ('roll' in state)          $roll.value          = state.roll;
   if ('addressFrom' in state)   $addressFrom.value   = state.addressFrom;
   if ('addressTo' in state)     $addressTo.value     = state.addressTo;
   if ('addressStreet' in state) $addressStreet.value = state.addressStreet;
@@ -505,7 +490,6 @@ function applyUrlState(state) {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
-    cityOwnedParcelsToggle: $cityOwnedParcelsToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
   };
@@ -577,7 +561,6 @@ for (const btn of [
   $surveyToggle, $assessToggle, $allParcelsToggle,
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
-  $cityOwnedParcelsToggle,
   $transitToggle,
   $neighbourhoodsToggle,
   $contamToggle, $dimensionsToggle,
@@ -704,13 +687,8 @@ function setParcels(surveyFc, assessFc = EMPTY_FC) {
  */
 function toggleLayer(which) {
   const btn = which === 'survey' ? $surveyToggle : $assessToggle;
-  // Layer IDs per group. The assess group has THREE layers since
-  // the yellow highlight uses a fill + dark outer casing + yellow
-  // dashed inner — all three need to flip together so the
-  // selection vanishes cleanly when the user hides assessment.
-  const layerIds = which === 'survey'
-    ? ['parcel-fill', 'parcel-line']
-    : ['assess-context-fill', 'assess-context-line-outer', 'assess-context-line'];
+  const fillId = which === 'survey' ? 'parcel-fill' : 'assess-context-fill';
+  const lineId = which === 'survey' ? 'parcel-line' : 'assess-context-line';
   const labelOn = which === 'survey' ? 'Hide Survey Parcel Results' : 'Hide Assessment Results';
   const labelOff = which === 'survey' ? 'Survey Parcel Results' : 'Assessment Results';
   const wasActive = btn.classList.contains('active');
@@ -720,9 +698,8 @@ function toggleLayer(which) {
   btn.textContent = nowVisible ? labelOn : labelOff;
   mapReady.then(() => {
     const v = nowVisible ? 'visible' : 'none';
-    for (const id of layerIds) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
-    }
+    if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', v);
+    if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', v);
   });
 }
 
@@ -1097,13 +1074,6 @@ const POLICY_OVERLAY_CONFIG = {
     fetch:  fetchMallsAndCorridors,
     onLabel:  'Hide Malls/Corridors',
     offLabel: 'Malls/Corridors',
-  },
-  cityOwnedParcels: {
-    btn:    () => $cityOwnedParcelsToggle,
-    src:    'city-owned-parcels',
-    fetch:  fetchCityOwnedParcels,
-    onLabel:  'Hide City Owned Parcels',
-    offLabel: 'City Owned Parcels',
   },
 };
 

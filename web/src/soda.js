@@ -57,11 +57,6 @@ const INFILL_GUIDELINE_URL         = 'https://data.winnipeg.ca/resource/5guk-f7x
 const MALLS_REGIONAL_CENTRE_URL    = 'https://data.winnipeg.ca/resource/wv32-jdtk.geojson';  // OurWPG Regional Mixed Use Centre
 const CORRIDORS_URBAN_URL          = 'https://data.winnipeg.ca/resource/t4kh-5gtd.geojson';  // OurWPG Urban Mixed Use Corridor
 const CORRIDORS_REGIONAL_URL       = 'https://data.winnipeg.ca/resource/ahzi-uwu2.geojson';  // OurWPG Regional Mixed Use Corridor
-// City-Owned Parcels (PPD). The 9xvz-3uyg "Map of PPD City Owned
-// Parcels" view backs the 55p4-e5t9 underlying resource — that's
-// the one the .geojson endpoint actually serves. Columns:
-//   id, parcel_owner, zoning, area (m²), location (Polygon)
-const CITY_OWNED_PARCELS_URL       = 'https://data.winnipeg.ca/resource/55p4-e5t9.geojson';
 
 // Traffic-volume overlays. Midblock counts are 15-minute portable-count rows
 // keyed by study/corridor but have no geometry. Road Network supplies the
@@ -79,7 +74,7 @@ const USER_SEARCH_LIMIT = 1000;
 const SODA_PAGE_SIZE = 5000;
 const SODA_MAX_ROWS = 100000;
 const TRAFFIC_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV5';
+const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV4';
 
 /**
  * Query Survey Parcels by attribute. Any provided field is partial-matched
@@ -420,20 +415,6 @@ function bboxesOverlap(a, b) {
   } catch { return true; /* on error, fall through and let intersect decide */ }
 }
 
-// Drop a trailing unit/suite/apartment suffix from a civic address
-// so "1145 COURT AVE Unit 419", "10 MAIN ST Suite 5", "200 PORTAGE
-// AVE Apt 1B", and "500 MAIN ST #303" all collapse to their base
-// "1145 COURT AVE" / "10 MAIN ST" / etc. Matches at end-of-string
-// only and requires a literal Unit/Suite/Ste/Apt/Apartment/Bldg/
-// Building/# keyword so direction tokens like "100 MAIN ST E" are
-// left alone. The unit value can be alphanumeric (Winnipeg has
-// "Unit 1B", "Unit PHA", etc.).
-const UNIT_SUFFIX_RE = /\s+(?:Unit|Suite|Ste|Apt|Apartment|Bldg|Building|#)\s*[\w-]+\s*$/i;
-function stripUnitSuffix(addr) {
-  if (!addr) return addr;
-  return String(addr).replace(UNIT_SUFFIX_RE, '').trim();
-}
-
 export async function enrichAssessmentAddresses(assessFc) {
   const emptyAddrs = { type: 'FeatureCollection', features: [] };
   if (!assessFc.features.length) {
@@ -478,26 +459,17 @@ export async function enrichAssessmentAddresses(assessFc) {
       parcel.properties.full_address = distinct.join(', ');
 
       // Stash each address point for the map layer, deduped on the
-      // BASE address (street # + street name, unit suffix stripped).
-      // Without the strip, a multi-unit building like 1145 Court Ave
-      // produces one feature per unit ("Unit 419", "Unit 411", ...)
-      // and the map layer renders all 19 as overlapping labels even
-      // though they're really the same civic address. Keeping just
-      // one feature per base address lets the label read clean as
-      // "1145 COURT AVE" once. Stamps a `street_num` (digits before
-      // the first space of the base address) so the label layer can
-      // render just the number when full_address is missing.
+      // full_address string. Stamp a `street_num` (digits before the
+      // first space) so the label layer can render just the number.
       for (const addr of insideAddrs) {
         const fa = (addr.properties?.full_address || '').trim();
-        if (!fa) continue;
-        const baseAddress = stripUnitSuffix(fa);
-        if (matchedAddresses.has(baseAddress)) continue;
-        const numMatch = baseAddress.match(/^(\d+(?:[A-Za-z]|\s?1\/2)?)/);
+        if (!fa || matchedAddresses.has(fa)) continue;
+        const numMatch = fa.match(/^(\d+(?:[A-Za-z]|\s?1\/2)?)/);
         const street_num = numMatch ? numMatch[1] : '';
-        matchedAddresses.set(baseAddress, {
+        matchedAddresses.set(fa, {
           type: 'Feature',
           geometry: addr.geometry,
-          properties: { full_address: baseAddress, street_num },
+          properties: { full_address: fa, street_num },
         });
       }
     } catch (err) {
@@ -1152,33 +1124,9 @@ function roadNameAliases(p) {
   aliases.add(normalizeStreetName([p.st_name, p.st_type, p.st_dir].filter(Boolean).join(' ')));
   aliases.add(normalizeStreetName([p.st_name, p.st_type].filter(Boolean).join(' ')));
   aliases.add(normalizeStreetName(p.st_name));
-  // Apply STREET_RENAMES so legacy datasets that still
-  // reference the old name (e.g. Midblock Traffic Counts study
-  // logs created before the rename) can still join to the
-  // current road geometry. Bidirectional — also handles the
-  // rare case where the legacy dataset has switched but the
-  // Road Network hasn't.
-  for (const a of [...aliases]) {
-    const renamed = STREET_RENAMES.get(a);
-    if (renamed) aliases.add(renamed);
-  }
   aliases.delete('');
   return aliases;
 }
-
-// Historical Winnipeg street renames. Each entry maps one
-// normalized name to an alias added when the road network has
-// that name. Listed as ordered pairs so adding a new rename is
-// a two-line append. Apply ONLY at the road-index alias step
-// (not in normalizeStreetName) so unrelated address-search
-// logic is untouched.
-const STREET_RENAMES = new Map([
-  // Bishop Grandin Boulevard → Abinojii Mikanah (City of
-  // Winnipeg renamed 2024-06; Midblock Traffic Counts
-  // dataset still uses "Bishop Grandin Blvd" for all studies).
-  ['ABINOJII MIKANAH',    'BISHOP GRANDIN BLVD'],
-  ['BISHOP GRANDIN BLVD', 'ABINOJII MIKANAH'],
-]);
 
 function findStreetCrossing(mainGroup, crossStreet, roadIndex, cache) {
   const crossKey = normalizeStreetName(crossStreet);
@@ -1452,18 +1400,6 @@ export async function fetchMallsAndCorridors() {
   for (const f of urbanCorr.features)    features.push(tagPdoKind(f, 'Urban Corridor'));
   for (const f of regionalCorr.features) features.push(tagPdoKind(f, 'Regional Corridor'));
   return { type: 'FeatureCollection', features };
-}
-
-/**
- * Fetch the "Map of PPD City Owned Parcels" overlay (Winnipeg
- * Open Data 9xvz-3uyg / underlying resource 55p4-e5t9). Each
- * feature is a polygon with parcel_owner (typically "PPD"),
- * zoning code, and area in square metres. Memoised via the
- * shared fetchAllAndCache helper so subsequent toggles read
- * from in-memory cache without re-hitting Socrata.
- */
-export async function fetchCityOwnedParcels() {
-  return fetchAllAndCache('cityOwnedParcels', CITY_OWNED_PARCELS_URL);
 }
 
 /**
@@ -2083,43 +2019,14 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
   return featureCollection(merged, meta);
 }
 
-async function fetchSoda(url, { retries = 2, retryDelayMs = 1200 } = {}) {
+async function fetchSoda(url) {
   const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
-  let lastErr = null;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(url, { headers });
-      if (res.ok) return await res.json();
-      const body = await res.text();
-      // 5xx is a Socrata-side blip — backend timeout, planner
-      // crash, transient internal error like the "Internal error:
-      // please include code <uuid>" message they return. Retry
-      // once or twice with a short delay before bubbling up; most
-      // of these clear within a couple seconds.
-      // 4xx is our fault (bad query, missing token, etc.) — don't
-      // retry, surface immediately so the user sees the real
-      // problem.
-      if (res.status >= 500 && attempt < retries) {
-        lastErr = new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
-        console.warn(`fetchSoda: retrying after ${res.status} (attempt ${attempt + 1}/${retries + 1})`);
-        await new Promise((r) => setTimeout(r, retryDelayMs * (attempt + 1)));
-        continue;
-      }
-      throw new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
-    } catch (err) {
-      // Network errors (fetch rejection) are also retryable — DNS
-      // hiccup, flaky wifi, etc.
-      const isNetworkError = err instanceof TypeError;
-      if (isNetworkError && attempt < retries) {
-        lastErr = err;
-        console.warn(`fetchSoda: retrying after network error (attempt ${attempt + 1}/${retries + 1})`, err);
-        await new Promise((r) => setTimeout(r, retryDelayMs * (attempt + 1)));
-        continue;
-      }
-      throw err;
-    }
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
   }
-  throw lastErr || new Error('SODA: exhausted retries');
+  return res.json();
 }
 
 async function fetchSodaPaged(baseUrl, params, options = {}) {
