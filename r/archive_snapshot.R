@@ -248,12 +248,26 @@ archive_type <- function(st) {
 backfill_meta <- function() {
   files <- list.files(ARCHIVE_ROOT, pattern = "\\.gpkg$",
                       recursive = TRUE, full.names = TRUE)
+  done <- 0L; skipped <- 0L
   for (f in files) {
+    segs <- strsplit(gsub("\\\\", "/", f), "/")[[1]]
+    # Quarantine: never register anything under a "_"-prefixed dir (e.g.
+    # 2026/_partial/ holding a truncated download).
+    if (any(grepl("^_", segs))) {
+      cat("  skip (quarantine):", basename(f), "\n"); skipped <- skipped + 1L; next
+    }
+    # In-progress: a non-canonical name (still has a space/underscore split,
+    # e.g. "Survey_Parcels_…") is a file mid-conversion. Don't register it until
+    # it's renamed to canonical — registering = adding to the historical record.
+    if (basename(f) != norm_name(basename(f))) {
+      cat("  skip (non-canonical / in-progress):", basename(f), "\n"); skipped <- skipped + 1L; next
+    }
     lf <- layer_for(basename(f))
     write_meta(f, lf$layer, lf$dataset, lf$source_url,
                retrieved_at = file.info(f)$mtime, inferred = TRUE)
+    done <- done + 1L
   }
-  if (length(files)) cat(sprintf("  ensured %d provenance sidecar(s)\n", length(files)))
+  cat(sprintf("  ensured %d provenance sidecar(s); skipped %d\n", done, skipped))
 }
 
 cat("Winnipeg snapshot archive\n")
