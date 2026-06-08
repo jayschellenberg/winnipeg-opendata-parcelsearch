@@ -1809,6 +1809,9 @@ async function loadHistorical(snap, { frame = false } = {}) {
         try { map.fitBounds([[inCluster.bbox[0], inCluster.bbox[1]], [inCluster.bbox[2], inCluster.bbox[3]]],
           { padding: 40, maxZoom: 16, duration: 600 }); } catch { /* ignore */ }
       }
+      // A whole cluster can be many neighbourhoods + a big current-assessment
+      // query; tell the user it's working (first load is uncached).
+      setCount(`Historical: loading ${cluster} — ${slugs.length} neighbourhood${slugs.length === 1 ? '' : 's'}…`);
     } else {
       if (map.getZoom() < HISTORICAL_MIN_ZOOM) {
         if (myId !== historicalLoadId) return;

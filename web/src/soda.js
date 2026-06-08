@@ -875,16 +875,28 @@ export function fetchHistoricalLineage(dir, slug) {
     `wpg_hist_${HIST_VER}_${dir}_${slug}`, HISTORICAL_LONG_TTL_MS);
 }
 
+// Current assessment moves slowly; cache the size-change query for a week so a
+// repeat view of the same area (especially a fixed cluster, whose bbox is
+// identical each time) skips the paged SODA round-trip entirely.
+const CURRENT_ASMT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
  * Current assessment parcels within a bbox — LEAN fields only (roll_number +
  * assessed_land_area, no geometry), for historical size-change enrichment. One
  * paged within_box query against d4mq-wa44 (.json so no geometry is parsed),
  * far cheaper than the per-feature overlap machinery. bbox is turf order:
  * [minLon, minLat, maxLon, maxLat]. Returns plain rows.
+ *
+ * IDB-cached by rounded bbox (~11 m): a fixed cluster or repeated view reuses the
+ * cached rows instead of re-paging. Only a COMPLETE result is cached, so a run
+ * cut short by a network error re-fetches next time rather than caching a partial.
  */
 export async function fetchCurrentAssessmentInBbox(bbox4) {
   if (!Array.isArray(bbox4) || bbox4.length < 4 || bbox4.some((n) => !Number.isFinite(n))) return [];
   const [minLon, minLat, maxLon, maxLat] = bbox4;
+  const cacheKey = `wpg_curasmt_${[minLon, minLat, maxLon, maxLat].map((n) => n.toFixed(4)).join('_')}`;
+  const cached = await idbReadCache(cacheKey, CURRENT_ASMT_TTL_MS).catch(() => null);
+  if (cached) return cached;
   const PAD = 0.001;
   const round = (n) => n.toFixed(6);
   // within_box(geom, nwLat, nwLon, seLat, seLon)
@@ -893,6 +905,7 @@ export async function fetchCurrentAssessmentInBbox(bbox4) {
   const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
   const rows = [];
   let offset = 0;
+  let complete = false;
   for (let page = 0; page < 30; page++) {            // cap ~150k rows
     const url = `${base}?$select=roll_number,assessed_land_area`
       + `&$where=${encodeURIComponent(where)}&$limit=${SODA_PAGE_SIZE}&$offset=${offset}`;
@@ -902,11 +915,12 @@ export async function fetchCurrentAssessmentInBbox(bbox4) {
       if (!res.ok) break;
       batch = await res.json();
     } catch { break; }
-    if (!Array.isArray(batch) || batch.length === 0) break;
+    if (!Array.isArray(batch)) break;
     rows.push(...batch);
-    if (batch.length < SODA_PAGE_SIZE) break;
+    if (batch.length < SODA_PAGE_SIZE) { complete = true; break; }  // last (short/empty) page
     offset += batch.length;
   }
+  if (complete) await idbWriteCache(cacheKey, rows).catch(() => {});
   return rows;
 }
 
