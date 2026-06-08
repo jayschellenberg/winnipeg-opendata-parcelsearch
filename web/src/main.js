@@ -112,6 +112,7 @@ const $staticMapOutput = document.getElementById('static-map-output');
 const $zoningLegend = document.getElementById('zoning-legend');
 const $trafficLegend = document.getElementById('traffic-legend');
 const $historicalToggle = document.getElementById('historical-toggle');
+const $historicalArea   = document.getElementById('historical-area');
 const $historicalDate   = document.getElementById('historical-date');
 const $historicalBanner = document.getElementById('historical-banner');
 
@@ -263,6 +264,7 @@ if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 // the parcel + survey shards (and lineage) for the neighbourhoods in the current
 // map view from the wpg-parcel-history CDN — and reloads them as you pan/zoom.
 if ($historicalToggle) $historicalToggle.addEventListener('click', () => toggleHistorical());
+if ($historicalArea)   $historicalArea.addEventListener('change', onHistoricalAreaChange);
 if ($historicalDate)   $historicalDate.addEventListener('change', onHistoricalDateChange);
 mapReady.then(() => map.on('moveend', onHistoricalMapMove));
 initHistoricalControls();
@@ -1502,7 +1504,8 @@ async function runAssessmentSearch(inputs) {
 let historicalActive = false;
 let historicalIndexCache = null;
 let historicalSnap = null;          // snapshot date currently driving the overlay
-let historicalNbhdRef = null;       // [{ slug, bbox:[w,s,e,n] }] from wpg-neighbourhoods.geojson
+let historicalCluster = '';         // selected neighbourhood-cluster name; '' = follow the map view
+let historicalNbhdRef = null;       // [{ slug, cluster, bbox:[w,s,e,n] }] from wpg-neighbourhoods.geojson
 let historicalMoveTimer = null;     // debounce handle for pan/zoom reloads
 // Monotonic load id: each load captures its own; a later load (a date change or
 // a pan/zoom mid-load) increments it, so a slower earlier response detects it's
@@ -1525,10 +1528,10 @@ function historicalSlugify(x) {
     .replace(/^-|-$/g, '');
 }
 
-// Load + cache the official neighbourhood polygons as [{ slug, bbox }] (reusing
-// the app's session-cached neighbourhoods FC), so a pan/zoom can find which
-// neighbourhoods are in view by bbox overlap (a safe superset — the shard cap
-// bounds any over-fetch).
+// Load + cache the official neighbourhood polygons as [{ slug, cluster, bbox }]
+// (reusing the app's session-cached neighbourhoods FC), so a pan/zoom can find
+// which neighbourhoods are in view by bbox overlap (a safe superset — the shard
+// cap bounds any over-fetch), and an Area pick can gather a whole cluster.
 async function historicalNeighbourhoodRef() {
   if (historicalNbhdRef) return historicalNbhdRef;
   const fc = await fetchNeighbourhoods();
@@ -1536,7 +1539,8 @@ async function historicalNeighbourhoodRef() {
   for (const f of fc.features || []) {
     const slug = historicalSlugify(f.properties?.name ?? f.properties?.Name ?? f.properties?.NAME);
     if (!slug) continue;
-    try { ref.push({ slug, bbox: bbox(f) }); } catch { /* skip bad geometry */ }
+    const cluster = f.properties?.cluster ?? f.properties?.Cluster ?? '';
+    try { ref.push({ slug, cluster, bbox: bbox(f) }); } catch { /* skip bad geometry */ }
   }
   historicalNbhdRef = ref;
   return ref;
@@ -1567,6 +1571,26 @@ async function historicalSlugsInView(snap) {
   return slugs;
 }
 
+// Slugs of every neighbourhood in `clusterName` that carries data for `snap`,
+// plus the union bbox of those neighbourhoods so the map can frame the cluster.
+async function historicalSlugsInCluster(snap, clusterName) {
+  const ref = await historicalNeighbourhoodRef();
+  const man = await fetchHistoricalManifest(snap).catch(() => null);
+  const hoods = man?.neighbourhoods || {};
+  const slugs = [];
+  let bb = null;                                          // [w, s, e, n]
+  for (const r of ref) {
+    if (r.cluster !== clusterName) continue;
+    const info = hoods[r.slug];
+    if (!info || (!(info.parcels > 0) && !(info.survey > 0))) continue;
+    slugs.push(r.slug);
+    bb = bb
+      ? [Math.min(bb[0], r.bbox[0]), Math.min(bb[1], r.bbox[1]), Math.max(bb[2], r.bbox[2]), Math.max(bb[3], r.bbox[3])]
+      : r.bbox.slice();
+  }
+  return { slugs, bbox: bb };
+}
+
 // Merge several shard FeatureCollections into one. Rolls / survey_ids are unique
 // per neighbourhood (binned by representative point), so no cross-shard dedup.
 function historicalMergeFC(fcs) {
@@ -1581,8 +1605,9 @@ function historicalMergeMaps(objs) {
   return out;
 }
 
-// Populate the date picker from the CDN discovery index. No neighbourhood
-// picker — the overlay loads whatever neighbourhoods are in the map view.
+// Populate the Area (neighbourhood-cluster) + date pickers. The Area dropdown
+// defaults to "Map view", in which the overlay follows the map viewport; pick a
+// cluster to load + frame that whole area instead.
 async function initHistoricalControls() {
   if (!$historicalDate) return;
   const idx = await fetchHistoricalIndex().catch(() => null);
@@ -1608,25 +1633,53 @@ async function initHistoricalControls() {
     grp.appendChild(opt);
   }
 
+  // Area picker: a default that means "follow the map view", plus the distinct
+  // neighbourhood clusters. The default is set first so it's always present even
+  // if the cluster list fails to load. Built via the DOM (no escaping needed).
+  if ($historicalArea) {
+    $historicalArea.innerHTML = '';
+    const def = document.createElement('option');
+    def.value = ''; def.textContent = 'Map view (follow zoom)';
+    $historicalArea.appendChild(def);
+    try {
+      const ref = await historicalNeighbourhoodRef();
+      const clusters = [...new Set(ref.map((r) => r.cluster).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+      for (const c of clusters) {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c;
+        $historicalArea.appendChild(o);
+      }
+    } catch (e) { console.warn('[historical] cluster list unavailable — Area picker shows Map view only.', e); }
+  }
+
   if ($historicalToggle) $historicalToggle.disabled = false;
 }
 
-// Re-load the view when the user picks a different snapshot date while active.
+// Re-load when the user picks a different snapshot date while active (keeps the
+// current Area / viewport mode).
 function onHistoricalDateChange() {
   if (historicalActive && $historicalDate?.value) {
     historicalSnap = $historicalDate.value;
-    loadHistoricalForView(historicalSnap);
+    loadHistorical(historicalSnap);
   }
 }
 
-// Debounced pan/zoom reload: while the overlay is on, moving the map reloads the
-// shards for the neighbourhoods now in view.
+// Switch between "follow the map view" and a fixed cluster. Picking a cluster
+// loads + frames it; choosing "Map view" returns to viewport-driven loading.
+function onHistoricalAreaChange() {
+  historicalCluster = $historicalArea?.value || '';
+  if (historicalActive && historicalSnap) loadHistorical(historicalSnap, { frame: !!historicalCluster });
+}
+
+// Debounced pan/zoom reload — only in viewport mode (a fixed Area is pinned, so
+// moving the map within it must not refetch).
 function onHistoricalMapMove() {
-  if (!historicalActive || !historicalSnap) return;
+  if (!historicalActive || !historicalSnap || historicalCluster) return;
   if (historicalMoveTimer) clearTimeout(historicalMoveTimer);
   historicalMoveTimer = setTimeout(() => {
     historicalMoveTimer = null;
-    if (historicalActive && historicalSnap) loadHistoricalForView(historicalSnap);
+    if (historicalActive && historicalSnap && !historicalCluster) loadHistorical(historicalSnap);
   }, 400);
 }
 
@@ -1640,9 +1693,10 @@ async function toggleHistorical() {
   // currently zoomed out (the load will just prompt them to zoom in).
   historicalActive = true;
   historicalSnap = snap;
+  historicalCluster = $historicalArea?.value || '';
   $historicalToggle.classList.add('active');
   $historicalToggle.setAttribute('aria-pressed', 'true');
-  await loadHistoricalForView(snap);
+  await loadHistorical(snap, { frame: !!historicalCluster });
 }
 
 function deactivateHistorical() {
@@ -1721,37 +1775,57 @@ async function stampHistoricalSizeChanges(parcels, label) {
   }
 }
 
-// Load + merge the historical shards for whatever neighbourhoods are in the
-// current map view, for snapshot `snap`. Called on toggle-on, on a date change,
-// and (debounced) on every pan/zoom. A zoom guard + per-view neighbourhood cap
-// keep this from ever trying to load the whole city at once.
-async function loadHistoricalForView(snap) {
+// Load + merge the historical shards for snapshot `snap`. Two modes: a fixed
+// neighbourhood cluster (Area picked → load + frame the whole cluster), or the
+// current map view (zoom guard + per-view cap keep it from loading the whole
+// city). Called on toggle-on, date change, Area change, and (in view mode only,
+// debounced) on every pan/zoom.
+async function loadHistorical(snap, { frame = false } = {}) {
   if (!$historicalToggle || !snap) return;
+  const cluster = historicalCluster;
   const myId = ++historicalLoadId;
   $historicalToggle.disabled = true;
   $historicalToggle.textContent = 'Loading…';
   try {
     await mapReady;
-    if (map.getZoom() < HISTORICAL_MIN_ZOOM) {
-      if (myId !== historicalLoadId) return;
-      clearHistoricalView();
-      setCount('Historical: zoom in to load as-of-date parcels for the area in view.');
-      return;
-    }
-    const slugs = await historicalSlugsInView(snap);
-    if (myId !== historicalLoadId) return;             // superseded while resolving the view
-    if (slugs.length === 0) {
-      clearHistoricalView();
-      setCount(`Historical: no ${snap} data for the area in view.`);
-      return;
-    }
-    if (slugs.length > HISTORICAL_MAX_HOODS) {
-      clearHistoricalView();
-      setCount(`Historical: zoom in further — ${slugs.length} neighbourhoods in view (max ${HISTORICAL_MAX_HOODS}).`);
-      return;
+    let slugs;
+    if (cluster) {
+      const inCluster = await historicalSlugsInCluster(snap, cluster);
+      if (myId !== historicalLoadId) return;           // superseded while resolving the cluster
+      slugs = inCluster.slugs;
+      if (slugs.length === 0) {
+        clearHistoricalView();
+        setCount(`Historical: no ${snap} data for ${cluster}.`);
+        return;
+      }
+      // Frame the cluster (only on an explicit Area pick, not date-change reloads).
+      // moveend is suppressed in cluster mode, so this won't trigger a refetch.
+      if (frame && inCluster.bbox) {
+        try { map.fitBounds([[inCluster.bbox[0], inCluster.bbox[1]], [inCluster.bbox[2], inCluster.bbox[3]]],
+          { padding: 40, maxZoom: 16, duration: 600 }); } catch { /* ignore */ }
+      }
+    } else {
+      if (map.getZoom() < HISTORICAL_MIN_ZOOM) {
+        if (myId !== historicalLoadId) return;
+        clearHistoricalView();
+        setCount('Historical: zoom in to load as-of-date parcels for the area in view, or pick an Area.');
+        return;
+      }
+      slugs = await historicalSlugsInView(snap);
+      if (myId !== historicalLoadId) return;           // superseded while resolving the view
+      if (slugs.length === 0) {
+        clearHistoricalView();
+        setCount(`Historical: no ${snap} data for the area in view.`);
+        return;
+      }
+      if (slugs.length > HISTORICAL_MAX_HOODS) {
+        clearHistoricalView();
+        setCount(`Historical: zoom in further — ${slugs.length} neighbourhoods in view (max ${HISTORICAL_MAX_HOODS}), or pick an Area.`);
+        return;
+      }
     }
     // Fetch every neighbourhood's parcel + survey shard + both lineage maps in
-    // parallel, then merge into one overlay for the view.
+    // parallel, then merge into one overlay.
     const per = await Promise.all(slugs.map(async (slug) => {
       const [parcels, survey, lineage, surveyLineage] = await Promise.all([
         fetchHistoricalShard(snap, 'parcels', slug),
@@ -1768,13 +1842,13 @@ async function loadHistoricalForView(snap) {
     const surveyLineage = historicalMergeMaps(per.map((p) => p.surveyLineage?.by_survey_id));
     if (!parcels.features.length && !survey.features.length) {
       clearHistoricalView();
-      setCount(`Historical: no ${snap} data for the area in view.`);
+      setCount(`Historical: no ${snap} data for ${cluster || 'the area in view'}.`);
       return;
     }
     // Enrich the assessment layer with size-change bands BEFORE setHistoricalData,
     // so the colour expression + popups see them on first render.
     const enrich = parcels.features.length
-      ? await stampHistoricalSizeChanges(parcels, `view@${snap}`)
+      ? await stampHistoricalSizeChanges(parcels, `${cluster || 'view'}@${snap}`)
       : null;
     if (myId !== historicalLoadId) return;             // superseded during enrichment
     setHistoricalData(map, {
@@ -1800,7 +1874,9 @@ async function loadHistoricalForView(snap) {
     const bits = [];
     if (np) bits.push(`${np} assessment parcel${np === 1 ? '' : 's'}`);
     if (ns) bits.push(`${ns} survey lot${ns === 1 ? '' : 's'}`);
-    setCount(`Historical as of ${snap} — ${bits.join(' + ')} in view, dashed over today's lots. Pan/zoom to load more. Click one for its as-of details.${changeNote} Verify against by-law / title.`);
+    const whereTxt = cluster ? cluster : 'in view';
+    const moreHint = cluster ? '' : ' Pan/zoom to load more.';
+    setCount(`Historical as of ${snap} — ${bits.join(' + ')} (${whereTxt}), dashed over today's lots.${moreHint} Click one for its as-of details.${changeNote} Verify against by-law / title.`);
   } catch (err) {
     console.warn('historical load failed', err);
     if (myId === historicalLoadId) {

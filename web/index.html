@@ -391,10 +391,14 @@
 
           <h3 class="overlay-group-title">Historical (as-of-date)</h3>
           <label class="overlay-select-field" data-layer-set="historical">
+            <span>Area</span>
+            <select id="historical-area" aria-label="Historical area (neighbourhood cluster)"></select>
+          </label>
+          <label class="overlay-select-field" data-layer-set="historical">
             <span>As of</span>
             <select id="historical-date" aria-label="Historical snapshot date"></select>
           </label>
-          <button id="historical-toggle" type="button" class="secondary" data-layer-set="historical" aria-pressed="false" disabled title="Overlay an earlier snapshot's assessment parcels (dashed amber, tinted by size change) and survey lots (dashed violet) for the area in view, to compare against today — e.g. a lot's size/shape before a subdivision. Pick a date and toggle, then pan/zoom to load more. Click a parcel for its as-of roll / area / value, inferred lineage, and a link to the current assessment page.">Historical</button>
+          <button id="historical-toggle" type="button" class="secondary" data-layer-set="historical" aria-pressed="false" disabled title="Overlay an earlier snapshot's assessment parcels (dashed amber, tinted by size change) and survey lots (dashed violet), to compare against today — e.g. a lot's size/shape before a subdivision. Leave Area on 'Map view' to follow the map (zoom in, then pan/zoom to load more), or pick an Area to load a whole neighbourhood cluster. Pick a date and toggle. Click a parcel for its as-of roll / area / value, inferred lineage, and a link to the current assessment page.">Historical</button>
 
           <h3 class="overlay-group-title">Quick links</h3>
           <a class="overlay-link secondary" data-layer-set="quick" href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer" title="City of Winnipeg index of all 42 adopted Local Area Plans (Secondary Plans)">Secondary Plan Index</a>
