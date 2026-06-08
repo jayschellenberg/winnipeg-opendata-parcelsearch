@@ -51,17 +51,16 @@ SOURCE_LICENSE <- "City of Winnipeg Open Data — verify current terms"
 # ("Assessment Parcels_…", "Survey_Parcels_…"); norm_name() canonicalizes the
 # archived filename. `active` gates a plain run; layer/dataset/source_url feed
 # the provenance sidecar.
-source_types <- list(
-  list(active = TRUE,  pattern = "^Assessment[ _]?Parcels_\\d{8}\\.gpkg$", layer = "assessment_parcels",
-       dataset    = "City of Winnipeg — Map of Assessment Parcels (d4mq-wa44)",
-       source_url = "https://data.winnipeg.ca/resource/d4mq-wa44"),
-  list(active = TRUE,  pattern = "^Survey[ _]?Parcels_\\d{8}\\.gpkg$", layer = "survey_parcels",
-       dataset    = "City of Winnipeg — Map of Survey Parcels (sjjm-nj47)",
-       source_url = "https://data.winnipeg.ca/resource/sjjm-nj47"),
-  list(active = FALSE, pattern = "^Zoning_\\d{8}\\.geojson$", layer = "zoning",
-       dataset    = "City of Winnipeg — Zoning (dxrp-w6re)",
-       source_url = "https://data.winnipeg.ca/resource/dxrp-w6re")
-)
+# Source patterns are generated from the shared registry so download +
+# archive stay in lockstep. Each dated download is "<name>_YYYYMMDD.gpkg".
+source("D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch/r/wpg_datasets.R")
+source_types <- lapply(WPG_DATASETS, function(d) list(
+  active     = TRUE,
+  pattern    = sprintf("^%s_\\d{8}\\.gpkg$", d$name),
+  layer      = d$layer,
+  dataset    = d$label,
+  source_url = wpg_source_url(d$resource)
+))
 
 args        <- commandArgs(trailingOnly = TRUE)
 capture_all <- "--all" %in% args
@@ -123,23 +122,16 @@ norm_name <- function(fname) {
   s
 }
 
-# Match an archived filename to a logical layer label (for the backfill path).
+# Match an archived filename to its registry entry (for the backfill path).
+# Tolerates the legacy space/underscore variant ("Assessment Parcels_…",
+# "Survey_Parcels_…") via norm_name before matching.
 layer_for <- function(fname) {
-  if (grepl("^Assessment[ _]?Parcels", fname)) {
-    list(layer = "assessment_parcels",
-         dataset = "City of Winnipeg — Map of Assessment Parcels (d4mq-wa44)",
-         source_url = "https://data.winnipeg.ca/resource/d4mq-wa44")
-  } else if (grepl("^Survey[ _]?Parcels", fname)) {
-    list(layer = "survey_parcels",
-         dataset = "City of Winnipeg — Map of Survey Parcels (sjjm-nj47)",
-         source_url = "https://data.winnipeg.ca/resource/sjjm-nj47")
-  } else if (grepl("^Zoning", fname)) {
-    list(layer = "zoning",
-         dataset = "City of Winnipeg — Zoning (dxrp-w6re)",
-         source_url = "https://data.winnipeg.ca/resource/dxrp-w6re")
-  } else {
-    list(layer = "unknown", dataset = NA_character_, source_url = NA_character_)
+  canon <- norm_name(fname)
+  for (d in WPG_DATASETS) {
+    if (grepl(sprintf("^%s_\\d{8}\\.gpkg$", d$name), canon))
+      return(list(layer = d$layer, dataset = d$label, source_url = wpg_source_url(d$resource)))
   }
+  list(layer = "unknown", dataset = NA_character_, source_url = NA_character_)
 }
 
 write_meta <- function(dest, layer, dataset, source_url, retrieved_at, inferred) {
