@@ -1513,10 +1513,15 @@ let historicalMoveTimer = null;     // debounce handle for pan/zoom reloads
 // the map shows the previous view's parcels while a newer view is in flight.
 let historicalLoadId = 0;
 
-// Below this zoom the viewport spans too many neighbourhoods to load shard-by-
-// shard; we ask the user to zoom in. The per-view cap bounds any over-fetch.
-const HISTORICAL_MIN_ZOOM = 13;
-const HISTORICAL_MAX_HOODS = 10;
+// Follow-the-map guards. Below MIN_ZOOM (the zoom where the neighbourhood layer
+// itself appears) we ask the user to zoom in; the per-view neighbourhood cap
+// bounds the shard fetch. Tuned from real in-view counts: at zoom 15 a viewport
+// spans ~5–24 neighbourhoods and at 14 ~15–55, so a cap of 25 makes the overlay
+// load reliably from zoom 15 (and from 14 in lower-density areas) — ~25 shards
+// is the same data magnitude as one large cluster pick. Raise the cap to kick in
+// at wider zooms (more data per pan); lower it to keep pans light.
+const HISTORICAL_MIN_ZOOM = 12;
+const HISTORICAL_MAX_HOODS = 25;
 
 // Neighbourhood slug — must match the R builder's slugify(name) EXACTLY so it
 // maps to the shard filename <SLUG>.json (build_historical_shards.R slugify()).
