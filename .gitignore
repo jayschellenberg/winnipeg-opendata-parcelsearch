@@ -14,6 +14,13 @@ AssessmentParcels_*.csv
 web/node_modules/
 web/dist/
 
+# Citywide-parcels tile archive: too big for git (82 MB, and a rebuild used
+# to add ~80 MB of history every time). The deployed copy is fetched from
+# the `parcels-pmtiles` GitHub release in vercel.json's buildCommand; keep
+# a local copy here for dev. Publish a rebuild with:
+#   gh release upload parcels-pmtiles web/public/parcels.pmtiles --clobber
+web/public/parcels.pmtiles
+
 # Editor / Vite scratch files (created during dev, not part of the source)
 *.tmp.*
 vite.config.*.timestamp-*.mjs

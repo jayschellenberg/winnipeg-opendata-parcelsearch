@@ -40,7 +40,7 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 | `web/src/` | The app — `main.js` (UI wiring), `soda.js` (all SODA queries/joins), `map.js` (MapLibre layers), `lib/` (reusable modules) |
 | `web/test/` | Unit tests, run by `npm test` |
 | `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods) |
-| `web/public/` | Static assets incl. the citywide-parcels PMTiles archive |
+| `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcels, ~82 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Publish a rebuild with `gh release upload parcels-pmtiles web/public/parcels.pmtiles --clobber` |
 | `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, PMTiles build |
 | `extras/` | Early experiments kept for reference |
 
