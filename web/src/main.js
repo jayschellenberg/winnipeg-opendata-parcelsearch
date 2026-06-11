@@ -78,6 +78,8 @@ import {
 } from './map.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales } from './lib/sales.js';
+import { assessmentUrl, walkscoreUrl, floodToolUrl } from './lib/links.js';
+import { csvSchemaForMode } from './lib/columnsRegistry.js';
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
@@ -2262,36 +2264,16 @@ function setExportEnabled(enabled) {
 
 function exportCsv() {
   if (!currentRows.length) return;
-  const header = [
-    'Lot', 'Block', 'Plan', 'Description',
-    'Roll Number', 'Full Address',
-    'Zoning', 'Zoning %', 'Zoning 2', 'Zoning 2 %',
-    'Lot Size (sf)', 'Lat', 'Lon',
-    'Total Assessed Value', 'Assessment Year', 'Assessment URL',
-    'Walkscore URL', 'Flood URL',
-  ];
-  const lines = [header.map(csvCell).join(',')];
+  // Schema + row extractors come from the columns registry — drives the
+  // header order and adds the sales-mode columns to the export when sales
+  // mode is active (closes the gap audit finding M5).
+  const mode = document.body.classList.contains('sales-mode') ? 'sales' : 'property';
+  const { headers, cells } = csvSchemaForMode(mode);
+  const lines = [headers.map(csvCell).join(',')];
   for (const row of currentRows) {
     const s = row.survey?.properties || {};
     const a = row.assess?.properties || {};
-    lines.push([
-      s.lot, s.block, s.plan, s.description,
-      a.roll_number, a.full_address,
-      a.zoning_top1 ?? a.zoning ?? '',
-      a.zoning_top1_pct ?? '',
-      a.zoning_top2 ?? '',
-      a.zoning_top2_pct ?? '',
-      // Unformatted numeric values in CSV so spreadsheets can treat them
-      // as numbers rather than text. Empty cells stay empty.
-      a.assessed_land_area ?? '',
-      a.centroid_lat ?? '',
-      a.centroid_lon ?? '',
-      a.total_assessed_value ?? '',
-      a.current_assessment_year ?? '',
-      assessmentUrl(a) ?? '',
-      walkscoreUrl(a.full_address) ?? '',
-      floodToolUrl(a) ?? '',
-    ].map(csvCell).join(','));
+    lines.push(cells.map((extract) => csvCell(extract(a, s) ?? '')).join(','));
   }
   // BOM so Excel picks up UTF-8 correctly.
   const blob = new Blob(['\ufeff' + lines.join('\r\n')], {
@@ -2545,20 +2527,9 @@ function linkTd(url, label) {
   return el;
 }
 
-/**
- * Build the City's assessment-page URL for a parcel. The d4mq-wa44
- * dataset has a `detail_url` field but it points at
- * `http://www.winnipegassessment.com/...` whose HTTPS redirect lands
- * on a host whose cert has a CN mismatch — Chrome shows a "Your
- * connection is not private" warning (ERR_CERT_COMMON_NAME_INVALID).
- * The City's canonical working host is `assessment.winnipeg.ca` —
- * same AsmtPub path, valid cert. We ignore the dataset's URL and
- * build from `roll_number` directly.
- */
-function assessmentUrl(props) {
-  if (!props?.roll_number) return null;
-  return `https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(props.roll_number)}`;
-}
+// assessmentUrl, walkscoreUrl, floodToolUrl now live in lib/links.js
+// (imported at the top of this file) so lib/columnsRegistry.js can use
+// them without dragging main.js's DOM imports into Node-side tests.
 
 /**
  * Build a `<td>` for the Assessment column: shows the formatted dollar
@@ -2599,41 +2570,6 @@ function formatDollars(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return null;
   return '$' + Math.round(n).toLocaleString('en-US');
-}
-
-/**
- * Build a Walk Score URL from a civic address. Walk Score's web page at
- * /score/<address> renders Walk / Transit / Bike scores on arrival, no
- * API key needed. Returns null when the address is missing or only
- * contains the multi-address comma-list — we use just the primary
- * address (text before the first comma) for cleanliness.
- */
-function walkscoreUrl(fullAddress) {
-  if (!fullAddress) return null;
-  // Take only the primary address before any comma-joined extras.
-  const primary = String(fullAddress).split(',')[0].trim();
-  if (!primary) return null;
-  return `https://www.walkscore.com/score/${encodeURIComponent(primary + ', Winnipeg, MB')}`;
-}
-
-/**
- * Build a deep-link into the sister Manitoba flood-mapping tool with the
- * parcel's centroid and address pre-filled. Falls back to address-only
- * when centroid is unavailable.
- */
-function floodToolUrl(props) {
-  if (!props) return null;
-  const lat = Number(props.centroid_lat);
-  const lon = Number(props.centroid_lon);
-  const address = (props.full_address || '').split(',')[0].trim();
-  const params = new URLSearchParams();
-  if (Number.isFinite(lat) && Number.isFinite(lon)) {
-    params.set('lat', lat.toFixed(6));
-    params.set('lon', lon.toFixed(6));
-  }
-  if (address) params.set('label', address);
-  if (![...params.keys()].length) return null;
-  return `https://mb-flood-mapping.vercel.app/?${params.toString()}`;
 }
 
 // Format an area-weighted-zoning coverage % for the table cell. Whole
