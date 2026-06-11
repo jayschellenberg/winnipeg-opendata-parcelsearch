@@ -20,14 +20,22 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir ("download_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
 function Log($m) { ('{0}  {1}' -f (Get-Date -Format 's'), $m) | Tee-Object -FilePath $log -Append | Out-Null; Write-Output $m }
 
+# Failure-email helper (best-effort; tolerant of missing setup).
+. (Join-Path $PSScriptRoot 'lib_mail.ps1')
+
 # Loud failure: write a dated FAILED marker at the archive root (where it's
-# seen in normal file browsing), skip the destructive cleanup step, exit 1.
-# The run is unattended twice a year — a quiet failure costs a snapshot.
+# seen in normal file browsing), send an email with the log tail, skip the
+# destructive cleanup step, exit 1. The run is unattended twice a year —
+# a quiet failure costs a snapshot.
 function Fail($why) {
   Log "FAILED: $why — skipping cleanup; repo-dir downloads left in place."
   $marker = Join-Path $archiveRoot ("FAILED-download-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd'))
   @("$(Get-Date -Format 's')  scheduled_download.ps1 failed", "Reason: $why", "Log: $log") |
     Set-Content -Path $marker
+  $tail = ''
+  try { $tail = (Get-Content $log -Tail 60 -ErrorAction Stop) -join "`n" } catch {}
+  $body = "Reason: $why`n`nFull log: $log`n`nLast 60 lines:`n$tail"
+  Send-FailureMail -Subject "Wpg Open Data: scheduled_download FAILED" -Body $body | Tee-Object -FilePath $log -Append | Out-Null
   exit 1
 }
 

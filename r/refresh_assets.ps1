@@ -18,6 +18,15 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir ("refresh_assets_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
 function Log($m) { ('{0}  {1}' -f (Get-Date -Format 's'), $m) | Tee-Object -FilePath $log -Append | Out-Null; Write-Output $m }
 
+# Failure-email helper (best-effort; tolerant of missing setup).
+. (Join-Path $PSScriptRoot 'lib_mail.ps1')
+function Mail-Fail($why) {
+  $tail = ''
+  try { $tail = (Get-Content $log -Tail 60 -ErrorAction Stop) -join "`n" } catch {}
+  $body = "Reason: $why`n`nFull log: $log`n`nLast 60 lines:`n$tail"
+  Send-FailureMail -Subject "Wpg Open Data: refresh_assets FAILED" -Body $body | Tee-Object -FilePath $log -Append | Out-Null
+}
+
 Log '=== refresh transit + neighbourhood static assets ==='
 
 Log 'npm run refresh:transit'
@@ -26,7 +35,11 @@ $t = $LASTEXITCODE
 Log 'npm run refresh:neighbourhoods'
 & npm --prefix (Join-Path $repo 'web') run refresh:neighbourhoods *>> $log 2>&1
 $n = $LASTEXITCODE
-if ($t -ne 0 -or $n -ne 0) { Log "refresh script(s) failed (transit=$t neighbourhoods=$n) — NOT committing."; exit 1 }
+if ($t -ne 0 -or $n -ne 0) {
+  $why = "refresh script(s) failed (transit=$t neighbourhoods=$n) — NOT committing."
+  Log $why; Mail-Fail $why
+  exit 1
+}
 
 $assets = @(
   'web/public/transit-routes.geojson',
@@ -41,12 +54,17 @@ Log 'asset(s) changed — committing + pushing (Vercel will auto-deploy)'
 & git -C $repo add -- $assets
 $msg = "Refresh transit + neighbourhood static assets (scheduled)`n`nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 & git -C $repo commit -m $msg *>> $log 2>&1
-if ($LASTEXITCODE -ne 0) { Log "ERROR: git commit failed (exit $LASTEXITCODE) — nothing deployed."; exit 1 }
+if ($LASTEXITCODE -ne 0) {
+  $why = "git commit failed (exit $LASTEXITCODE) — nothing deployed."
+  Log "ERROR: $why"; Mail-Fail $why
+  exit 1
+}
 & git -C $repo push origin main *>> $log 2>&1
 $pushExit = $LASTEXITCODE
 Log "git push exit: $pushExit"
 if ($pushExit -ne 0) {
-  Log 'ERROR: PUSH FAILED — assets are committed locally but NOT deployed. Push manually (git push origin main).'
+  $why = 'PUSH FAILED — assets are committed locally but NOT deployed. Push manually (git push origin main).'
+  Log "ERROR: $why"; Mail-Fail $why
   exit 1
 }
 Log '=== done ==='
