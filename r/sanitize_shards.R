@@ -46,9 +46,14 @@ for (sd in snaps) {
                   before, nrow(g), dropped, if (dry) "  [dry]" else ""))
       fixed_total <- fixed_total + 1L
       if (!dry) {
-        if (file.exists(f)) file.remove(f)
-        sf::st_write(g, f, driver = "GeoJSON",
+        # Atomic write: temp file + rename so a crash mid-rewrite can't lose
+        # the shard it was supposed to be fixing.
+        tmp <- paste0(f, ".tmpwrite")
+        if (file.exists(tmp)) file.remove(tmp)
+        sf::st_write(g, tmp, driver = "GeoJSON",
                      layer_options = c("COORDINATE_PRECISION=6", "RFC7946=YES"), quiet = TRUE)
+        if (file.exists(f)) file.remove(f)
+        if (!file.rename(tmp, f)) stop("rename failed: ", tmp, " -> ", f)
         if (!is.null(man) && !is.null(man$neighbourhoods[[slug]])) {
           man$neighbourhoods[[slug]][[key]] <- nrow(g); man_changed <- TRUE
         }
@@ -56,7 +61,12 @@ for (sd in snaps) {
     }
   }
   if (man_changed && !dry) {
-    jsonlite::write_json(man, man_path, auto_unbox = TRUE, pretty = TRUE, null = "null", digits = 12)
+    # Same atomic pattern for the manifest — a truncated manifest.json
+    # breaks the whole snapshot for the web app.
+    man_tmp <- paste0(man_path, ".tmpwrite")
+    jsonlite::write_json(man, man_tmp, auto_unbox = TRUE, pretty = TRUE, null = "null", digits = 12)
+    if (file.exists(man_path)) file.remove(man_path)
+    if (!file.rename(man_tmp, man_path)) stop("rename failed: ", man_tmp, " -> ", man_path)
     cat("  (updated manifest counts for", snap, ")\n")
   }
 }

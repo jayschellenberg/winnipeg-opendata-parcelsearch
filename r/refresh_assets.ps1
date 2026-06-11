@@ -41,6 +41,12 @@ Log 'asset(s) changed — committing + pushing (Vercel will auto-deploy)'
 & git -C $repo add -- $assets
 $msg = "Refresh transit + neighbourhood static assets (scheduled)`n`nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 & git -C $repo commit -m $msg *>> $log 2>&1
+if ($LASTEXITCODE -ne 0) { Log "ERROR: git commit failed (exit $LASTEXITCODE) — nothing deployed."; exit 1 }
 & git -C $repo push origin main *>> $log 2>&1
-Log "git push exit: $LASTEXITCODE"
+$pushExit = $LASTEXITCODE
+Log "git push exit: $pushExit"
+if ($pushExit -ne 0) {
+  Log 'ERROR: PUSH FAILED — assets are committed locally but NOT deployed. Push manually (git push origin main).'
+  exit 1
+}
 Log '=== done ==='

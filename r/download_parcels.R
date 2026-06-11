@@ -92,8 +92,14 @@ for (ds in datasets) {
                 nrow(fc), live, basename(out_gpkg)))
     next
   }
+  # Atomic write: st_write to a temp .gpkg in the same dir, then swap into
+  # place. The old delete-then-write left a crash window the length of the
+  # whole multi-minute write in which the previous snapshot was already gone.
+  tmp_gpkg <- file.path(OUT_DIR, sprintf("_tmpwrite_%s_%s.gpkg", ds$name, DATE_STAMP))
+  if (file.exists(tmp_gpkg)) file.remove(tmp_gpkg)
+  sf::st_write(fc, tmp_gpkg, layer = ds$layer, quiet = TRUE)
   if (file.exists(out_gpkg)) file.remove(out_gpkg)
-  sf::st_write(fc, out_gpkg, layer = ds$layer, quiet = TRUE)
+  if (!file.rename(tmp_gpkg, out_gpkg)) stop("rename failed: ", tmp_gpkg, " -> ", out_gpkg)
   cat(sprintf("  -> wrote %s  (%d features, %.1f MB)\n\n",
               basename(out_gpkg), nrow(fc), file.info(out_gpkg)$size / 1024^2))
 }

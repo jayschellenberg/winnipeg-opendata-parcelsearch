@@ -211,10 +211,15 @@ write_shards <- function(g, slug_col, out_dir, keep_fields) {
     if (!is.na(only_slug) && sl != only_slug) next
     shard <- g[g[[slug_col]] == sl, c(keep_fields, "geometry")]
     fp <- file.path(out_dir, paste0(sl, ".json"))
-    if (file.exists(fp)) file.remove(fp)
-    sf::st_write(shard, fp, driver = "GeoJSON",
+    # Atomic write: temp file + rename so a crash mid-write can't leave a
+    # truncated shard or destroy the previous one.
+    tmp <- paste0(fp, ".tmpwrite")
+    if (file.exists(tmp)) file.remove(tmp)
+    sf::st_write(shard, tmp, driver = "GeoJSON",
                  layer_options = c("COORDINATE_PRECISION=6", "RFC7946=YES"),
                  quiet = TRUE)
+    if (file.exists(fp)) file.remove(fp)
+    if (!file.rename(tmp, fp)) stop("rename failed: ", tmp, " -> ", fp)
     counts[[sl]] <- nrow(shard)
   }
   counts

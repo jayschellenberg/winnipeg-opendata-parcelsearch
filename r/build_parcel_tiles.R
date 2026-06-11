@@ -128,6 +128,9 @@ cat("  ", n_before - n_after, "duplicates removed; ",
 # the WKT round-trip. Just dump the FC envelope back to disk.
 
 cat("Writing GeoJSON to ", output_geojson, " ...\n", sep = "")
+# Atomic write: temp file + rename so a crash mid-dump can't leave a
+# truncated parcels.geojson (the previous build's file survives).
+tmp_geojson <- paste0(output_geojson, ".tmpwrite")
 writeLines(
   toJSON(
     list(type = "FeatureCollection", features = all_features),
@@ -135,8 +138,10 @@ writeLines(
     digits = geojson_digits,
     na = "null"
   ),
-  output_geojson
+  tmp_geojson
 )
+if (file.exists(output_geojson)) file.remove(output_geojson)
+if (!file.rename(tmp_geojson, output_geojson)) stop("rename failed: ", tmp_geojson, " -> ", output_geojson)
 cat("GeoJSON size: ", round(file.size(output_geojson) / 1e6, 1), " MB\n", sep = "")
 
 # --- Step 2.5: Write a parallel one-Point-per-parcel centroids file -
@@ -161,9 +166,13 @@ cat("GeoJSON size: ", round(file.size(output_geojson) / 1e6, 1), " MB\n", sep = 
 cat("Computing label centroids (one Point per parcel)...\n")
 sf_polygons  <- sf::st_read(output_geojson, quiet = TRUE)
 sf_centroids <- suppressWarnings(sf::st_point_on_surface(sf_polygons))
-sf::st_write(sf_centroids, output_centroids,
-             delete_dsn = TRUE, quiet = TRUE,
+# Atomic write (same temp + rename pattern as the polygons file above).
+tmp_centroids <- paste0(output_centroids, ".tmpwrite")
+if (file.exists(tmp_centroids)) file.remove(tmp_centroids)
+sf::st_write(sf_centroids, tmp_centroids, driver = "GeoJSON", quiet = TRUE,
              layer_options = "COORDINATE_PRECISION=7")
+if (file.exists(output_centroids)) file.remove(output_centroids)
+if (!file.rename(tmp_centroids, output_centroids)) stop("rename failed: ", tmp_centroids, " -> ", output_centroids)
 cat("Centroids: ", nrow(sf_centroids), " features, ",
     round(file.size(output_centroids) / 1e6, 1), " MB\n", sep = "")
 
