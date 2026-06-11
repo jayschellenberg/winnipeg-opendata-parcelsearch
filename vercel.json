@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd web && npm ci && (curl -fL --retry 3 -o public/parcels.pmtiles https://github.com/jayschellenberg/winnipeg-opendata-parcelsearch/releases/download/parcels-pmtiles/parcels.pmtiles || echo 'pmtiles fetch failed - citywide overlay disabled for this deploy') && npm run build",
+  "buildCommand": "cd web && npm ci && npm run fetch:pmtiles && npm run build",
   "outputDirectory": "web/dist",
   "framework": "vite",
   "rewrites": [
