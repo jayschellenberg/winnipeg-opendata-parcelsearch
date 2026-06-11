@@ -13,7 +13,7 @@
 //      "gone" off a partial fetch.
 
 import assert from 'node:assert/strict';
-import { fetchSoda, fetchCurrentAssessmentInBbox } from '../src/soda.js';
+import { fetchSoda, fetchCurrentAssessmentInBbox, searchAssessmentParcelsByRolls } from '../src/soda.js';
 
 const tests = [];
 function test(name, fn) {
@@ -134,6 +134,90 @@ test('fetchCurrentAssessmentInBbox — invalid bbox → empty + incomplete, no r
   const out = await fetchCurrentAssessmentInBbox([1, 2, NaN, 4]);
   assert.deepEqual(out, { rows: [], complete: false });
   assert.equal(calls.length, 0);
+});
+
+// ---------- searchAssessmentParcelsByRolls (chunking) ----------
+// Sales CSVs can ship thousands of rolls; the old single-call path was
+// silently truncated past 500 by rollClause's IN-list cap and then
+// reported the dropped rolls as "not in d4mq-wa44". These pin the new
+// chunked-and-merged behaviour.
+
+// Stub helper that returns a GeoJSON FeatureCollection of as many
+// features as IN-list entries it saw in the query (so the test can
+// observe which rolls each chunk requested). URLSearchParams encodes
+// spaces as `+`, so decode the query string before pattern-matching.
+function stubChunkedFetch() {
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    calls.push(u);
+    const query = u.includes('?') ? u.slice(u.indexOf('?') + 1) : '';
+    const decoded = decodeURIComponent(query.replace(/\+/g, ' '));
+    const m = decoded.match(/IN \(([^)]+)\)/);
+    const rolls = m ? m[1].split(',').map((s) => s.replace(/'/g, '').trim()) : [];
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        type: 'FeatureCollection',
+        features: rolls.map((r) => ({
+          type: 'Feature',
+          properties: { roll_number: r },
+          geometry: null,
+        })),
+      }),
+      text: async () => '',
+    };
+  };
+  return calls;
+}
+
+test('searchAssessmentParcelsByRolls — empty input → no request, empty FC', async () => {
+  const calls = stubChunkedFetch();
+  const fc = await searchAssessmentParcelsByRolls([]);
+  assert.equal(fc.features.length, 0);
+  assert.equal(calls.length, 0);
+});
+
+test('searchAssessmentParcelsByRolls — small list fires one chunk, no meta marker', async () => {
+  const calls = stubChunkedFetch();
+  const rolls = Array.from({ length: 50 }, (_, i) => String(10000000000 + i));
+  const fc = await searchAssessmentParcelsByRolls(rolls);
+  assert.equal(fc.features.length, 50);
+  assert.equal(calls.length, 1);
+  assert.equal(fc.meta?.chunkCount, undefined);   // single chunk = no marker
+});
+
+test('searchAssessmentParcelsByRolls — 600 rolls split into two parallel chunks, merged', async () => {
+  const calls = stubChunkedFetch();
+  const rolls = Array.from({ length: 600 }, (_, i) => String(20000000000 + i));
+  const fc = await searchAssessmentParcelsByRolls(rolls);
+  assert.equal(calls.length, 2);
+  assert.equal(fc.features.length, 600);
+  assert.equal(fc.meta.chunkCount, 2);
+  assert.equal(fc.meta.rollCount, 600);
+});
+
+test('searchAssessmentParcelsByRolls — distinct dedup happens before chunking', async () => {
+  const calls = stubChunkedFetch();
+  const rolls = [...Array(300).fill('30000000001'), '30000000002'];   // 301 entries, 2 distinct
+  const fc = await searchAssessmentParcelsByRolls(rolls);
+  assert.equal(calls.length, 1);
+  assert.equal(fc.features.length, 2);
+});
+
+test('searchAssessmentParcelsByRolls — 2000 rolls split into four parallel chunks', async () => {
+  // Real production-scale scenario: a large appraisal sales CSV with
+  // ~2000 distinct rolls. Old single-call path would silently truncate
+  // to the first 500 and report the rest as "not in d4mq-wa44" — the
+  // exact bug audit M3.1 was opened to fix.
+  const calls = stubChunkedFetch();
+  const rolls = Array.from({ length: 2000 }, (_, i) => String(50000000000 + i));
+  const fc = await searchAssessmentParcelsByRolls(rolls);
+  assert.equal(calls.length, 4);
+  assert.equal(fc.features.length, 2000);
+  assert.equal(fc.meta.chunkCount, 4);
+  assert.equal(fc.meta.rollCount, 2000);
 });
 
 // ---------- async runner ----------

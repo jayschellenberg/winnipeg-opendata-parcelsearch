@@ -227,6 +227,43 @@ function buildDuClause(duMode, duMin) {
 }
 
 /**
+ * Fetch every assessment parcel whose roll_number is in the supplied list.
+ * Transparently splits the list into ≤500-roll chunks (the rollClause IN
+ * cap) and merges by roll_number — dedupe is built into mergeFcByKey.
+ * Designed for the Sales Analysis tab, where uploaded CSVs can carry
+ * thousands of rolls; rollClause alone silently truncated past 500 and
+ * synthetic "not in d4mq-wa44" rows then misreported the cause.
+ *
+ * Chunks run in parallel because Socrata easily handles ~20 concurrent
+ * paged calls (the citywide-zoning path already does that). Truncation
+ * propagates: meta.truncated is true if ANY chunk hit its row cap.
+ */
+const ROLL_CHUNK_SIZE = 500;
+export async function searchAssessmentParcelsByRolls(rolls) {
+  const distinct = [...new Set(rolls.map((r) => String(r ?? '').trim()))]
+    .filter((r) => r.length > 0);
+  if (distinct.length === 0) {
+    return featureCollection([]);
+  }
+  const chunks = [];
+  for (let i = 0; i < distinct.length; i += ROLL_CHUNK_SIZE) {
+    chunks.push(distinct.slice(i, i + ROLL_CHUNK_SIZE));
+  }
+  const fcs = await Promise.all(
+    chunks.map((c) => searchAssessmentParcels({ roll: c.join(',') }))
+  );
+  const merged = mergeFcByKey(fcs, 'roll_number');
+  // Stamp the chunk count so the sales-tab status can say "queried in N
+  // chunks" — useful context for a 2000-roll CSV.
+  if (chunks.length > 1) {
+    merged.meta = merged.meta || {};
+    merged.meta.chunkCount = chunks.length;
+    merged.meta.rollCount = distinct.length;
+  }
+  return merged;
+}
+
+/**
  * Expanded assessment-parcel search. Always runs the direct attribute query
  * (roll/address/zoning ANDed against d4mq-wa44.full_address). When `address`
  * is provided, also cross-references the civic-Addresses dataset
@@ -1625,9 +1662,12 @@ export async function fetchContaminatedSites() {
 }
 
 // Tiny RFC-4180-ish CSV parser. Handles quoted fields, embedded
-// commas, and "" escapes. The upstream CSV is well-formed; this
-// doesn't need to be bulletproof against arbitrary input.
-function parseCsv(text) {
+// commas, and "" escapes. Exported so the Sales Analysis tab can
+// share one well-tested parser instead of the prior split-based
+// fallback (the City exporter currently doesn't quote, but the
+// audit's M3.6 recommended consolidating to a parser that survives
+// the day it starts).
+export function parseCsv(text) {
   const rows = [];
   let row = [];
   let cur = '';

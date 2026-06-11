@@ -42,10 +42,11 @@ import {
   fetchAssessmentOverlap,
   joinSurveyWithAssessment,
   searchAssessmentParcels,
+  searchAssessmentParcelsByRolls,
   searchAssessmentParcelsExpanded,
+  parseCsv,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
-  fetchZoningOverlap,
   fetchCityZoning,
   computePartialSurveyIds,
   enrichAssessmentAddresses,
@@ -2656,7 +2657,6 @@ const SALES_REQUIRED_COLS = [
 function wireSalesTab() {
   const $dropzone = document.getElementById('sales-dropzone');
   const $fileInput = document.getElementById('sales-file-input');
-  const $salesCount = document.getElementById('sales-count');
   if (!$dropzone || !$fileInput) return;
 
   // Click anywhere in the dropzone -> open the native file picker.
@@ -2890,26 +2890,23 @@ async function loadSalesCsv(file) {
 }
 
 /**
- * Minimal CSV parser. The Winnipeg sales CSV is comma-separated
- * with no embedded commas, no quoting, no escaped newlines —
- * pasted directly from the City's exporter. If a future variant
- * adds quoting we'll swap to PapaParse (a sanctioned new dep
- * conversation, not snuck in here).
- *
- * Returns an array of objects keyed by header name. Leading /
- * trailing whitespace stripped from each cell.
+ * Sales-CSV row parser — array of header-keyed objects. Defers the
+ * row tokenization to soda.js's parseCsv so quoted fields, embedded
+ * commas, and "" escapes Just Work the day the City exporter starts
+ * quoting (the prior split-based parser would silently corrupt those
+ * rows). Whitespace trimmed from each cell per the existing contract.
  */
 function parseSalesCsv(text) {
-  const lines = String(text).split(/\r?\n/).filter((l) => l.length > 0);
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map((h) => h.trim());
+  const rows = parseCsv(text);
+  if (rows.length < 2) return [];
+  const headers = rows[0].map((h) => h.trim());
   const out = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cells = lines[i].split(',');
-    if (cells.length === 1 && !cells[0].trim()) continue; // blank
+  for (let i = 1; i < rows.length; i++) {
+    const cells = rows[i];
+    if (cells.length === 1 && !String(cells[0] ?? '').trim()) continue;
     const row = {};
     for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = (cells[j] ?? '').trim();
+      row[headers[j]] = String(cells[j] ?? '').trim();
     }
     out.push(row);
   }
@@ -2966,13 +2963,16 @@ async function runSalesAnalysis() {
     setParcels(EMPTY_FC, EMPTY_FC);
     return;
   }
-  setSalesCount(`Fetching live data for ${visibleSales.length} parcels…`);
+  const distinctRolls = [...new Set(visibleSales.map((s) => s.roll))];
+  const chunkHint = distinctRolls.length > 500
+    ? ` (${Math.ceil(distinctRolls.length / 500)} chunks, ${distinctRolls.length} rolls)`
+    : '';
+  setSalesCount(`Fetching live data for ${visibleSales.length} parcels${chunkHint}…`);
   document.body.classList.add('sales-mode');
   // Swap the column-visibility set to the Sales Analysis default
   // (or whatever the user's persisted sales-mode customization is).
   setColumnMode('sales');
 
-  const rolls = [...new Set(visibleSales.map((s) => s.roll))];
   let assessFc;
   try {
     // Phase 7 deferral: use the non-expanded search so zoning +
@@ -2980,7 +2980,11 @@ async function runSalesAnalysis() {
     // (those add ~10s on a cold cache for 100+ rolls). The Zoning
     // overlay toggle picks it up later via the deferred-enrichment
     // hook in toggleZoning.
-    assessFc = await searchAssessmentParcels({ roll: rolls.join(',') });
+    // Audit M3.1: route through searchAssessmentParcelsByRolls so a
+    // >500-roll CSV fetches all of them in parallel chunks. The old
+    // single-call path silently truncated past 500 and then misreported
+    // the truncated rolls as "not in d4mq-wa44".
+    assessFc = await searchAssessmentParcelsByRolls(distinctRolls);
   } catch (err) {
     console.warn('Sales live-data fetch failed:', err);
     setSalesCount(`Couldn't fetch live data: ${err.message || 'unknown error'}.`, true);
