@@ -1743,9 +1743,13 @@ async function stampHistoricalSizeChanges(parcels, label) {
     // Current assessment parcels in the shard's bbox — lean fields, one paged
     // within_box query (no per-feature overlap). Gives roll → today's area +
     // detail_url for the size-change classification + popup links.
+    // `curComplete` is the partial-fetch guard: when the page loop was cut
+    // short, a roll missing from curRows is NOT evidence it was removed.
     let curRows = [];
-    try { curRows = await fetchCurrentAssessmentInBbox(bbox(parcels)); }
-    catch (e) { console.warn(`[historical] size-change: current fetch threw for "${label}" — highlight disabled.`, e); }
+    let curComplete = false;
+    try {
+      ({ rows: curRows, complete: curComplete } = await fetchCurrentAssessmentInBbox(bbox(parcels)));
+    } catch (e) { console.warn(`[historical] size-change: current fetch threw for "${label}" — highlight disabled.`, e); }
     const curByRoll = new Map();
     for (const r of curRows) {
       const roll = r.roll_number;
@@ -1764,6 +1768,17 @@ async function stampHistoricalSizeChanges(parcels, label) {
       console.warn(`[historical] size-change: ${histByRoll.size} hist / ${curByRoll.size} current parcels but ZERO roll overlap for "${label}" — likely a roll_number format mismatch. hist: [${sample(histByRoll)}] cur: [${sample(curByRoll)}]`);
     } else {
       console.info(`[historical] size-change "${label}": ${matched} matched, ${summary.gone} gone, ${summary.appeared} new · ${summary.major} major, ${summary.minor} minor.`);
+    }
+    // Partial current fetch → "gone" is unprovable (the roll may simply be in
+    // a page we never got). Strip the gone band so report-facing popups never
+    // claim "roll not present in current data" off a half-finished fetch;
+    // major/minor bands for rolls that WERE fetched remain valid.
+    if (!curComplete && summary.gone > 0) {
+      for (const [roll, rec] of byRoll) {
+        if (rec.band === 'gone') byRoll.delete(roll);
+      }
+      console.warn(`[historical] size-change: current fetch incomplete for "${label}" — gone detection disabled (${summary.gone} unmatched roll${summary.gone === 1 ? '' : 's'} left unmarked).`);
+      summary.gone = 0;
     }
     for (const f of parcels.features || []) {
       if (!f.properties) continue;

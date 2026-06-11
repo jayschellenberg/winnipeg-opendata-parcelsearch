@@ -896,13 +896,20 @@ const CURRENT_ASMT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  * IDB-cached by rounded bbox (~11 m): a fixed cluster or repeated view reuses the
  * cached rows instead of re-paging. Only a COMPLETE result is cached, so a run
  * cut short by a network error re-fetches next time rather than caching a partial.
+ *
+ * Returns { rows, complete }. `complete` is false when the page loop was cut
+ * short (network error, non-OK response, or the 30-page cap) — callers MUST
+ * NOT treat a missing roll as "gone" in that case, because "not fetched" and
+ * "removed from the assessment roll" are indistinguishable in a partial set.
  */
 export async function fetchCurrentAssessmentInBbox(bbox4) {
-  if (!Array.isArray(bbox4) || bbox4.length < 4 || bbox4.some((n) => !Number.isFinite(n))) return [];
+  if (!Array.isArray(bbox4) || bbox4.length < 4 || bbox4.some((n) => !Number.isFinite(n))) {
+    return { rows: [], complete: false };
+  }
   const [minLon, minLat, maxLon, maxLat] = bbox4;
   const cacheKey = `wpg_curasmt_${[minLon, minLat, maxLon, maxLat].map((n) => n.toFixed(4)).join('_')}`;
   const cached = await idbReadCache(cacheKey, CURRENT_ASMT_TTL_MS).catch(() => null);
-  if (cached) return cached;
+  if (cached) return { rows: cached, complete: true };   // only complete runs are cached
   const PAD = 0.001;
   const round = (n) => n.toFixed(6);
   // within_box(geom, nwLat, nwLon, seLat, seLon)
@@ -927,7 +934,7 @@ export async function fetchCurrentAssessmentInBbox(bbox4) {
     offset += batch.length;
   }
   if (complete) await idbWriteCache(cacheKey, rows).catch(() => {});
-  return rows;
+  return { rows, complete };
 }
 
 /**
@@ -2133,14 +2140,47 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
   return featureCollection(merged, meta);
 }
 
-async function fetchSoda(url) {
+// NOTE: the retry loop below was originally added in 559f4f8 and silently
+// lost in the 1348c06 "simplify" pass — test/sodaNetwork.test.js now pins
+// it. Don't remove it as cleanup: a search fires dozens of parallel paged
+// calls and a single transient Socrata 5xx would fail the whole operation.
+export async function fetchSoda(url, { retries = 2, retryDelayMs = 1200 } = {}) {
   const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, { headers });
+      if (res.ok) return await res.json();
+      const body = await res.text();
+      // 5xx is a Socrata-side blip — backend timeout, planner
+      // crash, transient internal error like the "Internal error:
+      // please include code <uuid>" message they return. Retry
+      // once or twice with a short delay before bubbling up; most
+      // of these clear within a couple seconds.
+      // 4xx is our fault (bad query, missing token, etc.) — don't
+      // retry, surface immediately so the user sees the real
+      // problem.
+      if (res.status >= 500 && attempt < retries) {
+        lastErr = new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
+        console.warn(`fetchSoda: retrying after ${res.status} (attempt ${attempt + 1}/${retries + 1})`);
+        await new Promise((r) => setTimeout(r, retryDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw new Error(`SODA ${res.status}: ${body.slice(0, 200)}`);
+    } catch (err) {
+      // Network errors (fetch rejection) are also retryable — DNS
+      // hiccup, flaky wifi, etc.
+      const isNetworkError = err instanceof TypeError;
+      if (isNetworkError && attempt < retries) {
+        lastErr = err;
+        console.warn(`fetchSoda: retrying after network error (attempt ${attempt + 1}/${retries + 1})`, err);
+        await new Promise((r) => setTimeout(r, retryDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
   }
-  return res.json();
+  throw lastErr || new Error('SODA: exhausted retries');
 }
 
 async function fetchSodaPaged(baseUrl, params, options = {}) {

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node test/urlState.test.js && node test/sizeChange.test.js && node test/soda.test.js && node test/sales.test.js",
+    "test": "node test/urlState.test.js && node test/sizeChange.test.js && node test/soda.test.js && node test/sales.test.js && node test/sodaNetwork.test.js",
     "refresh:transit": "node scripts/build-transit-geojson.mjs",
     "refresh:neighbourhoods": "node scripts/build-neighbourhoods-geojson.mjs"
   },
