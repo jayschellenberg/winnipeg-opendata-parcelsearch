@@ -68,7 +68,13 @@ const ROAD_NETWORK_URL = 'https://data.winnipeg.ca/resource/ngsx-caav.geojson';
 
 // Optional Socrata app token. Raises the anonymous rate limit.
 // Set via Vercel env var VITE_SODA_APP_TOKEN; undefined in anonymous mode.
-const APP_TOKEN = import.meta.env.VITE_SODA_APP_TOKEN;
+// The try/catch keeps the exact `import.meta.env.VITE_*` text that Vite
+// statically replaces at build time, while letting plain Node evaluate the
+// module (npm test imports this file) — import.meta.env doesn't exist there
+// and bare property access on it would throw at import time.
+const APP_TOKEN = (() => {
+  try { return import.meta.env.VITE_SODA_APP_TOKEN; } catch { return undefined; }
+})();
 
 const USER_SEARCH_LIMIT = 1000;
 const SODA_PAGE_SIZE = 5000;
@@ -1800,7 +1806,7 @@ function surveyCenterInAssess(surveyFeature, assessFeature) {
  * `booleanIntersects` triggered on shared edges, which both centroid checks
  * correctly avoid.
  */
-function parcelsOverlap(surveyFeature, assessFeature) {
+export function parcelsOverlap(surveyFeature, assessFeature) {
   return assessCentroidInSurvey(assessFeature, surveyFeature)
       || surveyCenterInAssess(surveyFeature, assessFeature);
 }
@@ -1824,7 +1830,7 @@ function parcelsOverlap(surveyFeature, assessFeature) {
  * Preserves the first feature's geometry and `_rowKey` so map-click →
  * row-scroll plumbing keeps working unchanged.
  */
-function mergeSurveyFeatures(features, partialSurveyIds = null) {
+export function mergeSurveyFeatures(features, partialSurveyIds = null) {
   if (features.length === 0) return null;
   const isPartial = (f) =>
     partialSurveyIds && partialSurveyIds.has(f.properties?.id);
@@ -2248,7 +2254,7 @@ function likeClause(column, value) {
  *   - To only                              -> open lower bound
  *   - Both empty                           -> no number filter
  */
-function buildAddressClauses({ addressFrom, addressTo, addressStreet }) {
+export function buildAddressClauses({ addressFrom, addressTo, addressStreet }) {
   const out = [];
   const from = parseStreetNumber(addressFrom);
   const to   = parseStreetNumber(addressTo);
@@ -2294,7 +2300,7 @@ function parseStreetNumber(raw) {
  *
  * Returns the SoQL clause string, or null when input is empty.
  */
-function rollClause(roll) {
+export function rollClause(roll) {
   if (!roll) return null;
   const tokens = String(roll).split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
   if (tokens.length <= 1) {
@@ -2324,7 +2330,7 @@ function rollClause(roll) {
  * `R-1-M` all resolve the same. Uses SoQL's `replace(col, find, sub)`
  * — confirmed available on the Winnipeg Socrata instance.
  */
-function zoningClause(value) {
+export function zoningClause(value) {
   if (!value) return null;
   const stripped = String(value).toUpperCase().replace(/-/g, '');
   if (!stripped) return null;
@@ -2337,7 +2343,7 @@ function zoningClause(value) {
  * with leading zeros so that "1000001000" and "01000001000" key the
  * same. Returns null when nothing's left after stripping.
  */
-function normalizeRoll(token) {
+export function normalizeRoll(token) {
   const digits = String(token).replace(/[^0-9]/g, '');
   if (!digits) return null;
   return digits.length >= 11 ? digits : digits.padStart(11, '0');
