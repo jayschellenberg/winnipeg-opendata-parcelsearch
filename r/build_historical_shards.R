@@ -50,6 +50,17 @@ sf::sf_use_s2(FALSE)   # GEOS — permissive simplify + planar point-on-surface
 ARCHIVE_ROOT   <- "D:/Dropbox/Appraisal/Web/WpgSnapshots"
 OUTPUT_ROOT    <- "D:/Dropbox/ClaudeCode/WpgOpenData/wpg-parcel-history"
 NEIGHBOURHOODS <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch/web/public/wpg-neighbourhoods.geojson"
+SLUG_PARITY_FIXTURE <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch/web/test/slug_fixtures.json"
+
+# Shared helpers (slugify, normalize_names, read_layer_repair, neighbourhood
+# binning, slug-parity fixture writer). See r/lib_helpers.R.
+.SCRIPT_DIR <- local({
+  fa <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (length(fa)) dirname(normalizePath(sub("^--file=", "", fa[1])))
+  else if (!is.null(sys.frames()[[1]]$ofile)) dirname(normalizePath(sys.frames()[[1]]$ofile))
+  else "."
+})
+source(file.path(.SCRIPT_DIR, "lib_helpers.R"))
 
 # ~2-3 m. Only applied to parcels >= SIMPLIFY_MIN_AREA_M2; small urban lots are
 # kept EXACT (a rectangle is already minimal — DP can only drop a corner and
@@ -79,63 +90,9 @@ only_year <- arg_val("--year")
 only_slug <- arg_val("--neighbourhood")
 index_only <- "--index-only" %in% args
 
-`%||%` <- function(a, b) if (is.null(a) || (length(a) == 1 && is.na(a))) b else a
-
 # ---- helpers ---------------------------------------------------------
-date_from_name <- function(path) {
-  m <- regmatches(basename(path), regexpr("\\d{8}", basename(path)))
-  if (length(m) == 0) return(NA_character_)
-  paste0(substr(m, 1, 4), "-", substr(m, 5, 6), "-", substr(m, 7, 8))
-}
-
-# Neighbourhood slug: UPPER, spaces/slashes -> '-', strip the rest. Same fn for
-# the geojson name (binning key) and the assessment neighbourhood_area display.
-slugify <- function(x) {
-  s <- toupper(trimws(as.character(x)))
-  s <- gsub("[/ ]+", "-", s)
-  s <- gsub("[^A-Z0-9-]", "", s)
-  s <- gsub("-+", "-", s)
-  gsub("^-|-$", "", s)
-}
-
-# Normalize attribute names to snake_case: "Roll.Number"/"Roll Number" ->
-# "roll_number". Leaves already-snake names unchanged.
-normalize_names <- function(nm) {
-  s <- tolower(nm)
-  s <- gsub("[^a-z0-9]+", "_", s)
-  s <- gsub("_+", "_", s)
-  gsub("^_|_$", "", s)
-}
-
-# Read a parcel/survey gpkg layer, repairing the rare generic-GEOMETRY file
-# (the 2023 assessment snapshot crashes sf's normal reader and has no declared
-# geom type). Repair = GDAL vectortranslate PROMOTE_TO_MULTI to a temp gpkg,
-# then collection-extract polygons + make valid. Clean MULTIPOLYGON files read
-# directly.
-read_layer_repair <- function(f) {
-  ly <- sf::st_layers(f)
-  lyr <- ly$name[1]
-  gt  <- tryCatch(as.character(ly$geomtype[[1]]), error = function(e) character(0))
-  needs_repair <- length(gt) == 0 || !any(nzchar(gt)) ||
-                  any(grepl("GEOMETRYCOLLECTION|^GEOMETRY$", toupper(gt)))
-  if (!needs_repair) {
-    g <- sf::st_read(f, layer = lyr, quiet = TRUE)
-  } else {
-    cat("    (generic geometry — repairing via vectortranslate)\n")
-    tmp <- tempfile(fileext = ".gpkg")
-    sf::gdal_utils("vectortranslate", source = f, destination = tmp,
-                   options = c("-f", "GPKG", "-nlt", "PROMOTE_TO_MULTI",
-                               "-nln", "layer", "-skipfailures"))
-    g <- sf::st_read(tmp, layer = "layer", quiet = TRUE)
-    file.remove(tmp)
-    g <- suppressWarnings(sf::st_collection_extract(g, "POLYGON"))
-    g <- sf::st_make_valid(g)
-    g <- g[!sf::st_is_empty(g), ]
-  }
-  names(g)[names(g) == attr(g, "sf_column")] <- "geometry"
-  sf::st_geometry(g) <- "geometry"
-  g
-}
+# date_from_name, slugify, normalize_names, read_layer_repair, neighbourhood_ref,
+# neighbourhood_bin live in r/lib_helpers.R (single source of truth).
 
 # Reproject to 4326 (no-op when already) and area-gate simplify: parcels below
 # SIMPLIFY_MIN_AREA_M2 are left EXACT; larger ones get a ~2-3 m Douglas-Peucker.
@@ -172,33 +129,13 @@ to_wgs84_simplify <- function(g) {
   g
 }
 
-# Load + cache the official neighbourhood polygons (binning key). Adds `slug`.
-.nbhd_ref <- NULL
-neighbourhood_ref <- function() {
-  if (!is.null(.nbhd_ref)) return(.nbhd_ref)
-  if (!file.exists(NEIGHBOURHOODS)) stop("neighbourhoods geojson not found: ", NEIGHBOURHOODS)
-  n <- sf::st_read(NEIGHBOURHOODS, quiet = TRUE)
-  if (is.na(sf::st_crs(n))) sf::st_crs(n) <- 4326
-  if ((sf::st_crs(n)$epsg %||% 0) != 4326) n <- sf::st_transform(n, 4326)
-  nmcol <- intersect(c("name", "Name", "NAME"), names(n))[1]
-  n$nbhd_name <- as.character(n[[nmcol]])
-  n$slug      <- slugify(n$nbhd_name)
-  .nbhd_ref <<- n[, c("nbhd_name", "slug")]
-  .nbhd_ref
-}
-
-# Assign each feature a neighbourhood slug by representative-point-in-polygon.
-# Points outside every neighbourhood -> "UNASSIGNED".
+# Wrapper around the shared neighbourhood_bin that ATTACHES the columns to `g`,
+# preserving the historical caller contract (downstream code reads $nbhd_slug
+# and $nbhd_name_official off the sf object).
 bin_to_neighbourhood <- function(g) {
-  ref <- neighbourhood_ref()
-  pts <- suppressWarnings(sf::st_point_on_surface(sf::st_geometry(g)))
-  pts_sf <- sf::st_sf(`._rid` = seq_along(pts), geometry = pts, crs = sf::st_crs(g))
-  j <- suppressMessages(sf::st_join(pts_sf, ref, join = sf::st_within))
-  j <- j[!duplicated(j$`._rid`), ]                 # 1 row per point (non-overlapping nbhds)
-  ord <- match(seq_len(nrow(g)), j$`._rid`)
-  g$nbhd_slug <- j$slug[ord]
-  g$nbhd_name_official <- j$nbhd_name[ord]
-  g$nbhd_slug[is.na(g$nbhd_slug)] <- "UNASSIGNED"
+  b <- neighbourhood_bin(g)
+  g$nbhd_slug          <- b$slug
+  g$nbhd_name_official <- b$nbhd_name
   g
 }
 
@@ -308,11 +245,21 @@ process_survey <- function(f, out_dir) {
 }
 
 # ---- discovery index ------------------------------------------------
-write_root_index <- function() {
+# `failed_snaps` (character vector of snapshot ids) keeps the broken builds out
+# of index.json's healthy snapshots map: each appears with status "failed" so
+# the web app can see the run was attempted without trying to fetch shards
+# that don't exist. Was: index.json silently listed every snapshot, including
+# the ones whose process_snapshot threw, as healthy.
+write_root_index <- function(failed_snaps = character(0)) {
   snaps <- sort(basename(list.dirs(OUTPUT_ROOT, recursive = FALSE)), decreasing = TRUE)
   snaps <- snaps[grepl("^\\d{4}-\\d{2}-\\d{2}$", snaps)]
   out <- list()
+  failed_out <- list()
   for (s in snaps) {
+    if (s %in% failed_snaps) {
+      failed_out[[s]] <- list(snapshot_id = s, status = "failed")
+      next
+    }
     mf <- file.path(OUTPUT_ROOT, s, "manifest.json")
     if (!file.exists(mf)) next
     m <- jsonlite::read_json(mf)
@@ -327,10 +274,45 @@ write_root_index <- function() {
     cdn       = "https://cdn.jsdelivr.net/gh/jayschellenberg/wpg-parcel-history@main",
     snapshots = out
   )
+  if (length(failed_out)) idx$failed_snapshots <- failed_out
   dir.create(OUTPUT_ROOT, showWarnings = FALSE, recursive = TRUE)
   jsonlite::write_json(idx, file.path(OUTPUT_ROOT, "index.json"),
                        auto_unbox = TRUE, pretty = TRUE, null = "null")
-  cat("Wrote root index.json — snapshots:", paste(names(out), collapse = ", "), "\n")
+  cat("Wrote root index.json — healthy:", paste(names(out), collapse = ", "), "\n")
+  if (length(failed_out)) cat("  failed snapshots (excluded from healthy map):",
+                              paste(names(failed_out), collapse = ", "), "\n")
+}
+
+# ---- post-build sanity checks ---------------------------------------
+# Cheap structural verification on a snapshot dir; flags the failures
+# verify_shards.R would surface, without re-paying its full read cost. Returns
+# TRUE on PASS, FALSE on any flag.
+verify_snapshot_dir <- function(out_dir) {
+  ok <- TRUE
+  mf <- file.path(out_dir, "manifest.json")
+  if (!file.exists(mf)) { cat("    !! verify: manifest missing\n"); return(FALSE) }
+  m <- tryCatch(jsonlite::read_json(mf), error = function(e) NULL)
+  if (is.null(m)) { cat("    !! verify: manifest unreadable\n"); return(FALSE) }
+  # Every neighbourhood with parcels > 0 / survey > 0 must have a matching
+  # shard file (the count is what the web app trusts).
+  for (sl in names(m$neighbourhoods)) {
+    info <- m$neighbourhoods[[sl]]
+    for (kind in c("parcels", "survey")) {
+      n <- info[[kind]] %||% 0
+      if (is.null(n) || n == 0) next
+      fp <- file.path(out_dir, kind, paste0(sl, ".json"))
+      if (!file.exists(fp)) {
+        cat(sprintf("    !! verify: %s/%s claims %d feats but shard file is missing\n",
+                    kind, sl, n))
+        ok <- FALSE
+      } else if (file.info(fp)$size < 50) {
+        cat(sprintf("    !! verify: %s/%s shard is suspiciously small (%d bytes)\n",
+                    kind, sl, file.info(fp)$size))
+        ok <- FALSE
+      }
+    }
+  }
+  ok
 }
 
 # ---- per-snapshot orchestration -------------------------------------
@@ -397,6 +379,13 @@ process_snapshot <- function(snap, files) {
 }
 
 # ---- main ------------------------------------------------------------
+# Refresh the R↔JS slugify parity fixture on every invocation (cheap; depends
+# only on the neighbourhoods geojson, not on which snapshots are being built).
+tryCatch({
+  write_slug_parity_fixtures(SLUG_PARITY_FIXTURE)
+  cat("Wrote slug parity fixture:", SLUG_PARITY_FIXTURE, "\n")
+}, error = function(e) cat("  !! slug-fixture write failed:", conditionMessage(e), "\n"))
+
 if (index_only) {
   cat("Winnipeg historical shard build — index-only\n")
   write_root_index()
@@ -421,10 +410,19 @@ if (index_only) {
   cat("  snapshots:", paste(snaps, collapse = ", "),
       if (!is.na(only_year)) paste0("  (year ", only_year, ")") else "",
       if (!is.na(only_slug)) paste0("  (neighbourhood ", only_slug, " only)") else "", "\n")
+  failed_snaps <- character(0)
   for (s in snaps) {
+    err <- NULL
     tryCatch(process_snapshot(s, by_date[[s]]),
-             error = function(e) cat(sprintf("  !! snapshot %s FAILED: %s\n", s, conditionMessage(e))))
+             error = function(e) { err <<- conditionMessage(e); cat(sprintf("  !! snapshot %s FAILED: %s\n", s, err)) })
+    if (!is.null(err)) { failed_snaps <- c(failed_snaps, s); next }
+    # Inline verify: catch missing/empty shards before they reach index.json.
+    if (!is.na(only_year) && substr(s, 1, 4) != only_year) next
+    if (!verify_snapshot_dir(file.path(OUTPUT_ROOT, s))) {
+      failed_snaps <- c(failed_snaps, s)
+      cat(sprintf("  !! snapshot %s flagged by verify; excluding from healthy index\n", s))
+    }
   }
-  write_root_index()
+  write_root_index(failed_snaps)
   cat("\nDone.\n")
 }

@@ -1,0 +1,962 @@
+[
+  {
+    "input": "Agassiz",
+    "slug": "AGASSIZ"
+  },
+  {
+    "input": "Airport",
+    "slug": "AIRPORT"
+  },
+  {
+    "input": "Alpine Place",
+    "slug": "ALPINE-PLACE"
+  },
+  {
+    "input": "Amber Trails",
+    "slug": "AMBER-TRAILS"
+  },
+  {
+    "input": "Archwood",
+    "slug": "ARCHWOOD"
+  },
+  {
+    "input": "Armstrong Point",
+    "slug": "ARMSTRONG-POINT"
+  },
+  {
+    "input": "Assiniboia Downs",
+    "slug": "ASSINIBOIA-DOWNS"
+  },
+  {
+    "input": "Assiniboine Park",
+    "slug": "ASSINIBOINE-PARK"
+  },
+  {
+    "input": "Beaumont",
+    "slug": "BEAUMONT"
+  },
+  {
+    "input": "Betsworth",
+    "slug": "BETSWORTH"
+  },
+  {
+    "input": "Birchwood",
+    "slug": "BIRCHWOOD"
+  },
+  {
+    "input": "Booth",
+    "slug": "BOOTH"
+  },
+  {
+    "input": "Bridgwater Centre",
+    "slug": "BRIDGWATER-CENTRE"
+  },
+  {
+    "input": "Bridgwater Forest",
+    "slug": "BRIDGWATER-FOREST"
+  },
+  {
+    "input": "Bridgwater Lakes",
+    "slug": "BRIDGWATER-LAKES"
+  },
+  {
+    "input": "Bridgwater Trails",
+    "slug": "BRIDGWATER-TRAILS"
+  },
+  {
+    "input": "Broadway-Assiniboine",
+    "slug": "BROADWAY-ASSINIBOINE"
+  },
+  {
+    "input": "Brockville",
+    "slug": "BROCKVILLE"
+  },
+  {
+    "input": "Brooklands",
+    "slug": "BROOKLANDS"
+  },
+  {
+    "input": "Bruce Park",
+    "slug": "BRUCE-PARK"
+  },
+  {
+    "input": "Buchanan",
+    "slug": "BUCHANAN"
+  },
+  {
+    "input": "Buffalo",
+    "slug": "BUFFALO"
+  },
+  {
+    "input": "Burrows Central",
+    "slug": "BURROWS-CENTRAL"
+  },
+  {
+    "input": "Burrows-Keewatin",
+    "slug": "BURROWS-KEEWATIN"
+  },
+  {
+    "input": "Canterbury Park",
+    "slug": "CANTERBURY-PARK"
+  },
+  {
+    "input": "Centennial",
+    "slug": "CENTENNIAL"
+  },
+  {
+    "input": "Central Park",
+    "slug": "CENTRAL-PARK"
+  },
+  {
+    "input": "Central River Heights",
+    "slug": "CENTRAL-RIVER-HEIGHTS"
+  },
+  {
+    "input": "Central St. Boniface",
+    "slug": "CENTRAL-ST-BONIFACE"
+  },
+  {
+    "input": "Chalmers",
+    "slug": "CHALMERS"
+  },
+  {
+    "input": "Chevrier",
+    "slug": "CHEVRIER"
+  },
+  {
+    "input": "China Town",
+    "slug": "CHINA-TOWN"
+  },
+  {
+    "input": "Civic Centre",
+    "slug": "CIVIC-CENTRE"
+  },
+  {
+    "input": "Cloutier Drive",
+    "slug": "CLOUTIER-DRIVE"
+  },
+  {
+    "input": "Colony",
+    "slug": "COLONY"
+  },
+  {
+    "input": "Crescent Park",
+    "slug": "CRESCENT-PARK"
+  },
+  {
+    "input": "Crescentwood",
+    "slug": "CRESCENTWOOD"
+  },
+  {
+    "input": "Dakota Crossing",
+    "slug": "DAKOTA-CROSSING"
+  },
+  {
+    "input": "Daniel McIntyre",
+    "slug": "DANIEL-MCINTYRE"
+  },
+  {
+    "input": "Deer Lodge",
+    "slug": "DEER-LODGE"
+  },
+  {
+    "input": "Dufferin",
+    "slug": "DUFFERIN"
+  },
+  {
+    "input": "Dufferin Industrial",
+    "slug": "DUFFERIN-INDUSTRIAL"
+  },
+  {
+    "input": "Dufresne",
+    "slug": "DUFRESNE"
+  },
+  {
+    "input": "Dugald",
+    "slug": "DUGALD"
+  },
+  {
+    "input": "Eaglemere",
+    "slug": "EAGLEMERE"
+  },
+  {
+    "input": "Earl Grey",
+    "slug": "EARL-GREY"
+  },
+  {
+    "input": "East Elmwood",
+    "slug": "EAST-ELMWOOD"
+  },
+  {
+    "input": "Ebby-Wentworth",
+    "slug": "EBBY-WENTWORTH"
+  },
+  {
+    "input": "Edgeland",
+    "slug": "EDGELAND"
+  },
+  {
+    "input": "Elm Park",
+    "slug": "ELM-PARK"
+  },
+  {
+    "input": "Elmhurst",
+    "slug": "ELMHURST"
+  },
+  {
+    "input": "Eric Coy",
+    "slug": "ERIC-COY"
+  },
+  {
+    "input": "Exchange District",
+    "slug": "EXCHANGE-DISTRICT"
+  },
+  {
+    "input": "Fairfield Park",
+    "slug": "FAIRFIELD-PARK"
+  },
+  {
+    "input": "Fort Richmond",
+    "slug": "FORT-RICHMOND"
+  },
+  {
+    "input": "Fraipont",
+    "slug": "FRAIPONT"
+  },
+  {
+    "input": "Garden City",
+    "slug": "GARDEN-CITY"
+  },
+  {
+    "input": "Glendale",
+    "slug": "GLENDALE"
+  },
+  {
+    "input": "Glenelm",
+    "slug": "GLENELM"
+  },
+  {
+    "input": "Glenwood",
+    "slug": "GLENWOOD"
+  },
+  {
+    "input": "Grant Park",
+    "slug": "GRANT-PARK"
+  },
+  {
+    "input": "Grassie",
+    "slug": "GRASSIE"
+  },
+  {
+    "input": "Griffin",
+    "slug": "GRIFFIN"
+  },
+  {
+    "input": "Holden",
+    "slug": "HOLDEN"
+  },
+  {
+    "input": "Inkster Gardens",
+    "slug": "INKSTER-GARDENS"
+  },
+  {
+    "input": "Inkster Industrial Park",
+    "slug": "INKSTER-INDUSTRIAL-PARK"
+  },
+  {
+    "input": "Inkster-Faraday",
+    "slug": "INKSTER-FARADAY"
+  },
+  {
+    "input": "Island Lakes",
+    "slug": "ISLAND-LAKES"
+  },
+  {
+    "input": "J. B. Mitchell",
+    "slug": "J-B-MITCHELL"
+  },
+  {
+    "input": "Jameswood",
+    "slug": "JAMESWOOD"
+  },
+  {
+    "input": "Jefferson",
+    "slug": "JEFFERSON"
+  },
+  {
+    "input": "Kensington",
+    "slug": "KENSINGTON"
+  },
+  {
+    "input": "Kern Park",
+    "slug": "KERN-PARK"
+  },
+  {
+    "input": "Kil-Cona Park",
+    "slug": "KIL-CONA-PARK"
+  },
+  {
+    "input": "Kildare-Redonda",
+    "slug": "KILDARE-REDONDA"
+  },
+  {
+    "input": "Kildonan Crossing",
+    "slug": "KILDONAN-CROSSING"
+  },
+  {
+    "input": "Kildonan Drive",
+    "slug": "KILDONAN-DRIVE"
+  },
+  {
+    "input": "Kildonan Park",
+    "slug": "KILDONAN-PARK"
+  },
+  {
+    "input": "King Edward",
+    "slug": "KING-EDWARD"
+  },
+  {
+    "input": "Kingston Crescent",
+    "slug": "KINGSTON-CRESCENT"
+  },
+  {
+    "input": "Kirkfield",
+    "slug": "KIRKFIELD"
+  },
+  {
+    "input": "La Barriere",
+    "slug": "LA-BARRIERE"
+  },
+  {
+    "input": "Lavalee",
+    "slug": "LAVALEE"
+  },
+  {
+    "input": "Legislature",
+    "slug": "LEGISLATURE"
+  },
+  {
+    "input": "Leila North",
+    "slug": "LEILA-NORTH"
+  },
+  {
+    "input": "Leila-McPhillips Triangle",
+    "slug": "LEILA-MCPHILLIPS-TRIANGLE"
+  },
+  {
+    "input": "Linden Ridge",
+    "slug": "LINDEN-RIDGE"
+  },
+  {
+    "input": "Linden Woods",
+    "slug": "LINDEN-WOODS"
+  },
+  {
+    "input": "Logan-C.P.R.",
+    "slug": "LOGAN-CPR"
+  },
+  {
+    "input": "Lord Roberts",
+    "slug": "LORD-ROBERTS"
+  },
+  {
+    "input": "Lord Selkirk Park",
+    "slug": "LORD-SELKIRK-PARK"
+  },
+  {
+    "input": "Luxton",
+    "slug": "LUXTON"
+  },
+  {
+    "input": "Maginot",
+    "slug": "MAGINOT"
+  },
+  {
+    "input": "Mandalay West",
+    "slug": "MANDALAY-WEST"
+  },
+  {
+    "input": "Maple Grove Park",
+    "slug": "MAPLE-GROVE-PARK"
+  },
+  {
+    "input": "Margaret Park",
+    "slug": "MARGARET-PARK"
+  },
+  {
+    "input": "Marlton",
+    "slug": "MARLTON"
+  },
+  {
+    "input": "Mathers",
+    "slug": "MATHERS"
+  },
+  {
+    "input": "Maybank",
+    "slug": "MAYBANK"
+  },
+  {
+    "input": "McLeod Industrial",
+    "slug": "MCLEOD-INDUSTRIAL"
+  },
+  {
+    "input": "McMillan",
+    "slug": "MCMILLAN"
+  },
+  {
+    "input": "Meadowood",
+    "slug": "MEADOWOOD"
+  },
+  {
+    "input": "Meadows",
+    "slug": "MEADOWS"
+  },
+  {
+    "input": "Melrose",
+    "slug": "MELROSE"
+  },
+  {
+    "input": "Minnetonka",
+    "slug": "MINNETONKA"
+  },
+  {
+    "input": "Minto",
+    "slug": "MINTO"
+  },
+  {
+    "input": "Mission Gardens",
+    "slug": "MISSION-GARDENS"
+  },
+  {
+    "input": "Mission Industrial",
+    "slug": "MISSION-INDUSTRIAL"
+  },
+  {
+    "input": "Montcalm",
+    "slug": "MONTCALM"
+  },
+  {
+    "input": "Munroe East",
+    "slug": "MUNROE-EAST"
+  },
+  {
+    "input": "Munroe West",
+    "slug": "MUNROE-WEST"
+  },
+  {
+    "input": "Murray Industrial Park",
+    "slug": "MURRAY-INDUSTRIAL-PARK"
+  },
+  {
+    "input": "Mynarski",
+    "slug": "MYNARSKI"
+  },
+  {
+    "input": "Niakwa Park",
+    "slug": "NIAKWA-PARK"
+  },
+  {
+    "input": "Niakwa Place",
+    "slug": "NIAKWA-PLACE"
+  },
+  {
+    "input": "Norberry",
+    "slug": "NORBERRY"
+  },
+  {
+    "input": "Normand Park",
+    "slug": "NORMAND-PARK"
+  },
+  {
+    "input": "North Inkster Industrial",
+    "slug": "NORTH-INKSTER-INDUSTRIAL"
+  },
+  {
+    "input": "North Point Douglas",
+    "slug": "NORTH-POINT-DOUGLAS"
+  },
+  {
+    "input": "North River Heights",
+    "slug": "NORTH-RIVER-HEIGHTS"
+  },
+  {
+    "input": "North St. Boniface",
+    "slug": "NORTH-ST-BONIFACE"
+  },
+  {
+    "input": "North Transcona Yards",
+    "slug": "NORTH-TRANSCONA-YARDS"
+  },
+  {
+    "input": "Norwood East",
+    "slug": "NORWOOD-EAST"
+  },
+  {
+    "input": "Norwood West",
+    "slug": "NORWOOD-WEST"
+  },
+  {
+    "input": "Oak Point Highway",
+    "slug": "OAK-POINT-HIGHWAY"
+  },
+  {
+    "input": "Old Tuxedo",
+    "slug": "OLD-TUXEDO"
+  },
+  {
+    "input": "Omand's Creek Industrial",
+    "slug": "OMANDS-CREEK-INDUSTRIAL"
+  },
+  {
+    "input": "Pacific Industrial",
+    "slug": "PACIFIC-INDUSTRIAL"
+  },
+  {
+    "input": "Parc La Salle",
+    "slug": "PARC-LA-SALLE"
+  },
+  {
+    "input": "Parker",
+    "slug": "PARKER"
+  },
+  {
+    "input": "Peguis",
+    "slug": "PEGUIS"
+  },
+  {
+    "input": "Pembina Strip",
+    "slug": "PEMBINA-STRIP"
+  },
+  {
+    "input": "Perrault",
+    "slug": "PERRAULT"
+  },
+  {
+    "input": "Point Road",
+    "slug": "POINT-ROAD"
+  },
+  {
+    "input": "Polo Park",
+    "slug": "POLO-PARK"
+  },
+  {
+    "input": "Portage & Main",
+    "slug": "PORTAGE-MAIN"
+  },
+  {
+    "input": "Portage-Ellice",
+    "slug": "PORTAGE-ELLICE"
+  },
+  {
+    "input": "Prairie Pointe",
+    "slug": "PRAIRIE-POINTE"
+  },
+  {
+    "input": "Pulberry",
+    "slug": "PULBERRY"
+  },
+  {
+    "input": "Radisson",
+    "slug": "RADISSON"
+  },
+  {
+    "input": "Regent",
+    "slug": "REGENT"
+  },
+  {
+    "input": "Richmond Lakes",
+    "slug": "RICHMOND-LAKES"
+  },
+  {
+    "input": "Richmond West",
+    "slug": "RICHMOND-WEST"
+  },
+  {
+    "input": "Ridgedale",
+    "slug": "RIDGEDALE"
+  },
+  {
+    "input": "Ridgewood South",
+    "slug": "RIDGEWOOD-SOUTH"
+  },
+  {
+    "input": "River East",
+    "slug": "RIVER-EAST"
+  },
+  {
+    "input": "River Park South",
+    "slug": "RIVER-PARK-SOUTH"
+  },
+  {
+    "input": "River West Park",
+    "slug": "RIVER-WEST-PARK"
+  },
+  {
+    "input": "River-Osborne",
+    "slug": "RIVER-OSBORNE"
+  },
+  {
+    "input": "Riverbend",
+    "slug": "RIVERBEND"
+  },
+  {
+    "input": "Rivergrove",
+    "slug": "RIVERGROVE"
+  },
+  {
+    "input": "Riverview",
+    "slug": "RIVERVIEW"
+  },
+  {
+    "input": "Robertson",
+    "slug": "ROBERTSON"
+  },
+  {
+    "input": "Roblin Park",
+    "slug": "ROBLIN-PARK"
+  },
+  {
+    "input": "Rockwood",
+    "slug": "ROCKWOOD"
+  },
+  {
+    "input": "Roslyn",
+    "slug": "ROSLYN"
+  },
+  {
+    "input": "Rosser-Old Kildonan",
+    "slug": "ROSSER-OLD-KILDONAN"
+  },
+  {
+    "input": "Rossmere-A",
+    "slug": "ROSSMERE-A"
+  },
+  {
+    "input": "Rossmere-B",
+    "slug": "ROSSMERE-B"
+  },
+  {
+    "input": "Royalwood",
+    "slug": "ROYALWOOD"
+  },
+  {
+    "input": "Sage Creek",
+    "slug": "SAGE-CREEK"
+  },
+  {
+    "input": "Sargent Park",
+    "slug": "SARGENT-PARK"
+  },
+  {
+    "input": "Saskatchewan North",
+    "slug": "SASKATCHEWAN-NORTH"
+  },
+  {
+    "input": "Seven Oaks",
+    "slug": "SEVEN-OAKS"
+  },
+  {
+    "input": "Shaughnessy Park",
+    "slug": "SHAUGHNESSY-PARK"
+  },
+  {
+    "input": "Silver Heights",
+    "slug": "SILVER-HEIGHTS"
+  },
+  {
+    "input": "Sir John Franklin",
+    "slug": "SIR-JOHN-FRANKLIN"
+  },
+  {
+    "input": "South Point Douglas",
+    "slug": "SOUTH-POINT-DOUGLAS"
+  },
+  {
+    "input": "South Pointe",
+    "slug": "SOUTH-POINTE"
+  },
+  {
+    "input": "South Portage",
+    "slug": "SOUTH-PORTAGE"
+  },
+  {
+    "input": "South River Heights",
+    "slug": "SOUTH-RIVER-HEIGHTS"
+  },
+  {
+    "input": "South Tuxedo",
+    "slug": "SOUTH-TUXEDO"
+  },
+  {
+    "input": "Southboine",
+    "slug": "SOUTHBOINE"
+  },
+  {
+    "input": "Southdale",
+    "slug": "SOUTHDALE"
+  },
+  {
+    "input": "Southland Park",
+    "slug": "SOUTHLAND-PARK"
+  },
+  {
+    "input": "Spence",
+    "slug": "SPENCE"
+  },
+  {
+    "input": "Springfield North",
+    "slug": "SPRINGFIELD-NORTH"
+  },
+  {
+    "input": "Springfield South",
+    "slug": "SPRINGFIELD-SOUTH"
+  },
+  {
+    "input": "St. Boniface Industrial Park",
+    "slug": "ST-BONIFACE-INDUSTRIAL-PARK"
+  },
+  {
+    "input": "St. George",
+    "slug": "ST-GEORGE"
+  },
+  {
+    "input": "St. James Industrial",
+    "slug": "ST-JAMES-INDUSTRIAL"
+  },
+  {
+    "input": "St. John's",
+    "slug": "ST-JOHNS"
+  },
+  {
+    "input": "St. John's Park",
+    "slug": "ST-JOHNS-PARK"
+  },
+  {
+    "input": "St. Matthews",
+    "slug": "ST-MATTHEWS"
+  },
+  {
+    "input": "St. Norbert",
+    "slug": "ST-NORBERT"
+  },
+  {
+    "input": "St. Vital Centre",
+    "slug": "ST-VITAL-CENTRE"
+  },
+  {
+    "input": "St. Vital Perimeter South",
+    "slug": "ST-VITAL-PERIMETER-SOUTH"
+  },
+  {
+    "input": "Stock Yards",
+    "slug": "STOCK-YARDS"
+  },
+  {
+    "input": "Symington Yards",
+    "slug": "SYMINGTON-YARDS"
+  },
+  {
+    "input": "Talbot-Grey",
+    "slug": "TALBOT-GREY"
+  },
+  {
+    "input": "Templeton-Sinclair",
+    "slug": "TEMPLETON-SINCLAIR"
+  },
+  {
+    "input": "The Forks",
+    "slug": "THE-FORKS"
+  },
+  {
+    "input": "The Maples",
+    "slug": "THE-MAPLES"
+  },
+  {
+    "input": "The Mint",
+    "slug": "THE-MINT"
+  },
+  {
+    "input": "Tissot",
+    "slug": "TISSOT"
+  },
+  {
+    "input": "Transcona North",
+    "slug": "TRANSCONA-NORTH"
+  },
+  {
+    "input": "Transcona South",
+    "slug": "TRANSCONA-SOUTH"
+  },
+  {
+    "input": "Transcona Yards",
+    "slug": "TRANSCONA-YARDS"
+  },
+  {
+    "input": "Trappistes",
+    "slug": "TRAPPISTES"
+  },
+  {
+    "input": "Turnbull Drive",
+    "slug": "TURNBULL-DRIVE"
+  },
+  {
+    "input": "Tuxedo",
+    "slug": "TUXEDO"
+  },
+  {
+    "input": "Tuxedo Industrial",
+    "slug": "TUXEDO-INDUSTRIAL"
+  },
+  {
+    "input": "Tyndall Park",
+    "slug": "TYNDALL-PARK"
+  },
+  {
+    "input": "Tyne-Tees",
+    "slug": "TYNE-TEES"
+  },
+  {
+    "input": "University",
+    "slug": "UNIVERSITY"
+  },
+  {
+    "input": "Valhalla",
+    "slug": "VALHALLA"
+  },
+  {
+    "input": "Valley Gardens",
+    "slug": "VALLEY-GARDENS"
+  },
+  {
+    "input": "Varennes",
+    "slug": "VARENNES"
+  },
+  {
+    "input": "Varsity View",
+    "slug": "VARSITY-VIEW"
+  },
+  {
+    "input": "Vialoux",
+    "slug": "VIALOUX"
+  },
+  {
+    "input": "Victoria Crescent",
+    "slug": "VICTORIA-CRESCENT"
+  },
+  {
+    "input": "Victoria West",
+    "slug": "VICTORIA-WEST"
+  },
+  {
+    "input": "Vista",
+    "slug": "VISTA"
+  },
+  {
+    "input": "Waverley Heights",
+    "slug": "WAVERLEY-HEIGHTS"
+  },
+  {
+    "input": "Waverley West B",
+    "slug": "WAVERLEY-WEST-B"
+  },
+  {
+    "input": "Wellington Crescent",
+    "slug": "WELLINGTON-CRESCENT"
+  },
+  {
+    "input": "West Alexander",
+    "slug": "WEST-ALEXANDER"
+  },
+  {
+    "input": "West Broadway",
+    "slug": "WEST-BROADWAY"
+  },
+  {
+    "input": "West Fort Garry Industrial",
+    "slug": "WEST-FORT-GARRY-INDUSTRIAL"
+  },
+  {
+    "input": "West Kildonan Industrial",
+    "slug": "WEST-KILDONAN-INDUSTRIAL"
+  },
+  {
+    "input": "West Perimeter South",
+    "slug": "WEST-PERIMETER-SOUTH"
+  },
+  {
+    "input": "West Wolseley",
+    "slug": "WEST-WOLSELEY"
+  },
+  {
+    "input": "Westdale",
+    "slug": "WESTDALE"
+  },
+  {
+    "input": "Weston",
+    "slug": "WESTON"
+  },
+  {
+    "input": "Weston Shops",
+    "slug": "WESTON-SHOPS"
+  },
+  {
+    "input": "Westwood",
+    "slug": "WESTWOOD"
+  },
+  {
+    "input": "Whyte Ridge",
+    "slug": "WHYTE-RIDGE"
+  },
+  {
+    "input": "Wildwood",
+    "slug": "WILDWOOD"
+  },
+  {
+    "input": "Wilkes South",
+    "slug": "WILKES-SOUTH"
+  },
+  {
+    "input": "William Whyte",
+    "slug": "WILLIAM-WHYTE"
+  },
+  {
+    "input": "Windsor Park",
+    "slug": "WINDSOR-PARK"
+  },
+  {
+    "input": "Wolseley",
+    "slug": "WOLSELEY"
+  },
+  {
+    "input": "Woodhaven",
+    "slug": "WOODHAVEN"
+  },
+  {
+    "input": "Worthington",
+    "slug": "WORTHINGTON"
+  },
+  {
+    "input": "",
+    "slug": ""
+  },
+  {
+    "input": "   ",
+    "slug": ""
+  },
+  {
+    "input": "UNASSIGNED",
+    "slug": "UNASSIGNED"
+  },
+  {
+    "input": "river / heights",
+    "slug": "RIVER-HEIGHTS"
+  },
+  {
+    "input": "St. Boniface",
+    "slug": "ST-BONIFACE"
+  },
+  {
+    "input": "Île-des-Chênes",
+    "slug": "LE-DES-CHNES"
+  }
+]

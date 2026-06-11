@@ -22,9 +22,6 @@
 # events, filed per official-neighbourhood slug (same key as the shards).
 #
 # Usage:  Rscript r/build_lineage.R
-#
-# NOTE: read_layer_repair / normalize_names / slugify / neighbourhood binning are
-# duplicated from build_historical_shards.R to keep this standalone — keep in sync.
 
 suppressPackageStartupMessages({ library(sf); library(jsonlite) })
 sf::sf_use_s2(FALSE)
@@ -32,6 +29,17 @@ sf::sf_use_s2(FALSE)
 ARCHIVE_ROOT   <- "D:/Dropbox/Appraisal/Web/WpgSnapshots"
 OUTPUT_ROOT    <- "D:/Dropbox/ClaudeCode/WpgOpenData/wpg-parcel-history"
 NEIGHBOURHOODS <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch/web/public/wpg-neighbourhoods.geojson"
+
+# Shared helpers (slugify, normalize_names, read_layer_repair, neighbourhood
+# binning). See r/lib_helpers.R — the single source of truth previously
+# duplicated between this script and build_historical_shards.R.
+.SCRIPT_DIR <- local({
+  fa <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (length(fa)) dirname(normalizePath(sub("^--file=", "", fa[1])))
+  else if (!is.null(sys.frames()[[1]]$ofile)) dirname(normalizePath(sys.frames()[[1]]$ofile))
+  else "."
+})
+source(file.path(.SCRIPT_DIR, "lib_helpers.R"))
 
 LINEAGE_CRS  <- 26914
 EDGE_COVER   <- 0.50
@@ -44,57 +52,10 @@ LAYERS <- list(
   list(name = "survey",     pattern = "^SurveyParcels_\\d{8}\\.gpkg$",     key_col = "id",          key_json = "survey_id", out = "survey-lineage")
 )
 
-`%||%` <- function(a, b) if (is.null(a) || (length(a) == 1 && is.na(a))) b else a
+# Thin wrapper around the shared neighbourhood_bin: lineage only cares about
+# the slug vector (filing each edge under one neighbourhood directory).
+bin_slug <- function(g) neighbourhood_bin(g)$slug
 
-date_from_name <- function(p) {
-  m <- regmatches(basename(p), regexpr("\\d{8}", basename(p)))
-  if (length(m) == 0) return(NA_character_)
-  paste0(substr(m, 1, 4), "-", substr(m, 5, 6), "-", substr(m, 7, 8))
-}
-slugify <- function(x) {
-  s <- toupper(trimws(as.character(x))); s <- gsub("[/ ]+", "-", s)
-  s <- gsub("[^A-Z0-9-]", "", s); s <- gsub("-+", "-", s); gsub("^-|-$", "", s)
-}
-normalize_names <- function(nm) {
-  s <- tolower(nm); s <- gsub("[^a-z0-9]+", "_", s); s <- gsub("_+", "_", s); gsub("^_|_$", "", s)
-}
-read_layer_repair <- function(f) {
-  ly <- sf::st_layers(f); lyr <- ly$name[1]
-  gt <- tryCatch(as.character(ly$geomtype[[1]]), error = function(e) character(0))
-  needs_repair <- length(gt) == 0 || !any(nzchar(gt)) ||
-                  any(grepl("GEOMETRYCOLLECTION|^GEOMETRY$", toupper(gt)))
-  if (!needs_repair) {
-    g <- sf::st_read(f, layer = lyr, quiet = TRUE)
-  } else {
-    cat("    (generic geometry — repairing via vectortranslate)\n")
-    tmp <- tempfile(fileext = ".gpkg")
-    sf::gdal_utils("vectortranslate", source = f, destination = tmp,
-                   options = c("-f", "GPKG", "-nlt", "PROMOTE_TO_MULTI", "-nln", "layer", "-skipfailures"))
-    g <- sf::st_read(tmp, layer = "layer", quiet = TRUE); file.remove(tmp)
-    g <- suppressWarnings(sf::st_collection_extract(g, "POLYGON"))
-    g <- sf::st_make_valid(g); g <- g[!sf::st_is_empty(g), ]
-  }
-  names(g)[names(g) == attr(g, "sf_column")] <- "geometry"; sf::st_geometry(g) <- "geometry"
-  g
-}
-.nbhd_ref <- NULL
-neighbourhood_ref <- function() {
-  if (!is.null(.nbhd_ref)) return(.nbhd_ref)
-  n <- sf::st_read(NEIGHBOURHOODS, quiet = TRUE)
-  if (is.na(sf::st_crs(n))) sf::st_crs(n) <- 4326
-  if ((sf::st_crs(n)$epsg %||% 0) != 4326) n <- sf::st_transform(n, 4326)
-  nmcol <- intersect(c("name", "Name", "NAME"), names(n))[1]
-  n$slug <- slugify(n[[nmcol]])
-  .nbhd_ref <<- n[, "slug"]; .nbhd_ref
-}
-bin_slug <- function(g) {
-  ref <- neighbourhood_ref()
-  pts <- suppressWarnings(sf::st_point_on_surface(sf::st_geometry(g)))
-  pts_sf <- sf::st_sf(`._rid` = seq_along(pts), geometry = pts, crs = sf::st_crs(g))
-  j <- suppressMessages(sf::st_join(pts_sf, ref, join = sf::st_within))
-  j <- j[!duplicated(j$`._rid`), ]
-  s <- j$slug[match(seq_len(nrow(g)), j$`._rid`)]; s[is.na(s)] <- "UNASSIGNED"; s
-}
 make_dsu <- function(n) {
   p <- seq_len(n)
   find <- function(i) { r <- i; while (p[r] != r) r <- p[r]; while (p[i] != r) { nx <- p[i]; p[i] <<- r; i <- nx }; r }
