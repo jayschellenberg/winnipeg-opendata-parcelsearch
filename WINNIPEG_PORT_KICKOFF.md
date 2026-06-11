@@ -1,5 +1,12 @@
 # Winnipeg Port — Claude Code Kickoff Prompt
 
+> ⚠️ **Imported reference — describes the ORIGINAL Manitoba → Winnipeg port,
+> not the current codebase.** This document was the one-shot prompt used to
+> initiate the Winnipeg port from Manitoba's tool. The port has long since
+> shipped; the live map of the code now lives in
+> [REPLICATION_GUIDE.md](REPLICATION_GUIDE.md) and [README.md](README.md).
+> Kept here for archive value (lineage / decision context), not as a build doc.
+
 Drop this whole document into a fresh Claude Code session opened in
 `D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch\`. It's self-contained —
 the agent should not need to read anything in `MBOpenData/` to do the

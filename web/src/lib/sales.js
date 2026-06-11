@@ -1,20 +1,15 @@
-// Pure sales-CSV helpers, extracted verbatim from main.js so the test
-// suite can import them — main.js wires DOM elements at import time and
-// can't be loaded under plain Node. No behaviour change intended.
+// Pure sales-CSV helpers, extracted from main.js so the test suite
+// can import them — main.js wires DOM elements at import time and
+// can't be loaded under plain Node.
 
-/**
- * Normalize a Winnipeg roll number to its 11-digit zero-padded
- * canonical form. The CSV strips leading zeros from short rolls
- * (e.g. `6070731000` instead of `06070731000`), but d4mq-wa44
- * stores them padded. soda.js's rollClause already normalizes on
- * the query side; this helper makes the client-side joins
- * (matchedRolls.has, saleByRoll.get, subject lookups) line up.
- */
-export function normalizeRoll(token) {
-  const digits = String(token ?? '').replace(/[^0-9]/g, '');
-  if (!digits) return null;
-  return digits.length >= 11 ? digits : digits.padStart(11, '0');
-}
+// normalizeRoll lives in soda.js (where rollClause already uses it for
+// the query side); the local import + re-export keeps a single
+// implementation so the sales tab's client-side joins (matchedRolls.has,
+// saleByRoll.get, subject lookups) use the SAME function that built the
+// SoQL clause — drift here meant a just-padded roll wouldn't join to its
+// own live record.
+import { normalizeRoll } from '../soda.js';
+export { normalizeRoll };
 
 /**
  * Dedup by (Parcel ID, Instrument Number) — multi-building rows

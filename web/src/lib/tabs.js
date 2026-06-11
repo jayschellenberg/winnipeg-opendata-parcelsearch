@@ -26,7 +26,12 @@ const PRIMARY_INPUT_BY_TAB = {
 let activeTab = DEFAULT_TAB;
 const listeners = new Set();
 
-function readStored() {
+// Kept available as `_readStored` for the historical-debug case where a
+// developer wants to honour the previously-active tab on a fresh load.
+// initSidebarTabs deliberately ignores the persisted value (see comment
+// at the bottom of this file) — _-prefix marks it as opt-in dead code
+// per the lint config's varsIgnorePattern.
+function _readStored() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored && document.querySelector(`.sidebar-tab[data-tab="${stored}"]`)) {

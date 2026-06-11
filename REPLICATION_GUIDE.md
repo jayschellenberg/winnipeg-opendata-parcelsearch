@@ -113,26 +113,58 @@ repo-root/
 ├── vercel.json            Build config: points Vercel at web/
 ├── README.md              User-facing summary + live URL
 ├── REPLICATION_GUIDE.md   This document
-├── r/                     R scripts for local historical archive (not part of web tool)
+├── REFACTOR_NOTES.md      Imported MB porting reference — describes files in the SISTER repo, not here
+├── WINNIPEG_PORT_KICKOFF.md  Same — imported reference, not a map of this codebase
+├── AUDIT-2026-06-10.md    Self-audit + improvement plan (untracked in git)
+├── .github/workflows/     CI: npm ci, lint, test, build on every push/PR
+├── Dockerfile.tippecanoe  Modern Felt-fork tippecanoe build (for r/build_parcel_tiles.R)
+├── r/                     Offline pipeline: scheduled downloads, snapshot archive,
+│                          historical shard + lineage builders, PMTiles build
+│   ├── lib_helpers.R         shared helpers (slugify, neighbourhood bin, read_layer_repair)
+│   ├── lib_mail.ps1          failure-email helper (Windows Credential Manager)
+│   ├── wpg_datasets.R        single dataset registry (URLs + layer names)
+│   ├── download_parcels.R    paginated SODA download → dated .gpkg
+│   ├── archive_snapshot.R    → WpgSnapshots/<year>/ with .meta.json provenance
+│   ├── build_historical_shards.R   per-neighbourhood JSON shards + slug-parity fixture
+│   ├── build_lineage.R       inferred lineage between consecutive snapshots
+│   ├── build_parcel_tiles.R  → web/public/parcels.pmtiles via tippecanoe
+│   ├── sanitize_shards.R / verify_shards.R   post-build sanity
+│   ├── scheduled_download.ps1 / refresh_assets.ps1 / setup_schedule.ps1   Task Scheduler glue
 └── web/
     ├── index.html
-    ├── package.json
+    ├── package.json       deps + scripts (dev / build / test / lint / fetch:pmtiles)
     ├── vite.config.js
+    ├── eslint.config.js   minimal flat config (eslint:recommended)
+    ├── public/            static assets (transit, neighbourhoods).
+    │                      parcels.pmtiles is NOT in git — fetched from the
+    │                      `parcels-pmtiles` GitHub release on build.
+    ├── scripts/           build/refresh scripts (fetch-pmtiles, build-transit-geojson, …)
+    ├── test/              plain-Node unit tests (urlState, sizeChange, soda,
+    │                      sodaNetwork, sales, slugParity, columnsRegistry)
     └── src/
-        ├── main.js
-        ├── map.js
-        ├── soda.js
-        └── style.css
+        ├── main.js        entry: search flows, table, sales tab, historical overlay
+        ├── map.js         MapLibre setup + all layer config
+        ├── soda.js        SODA queries, paging, IndexedDB caching, joins
+        ├── style.css
+        └── lib/           reusable modules: chipInput, columns, columnsRegistry,
+                           format, infoIcon, links, sales, sizeChange, tabs,
+                           tailwind, urlState
 ```
 
 `vercel.json`:
 ```json
 {
-  "buildCommand": "cd web && npm install && npm run build",
+  "buildCommand": "cd web && npm ci && npm run fetch:pmtiles && npm run build",
   "outputDirectory": "web/dist",
   "framework": "vite"
 }
 ```
+
+The build uses `npm ci` (strict-lockfile install) and runs `fetch:pmtiles`
+to pull the 82 MB citywide tile archive from the rolling `parcels-pmtiles`
+GitHub release — the archive is too large to keep in git history. The fetch
+is best-effort: a failure logs and disables the citywide overlay for that
+deploy instead of failing the build.
 
 ---
 

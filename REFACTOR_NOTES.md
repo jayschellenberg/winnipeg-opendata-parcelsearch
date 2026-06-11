@@ -1,5 +1,14 @@
 # Refactor Notes — Manitoba Parcel Search
 
+> ⚠️ **Imported reference — describes the SISTER (Manitoba) repo, not this one.**
+> File paths and module names here (`src/arcgis.js`, `src/masc.js`, `r/build_legal_index.R`,
+> the `mbpsCache.*` prefix, the multi-municipality model) refer to the Manitoba
+> tool this Winnipeg app was ported FROM. Use it for porting context and
+> recorded lessons (the geometry-join story, the TDZ debugging notes, the
+> MapLibre load-event failsafe), but the actual map of THIS codebase is
+> [REPLICATION_GUIDE.md §3](REPLICATION_GUIDE.md#3-repository-structure)
+> and [README.md](README.md). Kept for archive value.
+
 This file is the hand-off doc for the Winnipeg sister-app port. It
 captures what was changed, what's safely portable, what's specific
 to Manitoba's data sources, and the pitfalls that ate the most
