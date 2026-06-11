@@ -298,7 +298,49 @@ export function initMap(container, { onFeatureClick } = {}) {
   map.addControl(new MeasureControl(measureDraw), 'top-right');
 
   const ready = new Promise((resolve) => {
-    map.on('load', () => {
+    // MapLibre 4.x's 'load' event is unreliable — the Manitoba sister app
+    // saw "never fires after 15 s" in dev (REFACTOR_NOTES §6), and a
+    // hidden/headless tab can defer it indefinitely. Waiting on 'load'
+    // alone left every mapReady.then(...) (overlay toggles, search
+    // rendering on the map) queued forever with no error. Race several
+    // triggers + a poll + a loud 30 s failsafe; setupLayers runs exactly
+    // once, and a thrown "Style is not done loading" re-arms so the next
+    // trigger retries.
+    let setupDone = false;
+    const trySetup = () => {
+      if (setupDone || !map.isStyleLoaded()) return;
+      runSetup();
+    };
+    const runSetup = () => {
+      if (setupDone) return;
+      setupDone = true;
+      try {
+        setupLayers();
+        map.off('load', trySetup);
+        map.off('idle', trySetup);
+        map.off('styledata', trySetup);
+        resolve();
+      } catch (err) {
+        console.warn('[map] layer setup failed; retrying on next style event', err);
+        setupDone = false;
+      }
+    };
+    map.on('load', trySetup);
+    map.on('idle', trySetup);
+    map.on('styledata', trySetup);
+    const poll = setInterval(() => {
+      if (setupDone) { clearInterval(poll); return; }
+      trySetup();
+    }, 250);
+    setTimeout(() => {
+      clearInterval(poll);
+      if (!setupDone) {
+        console.warn('[map] style not loaded after 30 s — forcing layer setup (a later style event can still rescue it if this fails)');
+        runSetup();
+      }
+    }, 30000);
+
+    function setupLayers() {
       // Zoning layer goes in first so it draws *under* the parcel highlight.
       // OurWinnipeg policy-area overlays — three independent toggleable
       // layers stacked beneath the parcel highlights. Each is a single
@@ -1431,9 +1473,7 @@ export function initMap(container, { onFeatureClick } = {}) {
       for (const id of NEIGHBOURHOOD_TOP_LAYERS) {
         if (map.getLayer(id)) map.moveLayer(id);
       }
-
-      resolve();
-    });
+    }
   });
 
   return { map, ready };
