@@ -4,15 +4,19 @@
 // or
 //   node test/columnsRegistry.test.js
 //
-// These pin the five "keep in sync" sites the audit flagged:
-//   1. index.html <th data-col="…"> sequence  → match COLUMN_KEYS order
-//   2. main.js SORT_KEYS object               → covers every sortable column
-//   3. lib/urlState.js SORT_COLS              → == sortable column keys
-//   4. lib/columns.js PRESETS                 → only reference real column keys
-//   5. csvSchemaForMode('sales')              → contains sale-only fields
+// After Stage B the registry drives:
+//   1. index.html <thead> ............ populated at init by buildThead()
+//                                      (drift is now structurally impossible)
+//   2. main.js renderTable cells ..... loop over COLUMNS, call col.render(a,s)
+//                                      (drift is now structurally impossible)
+//   3. main.js SORT_KEYS ............. covered every sortable column key
+//   4. lib/urlState.js SORT_COLS ..... imports SORTABLE_COLUMN_KEYS directly
+//   5. lib/columns.js PRESETS ........ keys must exist in the registry
+//   6. csvSchemaForMode('sales') ..... must include the sale-only fields
 //
-// A misordered thead, a stale SORT_KEYS entry, or a preset referencing a
-// dropped column now fails CI before it ships.
+// A stale SORT_KEYS entry, a preset referencing a dropped column, a CSV
+// extractor throwing, or a missing render function now fails CI before
+// it ships.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -44,24 +48,28 @@ function test(name, fn) {
 
 console.log('columnsRegistry');
 
-// 1. thead order ==========================================================
-function parseTheadKeys() {
-  // Scope to the #results table so other thead-like markup can't interfere.
+// 1. thead is registry-driven =============================================
+test('index.html ships an EMPTY #results <thead><tr>, populated by buildThead at init', () => {
+  // Stage B: drift is structurally impossible because the row is emitted
+  // from the registry. Pin the absence of inline <th data-col=…> markup
+  // so a future "helpful" edit to index.html can't reintroduce the dual-
+  // source contract.
   const tableMatch = indexHtml.match(/<table[^>]*id=["']results["'][\s\S]*?<\/thead>/);
   if (!tableMatch) throw new Error('could not locate #results table in index.html');
-  const keys = [...tableMatch[0].matchAll(/data-col=["']([^"']+)["']/g)].map((m) => m[1]);
-  return keys;
-}
-
-test('index.html thead <th data-col="…"> order matches COLUMN_KEYS exactly', () => {
-  const domOrder = parseTheadKeys();
-  assert.deepEqual(domOrder, COLUMN_KEYS,
-    `thead vs registry mismatch — keep them in lockstep.\n    dom:      [${domOrder.join(', ')}]\n    registry: [${COLUMN_KEYS.join(', ')}]`);
+  const inlineKeys = [...tableMatch[0].matchAll(/<th[^>]*data-col=["']([^"']+)["']/g)];
+  assert.equal(inlineKeys.length, 0,
+    `index.html re-introduced static <th data-col="…"> rows; the registry owns the thead now.`);
 });
 
 test('every registry key is unique', () => {
   const dups = COLUMN_KEYS.filter((k, i) => COLUMN_KEYS.indexOf(k) !== i);
   assert.equal(dups.length, 0, `duplicate keys: ${dups.join(', ')}`);
+});
+
+test('every column declares a callable render(a, s) function', () => {
+  const broken = COLUMNS.filter((c) => typeof c.render !== 'function');
+  assert.equal(broken.length, 0,
+    `columns missing render(): ${broken.map((c) => c.key).join(', ')}`);
 });
 
 // 2. SORT_KEYS coverage ====================================================

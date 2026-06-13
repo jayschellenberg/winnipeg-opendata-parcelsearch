@@ -79,8 +79,12 @@ import {
 } from './map.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales } from './lib/sales.js';
-import { assessmentUrl, walkscoreUrl, floodToolUrl } from './lib/links.js';
-import { csvSchemaForMode } from './lib/columnsRegistry.js';
+import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
+import { COLUMNS, csvSchemaForMode, buildThead } from './lib/columnsRegistry.js';
+// Cell-value formatters still used by the parcel-summary card (not table cells).
+// The DOM constructors td/badgeTd/linkTd/etc are consumed inside the registry
+// render functions and never need to be imported here.
+import { stripZoningCode, formatPct, formatDollars, formatCoord } from './lib/cells.js';
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
@@ -110,6 +114,13 @@ const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
+
+// Populate the (empty) #results thead row from the column registry.
+// MUST run before the sort-handler wiring loop below (which calls
+// querySelectorAll('#results th[data-col]')) — otherwise no handlers
+// would be attached to the dynamically-built ths.
+buildThead(document.querySelector('#results thead tr'));
+
 const $mapEl = document.getElementById('map');
 const $staticMapBtn = document.getElementById('static-map-btn');
 const $staticMapOutput = document.getElementById('static-map-output');
@@ -2084,57 +2095,15 @@ function renderTable(rows) {
       tr.dataset.groupPos = pos;
       tr.dataset.groupSize = String(gsize);
     }
-    // Lot cell can run long for multi-lot merges (e.g. "21-25, 68-75,
-    // 120-121 (Pl 129); 39-46 (Pl 24208)"). Truncate with full text
-    // available on hover so the table column doesn't blow up.
-    // Cell-append order MUST match the thead in index.html:
-    //   roll, address, saleDate, useCode (PUCS), livingArea,
-    //   yearBuilt, area, propertyType, groupSize, salePrice,
-    //   pricePerSf, saleToAsmt, dist, instrument,
-    //   lot, block, plan, desc,
-    //   zoning, zoningPct, zoning2, lat, lon,
-    //   value, walk, flood.
-    //
-    // Roll Number cell links to the same assessment-page record as
-    // the Assessment dollar-value column.
-    tr.appendChild(linkTd(assessmentUrl(a), a.roll_number));
-    // Multi-address parcels can have long comma-joined address lists
-    // (e.g. "400 HARGRAVE STREET, 400 HARGRAVE ST, 440 HARGRAVE ST").
-    // Truncate at 40 chars with full text on hover.
-    tr.appendChild(truncatedTd(a.full_address, 40));
-    // Sales-only block (CSS .sales-only hides them in property mode).
-    tr.appendChild(td(a._saleDate || null));
-    tr.appendChild(badgeTd(a._saleUseCode || null, 'badge-pucs'));
-    tr.appendChild(td(formatSqFt(a._saleLivingArea), 'num'));
-    tr.appendChild(td(a._saleYearBuilt || null));
-    // Lot Size (sf) lives in the lead block per the user's preferred
-    // sales-mode order; it's still useful in property mode too.
-    tr.appendChild(td(formatSqFt(a.assessed_land_area), 'num'));
-    // More sales-only fields.
-    tr.appendChild(badgeTd(a._salePropertyType || null, propertyTypeBadgeClass(a._salePropertyType)));
-    tr.appendChild(td(a._saleGroupSize != null ? String(a._saleGroupSize) : null, 'num'));
-    tr.appendChild(td(formatDollars(a._salePrice), 'num'));
-    tr.appendChild(td(formatDollars(a._pricePerSf), 'num'));
-    tr.appendChild(td(formatPct(a._saleToAsmt), 'num'));
-    tr.appendChild(td(formatDist(a._dist), 'num'));
-    tr.appendChild(td(a._saleInstrument || null));
-    // Property-mode tail block (legal + zoning + coords + ext links).
-    tr.appendChild(truncatedTd(s.lot, 10));
-    tr.appendChild(td(s.block));
-    tr.appendChild(td(s.plan));
-    tr.appendChild(td(s.description));
-    // Prefer the area-weighted top-1 zoning code; fall back to the
-    // assessment dataset's primary `zoning` text if enrichment hasn't
-    // populated zoning_top1. d4mq-wa44 fallback strips the verbose
-    // "R1M - RES - S F - MEDIUM" form down to just the code.
-    tr.appendChild(badgeTd(stripZoningCode(a.zoning_top1 ?? a.zoning), 'badge-zoning'));
-    tr.appendChild(td(formatPct(a.zoning_top1_pct), 'num'));
-    tr.appendChild(td(formatZone2(a.zoning_top2, a.zoning_top2_pct)));
-    tr.appendChild(td(formatCoord(a.centroid_lat), 'num'));
-    tr.appendChild(td(formatCoord(a.centroid_lon), 'num'));
-    tr.appendChild(assessmentTd(a));
-    tr.appendChild(linkTd(walkscoreUrl(a.full_address), 'Walk'));
-    tr.appendChild(linkTd(floodToolUrl(a), 'Flood'));
+    // Cell construction is fully registry-driven: each column declares its
+    // render(a, s) => Node in lib/columnsRegistry.js, and we append in the
+    // registry's declared order — same order as buildThead emits the <th>s,
+    // so a column can't drift between its header and its cells. Adding a
+    // column is now ONE edit (in the registry); the columnsRegistry test
+    // additionally fails CI if SORT_KEYS / PRESETS lose track.
+    for (const col of COLUMNS) {
+      tr.appendChild(col.render(a, s));
+    }
     frag.appendChild(tr);
   }
   $tbody.appendChild(frag);
@@ -2307,92 +2276,10 @@ function today() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function td(value, className) {
-  const el = document.createElement('td');
-  if (value == null || value === '') {
-    el.textContent = '—';
-    el.classList.add('empty');
-  } else {
-    el.textContent = value;
-  }
-  if (className) el.classList.add(className);
-  return el;
-}
-
-/**
- * Cell with a pill-style categorical badge wrapping its value.
- * Empty values fall back to the em-dash empty cell (no badge).
- * `badgeClass` is the modifier (e.g. "badge-zoning"); a base
- * "badge" class is added automatically. `extraTdClass` lets the
- * caller add a num / left-align class to the td itself.
- */
-function badgeTd(value, badgeClass, extraTdClass) {
-  const el = document.createElement('td');
-  if (extraTdClass) el.classList.add(extraTdClass);
-  if (value == null || value === '') {
-    el.textContent = '—';
-    el.classList.add('empty');
-    return el;
-  }
-  const span = document.createElement('span');
-  span.className = `badge ${badgeClass}`;
-  span.textContent = String(value);
-  el.appendChild(span);
-  return el;
-}
-
-/**
- * Map a Property Type string (Residential / Industrial / Commercial)
- * to the matching badge-pt-* modifier. Unknown values get the base
- * pill (no colour family).
- */
-function propertyTypeBadgeClass(value) {
-  if (!value) return 'badge-property-type';
-  const v = String(value).trim().toLowerCase();
-  if (v === 'residential') return 'badge-property-type badge-pt-residential';
-  if (v === 'industrial')  return 'badge-property-type badge-pt-industrial';
-  if (v === 'commercial')  return 'badge-property-type badge-pt-commercial';
-  return 'badge-property-type';
-}
-
-/**
- * Cell variant that truncates long values to `maxChars`, appends an
- * ellipsis, and exposes the full string on hover via the `title`
- * attribute. Used for the Lot column (multi-lot merges run long) and
- * the Full Address column (multi-address parcels concatenate every
- * civic address). Cursor changes to `help` so the truncation is
- * visually discoverable.
- */
-function truncatedTd(value, maxChars, className) {
-  const el = document.createElement('td');
-  if (value == null || value === '') {
-    el.textContent = '—';
-    el.classList.add('empty');
-    return el;
-  }
-  const str = String(value);
-  if (str.length > maxChars) {
-    el.textContent = str.slice(0, maxChars) + '…';
-    el.title = str;
-    el.style.cursor = 'help';
-  } else {
-    el.textContent = str;
-  }
-  if (className) el.classList.add(className);
-  return el;
-}
-
-/**
- * Strip the verbose suffix off d4mq-wa44 zoning text. The fallback
- * value when the area-weighted enrichment doesn't produce a code
- * looks like "R1M - RES - S F - MEDIUM"; we want just "R1M". When
- * the source already has no " - " (the dxrp-w6re top-1 enrichment
- * returns clean codes like "R1-M", "C2", "PR1"), this is a no-op.
- */
-function stripZoningCode(value) {
-  if (value == null || value === '') return value;
-  return String(value).split(' - ')[0].trim();
-}
+// td / badgeTd / propertyTypeBadgeClass / truncatedTd / stripZoningCode
+// moved to lib/cells.js — the registry's render functions are now their
+// only callers. stripZoningCode is also imported above for the parcel
+// summary card.
 
 /**
  * Capture the current interactive-map view as a static <img> embedded
@@ -2504,118 +2391,17 @@ function wrapToWidth(ctx, text, maxWidth) {
   return lines;
 }
 
-/**
- * Build a `<td>` containing an external link. `url` is the full URL;
- * `label` is the visible link text. Falls back to an em-dash when no
- * URL can be built (e.g. parcel has no address). Click bubbles up to
- * the row's click-to-fly handler — `stopPropagation` on the anchor
- * prevents that so the user's link click doesn't also fly the map.
- */
-function linkTd(url, label) {
-  const el = document.createElement('td');
-  if (!url) {
-    el.textContent = '—';
-    el.classList.add('empty');
-    return el;
-  }
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  a.textContent = label;
-  a.addEventListener('click', (e) => e.stopPropagation());
-  el.appendChild(a);
-  return el;
-}
+// linkTd / assessmentTd / formatDollars / formatPct / formatZone2 /
+// formatCoord / formatDist all moved to lib/cells.js — the registry's
+// render functions are now their only callers. Cell-value formatters
+// still used by showParcelSummary (formatDollars, formatPct, formatCoord)
+// are re-imported from cells.js at the top of this file.
+// assessmentUrl, walkscoreUrl, floodToolUrl live in lib/links.js so
+// lib/columnsRegistry.js can use them without dragging main.js's DOM
+// imports into Node-side tests.
 
-// assessmentUrl, walkscoreUrl, floodToolUrl now live in lib/links.js
-// (imported at the top of this file) so lib/columnsRegistry.js can use
-// them without dragging main.js's DOM imports into Node-side tests.
-
-/**
- * Build a `<td>` for the Assessment column: shows the formatted dollar
- * total as a clickable link to the parcel's record on
- * winnipegassessment.com. Falls back to the dollar amount as plain
- * text when no link can be built; em-dash when even the dollar amount
- * is missing.
- */
-function assessmentTd(props) {
-  const el = document.createElement('td');
-  el.classList.add('num');
-  const value = props?.total_assessed_value;
-  const formatted = formatDollars(value);
-  if (!formatted) {
-    el.textContent = '—';
-    el.classList.add('empty');
-    return el;
-  }
-  const url = assessmentUrl(props);
-  if (!url) {
-    el.textContent = formatted;
-    return el;
-  }
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  a.textContent = formatted;
-  a.title = `Open Roll ${props.roll_number} on winnipegassessment.com`;
-  a.addEventListener('click', (e) => e.stopPropagation());
-  el.appendChild(a);
-  return el;
-}
-
-/** Format a numeric dollar amount like "$723,000". null on bad input. */
-function formatDollars(v) {
-  if (v == null || v === '') return null;
-  const n = Number(v);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return '$' + Math.round(n).toLocaleString('en-US');
-}
-
-// Format an area-weighted-zoning coverage % for the table cell. Whole
-// percent precision keeps the column narrow; sub-1% values are
-// suppressed (those are digitization slivers, not real coverage).
-function formatPct(v) {
-  if (v == null) return null;
-  const n = Number(v);
-  if (!Number.isFinite(n) || n < 1) return null;
-  return `${Math.round(n)}%`;
-}
-
-// Build the "Zoning 2" cell value. Combines code + % so the user can
-// see both at a glance without an extra column dedicated to the
-// secondary %. Returns null when there's no top-2 (suppressed at the
-// soda.js level when < 1% coverage).
-function formatZone2(code, pct) {
-  if (!code) return null;
-  if (pct == null) return code;
-  return `${code} (${Math.round(pct)}%)`;
-}
-
-// Assessment land area is now formatted via lib/format.js's
-// formatSqFt — same shape (`1,234`) but en-CA locale and shared
-// across the eventual Sales Analysis tab. The local formatArea
-// helper has been removed; replace any future callers with
-// formatSqFt(v).
-
-// Winnipeg serves centroid_lat / centroid_lon as strings with way more
-// precision than anyone needs. 6 decimals is ~10 cm at this latitude.
-function formatCoord(v) {
-  if (v == null || v === '') return null;
-  const n = Number(v);
-  if (!Number.isFinite(n)) return null;
-  return n.toFixed(6);
-}
-
-// Format a distance in kilometres to one decimal. Used by the
-// sales-mode Dist column when a subject roll is set.
-function formatDist(km) {
-  if (km == null) return null;
-  const n = Number(km);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n.toFixed(2);
-}
+// formatSqFt is imported from lib/format.js — assessment land area uses
+// the same en-CA formatter (`1,234`) as the Sales Analysis tab.
 
 // ===============================================================
 // Phase 7 — Sales Analysis tab

@@ -505,42 +505,12 @@
 
           <div class="table-scroll">
           <table id="results">
+        <!-- thead row is populated at init by lib/columnsRegistry.js:buildThead
+             from the COLUMNS list — that's the one place to add / remove /
+             reorder columns; the test in test/columnsRegistry.test.js guards
+             the contract. -->
         <thead>
-          <tr>
-            <!-- Sales-mode lead block: Roll # → Address → sale fields
-                 → Lot Size. The .sales-only ths in between are
-                 display:none in property mode (no body.sales-mode),
-                 so property-mode users see Roll/Address/Lot Size
-                 contiguously here, then the rest of the base columns
-                 below. -->
-            <th data-col="roll">Roll Number</th>
-            <th data-col="address">Full Address</th>
-            <th data-col="saleDate"     class="sales-only" title="Sale date from the uploaded CSV">Sale Date</th>
-            <th data-col="useCode"      class="sales-only" title="Par Use Code — Winnipeg property assessment use code (e.g. RESMC, RESRH, INWWH, CMRRE)">PUCS</th>
-            <th data-col="livingArea"   class="sales-only" title="Building floor area in square feet (from the CSV)">Living Area</th>
-            <th data-col="yearBuilt"    class="sales-only" title="Oldest Year Built across the parcel's building components (from the CSV)">Year Built</th>
-            <th data-col="area">Lot Size (sf)</th>
-            <th data-col="propertyType" class="sales-only" title="High-level property type from the CSV (Residential / Industrial / Commercial)">Property Type</th>
-            <th data-col="groupSize"    class="sales-only" title="Number of parcels in the same sale (1 = single-parcel sale). Multi-parcel sales aggregate $/Lot SF and Sale/Asmt across the group.">Group #</th>
-            <th data-col="salePrice"    class="sales-only" title="Sold price from the uploaded CSV">Sale Price</th>
-            <th data-col="pricePerSf"   class="sales-only" title="Sale price ÷ Land Actual sqft. For multi-parcel sales, divides by the group total land.">$/Lot SF</th>
-            <th data-col="saleToAsmt"   class="sales-only" title="Sale price ÷ total assessed value (latest year)">Sale/Asmt</th>
-            <th data-col="dist"         class="sales-only subj-col" title="Centroid-to-centroid distance from the subject parcel (km). Set a subject roll in the Sales Analysis tab to populate.">Dist (km)</th>
-            <th data-col="instrument"   class="sales-only" title="Land Titles instrument number for the transaction">Instrument</th>
-            <!-- Property-mode tail: legal / zoning / coordinate / external-link columns. -->
-            <th data-col="lot">Lot</th>
-            <th data-col="block">Block</th>
-            <th data-col="plan">Plan</th>
-            <th data-col="desc">Description</th>
-            <th data-col="zoning" title="Top zoning code by area-weighted polygon intersection">Zoning</th>
-            <th data-col="zoningPct" title="Coverage % of the top zoning district">%</th>
-            <th data-col="zoning2" title="Second-most-coverage zoning district (when ≥1%)">Zoning 2</th>
-            <th data-col="lat">Lat</th>
-            <th data-col="lon">Lon</th>
-            <th data-col="value" id="value-header" title="Click any value to open the parcel's record on winnipegassessment.com">Assessment</th>
-            <th data-col="walk" title="Open this address on walkscore.com">Walkscore</th>
-            <th data-col="flood" title="Run this parcel through the Manitoba flood-screening tool">Flood</th>
-          </tr>
+          <tr></tr>
         </thead>
         <tbody></tbody>
       </table>
