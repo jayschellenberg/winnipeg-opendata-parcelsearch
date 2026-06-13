@@ -25,10 +25,10 @@ function Log($m) { ('{0}  {1}' -f (Get-Date -Format 's'), $m) | Tee-Object -File
 
 # Loud failure: write a dated FAILED marker at the archive root (where it's
 # seen in normal file browsing), send an email with the log tail, skip the
-# destructive cleanup step, exit 1. The run is unattended twice a year —
+# destructive cleanup step, exit 1. The run is unattended twice a year -
 # a quiet failure costs a snapshot.
 function Fail($why) {
-  Log "FAILED: $why — skipping cleanup; repo-dir downloads left in place."
+  Log "FAILED: $why - skipping cleanup; repo-dir downloads left in place."
   $marker = Join-Path $archiveRoot ("FAILED-download-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd'))
   @("$(Get-Date -Format 's')  scheduled_download.ps1 failed", "Reason: $why", "Log: $log") |
     Set-Content -Path $marker
@@ -55,7 +55,7 @@ Get-ChildItem $repo -File |
   Where-Object { $_.Name -match '^[A-Za-z][A-Za-z0-9]*_\d{8}\.gpkg$' } |
   ForEach-Object {
     # An archived copy in a real year folder (not a _partial/_superseded/_-dir),
-    # byte-size-identical to the repo copy — existence alone isn't proof the
+    # byte-size-identical to the repo copy - existence alone isn't proof the
     # copy completed.
     $archived = Get-ChildItem -Recurse -File -Filter $_.Name $archiveRoot -ErrorAction SilentlyContinue |
                 Where-Object { $_.DirectoryName -notmatch '\\_' } | Select-Object -First 1
