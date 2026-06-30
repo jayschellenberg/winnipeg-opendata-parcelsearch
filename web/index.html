@@ -4,10 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Winnipeg Parcel Search</title>
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
-    />
+    <!-- MapLibre's CSS is bundled via Vite (imported in src/map.js), not
+         loaded from unpkg — no third-party style request, no SRI gap. -->
     <!-- Inter loaded from Google Fonts. The preconnect hints speed up
          the handshake; the @import-free <link> form avoids a render-
          blocking @import statement inside style.css. The page remains

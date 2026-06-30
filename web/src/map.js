@@ -7,6 +7,10 @@
 // The hover popup figures out which schema the feature is carrying.
 
 import maplibregl from 'maplibre-gl';
+// Bundle MapLibre's stylesheet through Vite instead of loading it from the
+// unpkg CDN at runtime — removes a third-party request with no Subresource
+// Integrity and keeps the Content-Security-Policy free of a CDN style origin.
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
 import bbox from '@turf/bbox';
 import turfArea from '@turf/area';
