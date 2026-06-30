@@ -2261,7 +2261,15 @@ function exportCsv() {
 
 function csvCell(value) {
   if (value == null) return '';
-  const s = String(value);
+  let s = String(value);
+  // Defuse spreadsheet formula injection: a leading =, +, -, @, or control
+  // char (tab/CR/LF) makes Excel/Sheets treat the cell as a formula. Values
+  // here come from the public SODA API and from the user's uploaded sales
+  // CSV, so neutralise any such cell by prefixing a single quote before
+  // RFC-4180 quoting. See OWASP "CSV Injection".
+  if (/^[=+\-@\t\r]/.test(s)) {
+    s = `'${s}`;
+  }
   // Quote if the value contains a comma, quote, CR, or LF. Inside quotes,
   // double any embedded quotes per RFC 4180.
   if (/[",\r\n]/.test(s)) {
