@@ -2176,6 +2176,7 @@ function showParcelSummary(a, s) {
         saved[k] = cb.checked;
         try {
           localStorage.setItem(storageKey, JSON.stringify(saved));
+          pruneVerifyKeys(VERIFY_KEYS_MAX);
         } catch { /* ignore */ }
       };
     }
@@ -2282,6 +2283,24 @@ function today() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// The Verify-this checklist writes one `wps_verify_v1:<roll>` key per parcel
+// ever opened and never removed them. Public roll numbers only, so it's
+// harmless, but bound the growth: keep at most VERIFY_KEYS_MAX, evicting the
+// oldest (localStorage preserves insertion order) when the cap is exceeded.
+const VERIFY_KEYS_MAX = 1000;
+const VERIFY_KEY_PREFIX = 'wps_verify_v1:';
+
+function pruneVerifyKeys(max) {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(VERIFY_KEY_PREFIX)) keys.push(k);
+    }
+    for (let i = 0; i < keys.length - max; i++) localStorage.removeItem(keys[i]);
+  } catch { /* ignore */ }
 }
 
 // td / badgeTd / propertyTypeBadgeClass / truncatedTd / stripZoningCode
@@ -2656,8 +2675,20 @@ function rebuildPucsFilter() {
   }
 }
 
+// Cap the uploaded sales CSV so a huge file can't read-into-memory / hang the
+// tab. A sales-comparable export is realistically well under this; the limit
+// only stops accidental or pathological inputs (self-inflicted DoS).
+const MAX_SALES_CSV_BYTES = 25 * 1024 * 1024;
+
 async function loadSalesCsv(file) {
   try {
+    if (file.size > MAX_SALES_CSV_BYTES) {
+      setSalesCount(
+        `${file.name} is ${(file.size / 1e6).toFixed(1)} MB — too large (max ${MAX_SALES_CSV_BYTES / 1e6} MB). Trim the file and retry.`,
+        true,
+      );
+      return;
+    }
     setSalesCount(`Reading ${file.name}…`);
     const text = await file.text();
     const rows = parseSalesCsv(text);

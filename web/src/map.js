@@ -1293,8 +1293,9 @@ export function initMap(container, { onFeatureClick } = {}) {
         if (!p) return;
         const short = p.route_short_name ? escapeHtml(p.route_short_name) : '';
         const long = p.route_long_name ? escapeHtml(p.route_long_name) : '';
-        const swatch = p.route_color
-          ? `<span style="display:inline-block;width:14px;height:14px;background:${escapeHtml(p.route_color)};border:1px solid #1f2937;border-radius:2px;vertical-align:middle;margin-right:6px"></span>`
+        const routeColor = safeCssColor(p.route_color);
+        const swatch = routeColor
+          ? `<span style="display:inline-block;width:14px;height:14px;background:${routeColor};border:1px solid #1f2937;border-radius:2px;vertical-align:middle;margin-right:6px"></span>`
           : '';
         transitPopup.setLngLat(e.lngLat).setHTML(`
           <div style="line-height:1.4;max-width:280px">
@@ -1935,7 +1936,19 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Validate a colour value before it goes into an inline `style` attribute.
+// escapeHtml guards the HTML context but not the CSS context, so an
+// API-supplied value like `red;background:url(http://x)` could otherwise be
+// injected into the CSS. Accept only a hex colour (GTFS route_color is six
+// hex digits, with or without a leading #) and normalise it; anything else
+// returns '' so the caller drops the swatch.
+function safeCssColor(value) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(String(value ?? '').trim());
+  return m ? `#${m[1]}` : '';
 }
 
 /**

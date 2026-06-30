@@ -68,6 +68,12 @@ const ROAD_NETWORK_URL = 'https://data.winnipeg.ca/resource/ngsx-caav.geojson';
 
 // Optional Socrata app token. Raises the anonymous rate limit.
 // Set via Vercel env var VITE_SODA_APP_TOKEN; undefined in anonymous mode.
+// SECURITY: any VITE_-prefixed env var is statically inlined into the public
+// client bundle and is therefore visible to anyone who views the JS. That's
+// fine for a Socrata app token (low-sensitivity, read-only public data, just
+// a rate-limit raiser) — but NEVER put a real secret behind a VITE_ name. If
+// rate-limit abuse ever matters, proxy SODA through a Vercel serverless
+// function instead of shipping a token to the browser.
 // The try/catch keeps the exact `import.meta.env.VITE_*` text that Vite
 // statically replaces at build time, while letting plain Node evaluate the
 // module (npm test imports this file) — import.meta.env doesn't exist there
