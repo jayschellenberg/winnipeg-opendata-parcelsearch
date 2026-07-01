@@ -31,6 +31,17 @@ PAGE       <- 50000L
 source("D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch/r/wpg_datasets.R")
 datasets <- WPG_DATASETS
 
+# Optional targeted download: set WPG_ONLY to a comma-separated list of dataset
+# `name`s (e.g. "Zoning,AssessmentParcels,SurveyParcels") to fetch just those.
+# Unset/empty = all registry datasets (the semi-annual default).
+only <- trimws(Sys.getenv("WPG_ONLY", ""))
+if (nzchar(only)) {
+  keep <- trimws(strsplit(only, ",")[[1]])
+  datasets <- Filter(function(d) d$name %in% keep, datasets)
+  if (!length(datasets)) stop("WPG_ONLY matched no datasets in the registry: ", only)
+  cat("  WPG_ONLY set — downloading only:", paste(vapply(datasets, function(d) d$name, ""), collapse = ", "), "\n")
+}
+
 ARCHIVE_ROOT <- "D:/Dropbox/Appraisal/Web/WpgSnapshots"
 # Skip a dataset if today's dated gpkg is already in the repo dir OR already
 # archived — so a re-run doesn't re-fetch the big parcels the archive has.
