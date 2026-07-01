@@ -874,7 +874,7 @@ function parcelSetCacheKey(fc) {
 // correctly + instantly. Bump HISTORICAL_CDN on every republish of
 // wpg-parcel-history (rebuild the shards, push, copy the new SHA here).
 const HISTORICAL_CDN =
-  'https://cdn.jsdelivr.net/gh/jayschellenberg/wpg-parcel-history@fa2110d782fd751e388ccba6ef2e42c0a3791124';
+  'https://cdn.jsdelivr.net/gh/jayschellenberg/wpg-parcel-history@1227e91b6473ceb6b3a3b75d58195b43572393d0';
 
 // Self-invalidating cache: a hard refresh does NOT clear IndexedDB, so a stale
 // shard would otherwise persist for weeks. Every cache key embeds HIST_VER
