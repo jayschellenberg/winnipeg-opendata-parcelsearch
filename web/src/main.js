@@ -1538,6 +1538,14 @@ let historicalLoadId = 0;
 const HISTORICAL_MIN_ZOOM = 12;
 const HISTORICAL_MAX_HOODS = 25;
 
+// Sentinel Area value for the UNASSIGNED shard — parcels/lots that fell outside
+// every neighbourhood polygon (audit H-2). They're scattered city-edge and have
+// no neighbourhood bbox, so map-view and cluster picks can't surface them; this
+// explicit Area pick loads the shard directly and frames to its own extent.
+const HISTORICAL_UNASSIGNED = '__UNASSIGNED__';
+const historicalAreaLabel = (cluster) =>
+  cluster === HISTORICAL_UNASSIGNED ? 'Unassigned (city-edge)' : cluster;
+
 // Neighbourhood slug — must match the R builder's slugify(name) EXACTLY so it
 // maps to the shard filename <SLUG>.json (build_historical_shards.R slugify()).
 function historicalSlugify(x) {
@@ -1594,9 +1602,17 @@ async function historicalSlugsInView(snap) {
 // Slugs of every neighbourhood in `clusterName` that carries data for `snap`,
 // plus the union bbox of those neighbourhoods so the map can frame the cluster.
 async function historicalSlugsInCluster(snap, clusterName) {
-  const ref = await historicalNeighbourhoodRef();
   const man = await fetchHistoricalManifest(snap).catch(() => null);
   const hoods = man?.neighbourhoods || {};
+  // Unassigned is the one "area" with no neighbourhood polygon: load its shard
+  // directly when the snapshot carries it. bbox is null here — there are no
+  // polygons to union — so loadHistorical frames to the loaded data instead.
+  if (clusterName === HISTORICAL_UNASSIGNED) {
+    const info = hoods.UNASSIGNED;
+    const has = !!info && ((info.parcels > 0) || (info.survey > 0));
+    return { slugs: has ? ['UNASSIGNED'] : [], bbox: null };
+  }
+  const ref = await historicalNeighbourhoodRef();
   const slugs = [];
   let bb = null;                                          // [w, s, e, n]
   for (const r of ref) {
@@ -1671,6 +1687,13 @@ async function initHistoricalControls() {
         $historicalArea.appendChild(o);
       }
     } catch (e) { console.warn('[historical] cluster list unavailable — Area picker shows Map view only.', e); }
+    // Unassigned (city-edge) — parcels/lots outside every neighbourhood polygon,
+    // otherwise unreachable from map-view or cluster picks (audit H-2). Added
+    // unconditionally; a snapshot with no UNASSIGNED shard just reports no data.
+    const un = document.createElement('option');
+    un.value = HISTORICAL_UNASSIGNED;
+    un.textContent = 'Unassigned (city-edge parcels)';
+    $historicalArea.appendChild(un);
   }
 
   if ($historicalToggle) $historicalToggle.disabled = false;
@@ -1830,18 +1853,22 @@ async function loadHistorical(snap, { frame = false } = {}) {
       slugs = inCluster.slugs;
       if (slugs.length === 0) {
         clearHistoricalView();
-        setCount(`Historical: no ${snap} data for ${cluster}.`);
+        setCount(`Historical: no ${snap} data for ${historicalAreaLabel(cluster)}.`);
         return;
       }
       // Frame the cluster (only on an explicit Area pick, not date-change reloads).
       // moveend is suppressed in cluster mode, so this won't trigger a refetch.
+      // Unassigned has no polygon bbox — it's framed post-load, below.
       if (frame && inCluster.bbox) {
         try { map.fitBounds([[inCluster.bbox[0], inCluster.bbox[1]], [inCluster.bbox[2], inCluster.bbox[3]]],
           { padding: 40, maxZoom: 16, duration: 600 }); } catch { /* ignore */ }
       }
       // A whole cluster can be many neighbourhoods + a big current-assessment
       // query; tell the user it's working (first load is uncached).
-      setCount(`Historical: loading ${cluster} — ${slugs.length} neighbourhood${slugs.length === 1 ? '' : 's'}…`);
+      const areaLabel = historicalAreaLabel(cluster);
+      setCount(cluster === HISTORICAL_UNASSIGNED
+        ? `Historical: loading ${areaLabel} parcels…`
+        : `Historical: loading ${areaLabel} — ${slugs.length} neighbourhood${slugs.length === 1 ? '' : 's'}…`);
     } else {
       if (map.getZoom() < HISTORICAL_MIN_ZOOM) {
         if (myId !== historicalLoadId) return;
@@ -1880,12 +1907,26 @@ async function loadHistorical(snap, { frame = false } = {}) {
     const surveyLineage = historicalMergeMaps(per.map((p) => p.surveyLineage?.by_survey_id));
     if (!parcels.features.length && !survey.features.length) {
       clearHistoricalView();
-      setCount(`Historical: no ${snap} data for ${cluster || 'the area in view'}.`);
+      setCount(`Historical: no ${snap} data for ${historicalAreaLabel(cluster) || 'the area in view'}.`);
       return;
     }
+    // Unassigned parcels are scattered city-wide, so there's no neighbourhood
+    // bbox to frame — fit to the loaded shard's own extent instead (H-2).
+    if (cluster === HISTORICAL_UNASSIGNED && frame) {
+      const feats = [...parcels.features, ...survey.features];
+      if (feats.length) {
+        try {
+          const bb = bbox({ type: 'FeatureCollection', features: feats });
+          map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 40, maxZoom: 15, duration: 600 });
+        } catch { /* ignore */ }
+      }
+    }
     // Enrich the assessment layer with size-change bands BEFORE setHistoricalData,
-    // so the colour expression + popups see them on first render.
-    const enrich = parcels.features.length
+    // so the colour expression + popups see them on first render. Skipped for
+    // Unassigned: its city-wide bbox would drag ~150k current parcels through
+    // fetchCurrentAssessmentInBbox (mostly incomplete → gone-detection disabled
+    // anyway), so those edge parcels render plain rather than pay that cost.
+    const enrich = (parcels.features.length && cluster !== HISTORICAL_UNASSIGNED)
       ? await stampHistoricalSizeChanges(parcels, `${cluster || 'view'}@${snap}`)
       : null;
     if (myId !== historicalLoadId) return;             // superseded during enrichment
@@ -1912,7 +1953,7 @@ async function loadHistorical(snap, { frame = false } = {}) {
     const bits = [];
     if (np) bits.push(`${np} assessment parcel${np === 1 ? '' : 's'}`);
     if (ns) bits.push(`${ns} survey lot${ns === 1 ? '' : 's'}`);
-    const whereTxt = cluster ? cluster : 'in view';
+    const whereTxt = cluster ? historicalAreaLabel(cluster) : 'in view';
     const moreHint = cluster ? '' : ' Pan/zoom to load more.';
     setCount(`Historical as of ${snap} — ${bits.join(' + ')} (${whereTxt}), dashed over today's lots.${moreHint} Click one for its as-of details.${changeNote} Verify against by-law / title.`);
   } catch (err) {
