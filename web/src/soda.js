@@ -2550,7 +2550,9 @@ function parseStreetNumber(raw) {
  */
 export function rollClause(roll) {
   if (!roll) return null;
-  const tokens = String(roll).split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+  // Delimiters: whitespace, comma, semicolon, and ampersand — so a pasted
+  // "03031870000 & 3031865000" (with or without spaces) lists both rolls.
+  const tokens = String(roll).split(/[\s,;&]+/).map((s) => s.trim()).filter(Boolean);
   if (tokens.length <= 1) {
     return likeClause('roll_number', roll);
   }

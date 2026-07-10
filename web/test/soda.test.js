@@ -174,6 +174,17 @@ test('rollClause — tolerates tabs / newlines / semicolons as separators', () =
   );
 });
 
+test('rollClause — ampersand delimiter (with or without spaces) lists both rolls', () => {
+  assert.equal(
+    rollClause('03031870000 & 3031865000'),
+    "roll_number IN ('03031870000','03031865000')"
+  );
+  assert.equal(
+    rollClause('03031870000&3031865000'),
+    "roll_number IN ('03031870000','03031865000')"
+  );
+});
+
 test('rollClause — multi-token input with no digits anywhere → null', () => {
   assert.equal(rollClause('abc, def'), null);
 });

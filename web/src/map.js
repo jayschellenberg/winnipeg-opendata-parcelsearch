@@ -1583,7 +1583,7 @@ export function setSubjectData(map, fc) {
 
 /**
  * Replace the zoning layer's source data. Pass an empty FC to clear it.
- * Visibility is controlled separately by setZoningVisible() so callers can
+ * Visibility is controlled separately by setZoningMode() so callers can
  * preload data while the layer is still hidden.
  */
 export function setZoningData(map, fc) {
@@ -1592,14 +1592,19 @@ export function setZoningData(map, fc) {
 }
 
 /**
- * Toggle the zoning fill+line layers on or off without touching the data.
- * Cheap to call repeatedly — MapLibre rerenders only the layout property.
+ * Set the zoning display mode without touching the data (cheap layout-only
+ * flips). Three modes:
+ *   'off'     — everything hidden.
+ *   'shading' — coloured fill + district outlines + zone-code labels.
+ *   'labels'  — outlines + zone-code labels only, NO colour fill, so the zones
+ *               read without the fill obscuring the basemap / parcels beneath.
  */
-export function setZoningVisible(map, visible) {
-  const v = visible ? 'visible' : 'none';
-  if (map.getLayer('zoning-fill')) map.setLayoutProperty('zoning-fill', 'visibility', v);
-  if (map.getLayer('zoning-line')) map.setLayoutProperty('zoning-line', 'visibility', v);
-  if (map.getLayer('zoning-label')) map.setLayoutProperty('zoning-label', 'visibility', v);
+export function setZoningMode(map, mode) {
+  const fill = mode === 'shading' ? 'visible' : 'none';
+  const lineLabel = mode === 'off' ? 'none' : 'visible';
+  if (map.getLayer('zoning-fill')) map.setLayoutProperty('zoning-fill', 'visibility', fill);
+  if (map.getLayer('zoning-line')) map.setLayoutProperty('zoning-line', 'visibility', lineLabel);
+  if (map.getLayer('zoning-label')) map.setLayoutProperty('zoning-label', 'visibility', lineLabel);
 }
 
 /** Toggle the citywide-parcels vector overlay on/off. The PMTiles

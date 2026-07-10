@@ -40,9 +40,14 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
   // calling init.
   let values = parseList(hidden.value);
 
+  // Split on comma, semicolon, ampersand, or whitespace so a pasted/typed
+  // "03031870000 & 3031865000" (or space/semicolon-separated) expands into one
+  // chip per value. The canonical hidden store stays comma-joined, so this
+  // reads its own output back cleanly. Chip values here are roll numbers with
+  // no internal separators, so whitespace-splitting is safe.
   function parseList(s) {
     return String(s ?? '')
-      .split(',')
+      .split(/[\s,;&]+/)
       .map((x) => x.trim())
       .filter(Boolean);
   }
@@ -193,7 +198,7 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
   // hasn't updated yet at that point — easier to handle here.
   textInput.addEventListener('paste', (e) => {
     const text = e.clipboardData?.getData('text');
-    if (!text || !text.includes(',')) return; // single token → let default handle
+    if (!text || !/[\s,;&]/.test(text)) return; // single token → let default handle
     e.preventDefault();
     const before = textInput.value;
     textInput.value = before + text;

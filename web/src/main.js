@@ -70,7 +70,7 @@ import {
   fetchCurrentAssessmentInBbox,
 } from './soda.js';
 import {
-  initMap, showResults, setZoningData, setZoningVisible, flyToFeature,
+  initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
   setCitywideParcelsVisible, probeCitywideParcels,
@@ -144,10 +144,11 @@ let currentRows = [];
 // (assessment if available, else survey). Cleared on every renderTable.
 const rowFeatureMap = new Map();
 
-// Zoning overlay state. `enabled` reflects the toggle button; `parcelFc`
-// is the most recent parcel FC drawn on the map, kept so the toggle can
-// fetch zones for the current results without re-running the search.
-let zoningEnabled = false;
+// Zoning overlay state. `zoningMode` cycles 'off' -> 'shading' -> 'labels' ->
+// 'off' via the Zoning button; `lastParcelFc` is the most recent parcel FC
+// drawn on the map, kept so the toggle can fetch zones for the current results
+// without re-running the search.
+let zoningMode = 'off';
 let lastParcelFc = null;
 let lastSurveyFc = { type: 'FeatureCollection', features: [] };
 let trafficEnabled = false;
@@ -740,62 +741,64 @@ function toggleLayer(which) {
 }
 
 /**
- * Toggle handler. Flips state, updates button text + aria-pressed, then
- * either fetches zoning for the current results (turning on) or hides
- * the layer (turning off). The data sticks around when hidden so a
- * re-toggle is instant if the parcel set hasn't changed.
+ * 3-state cycler for the Zoning button: off -> shading (coloured fill) ->
+ * labels (zone codes + outlines, no fill) -> off. The citywide zoning data is
+ * fetched once on the first activation (off -> shading) and reused for the
+ * label state and re-toggles; the colour legend only shows in shading mode.
  */
+const ZONING_LABELS = { off: 'Zoning', shading: 'Zoning: Shaded', labels: 'Zoning: Labels' };
 async function toggleZoning() {
-  zoningEnabled = !zoningEnabled;
-  $zoningToggle.setAttribute('aria-pressed', String(zoningEnabled));
-  $zoningToggle.classList.toggle('active', zoningEnabled);
+  const next = zoningMode === 'off' ? 'shading' : zoningMode === 'shading' ? 'labels' : 'off';
+  const wasOff = zoningMode === 'off';
+  zoningMode = next;
+  const on = next !== 'off';
+  $zoningToggle.setAttribute('aria-pressed', String(on));
+  $zoningToggle.classList.toggle('active', on);
+  $zoningToggle.dataset.mode = next;
   await mapReady;
-  setZoningVisible(map, zoningEnabled);
-  // Floating zoning legend follows the toggle. Built once at startup
-  // (see buildZoningLegend below) so flipping is just a hidden flag.
-  if ($zoningLegend) $zoningLegend.hidden = !zoningEnabled;
-  if (zoningEnabled) {
-    // First-load shows a loading state because the citywide fetch is
-    // ~10-15s on a cold IndexedDB cache. Subsequent toggles within
-    // the 7-day TTL read from disk and resolve in a few hundred ms.
-    $zoningToggle.disabled = true;
-    $zoningToggle.textContent = 'Loading zoning…';
-    try {
-      await refreshZoning();
-      // Phase 7 deferred zoning enrichment: a CSV upload doesn't
-      // run enrichAssessmentZoning eagerly (that would block 10+s
-      // on a multi-parcel cold load). When the user actually
-      // toggles Zoning on, enrich the current sales FC + re-render
-      // so the % / Zoning 2 columns fill in.
-      if (document.body.classList.contains('sales-mode')
-          && lastParcelFc && lastParcelFc.features?.length
-          && salesData) {
-        try {
-          const enriched = await enrichAssessmentZoning(lastParcelFc);
-          if (enriched?.features) {
-            lastParcelFc = enriched;
-            const rows = enriched.features.map((f) => ({ assess: f, survey: null }));
-            renderTable(rows);
-          }
-        } catch (zErr) {
-          console.warn('Sales zoning enrichment failed (non-fatal):', zErr);
+  setZoningMode(map, next);
+  // The colour legend is only meaningful when the fill is shown.
+  if ($zoningLegend) $zoningLegend.hidden = next !== 'shading';
+  if (!on) { $zoningToggle.textContent = ZONING_LABELS.off; return; }
+  // shading -> labels reuses the already-loaded data; no fetch.
+  if (!wasOff) { $zoningToggle.textContent = ZONING_LABELS[next]; return; }
+  // First activation (off -> shading): fetch the citywide zoning. Cold
+  // IndexedDB cache is ~10-15s; subsequent toggles read from disk in ms.
+  $zoningToggle.disabled = true;
+  $zoningToggle.textContent = 'Loading zoning…';
+  try {
+    await refreshZoning();
+    // Phase 7 deferred zoning enrichment: a CSV upload doesn't run
+    // enrichAssessmentZoning eagerly (would block 10+s on a cold multi-parcel
+    // load). When the user turns Zoning on, enrich the current sales FC +
+    // re-render so the % / Zoning 2 columns fill in.
+    if (document.body.classList.contains('sales-mode')
+        && lastParcelFc && lastParcelFc.features?.length
+        && salesData) {
+      try {
+        const enriched = await enrichAssessmentZoning(lastParcelFc);
+        if (enriched?.features) {
+          lastParcelFc = enriched;
+          const rows = enriched.features.map((f) => ({ assess: f, survey: null }));
+          renderTable(rows);
         }
+      } catch (zErr) {
+        console.warn('Sales zoning enrichment failed (non-fatal):', zErr);
       }
-      $zoningToggle.textContent = 'Hide Zoning';
-    } catch (err) {
-      console.warn('zoning toggle failed', err);
-      // Roll the toggle back so the user can retry.
-      zoningEnabled = false;
-      $zoningToggle.classList.remove('active');
-      $zoningToggle.setAttribute('aria-pressed', 'false');
-      $zoningToggle.textContent = 'Zoning';
-      setZoningVisible(map, false);
-      if ($zoningLegend) $zoningLegend.hidden = true;
-    } finally {
-      $zoningToggle.disabled = false;
     }
-  } else {
-    $zoningToggle.textContent = 'Zoning';
+    $zoningToggle.textContent = ZONING_LABELS[zoningMode];
+  } catch (err) {
+    console.warn('zoning toggle failed', err);
+    // Roll the toggle back to off so the user can retry.
+    zoningMode = 'off';
+    $zoningToggle.classList.remove('active');
+    $zoningToggle.setAttribute('aria-pressed', 'false');
+    $zoningToggle.dataset.mode = 'off';
+    $zoningToggle.textContent = ZONING_LABELS.off;
+    setZoningMode(map, 'off');
+    if ($zoningLegend) $zoningLegend.hidden = true;
+  } finally {
+    $zoningToggle.disabled = false;
   }
 }
 
@@ -1076,7 +1079,7 @@ async function setNeighbourhoodsMode(mode) {
  * state.
  */
 async function refreshZoning() {
-  if (!zoningEnabled) return;
+  if (zoningMode === 'off') return;
   const zoningFc = await fetchCityZoning();
   setZoningData(map, zoningFc);
 }
@@ -2058,7 +2061,7 @@ function parcelCountMsg(n, fc) {
  */
 function countRollList(roll) {
   if (!roll) return 0;
-  const tokens = String(roll).split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+  const tokens = String(roll).split(/[\s,;&]+/).map((s) => s.trim()).filter(Boolean);
   return tokens.length;
 }
 
