@@ -1951,7 +1951,7 @@ body:not(.subject-set) .subj-col {
    structure stay unchanged.
    ----------------------------------------------------------------- */
 :root {
-  --topbar-height: 52px;
+  --topbar-height: 44px;
   --ui-bg: #f3f5f2;
   --ui-bg-alt: #eaf0ed;
   --ui-panel: #ffffff;
@@ -2007,7 +2007,7 @@ body {
 
 .topbar {
   min-height: var(--topbar-height);
-  padding: 10px 22px;
+  padding: 8px 20px;
   background: linear-gradient(180deg, #151a16 0%, #0e120f 100%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 10px 30px rgba(14, 18, 15, 0.22);
@@ -2796,6 +2796,17 @@ body {
   background: var(--ui-brand);
   border-color: var(--ui-brand);
   box-shadow: 0 7px 16px rgba(18, 22, 19, 0.14);
+}
+
+/* The tabs are <button>s inside .controls, so `.controls button { background:
+   var(--ui-brand) }` (specificity 0,1,1) was painting BOTH tabs black, beating
+   `.sidebar-tab { background: transparent }` (0,1,0) — aria-selected never got a
+   look-in. Scope under .sidebar-tabs to outrank it: inactive stays transparent
+   (reads grey on the light strip), only the active tab is brand. */
+.sidebar-tabs .sidebar-tab { background: transparent; }
+.sidebar-tabs .sidebar-tab[aria-selected="true"] {
+  background: var(--ui-brand);
+  border-color: var(--ui-brand);
 }
 
 .sidebar-tab:focus-visible {
