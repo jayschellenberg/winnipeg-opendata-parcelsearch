@@ -71,10 +71,20 @@ select_cols <- "roll_number,full_address,property_use_code,dwelling_units,assess
 
 cat("Fetching Assessment Parcels in pages of ", page_size, "...\n", sep = "")
 
+# The API's own row count, fetched up front so the paged total can be
+# reconciled below — a fetch that quietly lost a page must not become the
+# citywide overlay for the next several months.
+live_count <- tryCatch({
+  as.integer(fromJSON(sub("\\.geojson$", ".json?$select=count(1)", url))[[1]][1])
+}, error = function(e) NA_integer_)
+cat("Live API count: ", live_count, "\n", sep = "")
+
 all_features <- list()
 offset       <- 0L
 repeat {
   cat(sprintf("  offset=%6d ... ", offset))
+  # req_retry: one transient Socrata 5xx used to abort the whole ~50-page
+  # fetch at whatever page it struck (httr2 throws on HTTP errors).
   resp <- request(url) |>
     req_url_query(
       `$select` = select_cols,
@@ -82,6 +92,8 @@ repeat {
       `$limit`  = page_size,
       `$offset` = offset
     ) |>
+    req_retry(max_tries = 3,
+              is_transient = function(r) resp_status(r) %in% c(429, 500, 502, 503)) |>
     req_perform()
   fc <- resp |> resp_body_string() |> fromJSON(simplifyVector = FALSE)
   n  <- length(fc$features)
@@ -93,6 +105,20 @@ repeat {
 }
 
 cat("Total features: ", length(all_features), "\n", sep = "")
+
+# Reconcile against the API's count (0.1% slack for rows deleted mid-fetch —
+# the dataset updates daily). $order=roll_number is a stable unique key
+# (verified: 245,212 rows = 245,212 distinct rolls), so pages can't drop or
+# duplicate rows between offsets; a shortfall here means pages were lost.
+if (!is.na(live_count) && length(all_features) < ceiling(live_count * 0.999)) {
+  stop(sprintf("INCOMPLETE fetch: %d features < live count %d — refusing to build tiles from a partial set.",
+               length(all_features), live_count))
+}
+if (is.na(live_count)) {
+  cat("!! live count unavailable — proceeding UNVERIFIED (manual build; check the total above looks right).\n")
+}
+cat(sprintf("RECONCILE d4mq-wa44: live=%s fetched=%d\n",
+            ifelse(is.na(live_count), "?", live_count), length(all_features)))
 
 # --- Step 1.5: Deduplicate by geometry ------------------------------
 # Multi-unit buildings (condos especially) often have one assessment
@@ -143,6 +169,27 @@ writeLines(
 if (file.exists(output_geojson)) file.remove(output_geojson)
 if (!file.rename(tmp_geojson, output_geojson)) stop("rename failed: ", tmp_geojson, " -> ", output_geojson)
 cat("GeoJSON size: ", round(file.size(output_geojson) / 1e6, 1), " MB\n", sep = "")
+
+# --- Step 2.1: build-date sidecar for the deployed overlay -----------
+# The .pmtiles is a months-old snapshot by the time users hover it, and its
+# tooltip attributes (address / PUCS) can disagree with the live table. This
+# tiny COMMITTED sidecar tells the web app when the tiles were built so the
+# overlay popup can say "as of YYYY-MM-DD" instead of implying live data.
+# (parcels.pmtiles itself is a release asset, so the date can't ride in git
+# with it — the sidecar is the in-repo source of truth. Commit it alongside
+# the release re-upload + sha256 refresh.)
+meta_path <- file.path(public_dir, "parcels-pmtiles-meta.json")
+meta_tmp  <- paste0(meta_path, ".tmpwrite")
+writeLines(toJSON(list(
+  built            = format(Sys.Date(), "%Y-%m-%d"),
+  source_resource  = "d4mq-wa44",
+  source_live_count = if (is.na(live_count)) NULL else live_count,
+  features_fetched = n_before,
+  features_tiled   = n_after
+), auto_unbox = TRUE, pretty = TRUE, null = "null"), meta_tmp)
+if (file.exists(meta_path)) file.remove(meta_path)
+if (!file.rename(meta_tmp, meta_path)) stop("rename failed: ", meta_tmp, " -> ", meta_path)
+cat("Wrote ", meta_path, "\n", sep = "")
 
 # --- Step 2.5: Write a parallel one-Point-per-parcel centroids file -
 # When a polygon spans multiple vector tiles (common at zoom >= 17 for

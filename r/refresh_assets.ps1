@@ -5,6 +5,11 @@
 # auto-deploys the refreshed data. Only the four asset files are staged, so this
 # never touches other working-tree changes, and the push is not forced.
 #
+# Also carries the SNAPSHOT-AGE HEARTBEAT: this job demonstrably fires on
+# schedule, so it is the one that alerts when the semi-annual download has
+# quietly NOT been running (audit F5: that task had never fired, and no
+# failure alert can come from a job that never starts).
+#
 # *** This job AUTO-DEPLOYS to production when the assets change. *** To make it
 # commit-only (you push manually), delete the `git push` line below. To disable
 # entirely: schtasks /Delete /TN WpgAssetRefreshQuarterly /F
@@ -12,8 +17,9 @@
 #   Run manually:  powershell -ExecutionPolicy Bypass -File r\refresh_assets.ps1
 
 $ErrorActionPreference = 'Continue'
-$repo = 'D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch'
-$logDir = 'D:\Dropbox\Appraisal\Web\WpgSnapshots\_download_logs'
+$repo        = 'D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch'
+$archiveRoot = 'D:\Dropbox\Appraisal\Web\WpgSnapshots'
+$logDir = Join-Path $archiveRoot '_download_logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir ("refresh_assets_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
 function Log($m) { ('{0}  {1}' -f (Get-Date -Format 's'), $m) | Tee-Object -FilePath $log -Append | Out-Null; Write-Output $m }
@@ -28,6 +34,38 @@ function Mail-Fail($why) {
 }
 
 Log '=== refresh transit + neighbourhood static assets ==='
+
+# --- Snapshot-age heartbeat (alert on ABSENCE, not just failure) -----------
+# Runs FIRST so every quarterly invocation checks it — the common "no asset
+# changes" outcome exits early below and must not skip the tripwire. If the
+# newest canonical AssessmentParcels snapshot is older than ~8 months
+# (semi-annual cadence + 2 months grace), email + a STALE marker at the
+# archive root. Non-fatal to the asset refresh either way.
+$maxAgeDays = 245
+try {
+  $newest = Get-ChildItem -Recurse -File -Path $archiveRoot -Filter 'AssessmentParcels_*.gpkg' -ErrorAction Stop |
+    ForEach-Object {
+      if ($_.DirectoryName -notmatch '\\_' -and $_.Name -match '^AssessmentParcels_(\d{8})\.gpkg$') {
+        [datetime]::ParseExact($Matches[1], 'yyyyMMdd', $null)
+      }
+    } |
+    Sort-Object -Descending | Select-Object -First 1
+  if (-not $newest) {
+    $why = "snapshot heartbeat: NO canonical AssessmentParcels_*.gpkg found under $archiveRoot."
+    Log "WARNING: $why"; Mail-Fail $why
+  } else {
+    $ageDays = [int]((Get-Date) - $newest).TotalDays
+    Log "snapshot heartbeat: newest AssessmentParcels snapshot $($newest.ToString('yyyy-MM-dd')) ($ageDays days old; limit $maxAgeDays)"
+    if ($ageDays -gt $maxAgeDays) {
+      $why = "snapshot heartbeat: newest AssessmentParcels snapshot is $ageDays days old (> $maxAgeDays). The semi-annual download likely never fired - run r\scheduled_download.ps1 manually and check the WpgOpenDataSemiAnnualDownload task."
+      Log "WARNING: $why"; Mail-Fail $why
+      @("$(Get-Date -Format 's')  snapshot heartbeat tripped", "Reason: $why") |
+        Set-Content -Path (Join-Path $archiveRoot ("STALE-snapshots-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))
+    }
+  }
+} catch {
+  Log "snapshot heartbeat check errored (non-fatal): $($_.Exception.Message)"
+}
 
 Log 'npm run refresh:transit'
 & npm --prefix (Join-Path $repo 'web') run refresh:transit *>> $log 2>&1
@@ -48,7 +86,7 @@ $assets = @(
   'web/public/wpg-neighbourhood-clusters.geojson'
 )
 $changed = & git -C $repo status --porcelain -- $assets
-if (-not $changed) { Log 'no asset changes - nothing to deploy.'; exit 0 }
+if (-not $changed) { Log 'no asset changes - nothing to deploy.'; Log '=== done ==='; exit 0 }
 
 Log 'asset(s) changed - committing + pushing (Vercel will auto-deploy)'
 & git -C $repo add -- $assets

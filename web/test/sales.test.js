@@ -6,7 +6,7 @@
 //   node test/sales.test.js
 
 import assert from 'node:assert/strict';
-import { normalizeRoll, dedupAndGroupSales } from '../src/lib/sales.js';
+import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from '../src/lib/sales.js';
 
 let passed = 0;
 let failed = 0;
@@ -99,6 +99,84 @@ test('normalizeRoll — pads / strips formatting / null on no digits', () => {
   assert.equal(normalizeRoll('13052686500'), '13052686500');
   assert.equal(normalizeRoll(null), null);
   assert.equal(normalizeRoll('n/a'), null);
+});
+
+// ---------- buildSaleFeatures ----------
+// Audit F2: the old roll-keyed stamping rendered one row per PARCEL, so a
+// parcel that sold twice in the study period silently lost one of its two
+// transactions (a 3-sale CSV showed "2 sales shown"). These pin the
+// one-feature-per-SALE contract.
+
+function liveFeature(roll, extra = {}) {
+  return {
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]] },
+    properties: { roll_number: roll, full_address: `${roll} TEST ST`, ...extra },
+  };
+}
+
+function liveMap(...features) {
+  return new Map(features.map((f) => [String(f.properties.roll_number), f]));
+}
+
+test('buildSaleFeatures — a resale renders BOTH transactions, not just the last CSV row', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Instrument Number': 'INST-2019', 'Sale Dates': '2019-05-01', 'Sold Price': '400000' }),
+    row({ 'Instrument Number': 'INST-2023', 'Sale Dates': '2023-08-15', 'Sold Price': '550000' }),
+  ]);
+  const live = liveFeature('06070731000', { total_assessed_value: '500000' });
+  const features = buildSaleFeatures(sales, liveMap(live), groups);
+  assert.equal(features.length, 2);
+  assert.deepEqual(
+    features.map((f) => [f.properties._saleInstrument, f.properties._salePrice]).sort(),
+    [['INST-2019', 400000], ['INST-2023', 550000]]
+  );
+  // Both share the live parcel's geometry + attributes.
+  assert.equal(features[0].geometry, live.geometry);
+  assert.equal(features[1].properties.full_address, '06070731000 TEST ST');
+  // Clones, not mutations: the live feature never gets sale fields.
+  assert.equal(live.properties._saleInstrument, undefined);
+});
+
+test('buildSaleFeatures — sale with no live match becomes a synthetic _noLiveMatch row', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Parcel ID': '9999999999', 'Street Number': '55', 'Street Name': 'NOWHERE RD' }),
+  ]);
+  const [f] = buildSaleFeatures(sales, liveMap(), groups);
+  assert.equal(f.geometry, null);
+  assert.equal(f.properties._noLiveMatch, true);
+  assert.equal(f.properties.roll_number, '09999999999');
+  assert.equal(f.properties.full_address, '55 NOWHERE RD');
+  assert.equal(f.properties._saleDate, '2024-03-01');
+});
+
+test('buildSaleFeatures — multi-parcel sale divides by group land + group assessment sums', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Parcel ID': '6070731000', 'Sold Price': '1000000', 'Land Actual sqft': '4000' }),
+    row({ 'Parcel ID': '6070732000', 'Sold Price': '1000000', 'Land Actual sqft': '6000' }),
+  ]);
+  const lm = liveMap(
+    liveFeature('06070731000', { total_assessed_value: '300000' }),
+    liveFeature('06070732000', { total_assessed_value: '500000' }),
+  );
+  const features = buildSaleFeatures(sales, lm, groups);
+  assert.equal(features.length, 2);
+  for (const f of features) {
+    assert.equal(f.properties._saleGroupSize, 2);
+    assert.equal(f.properties._pricePerSf, 1000000 / 10000);          // group land
+    assert.equal(f.properties._saleToAsmt, (1000000 / 800000) * 100); // group asmt
+  }
+});
+
+test('buildSaleFeatures — single-parcel sale uses its own land + assessment', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Sold Price': '350000', 'Land Actual sqft': '5000' }),
+  ]);
+  const lm = liveMap(liveFeature('06070731000', { total_assessed_value: '340000' }));
+  const [f] = buildSaleFeatures(sales, lm, groups);
+  assert.equal(f.properties._pricePerSf, 350000 / 5000);
+  assert.equal(f.properties._saleToAsmt, (350000 / 340000) * 100);
+  assert.equal(f.properties._saleGroupSize, 1);
 });
 
 console.log('');

@@ -78,7 +78,7 @@ import {
   setHistoricalData, setHistoricalVisible,
 } from './map.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
-import { normalizeRoll, dedupAndGroupSales } from './lib/sales.js';
+import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
 import { COLUMNS, csvSchemaForMode, buildThead } from './lib/columnsRegistry.js';
 // Cell-value formatters still used by the parcel-summary card (not table cells).
@@ -2856,84 +2856,31 @@ async function runSalesAnalysis() {
       : null);
   });
 
-  // Stamp sale + computed fields onto every matching feature.
-  // Multi-parcel sales (>1 distinct Parcel ID sharing an Instrument
-  // Number, e.g. 630 Kildare) need group totals: the Sold Price is
-  // the same on every row (the full sale total), so $/Lot SF is
-  // price ÷ sum-of-land-across-the-group, and Sale/Asmt is
-  // price ÷ sum-of-assessments-across-the-group.
-  const saleByRoll = new Map();
-  for (const s of visibleSales) saleByRoll.set(s.roll, s);
+  // One feature per SALE, not per roll. A parcel that sold twice in the
+  // study period (same roll, two instruments) must render as two rows —
+  // the old roll-keyed stamping kept only the sale that came last in the
+  // CSV and silently dropped the other transaction from the analysis.
+  // buildSaleFeatures (lib/sales.js, unit-tested) clones the live feature
+  // per sale, stamps the _sale* fields, and computes the multi-parcel
+  // group aggregates ($/Lot SF and Sale/Asmt over group sums); sales with
+  // no live d4mq-wa44 match come back as synthetic _noLiveMatch rows.
   const liveByRoll = new Map();
   for (const f of assessFc.features) {
     const r = String(f.properties?.roll_number ?? '');
     if (r) liveByRoll.set(r, f);
   }
-  for (const f of assessFc.features) {
-    const p = f.properties || {};
-    const sale = saleByRoll.get(String(p.roll_number));
-    if (!sale) continue;
-    const group = salesData.groups.get(sale.instrument) || [sale];
-    const isMulti = group.length > 1;
-    p._saleDate = sale.saleDate;
-    p._salePrice = sale.salePrice > 0 ? sale.salePrice : null;
-    p._saleInstrument = sale.instrument;
-    p._saleGroupSize = group.length;
-    p._saleUseCode = sale.useCode;
-    p._salePropertyType = sale.propertyType;
-    p._saleLivingArea = sale.livingArea > 0 ? sale.livingArea : null;
-    p._saleYearBuilt = sale.yearBuilt;
-    // $/Lot SF: divide by group land for multi-parcel sales.
-    let landSf = sale.landSf;
-    if (isMulti) {
-      landSf = group.reduce((sum, g) => sum + (g.landSf || 0), 0);
-    }
-    if (p._salePrice && landSf > 0) p._pricePerSf = p._salePrice / landSf;
-    // Sale/Asmt: divide by group assessment for multi-parcel sales.
-    // Sums best-effort across the live features we have; a missing
-    // live record on one group member just makes the denominator
-    // smaller (Sale/Asmt slightly overstated).
-    let asmt = Number(p.total_assessed_value) || 0;
-    if (isMulti) {
-      asmt = group.reduce((sum, g) => {
-        const live = liveByRoll.get(g.roll);
-        return sum + (Number(live?.properties?.total_assessed_value) || 0);
-      }, 0);
-    }
-    // Sale / Asmt as a percentage value (e.g. 101 for a sale at
-    // 1% over assessed). The local formatPct expects 0-100 input.
-    if (p._salePrice && asmt > 0) p._saleToAsmt = (p._salePrice / asmt) * 100;
-    if (subjectCentroid) {
+  const saleFc = {
+    type: 'FeatureCollection',
+    features: buildSaleFeatures(visibleSales, liveByRoll, salesData.groups),
+  };
+  if (subjectCentroid) {
+    for (const f of saleFc.features) {
       const c = featureCentroid(f);
-      if (c) p._dist = haversineKm(subjectCentroid, c);
+      if (c) f.properties._dist = haversineKm(subjectCentroid, c);
     }
   }
 
-  // Inject synthetic features for sale rolls that have no live
-  // d4mq-wa44 match — so the appraiser still sees the row.
-  const matchedRolls = new Set(assessFc.features.map((f) => String(f.properties?.roll_number)));
-  for (const sale of visibleSales) {
-    if (matchedRolls.has(sale.roll)) continue;
-    assessFc.features.push({
-      type: 'Feature',
-      geometry: null,
-      properties: {
-        roll_number: sale.roll,
-        full_address: [sale.streetNumber, sale.streetDirection, sale.streetName]
-          .filter(Boolean).join(' '),
-        _noLiveMatch: true,
-        _saleDate: sale.saleDate,
-        _salePrice: sale.salePrice > 0 ? sale.salePrice : null,
-        _saleInstrument: sale.instrument,
-        _saleUseCode: sale.useCode,
-        _salePropertyType: sale.propertyType,
-        _saleLivingArea: sale.livingArea > 0 ? sale.livingArea : null,
-        _saleYearBuilt: sale.yearBuilt,
-      },
-    });
-  }
-
-  tagFeatures(assessFc, 'assess');
+  tagFeatures(saleFc, 'assess');
 
   // Race guard: if a newer runSalesAnalysis started while we were
   // awaiting the SODA + subject fetches, drop this run's results
@@ -2945,20 +2892,23 @@ async function runSalesAnalysis() {
   // we don't auto-fetch zoning for every sale row. The toggle
   // handler picks up the current parcel FC and runs
   // enrichAssessmentZoning then re-renders. See toggleZoning.
-  lastParcelFc = assessFc;
+  lastParcelFc = saleFc;
   lastSurveyFc = EMPTY_FC;
 
-  const rows = assessFc.features.map((f) => ({ assess: f, survey: null }));
+  const rows = saleFc.features.map((f) => ({ assess: f, survey: null }));
   const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
+  const repeatSales = rows.length - liveByRoll.size - unmatched;
   setSalesCount(
     `${rows.length} sale${rows.length === 1 ? '' : 's'} shown` +
+    (repeatSales > 0 ? ` · ${repeatSales} repeat sale${repeatSales === 1 ? '' : 's'} of the same parcel` : '') +
     (unmatched ? ` · ${unmatched} not in d4mq-wa44` : '')
   );
 
-  // Draw matched parcels on the map.
+  // Draw matched parcels on the map. Repeat sales share one polygon;
+  // setParcels' geometry-hash dedupe draws it once.
   const mappable = {
     type: 'FeatureCollection',
-    features: assessFc.features.filter((f) => f.geometry),
+    features: saleFc.features.filter((f) => f.geometry),
   };
   setParcels(EMPTY_FC, mappable);
 

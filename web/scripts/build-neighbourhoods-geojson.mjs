@@ -12,7 +12,7 @@
  * publishes a new boundary set.
  *
  * Trigger:
- *   - Default source path:  D:\Dropbox\Appraisal\RProjects\BaseFiles\
+ *   - Default source path:  D:\Dropbox\Appraisal\RProjects\appraisal-templates\base-files\
  *   - Override via CLI arg: node build-neighbourhoods-geojson.mjs <src-dir>
  *   - npm:                  npm run refresh:neighbourhoods
  *
@@ -39,7 +39,7 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_WEB = path.resolve(SCRIPT_DIR, '..');
 const PUBLIC_DIR = path.join(REPO_WEB, 'public');
 
-const DEFAULT_SRC = String.raw`D:\Dropbox\Appraisal\RProjects\BaseFiles`;
+const DEFAULT_SRC = String.raw`D:\Dropbox\Appraisal\RProjects\appraisal-templates\base-files`;
 const srcDir = process.argv[2] || DEFAULT_SRC;
 
 const SRC_HOODS    = path.join(srcDir, 'WpgNeighbourhoods.geojson');

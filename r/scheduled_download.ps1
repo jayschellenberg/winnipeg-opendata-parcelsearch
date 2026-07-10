@@ -12,8 +12,10 @@ $ErrorActionPreference = 'Continue'
 $repo        = 'D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch'
 $archiveRoot = 'D:\Dropbox\Appraisal\Web\WpgSnapshots'
 
+# PATH lookup first; the pinned fallback matches the currently installed R
+# (checked 2026-07: R-4.6.1). If both miss, Fail() below fires loudly.
 $rscript = (Get-Command Rscript.exe -ErrorAction SilentlyContinue).Source
-if (-not $rscript) { $rscript = 'C:\Program Files\R\R-4.5.3\bin\Rscript.exe' }
+if (-not $rscript) { $rscript = 'C:\Program Files\R\R-4.6.1\bin\Rscript.exe' }
 
 $logDir = Join-Path $archiveRoot '_download_logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null

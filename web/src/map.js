@@ -1590,6 +1590,12 @@ export function setCitywideParcelsVisible(map, visible) {
  * One-time check (the result doesn't change at runtime); cached.
  */
 let _citywideTilesAvailable = null;
+// Build date of the deployed .pmtiles, from the committed sidecar written by
+// r/build_parcel_tiles.R. The tiles are a months-old snapshot (the deployed
+// set predates the live table by ~2 months at audit time) and their tooltip
+// attributes can disagree with live data — the popup says so. Null when the
+// sidecar is missing (pre-sidecar tile builds): the popup just omits the line.
+let _citywideBuiltDate = null;
 export async function probeCitywideParcels() {
   if (_citywideTilesAvailable !== null) return _citywideTilesAvailable;
   try {
@@ -1597,6 +1603,17 @@ export async function probeCitywideParcels() {
     _citywideTilesAvailable = res.ok;
   } catch {
     _citywideTilesAvailable = false;
+  }
+  if (_citywideTilesAvailable) {
+    // Fire-and-forget: the popup can only open after the toggle (and this
+    // probe) has run, so the date is in place by first click in practice.
+    fetch('/parcels-pmtiles-meta.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((meta) => {
+        const d = meta?.built;
+        if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) _citywideBuiltDate = d;
+      })
+      .catch(() => { /* sidecar optional */ });
   }
   return _citywideTilesAvailable;
 }
@@ -1790,6 +1807,11 @@ function citywideParcelHtml(p) {
   actions.push(`<a href="#" class="parcel-coords-copy" role="button" title="Copy parcel centroid (lat, lng) to clipboard">Coordinates</a>`);
   if (actions.length) {
     lines.push(actions.join(' &nbsp;·&nbsp; '));
+  }
+  // Tiles are an offline-built snapshot, not live SODA data — date it so a
+  // stale address/PUCS here isn't mistaken for the current record.
+  if (_citywideBuiltDate) {
+    lines.push(`<small style="color:#888">Tile snapshot as of ${escapeHtml(_citywideBuiltDate)} — search for live data</small>`);
   }
   return `<div style="max-width:280px;line-height:1.45;font-size:13px">${lines.join('<br>')}</div>`;
 }

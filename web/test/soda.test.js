@@ -16,6 +16,7 @@ import {
   rollClause,
   normalizeRoll,
   buildAddressClauses,
+  normalizeStreetQuery,
   zoningClause,
 } from '../src/soda.js';
 
@@ -238,22 +239,70 @@ test('buildAddressClauses — open-ended bounds', () => {
   );
 });
 
-test('buildAddressClauses — street name is case-insensitive LIKE with SoQL escaping', () => {
+// The column side strips apostrophes + periods via nested SoQL replace()
+// (d4mq-wa44 stores "ST MARY'S", cam2-ii3u "ST MARYS", 143 rows carry
+// periods) so punctuation variants match both datasets.
+const STREET_COL = "upper(replace(replace(street_name,'''',''),'.',''))";
+
+test('buildAddressClauses — street match is punctuation-insensitive on both sides', () => {
   assert.deepEqual(
     buildAddressClauses({ addressFrom: '', addressTo: '', addressStreet: "O'Brien" }),
-    ["upper(street_name) like '%O''BRIEN%'"]
+    [`${STREET_COL} like '%OBRIEN%'`]
   );
 });
 
 test('buildAddressClauses — number + street compose; garbage numbers are ignored', () => {
   assert.deepEqual(
     buildAddressClauses({ addressFrom: '12', addressTo: '', addressStreet: 'Main' }),
-    ['street_number >= 12', "upper(street_name) like '%MAIN%'"]
+    ['street_number >= 12', `${STREET_COL} like '%MAIN%'`]
   );
   assert.deepEqual(
     buildAddressClauses({ addressFrom: 'abc', addressTo: '-5', addressStreet: '' }),
     []
   );
+});
+
+test('buildAddressClauses — unit-address form "3-456" searches street number 456, not 3', () => {
+  // Winnipeg unit addresses read "3-456 Main St"; street_number is the
+  // trailing part (the unit lives in unit_number / full_address). parseInt
+  // used to answer 3 and search the wrong block entirely.
+  assert.deepEqual(
+    buildAddressClauses({ addressFrom: '3-456', addressTo: '', addressStreet: '' }),
+    ['street_number >= 456']
+  );
+  assert.deepEqual(
+    buildAddressClauses({ addressFrom: '3-456', addressTo: '3-456', addressStreet: '' }),
+    ['street_number = 456']
+  );
+});
+
+// ---------- normalizeStreetQuery ----------
+// Every input in this matrix returned 0 rows against the live API before
+// normalization (audit F4) despite matching 185-1,029 real parcels. Each
+// rule only widens the substring LIKE, so normalization can never hide a
+// match that the raw input would have found.
+
+test('normalizeStreetQuery — the audit zero-result matrix now normalizes to matchable names', () => {
+  assert.equal(normalizeStreetQuery("St. Mary's Rd"), 'ST MARYS');
+  assert.equal(normalizeStreetQuery("St Mary's"), 'ST MARYS');
+  assert.equal(normalizeStreetQuery('St Marys'), 'ST MARYS');
+  assert.equal(normalizeStreetQuery('Saint Marys Road'), 'ST MARYS');
+  assert.equal(normalizeStreetQuery('Portage Ave'), 'PORTAGE');
+  assert.equal(normalizeStreetQuery('Portage Avenue'), 'PORTAGE');
+  assert.equal(normalizeStreetQuery('Portage Ave E'), 'PORTAGE');
+  assert.equal(normalizeStreetQuery("ST  MARY'S"), 'ST MARYS');   // doubled space
+});
+
+test('normalizeStreetQuery — French generics lead the written name but not street_name', () => {
+  assert.equal(normalizeStreetQuery('Rue Marion'), 'MARION');
+  assert.equal(normalizeStreetQuery('Boulevard Provencher'), 'PROVENCHER');
+  assert.equal(normalizeStreetQuery('Avenue de la Cathedrale'), 'DE LA CATHEDRALE');
+});
+
+test('normalizeStreetQuery — single-token inputs are never stripped to nothing', () => {
+  assert.equal(normalizeStreetQuery('Grove'), 'GROVE');     // type word as a name
+  assert.equal(normalizeStreetQuery('Avenue'), 'AVENUE');   // lone generic stays
+  assert.equal(normalizeStreetQuery('  '), '');
 });
 
 // ---------- zoningClause ----------

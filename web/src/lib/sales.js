@@ -77,3 +77,70 @@ export function dedupAndGroupSales(rows) {
   }
   return { sales, rolls, groups };
 }
+
+/**
+ * Build ONE map/table feature per sale record. A parcel that sold twice in
+ * the study period (same roll, two instruments) yields two features sharing
+ * the live parcel's geometry — the previous roll-keyed stamping collapsed
+ * them to whichever sale came last in the CSV, silently dropping the other
+ * transaction from the analysis (a 3-sale CSV rendered "2 sales shown").
+ *
+ * Each feature is a shallow clone (own `properties`) of the live d4mq-wa44
+ * feature for the sale's roll; sales with no live match get a synthetic
+ * geometry-less feature flagged `_noLiveMatch` so the row still renders.
+ *
+ * Group aggregates (multi-parcel sales sharing an Instrument Number): the
+ * Sold Price on every row is the full sale total, so $/Lot SF divides by the
+ * group's summed land and Sale/Asmt by the group's summed live assessments —
+ * a member with no live record just shrinks that denominator (best-effort,
+ * Sale/Asmt slightly overstated).
+ *
+ * @param {SaleRecord[]} visibleSales   post-filter sales, one per (roll, instrument)
+ * @param {Map<string, Feature>} liveByRoll  roll → live d4mq-wa44 feature
+ * @param {Map<string, SaleRecord[]>} groups instrument → group members
+ * @returns {Feature[]} one feature per sale, in visibleSales order
+ */
+export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
+  const features = [];
+  for (const sale of visibleSales) {
+    const live = liveByRoll.get(sale.roll);
+    const f = live
+      ? { ...live, properties: { ...live.properties } }
+      : {
+          type: 'Feature',
+          geometry: null,
+          properties: {
+            roll_number: sale.roll,
+            full_address: [sale.streetNumber, sale.streetDirection, sale.streetName]
+              .filter(Boolean).join(' '),
+            _noLiveMatch: true,
+          },
+        };
+    const p = f.properties;
+    const group = groups.get(sale.instrument) || [sale];
+    const isMulti = group.length > 1;
+    p._saleDate = sale.saleDate;
+    p._salePrice = sale.salePrice > 0 ? sale.salePrice : null;
+    p._saleInstrument = sale.instrument;
+    p._saleGroupSize = group.length;
+    p._saleUseCode = sale.useCode;
+    p._salePropertyType = sale.propertyType;
+    p._saleLivingArea = sale.livingArea > 0 ? sale.livingArea : null;
+    p._saleYearBuilt = sale.yearBuilt;
+    let landSf = sale.landSf;
+    if (isMulti) {
+      landSf = group.reduce((sum, g) => sum + (g.landSf || 0), 0);
+    }
+    if (p._salePrice && landSf > 0) p._pricePerSf = p._salePrice / landSf;
+    let asmt = Number(p.total_assessed_value) || 0;
+    if (isMulti) {
+      asmt = group.reduce((sum, g) => {
+        const groupLive = liveByRoll.get(g.roll);
+        return sum + (Number(groupLive?.properties?.total_assessed_value) || 0);
+      }, 0);
+    }
+    if (p._salePrice && asmt > 0) p._saleToAsmt = (p._salePrice / asmt) * 100;
+    features.push(f);
+  }
+  return features;
+}

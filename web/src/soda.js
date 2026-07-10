@@ -86,7 +86,10 @@ const USER_SEARCH_LIMIT = 1000;
 const SODA_PAGE_SIZE = 5000;
 const SODA_MAX_ROWS = 100000;
 const TRAFFIC_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV4';
+// V5: V4 entries were built from a page loop ordered by count-date alone —
+// non-unique across >60k grouped rows, so pages could drop or double-count
+// study-days for up to 30 cached days. The key bump orphans them.
+const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV5';
 
 /**
  * Query Survey Parcels by attribute. Any provided field is partial-matched
@@ -544,10 +547,19 @@ async function fetchAddressPointsForParcels(parcelFc) {
   }
   const round = (n) => n.toFixed(6);
   const PAD = 0.002;
-  const clauses = parcelFc.features.map((f) => {
-    const [minLon, minLat, maxLon, maxLat] = bbox(f);
-    return `within_box(point,${round(maxLat + PAD)},${round(minLon - PAD)},${round(minLat - PAD)},${round(maxLon + PAD)})`;
-  });
+  // Same null-geometry guard as fetchPerFeatureBboxUnion: a parcel with no
+  // polygon has an infinite bbox, and one Infinity clause 400s its whole batch.
+  const clauses = [];
+  for (const f of parcelFc.features) {
+    let bb;
+    try { bb = bbox(f); } catch { continue; }
+    if (!Array.isArray(bb) || !bb.every(Number.isFinite)) continue;
+    const [minLon, minLat, maxLon, maxLat] = bb;
+    clauses.push(`within_box(point,${round(maxLat + PAD)},${round(minLon - PAD)},${round(minLat - PAD)},${round(maxLon + PAD)})`);
+  }
+  if (!clauses.length) {
+    return { type: 'FeatureCollection', features: [] };
+  }
 
   const BATCH = 50;
   const batches = [];
@@ -950,7 +962,9 @@ export async function fetchCurrentAssessmentInBbox(bbox4) {
     return { rows: [], complete: false };
   }
   const [minLon, minLat, maxLon, maxLat] = bbox4;
-  const cacheKey = `wpg_curasmt_${[minLon, minLat, maxLon, maxLat].map((n) => n.toFixed(4)).join('_')}`;
+  // Key prefix v2: v1 entries were written by an unordered page loop (see the
+  // $order note below) and can be missing thousands of rolls — never trust them.
+  const cacheKey = `wpg_curasmt2_${[minLon, minLat, maxLon, maxLat].map((n) => n.toFixed(4)).join('_')}`;
   const cached = await idbReadCache(cacheKey, CURRENT_ASMT_TTL_MS).catch(() => null);
   if (cached) return { rows: cached, complete: true };   // only complete runs are cached
   const PAD = 0.001;
@@ -963,8 +977,14 @@ export async function fetchCurrentAssessmentInBbox(bbox4) {
   let offset = 0;
   let complete = false;
   for (let page = 0; page < 30; page++) {            // cap ~150k rows
+    // $order=roll_number is load-bearing: Socrata gives NO ordering guarantee
+    // without $order, and a cluster bbox spans 4-7 pages — measured on the
+    // St. Vital South bbox, two unordered runs each returned ~4.5k duplicate
+    // rows and were missing ~3.8k rolls the other run had. Every missing roll
+    // became a false grey "gone" parcel. roll_number is unique across
+    // d4mq-wa44 (verified 245,212 = count distinct), so pages are stable.
     const url = `${base}?$select=roll_number,assessed_land_area`
-      + `&$where=${encodeURIComponent(where)}&$limit=${SODA_PAGE_SIZE}&$offset=${offset}`;
+      + `&$where=${encodeURIComponent(where)}&$order=roll_number&$limit=${SODA_PAGE_SIZE}&$offset=${offset}`;
     let batch;
     try {
       const res = await fetch(url, { headers });
@@ -1049,7 +1069,12 @@ async function fetchMidblockTrafficStudyRows() {
       'count(*)',
     ].join(','),
     $group: 'study_id,street,street_from,street_to,location_description,date_trunc_ymd(count_date)',
-    $order: 'date_trunc_ymd_count_date DESC',
+    // Order by the FULL group key, newest-date first. Date alone is shared by
+    // many studies, and this aggregate pages through >60k grouped rows —
+    // $offset paging over a non-unique order can drop or duplicate rows
+    // between pages (duplicates get SUMMED downstream, inflating volumes).
+    // latestTrafficRowsByCorridor only needs date DESC as the leading key.
+    $order: 'date_trunc_ymd_count_date DESC,study_id,street,street_from,street_to,location_description',
   });
   const { rows } = await fetchSodaRowsPaged(MIDBLOCK_TRAFFIC_COUNTS_URL, params, {
     label: 'Midblock traffic-count daily aggregate',
@@ -2133,11 +2158,24 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
   // direction. The client-side booleanIntersects join still makes the
   // final call on actual overlap, so the extra rows fetched are harmless.
   const PAD_DEG = 0.002;
-  const clauses = fc.features.map((f) => {
-    const [minLon, minLat, maxLon, maxLat] = bbox(f);
+  // d4mq-wa44 carries ~59 rows with geometry:null (bus shelters, statutory
+  // pipelines, some condo unit rolls — e.g. every unit of 238 Portage). turf's
+  // bbox() returns ±Infinity for them, and one "within_box(...,Infinity,...)"
+  // clause 400s the whole 50-feature batch, killing enrichment for every row
+  // in the search. A geometry-less feature can't spatially match anything, so
+  // skip it instead of letting it poison the batch.
+  const clauses = [];
+  for (const f of fc.features) {
+    let bb;
+    try { bb = bbox(f); } catch { continue; }
+    if (!Array.isArray(bb) || !bb.every(Number.isFinite)) continue;
+    const [minLon, minLat, maxLon, maxLat] = bb;
     // within_box(geom, nwLat, nwLon, seLat, seLon)
-    return `within_box(${geomColumn},${round(maxLat + PAD_DEG)},${round(minLon - PAD_DEG)},${round(minLat - PAD_DEG)},${round(maxLon + PAD_DEG)})`;
-  });
+    clauses.push(`within_box(${geomColumn},${round(maxLat + PAD_DEG)},${round(minLon - PAD_DEG)},${round(minLat - PAD_DEG)},${round(maxLon + PAD_DEG)})`);
+  }
+  if (!clauses.length) {
+    return { type: 'FeatureCollection', features: [] };
+  }
 
   // 50 clauses per request keeps the URL comfortably under 8 KB even with
   // the longest coordinate strings. Batches run in parallel so wall-clock
@@ -2354,15 +2392,85 @@ export function buildAddressClauses({ addressFrom, addressTo, addressStreet }) {
     out.push(`street_number <= ${to}`);
   }
   if (addressStreet && String(addressStreet).trim()) {
-    out.push(likeClause('street_name', addressStreet));
+    const sc = streetNameClause(addressStreet);
+    if (sc) out.push(sc);
   }
   return out;
 }
 
-/** Parse a From/To bound to a positive integer; null on empty/garbage. */
+// Tokens dropped from the TAIL of a street query: the street type lives in a
+// separate street_type column in both d4mq-wa44 and cam2-ii3u, so "PORTAGE
+// AVENUE" / "MAIN ST" matched nothing before normalization. Built from the
+// distinct street_type values observed on d4mq-wa44 plus the common
+// abbreviations in STREET_TYPE_ALIASES. Dropping a token can only WIDEN a
+// substring LIKE, never lose a match.
+const STREET_QUERY_TYPE_TOKENS = new Set([
+  ...Object.keys(STREET_TYPE_ALIASES),
+  ...Object.values(STREET_TYPE_ALIASES),
+  'AVENUE', 'STREET', 'DRIVE', 'ROAD', 'CRESCENT', 'BAY', 'BOULEVARD', 'PLACE',
+  'WAY', 'COVE', 'HIGHWAY', 'LANE', 'COURT', 'TRAIL', 'GATE', 'ROW', 'CLOSE',
+  'POINT', 'PATH', 'PARK', 'CIRCLE', 'GROVE', 'WALK', 'PARKWAY', 'TERRACE',
+]);
+// French generics lead the name in written St. Boniface addresses ("Rue
+// Marion", "Boulevard Provencher") but street_name stores only the name
+// ("MARION"; "DE LA CATHEDRALE" with street_type AVENUE) — drop them.
+const STREET_QUERY_FRENCH_PREFIXES = new Set([
+  'RUE', 'AVENUE', 'BOULEVARD', 'CHEMIN', 'PROMENADE', 'IMPASSE', 'ALLEE',
+]);
+const STREET_QUERY_DIRECTIONS = new Set([
+  'N', 'S', 'E', 'W', 'NORTH', 'SOUTH', 'EAST', 'WEST',
+]);
+
+/**
+ * Normalize a street-name query to the form the datasets store. The raw
+ * input zeroed out for the most natural spellings — verified live:
+ * "St. Mary's Rd", "St Marys", "Saint Marys Road", "Portage Ave", and
+ * "Rue Marion" all returned 0 rows against 185-1,029 real parcels.
+ *
+ *  - strips . ' ’ (d4mq-wa44 stores "ST MARY'S", cam2-ii3u "ST MARYS" —
+ *    the SoQL side strips the same chars so both spellings match both)
+ *  - collapses whitespace
+ *  - drops a leading French generic and a trailing direction/type token
+ *  - expands leading SAINT → ST (dataset convention)
+ *
+ * Every rule only ever widens the substring match, so normalization can
+ * add results but never hide one.
+ */
+export function normalizeStreetQuery(raw) {
+  let s = String(raw ?? '').toUpperCase().replace(/[.'’]/g, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  const tokens = s.split(' ');
+  if (tokens.length > 1 && STREET_QUERY_FRENCH_PREFIXES.has(tokens[0])) tokens.shift();
+  if (tokens[0] === 'SAINT') tokens[0] = 'ST';
+  if (tokens.length > 1 && STREET_QUERY_DIRECTIONS.has(tokens[tokens.length - 1])) tokens.pop();
+  if (tokens.length > 1 && STREET_QUERY_TYPE_TOKENS.has(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.join(' ');
+}
+
+/**
+ * Punctuation-insensitive street_name match. Strips apostrophes and periods
+ * from BOTH sides — the column via nested SoQL replace() (same pattern
+ * zoningClause uses for hyphens; '''' is SoQL for a single-quote literal),
+ * the input via normalizeStreetQuery. 143 street_name rows carry periods
+ * and the two datasets disagree on apostrophes ("ST MARY'S" vs "ST MARYS").
+ */
+function streetNameClause(value) {
+  const normalized = normalizeStreetQuery(value);
+  if (!normalized) return null;
+  return `upper(replace(replace(street_name,'''',''),'.','')) like '%${escapeSoql(normalized)}%'`;
+}
+
+/** Parse a From/To bound to a positive integer; null on empty/garbage.
+ *  Accepts Winnipeg's unit-address form "3-456" (unit 3 at number 456) by
+ *  taking the TRAILING number — street_number is a NUMBER column and the
+ *  unit prefix lives in unit_number / full_address ("4-238 PORTAGE AVENUE"),
+ *  so parseInt's old answer (3) searched the wrong block entirely. */
 function parseStreetNumber(raw) {
   if (raw == null || raw === '') return null;
-  const n = parseInt(String(raw).trim(), 10);
+  const s = String(raw).trim();
+  const unitForm = s.match(/^(\d+)\s*-\s*(\d+)$/);
+  const n = unitForm ? parseInt(unitForm[2], 10) : parseInt(s, 10);
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 

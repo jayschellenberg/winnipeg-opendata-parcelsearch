@@ -13,7 +13,12 @@
 //      "gone" off a partial fetch.
 
 import assert from 'node:assert/strict';
-import { fetchSoda, fetchCurrentAssessmentInBbox, searchAssessmentParcelsByRolls } from '../src/soda.js';
+import {
+  fetchSoda,
+  fetchCurrentAssessmentInBbox,
+  searchAssessmentParcelsByRolls,
+  fetchSurveyOverlap,
+} from '../src/soda.js';
 
 const tests = [];
 function test(name, fn) {
@@ -134,6 +139,63 @@ test('fetchCurrentAssessmentInBbox — invalid bbox → empty + incomplete, no r
   const out = await fetchCurrentAssessmentInBbox([1, 2, NaN, 4]);
   assert.deepEqual(out, { rows: [], complete: false });
   assert.equal(calls.length, 0);
+});
+
+test('fetchCurrentAssessmentInBbox — every page is ordered by roll_number (audit F1)', async () => {
+  // Without $order, Socrata's page order is replica-dependent: measured on a
+  // real cluster bbox, two unordered runs each dropped ~3.8k rolls the other
+  // run returned — every dropped roll rendered as a false grey "gone" parcel.
+  // This pins the $order param on EVERY page of the loop so a future
+  // "simplify" pass can't reintroduce it (the 1348c06 failure mode).
+  const fullPage = Array.from({ length: 5000 }, (_, i) => ({
+    roll_number: String(10000000000 + i),
+    assessed_land_area: '5000',
+  }));
+  const shortPage = [{ roll_number: '99999999999', assessed_land_area: '100' }];
+  const calls = stubFetch([
+    { status: 200, json: fullPage },
+    { status: 200, json: shortPage },
+  ]);
+  const out = await fetchCurrentAssessmentInBbox(BBOX);
+  assert.equal(calls.length, 2);
+  for (const url of calls) {
+    assert.ok(url.includes('$order=roll_number'), `page not ordered: ${url}`);
+  }
+  assert.equal(out.rows.length, 5001);
+  assert.equal(out.complete, true);
+});
+
+// ---------- fetchPerFeatureBboxUnion null-geometry guard (audit F3) ----------
+// d4mq-wa44 carries ~59 geometry:null rows (bus shelters, pipelines, some
+// condo unit rolls). turf bbox() yields ±Infinity for them, and one
+// within_box(...,Infinity,...) clause used to 400 the whole 50-feature batch
+// — killing legal-description/zoning/address enrichment for every row of the
+// search. Exercised through fetchSurveyOverlap, the assessment-flow caller.
+
+const VALID_SQUARE = {
+  type: 'Feature',
+  properties: { roll_number: '01000001000' },
+  geometry: {
+    type: 'Polygon',
+    coordinates: [[[-97.14, 49.89], [-97.13, 49.89], [-97.13, 49.90], [-97.14, 49.90], [-97.14, 49.89]]],
+  },
+};
+const NULL_GEOM = { type: 'Feature', properties: { roll_number: '12097805410' }, geometry: null };
+const EMPTY_FC_PAGE = { status: 200, json: { type: 'FeatureCollection', features: [] } };
+
+test('fetchSurveyOverlap — null-geometry features are skipped, not turned into Infinity clauses', async () => {
+  const calls = stubFetch([EMPTY_FC_PAGE]);
+  await fetchSurveyOverlap({ type: 'FeatureCollection', features: [VALID_SQUARE, NULL_GEOM] });
+  assert.equal(calls.length, 1);
+  assert.ok(!calls[0].includes('Infinity'), `Infinity leaked into the query: ${calls[0]}`);
+  assert.ok(decodeURIComponent(calls[0]).includes('within_box(location,'), 'valid feature still queried');
+});
+
+test('fetchSurveyOverlap — all features geometry-less → no request, empty result', async () => {
+  const calls = stubFetch([]);
+  const fc = await fetchSurveyOverlap({ type: 'FeatureCollection', features: [NULL_GEOM] });
+  assert.equal(calls.length, 0);
+  assert.equal(fc.features.length, 0);
 });
 
 // ---------- searchAssessmentParcelsByRolls (chunking) ----------

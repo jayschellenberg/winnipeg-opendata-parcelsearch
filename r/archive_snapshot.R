@@ -92,6 +92,17 @@ read_schema_fields <- function(path) {
   }, error = function(e) character(0))
 }
 
+# Row count from the gpkg header (st_layers — no full read). Recorded in the
+# sidecar so a future count reconciliation (archive vs API vs shards) never
+# has to open the GeoPackage. The 2026-07 audit had to read every gpkg to get
+# this one number.
+read_feature_count <- function(path) {
+  tryCatch({
+    n <- sf::st_layers(path)$features[1]
+    if (length(n) && !is.na(n)) as.integer(n) else NA_integer_
+  }, error = function(e) NA_integer_)
+}
+
 # Source CRS as shipped — matters for defensibility. Winnipeg ships EPSG:4326
 # today; always treat a reprojected metric CRS (UTM-14N / EPSG:26914) as the
 # area-of-record, never the native lon/lat.
@@ -148,6 +159,7 @@ write_meta <- function(dest, layer, dataset, source_url, retrieved_at, inferred)
   sha    <- if (unchanged) prior$sha256 else file_sha256(dest)
   fields <- if (unchanged && length(prior$schema_fields)) unlist(prior$schema_fields) else read_schema_fields(dest)
   src_crs <- if (unchanged && !is.null(prior$source_crs)) prior$source_crs else file_crs(dest)
+  feat_n <- if (unchanged && !is.null(prior$feature_count)) prior$feature_count else read_feature_count(dest)
   if (unchanged && !is.null(prior$retrieved_at)) {
     ra_str   <- prior$retrieved_at
     inferred <- if (is.null(prior$retrieved_at_inferred)) inferred else prior$retrieved_at_inferred
@@ -168,6 +180,7 @@ write_meta <- function(dest, layer, dataset, source_url, retrieved_at, inferred)
     source_crs            = src_crs,                      # CRS as shipped (area-of-record note below)
     bytes                 = bytes,
     sha256                = sha,
+    feature_count         = feat_n,                       # rows as archived — count-reconciliation anchor
     schema_fields         = fields,
     note                  = paste("Authoritative source-of-record for as-of-date measurements.",
                                   "Display shards derived from this are simplified for visualization",

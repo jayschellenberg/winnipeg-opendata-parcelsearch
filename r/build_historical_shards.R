@@ -24,7 +24,10 @@
 # same neighbourhood set, so assessment + survey shards share one slug universe
 # (a neighbourhood pick fetches both). The assessment's own `neighbourhood_area`
 # is kept as a DISPLAY field. Parcels falling outside every neighbourhood bucket
-# into "UNASSIGNED" (not dropped).
+# into "UNASSIGNED" (not dropped). KNOWN GAP (audit F8, accepted): the web app
+# derives its slug list from the neighbourhood polygons, so the UNASSIGNED
+# shard (~531 parcels + 219 survey lots, city-edge) is published but never
+# fetched by the UI — the records remain in the archive and in these shards.
 #
 # Display shards are simplified for VISUALIZATION only (area-gated: lots < 1 ha
 # are kept EXACT so Douglas-Peucker can't collapse a small rectangle into a
@@ -116,7 +119,16 @@ to_wgs84_simplify <- function(g) {
     g <- suppressWarnings(sf::st_collection_extract(g, "POLYGON"))
     g <- g[sf::st_geometry_type(g) %in% c("POLYGON", "MULTIPOLYGON"), ]
   }
-  g <- g[!sf::st_is_empty(g), ]
+  # Drop empty/null geometries — COUNTED, not silent. d4mq-wa44 legitimately
+  # carries ~59 geometry-less rows (bus shelters, statutory pipelines, some
+  # condo unit rolls); they stay in the archived source-of-record but can't
+  # be displayed, so they leave the shards here. Measured 2026-07: gpkg
+  # 245,215 -> shards 245,081 (empties + the degenerates counted below).
+  n_empty <- sum(sf::st_is_empty(g))
+  if (n_empty > 0) {
+    cat(sprintf("    note: dropped %d empty/null-geometry feature(s) (in archive, not displayable)\n", n_empty))
+    g <- g[!sf::st_is_empty(g), ]
+  }
   # Drop degenerate zero-area polygons. A collinear ring is typed POLYGON here
   # but st_write/RFC7946 emits it as a LineString (street right-of-way rolls like
   # "EVANSON STREET"), which MapLibre can't render as a fill. Counted, not silent.

@@ -1,0 +1,5 @@
+{
+  "built": "2026-05-09",
+  "source_resource": "d4mq-wa44",
+  "note": "Backfilled 2026-07-09 from the parcels.geojson intermediate's fetch date; feature counts start with the next r/build_parcel_tiles.R rebuild, which writes this file automatically."
+}
