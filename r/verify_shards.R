@@ -19,6 +19,8 @@ OUTPUT_ROOT  <- "D:/Dropbox/ClaudeCode/WpgOpenData/wpg-parcel-history"
 TRI_WARN     <- 0.01     # > 1% <=4-coord outer rings = simplification leaked
 SIZE_WARN_MB <- 40       # jsDelivr per-file ceiling is 50 MB
 
+`%||%` <- function(a, b) if (is.null(a)) b else a
+
 # Outer-ring coord count of the largest polygon (triangle indicator).
 outer_len <- function(geo) {
   if (inherits(geo, "MULTIPOLYGON")) return(max(vapply(geo, function(p) nrow(p[[1]]), integer(1))))
@@ -36,6 +38,23 @@ warnings <- character(0)
 for (sd in snaps) {
   snap <- basename(sd)
   man  <- tryCatch(jsonlite::read_json(file.path(sd, "manifest.json")), error = function(e) NULL)
+  # Manifest self-consistency (audit H-4): the declared layer total
+  # (layers[].features, which becomes index.json's feature count) must equal the
+  # sum of the per-neighbourhood map — i.e. the shards actually written. The old
+  # builder computed the total pre-st_write and overstated it by ~1/snapshot
+  # (H-3). This assertion catches any such drift; the per-shard file-vs-map
+  # check below (man_mismatch) does NOT, since it never sums to the declared total.
+  if (!is.null(man)) {
+    for (lyr in names(man$layers)) {
+      key <- if (lyr == "parcels") "parcels" else "survey"
+      declared <- suppressWarnings(as.integer(man$layers[[lyr]]$features %||% NA))
+      mapsum <- sum(vapply(man$neighbourhoods,
+                           function(h) as.integer(h[[key]] %||% 0L), integer(1)))
+      if (!is.na(declared) && declared != mapsum)
+        warnings <- c(warnings, sprintf("%s/%s manifest features=%d != neighbourhood-map sum=%d (H-3 overcount)",
+                                        snap, lyr, declared, mapsum))
+    }
+  }
   for (ld in list.dirs(sd, recursive = FALSE)) {
     layer <- basename(ld)
     files <- list.files(ld, pattern = "\\.json$", full.names = TRUE)

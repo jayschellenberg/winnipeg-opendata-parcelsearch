@@ -362,6 +362,19 @@ process_snapshot <- function(snap, files) {
       survey  = survey_counts[[sl]] %||% 0L
     )), nm$nbhd_slug)
 
+  # Reconcile each layer's declared feature total with the shards ACTUALLY
+  # written (audit H-3). layer_meta computed `features` from nrow BEFORE
+  # st_write, so it counts the ~1 geometry per snapshot that RFC7946 export
+  # drops (a collinear ring emitted as a LineString), and index.json then
+  # overstates the served total by 1. The per-neighbourhood map matches the
+  # written files (verify_shards reports man_mismatch=0), so derive the total
+  # from it — declared == served. verify_shards.R now asserts this equality, so
+  # any future divergence between layers[].features and the map is caught.
+  map_total <- function(key) sum(vapply(neighbourhoods,
+    function(h) as.integer(h[[key]] %||% 0L), integer(1)))
+  if (!is.null(layers$parcels)) layers$parcels$features <- map_total("parcels")
+  if (!is.null(layers$survey))  layers$survey$features  <- map_total("survey")
+
   manifest <- list(
     schema      = 2,
     snapshot_id = snap,

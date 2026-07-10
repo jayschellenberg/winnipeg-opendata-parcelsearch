@@ -18,6 +18,7 @@ import {
   fetchCurrentAssessmentInBbox,
   searchAssessmentParcelsByRolls,
   fetchSurveyOverlap,
+  isHistoricalPinStale,
 } from '../src/soda.js';
 
 const tests = [];
@@ -196,6 +197,31 @@ test('fetchSurveyOverlap — all features geometry-less → no request, empty re
   const fc = await fetchSurveyOverlap({ type: 'FeatureCollection', features: [NULL_GEOM] });
   assert.equal(calls.length, 0);
   assert.equal(fc.features.length, 0);
+});
+
+// ---------- historical pin staleness comparator (audit H-1) ----------
+// The historical CDN pin is bumped by hand; this comparator drives the console
+// backstop that warns when branch-HEAD is newer than the pin. Only fires on a
+// strictly-newer HEAD, so it can never false-alarm during jsDelivr's @main lag.
+
+test('isHistoricalPinStale — HEAD strictly newer than pin → true', () => {
+  assert.equal(
+    isHistoricalPinStale('2026-06-01T12:00:00-0500', '2026-07-01T12:56:44-0500'),
+    true,
+  );
+});
+
+test('isHistoricalPinStale — HEAD older or equal to pin → false (no false alarm)', () => {
+  // equal = correctly-bumped pin
+  assert.equal(isHistoricalPinStale('2026-07-01T12:56:44-0500', '2026-07-01T12:56:44-0500'), false);
+  // older = jsDelivr @main still lagging behind a fresh pin
+  assert.equal(isHistoricalPinStale('2026-07-01T12:56:44-0500', '2026-06-01T12:00:00-0500'), false);
+});
+
+test('isHistoricalPinStale — unparseable timestamps → false (never a false alarm)', () => {
+  assert.equal(isHistoricalPinStale(undefined, '2026-07-01T00:00:00-0500'), false);
+  assert.equal(isHistoricalPinStale('2026-07-01T00:00:00-0500', 'garbage'), false);
+  assert.equal(isHistoricalPinStale(null, null), false);
 });
 
 // ---------- searchAssessmentParcelsByRolls (chunking) ----------

@@ -888,6 +888,12 @@ function parcelSetCacheKey(fc) {
 const HISTORICAL_CDN =
   'https://cdn.jsdelivr.net/gh/jayschellenberg/wpg-parcel-history@1227e91b6473ceb6b3a3b75d58195b43572393d0';
 
+// Branch-HEAD index, used ONLY by the staleness backstop below (never for shard
+// data — the data path pins a SHA precisely because jsDelivr's @main view lags).
+// Same jsDelivr origin as the pin, so no CSP change.
+const HISTORICAL_HEAD_INDEX =
+  'https://cdn.jsdelivr.net/gh/jayschellenberg/wpg-parcel-history@main/index.json';
+
 // Self-invalidating cache: a hard refresh does NOT clear IndexedDB, so a stale
 // shard would otherwise persist for weeks. Every cache key embeds HIST_VER
 // (derived from the pinned SHA), so bumping the SHA on republish changes every
@@ -912,9 +918,50 @@ async function fetchHistCached(path, key, ttlMs) {
   return data;
 }
 
+// Audit H-1 — silent-staleness backstop for the MANUAL pin. HISTORICAL_CDN is
+// bumped by hand on every shard republish; forgetting it serves stale shards
+// forever (the pin is immutable, and the scheduled-download email only *reminds*
+// you to rebuild — nothing enforces it). Compare the pinned index's `generated`
+// timestamp against branch-HEAD's and warn in the console when HEAD is strictly
+// newer. jsDelivr's @main view can lag a few hours, so this is eventually-
+// correct and NEVER a false alarm (it only fires when head > pin). Console-only
+// ops signal — invisible to normal users. Alternative considered: patch the SHA
+// into soda.js from the publish step, but the shard commit SHA doesn't exist
+// until after that repo is committed, so a runtime check is the robust catch-all.
+let _historicalStalenessChecked = false;
+
+/** True only when both timestamps parse AND `head` is strictly newer than
+ *  `pinned`. Pure + exported so the comparison logic is unit-tested. */
+export function isHistoricalPinStale(pinnedGenerated, headGenerated) {
+  const p = Date.parse(pinnedGenerated);
+  const h = Date.parse(headGenerated);
+  return Number.isFinite(p) && Number.isFinite(h) && h > p;
+}
+
+async function warnIfHistoricalPinStale(pinnedIndex) {
+  if (_historicalStalenessChecked) return;          // once per session
+  _historicalStalenessChecked = true;
+  const pinnedGenerated = pinnedIndex?.generated;
+  if (!pinnedGenerated) return;
+  try {
+    const res = await fetch(HISTORICAL_HEAD_INDEX, { cache: 'no-store' });
+    if (!res.ok) return;
+    const head = await res.json();
+    if (isHistoricalPinStale(pinnedGenerated, head?.generated)) {
+      console.warn(
+        `[historical] wpg-parcel-history was republished (${head.generated}) but the app pin `
+        + `is older (${pinnedGenerated}). Bump HISTORICAL_CDN in web/src/soda.js to the latest `
+        + `commit SHA and redeploy, or the overlay keeps serving stale shards.`
+      );
+    }
+  } catch { /* best-effort ops signal; network/parse failures are non-fatal */ }
+}
+
 /** Discovery index: which snapshots exist + each layer's source date. */
-export function fetchHistoricalIndex() {
-  return fetchHistCached('index.json', `wpg_hist_${HIST_VER}_index`, HISTORICAL_INDEX_TTL_MS);
+export async function fetchHistoricalIndex() {
+  const idx = await fetchHistCached('index.json', `wpg_hist_${HIST_VER}_index`, HISTORICAL_INDEX_TTL_MS);
+  warnIfHistoricalPinStale(idx);   // fire-and-forget staleness backstop (audit H-1)
+  return idx;
 }
 
 /** A snapshot's manifest — provenance + per-neighbourhood counts. */
