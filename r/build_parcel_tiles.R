@@ -69,13 +69,28 @@ url       <- "https://data.winnipeg.ca/resource/d4mq-wa44.geojson"
 # GitHub's 100 MB hard cap with breathing room.
 select_cols <- "roll_number,full_address,property_use_code,dwelling_units,assessed_land_area,geometry"
 
-cat("Fetching Assessment Parcels in pages of ", page_size, "...\n", sep = "")
+# Optional Socrata app token — raises the anonymous rate limit for the ~50
+# paged calls this build fires. Same env vars as r/download_parcels.R
+# (VITE_ first so the one token set for the web app / scheduled download is
+# reused). Applied as an X-App-Token header on every request via with_token().
+# Empty = anonymous, which still works, just against the shared rate pool.
+TOKEN <- Sys.getenv("VITE_SODA_APP_TOKEN", unset = Sys.getenv("SODA_APP_TOKEN", ""))
+with_token <- function(req) if (nzchar(TOKEN)) req_headers(req, `X-App-Token` = TOKEN) else req
+
+cat("Fetching Assessment Parcels in pages of ", page_size,
+    " (token: ", if (nzchar(TOKEN)) "set" else "anonymous", ")...\n", sep = "")
 
 # The API's own row count, fetched up front so the paged total can be
 # reconciled below — a fetch that quietly lost a page must not become the
 # citywide overlay for the next several months.
 live_count <- tryCatch({
-  as.integer(fromJSON(sub("\\.geojson$", ".json?$select=count(1)", url))[[1]][1])
+  resp <- request(sub("\\.geojson$", ".json", url)) |>
+    with_token() |>
+    req_url_query(`$select` = "count(1)") |>
+    req_retry(max_tries = 3,
+              is_transient = function(r) resp_status(r) %in% c(429, 500, 502, 503)) |>
+    req_perform()
+  as.integer(fromJSON(resp_body_string(resp))[[1]][1])
 }, error = function(e) NA_integer_)
 cat("Live API count: ", live_count, "\n", sep = "")
 
@@ -86,6 +101,7 @@ repeat {
   # req_retry: one transient Socrata 5xx used to abort the whole ~50-page
   # fetch at whatever page it struck (httr2 throws on HTTP errors).
   resp <- request(url) |>
+    with_token() |>
     req_url_query(
       `$select` = select_cols,
       `$order`  = "roll_number",
