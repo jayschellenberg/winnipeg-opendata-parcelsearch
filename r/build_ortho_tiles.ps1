@@ -33,7 +33,7 @@ param(
   [string] $Url         = '',                                   # override the auto-resolved mosaic URL
   [double] $TargetResM  = 0.149,                                # 3857 m/px: 0.149 ~= z20, 0.075 ~= z21, 0.3 ~= z19
   [int]    $JpegQuality = 82,
-  [string] $WorkDir     = 'D:\Dropbox\Appraisal\Web\WpgOrtho',  # scratch (outside the git repo)
+  [string] $WorkDir     = 'D:\WpgOrtho',                        # scratch: OUTSIDE Dropbox + the git repo (build churns ~35 GB of transient files — don't sync them)
   [string] $GdalBin     = 'C:\OSGeo4W\bin',
   [string] $PmtilesExe  = 'D:\Dropbox\ClaudeCode\WpgOpenData\tools\pmtiles.exe',
   [switch] $Force
