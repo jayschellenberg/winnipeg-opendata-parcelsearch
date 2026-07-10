@@ -85,6 +85,11 @@ ASMT_FIELDS   <- c("roll_number", "full_address", "neighbourhood_area",
 # `survey_id` is the City's stable per-lot id (renamed from `id` to avoid the
 # GeoJSON feature-id promotion) — the key the survey lineage popup looks up.
 SURVEY_FIELDS <- c("survey_id", "plan", "lot", "block", "description")
+# Zoning is served as ONE whole-city file per snapshot (see process_zoning), so
+# it carries only the display fields — no `id` (dropped to avoid the GeoJSON
+# feature-id promotion; whole-file needs no per-feature key). `map_colour` is the
+# fill-category the webapp already palettes; the descriptions feed the popup.
+ZONING_FIELDS <- c("zoning", "short_description", "long_description", "map_colour")
 
 # ---- args ------------------------------------------------------------
 args      <- commandArgs(trailingOnly = TRUE)
@@ -256,6 +261,34 @@ process_survey <- function(f, out_dir) {
        names = s |> sf::st_drop_geometry() |> dplyr::distinct(nbhd_slug, nbhd_name_official))
 }
 
+# Zoning: written as ONE whole-city file <out_dir>/zoning.json, NOT sharded. Only
+# ~18k districts (vs 245k parcels), and a zoning district routinely spans several
+# neighbourhoods — representative-point binning would leave edge gaps, and
+# intersect-all binning would duplicate big districts across many shards. The
+# simplified whole file is ~12 MB (~3 MB gzipped), fine to fetch + render once.
+# Returns a layer_meta with neighbourhoods = NA (not sharded).
+process_zoning <- function(f, out_dir) {
+  cat("  zoning  :", basename(f), "\n")
+  z <- read_layer_repair(f)
+  names(z)[names(z) != "geometry"] <- normalize_names(names(z)[names(z) != "geometry"])
+  require_fields(names(z), c("zoning", "map_colour"), "zoning")
+  keepZ <- intersect(ZONING_FIELDS, names(z))
+  z <- z[, c(keepZ, "geometry")]
+  cat("    simplifying", nrow(z), "zoning districts ...\n")
+  z <- to_wgs84_simplify(z)                     # reproject + area-gated simplify + degenerate drop
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  fp  <- file.path(out_dir, "zoning.json")
+  tmp <- paste0(fp, ".tmpwrite")
+  if (file.exists(tmp)) file.remove(tmp)
+  sf::st_write(z, tmp, driver = "GeoJSON",
+               layer_options = c("COORDINATE_PRECISION=6", "RFC7946=YES"), quiet = TRUE)
+  if (file.exists(fp)) file.remove(fp)
+  if (!file.rename(tmp, fp)) stop("rename failed: ", tmp, " -> ", fp)
+  cat(sprintf("    -> wrote zoning.json (%d districts, %.1f MB)\n",
+              nrow(z), file.info(fp)$size / 1024^2))
+  layer_meta(f, NA, nrow(z))
+}
+
 # ---- discovery index ------------------------------------------------
 # `failed_snaps` (character vector of snapshot ids) keeps the broken builds out
 # of index.json's healthy snapshots map: each appears with status "failed" so
@@ -324,6 +357,13 @@ verify_snapshot_dir <- function(out_dir) {
       }
     }
   }
+  # Zoning is a whole-city file (not in the neighbourhood map): if the manifest
+  # declares it, the file must exist and be non-trivial.
+  if (!is.null(m$layers$zoning)) {
+    zp <- file.path(out_dir, "zoning.json")
+    if (!file.exists(zp)) { cat("    !! verify: manifest declares zoning but zoning.json is missing\n"); ok <- FALSE }
+    else if (file.info(zp)$size < 1000) { cat(sprintf("    !! verify: zoning.json suspiciously small (%d bytes)\n", file.info(zp)$size)); ok <- FALSE }
+  }
   ok
 }
 
@@ -350,6 +390,10 @@ process_snapshot <- function(snap, files) {
     nbhd_names[[length(nbhd_names) + 1]] <- r$names
     survey_counts <- r$counts
   } else survey_counts <- list()
+
+  # Zoning (whole-city single file) — outside the neighbourhood map; just a layer.
+  zf <- files$zoning
+  if (!is.null(zf)) layers$zoning <- process_zoning(zf, out_dir)
 
   # neighbourhoods map: slug -> { name, parcels, survey }
   nm <- if (length(nbhd_names)) dplyr::distinct(dplyr::bind_rows(nbhd_names)) else
@@ -422,13 +466,16 @@ if (index_only) {
                      recursive = TRUE, full.names = TRUE)
   surv <- list.files(ARCHIVE_ROOT, pattern = "^SurveyParcels_\\d{8}\\.gpkg$",
                      recursive = TRUE, full.names = TRUE)
+  zon  <- list.files(ARCHIVE_ROOT, pattern = "^Zoning_\\d{8}\\.gpkg$",
+                     recursive = TRUE, full.names = TRUE)
   no_qtn <- function(v) v[!vapply(v, function(p)
     any(grepl("^_", strsplit(gsub("\\\\", "/", p), "/")[[1]])), logical(1))]
-  asmt <- no_qtn(asmt); surv <- no_qtn(surv)
+  asmt <- no_qtn(asmt); surv <- no_qtn(surv); zon <- no_qtn(zon)
 
   by_date <- list()
   for (f in asmt) { d <- date_from_name(f); by_date[[d]]$parcels <- f }
   for (f in surv) { d <- date_from_name(f); by_date[[d]]$survey  <- f }
+  for (f in zon)  { d <- date_from_name(f); by_date[[d]]$zoning  <- f }
   snaps <- sort(names(by_date))
 
   cat("Winnipeg historical shard build\n  archive:", ARCHIVE_ROOT, "\n  output :", OUTPUT_ROOT, "\n")

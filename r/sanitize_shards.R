@@ -60,6 +60,24 @@ for (sd in snaps) {
       }
     }
   }
+  # Reconcile layers[].features with the (now-final) neighbourhood-map sum for
+  # parcels/survey (audit H-3/H-4). The builder reconciles at build time, but
+  # THIS pass is what runs last and may drop a feature above, leaving
+  # layers[].features one high — which verify_shards' H-4 assertion then flags.
+  # Do it for every snapshot (not just ones fixed here) so the historical
+  # pre-H-3-fix snapshots get corrected on the next publish too. Zoning is a
+  # whole-city file (not in the map) — left untouched.
+  if (!is.null(man)) {
+    for (lyr in intersect(c("parcels", "survey"), names(man$layers))) {
+      mapsum <- sum(vapply(man$neighbourhoods, function(h) {
+        v <- h[[lyr]]; if (is.null(v)) 0L else as.integer(v) }, integer(1)))
+      cur <- man$layers[[lyr]]$features
+      if (!is.null(cur) && as.integer(cur) != mapsum) {
+        man$layers[[lyr]]$features <- mapsum; man_changed <- TRUE
+        cat(sprintf("  reconciled %s/%s layers.features %s -> %d (= map sum)\n", snap, lyr, cur, mapsum))
+      }
+    }
+  }
   if (man_changed && !dry) {
     # Same atomic pattern for the manifest — a truncated manifest.json
     # breaks the whole snapshot for the web app.

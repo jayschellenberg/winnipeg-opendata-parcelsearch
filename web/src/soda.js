@@ -886,7 +886,7 @@ function parcelSetCacheKey(fc) {
 // correctly + instantly. Bump HISTORICAL_CDN on every republish of
 // wpg-parcel-history (rebuild the shards, push, copy the new SHA here).
 const HISTORICAL_CDN =
-  'https://cdn.jsdelivr.net/gh/jayschellenberg/wpg-parcel-history@1227e91b6473ceb6b3a3b75d58195b43572393d0';
+  'https://cdn.jsdelivr.net/gh/jayschellenberg/wpg-parcel-history@eca2c00cd69524446fa28297160fd0d986ff73d0';
 
 // Branch-HEAD index, used ONLY by the staleness backstop below (never for shard
 // data — the data path pins a SHA precisely because jsDelivr's @main view lags).
@@ -973,6 +973,13 @@ export function fetchHistoricalManifest(snap) {
 export function fetchHistoricalShard(snap, layer, slug) {
   return fetchHistCached(`${snap}/${layer}/${slug}.json`,
     `wpg_hist_${HIST_VER}_${snap}_${layer}_${slug}`, HISTORICAL_LONG_TTL_MS);
+}
+
+/** A snapshot's whole-city zoning FeatureCollection (not sharded — ~18k
+ *  districts in one file). Returns null if that snapshot has no zoning layer. */
+export function fetchHistoricalZoning(snap) {
+  return fetchHistCached(`${snap}/zoning.json`,
+    `wpg_hist_${HIST_VER}_${snap}_zoning`, HISTORICAL_LONG_TTL_MS);
 }
 
 /** Lineage for one neighbourhood. dir = 'lineage' (assessment, by roll_number) |

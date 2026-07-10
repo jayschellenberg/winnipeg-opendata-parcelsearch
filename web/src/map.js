@@ -1391,6 +1391,35 @@ export function initMap(container, { onFeatureClick } = {}) {
       // by size-change band) and survey lots (dashed violet). Added here, after
       // the live layers, so they render on top.
       try {
+      // Historical zoning (whole-city, as-of the selected snapshot). Added FIRST
+      // so it sits UNDER the dashed historical parcel/survey lines. Same
+      // map_colour palette + styling as the live Zoning overlay.
+      map.addSource('historical-zoning', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'historical-zoning-fill', type: 'fill', source: 'historical-zoning',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': ['match', ['get', 'map_colour'], ...ZONING_PALETTE, '#cccccc'],
+          'fill-opacity': 0.45,
+          'fill-outline-color': '#444',
+        },
+      });
+      map.addLayer({
+        id: 'historical-zoning-line', type: 'line', source: 'historical-zoning',
+        layout: { visibility: 'none' },
+        paint: { 'line-color': '#333', 'line-width': 0.6, 'line-opacity': 0.7 },
+      });
+      map.addLayer({
+        id: 'historical-zoning-label', type: 'symbol', source: 'historical-zoning',
+        layout: {
+          visibility: 'none',
+          'text-field': ['case', ['<=', ['length', ['coalesce', ['get', 'zoning'], '']], 5], ['get', 'zoning'], ''],
+          'text-font': ['Open Sans Semibold'], 'text-size': 22,
+          'text-allow-overlap': false, 'text-ignore-placement': false, 'symbol-placement': 'point',
+        },
+        paint: { 'text-color': '#1a1a1a', 'text-halo-color': '#ffffff', 'text-halo-width': 2.8 },
+      });
+
       map.addSource('historical-parcels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addSource('historical-survey',  { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
 
@@ -1450,6 +1479,8 @@ export function initMap(container, { onFeatureClick } = {}) {
       };
       wireHist('historical-parcels-fill', historicalParcelHtml);
       wireHist('historical-survey-fill',  historicalSurveyHtml, ['historical-parcels-fill']);
+      // Zoning fill sits beneath both lot layers — defer so a parcel/survey click wins.
+      wireHist('historical-zoning-fill', historicalZoningHtml, ['historical-parcels-fill', 'historical-survey-fill']);
       } catch (e) {
         // The historical overlay is additive — never let a problem setting it
         // up prevent the base map from finishing load.
@@ -1704,6 +1735,19 @@ function zoningPopupHtml(p) {
   if (p.short_description) lines.push(`<em>${escapeHtml(p.short_description)}</em>`);
   if (p.long_description) lines.push(escapeHtml(p.long_description));
   return `<div style="max-width:300px;line-height:1.35">${lines.join('<br>')}</div>`;
+}
+
+// Click-popup body for a HISTORICAL zoning polygon — the zoning detail plus an
+// as-of-date header and the verify disclaimer shared by the other historical
+// popups. `snap` is our own controlled YYYY-MM-DD string (no user input).
+function historicalZoningHtml(p, snap) {
+  const lines = [];
+  if (snap) lines.push(`<strong>Zoning as of ${escapeHtml(snap)}</strong>`);
+  if (p.zoning) lines.push(`Zone <strong>${escapeHtml(p.zoning)}</strong>`);
+  if (p.short_description) lines.push(`<em>${escapeHtml(p.short_description)}</em>`);
+  if (p.long_description) lines.push(escapeHtml(p.long_description));
+  lines.push('<span style="color:#b45309">Verify against the current zoning by-law / map.</span>');
+  return `<div style="max-width:320px;line-height:1.35">${lines.join('<br>')}</div>`;
 }
 
 // Click-popup body for a contaminated-site circle. Shows the operation
@@ -2201,6 +2245,21 @@ export function setHistoricalVisible(map, on) {
   const vis = on ? 'visible' : 'none';
   for (const id of ['historical-parcels-fill', 'historical-parcels-line',
                     'historical-survey-fill', 'historical-survey-line']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  }
+}
+
+/** Push the whole-city historical zoning FC (or null to clear). Records `snap`
+ *  so the zoning popup can state its as-of date. */
+export function setHistoricalZoningData(map, fc, snap) {
+  if (snap !== undefined) historicalSnap = snap;
+  const s = map.getSource('historical-zoning');
+  if (s) s.setData(fc || { type: 'FeatureCollection', features: [] });
+}
+
+export function setHistoricalZoningVisible(map, on) {
+  const vis = on ? 'visible' : 'none';
+  for (const id of ['historical-zoning-fill', 'historical-zoning-line', 'historical-zoning-label']) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
   }
 }

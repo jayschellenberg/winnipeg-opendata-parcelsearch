@@ -46,6 +46,7 @@ for (sd in snaps) {
   # check below (man_mismatch) does NOT, since it never sums to the declared total.
   if (!is.null(man)) {
     for (lyr in names(man$layers)) {
+      if (!lyr %in% c("parcels", "survey")) next   # zoning is whole-file (checked below), not in the neighbourhood map
       key <- if (lyr == "parcels") "parcels" else "survey"
       declared <- suppressWarnings(as.integer(man$layers[[lyr]]$features %||% NA))
       mapsum <- sum(vapply(man$neighbourhoods,
@@ -88,6 +89,29 @@ for (sd in snaps) {
     tot$feat <- tot$feat + lf$feat; tot$bytes <- tot$bytes + lf$bytes
     tot$tri <- tot$tri + lf$tri; tot$n <- tot$n + lf$n
     tot$nonpoly <- tot$nonpoly + lf$nonpoly; tot$maxshard <- max(tot$maxshard, lf$maxshard)
+  }
+  # Whole-city zoning file — a single zoning.json, not a shard dir, so the
+  # list.dirs loop above misses it. Same purity/size/count checks.
+  if (!is.null(man$layers$zoning)) {
+    zp <- file.path(sd, "zoning.json")
+    if (!file.exists(zp)) {
+      warnings <- c(warnings, sprintf("%s/zoning: manifest declares zoning but zoning.json is missing", snap))
+    } else {
+      zg  <- tryCatch(sf::st_read(zp, quiet = TRUE), error = function(e) NULL)
+      zsz <- file.info(zp)$size
+      if (is.null(zg)) { warnings <- c(warnings, sprintf("%s/zoning: unreadable", snap)) } else {
+        znon     <- sum(!as.character(sf::st_geometry_type(zg)) %in% c("POLYGON", "MULTIPOLYGON"))
+        declared <- suppressWarnings(as.integer(man$layers$zoning$features %||% NA))
+        cat(sprintf("  %s/%-8s file    features=%7d %6.1fMB nonpoly=%d man_declared=%s\n",
+                    snap, "zoning", nrow(zg), zsz / 1024^2, znon, if (is.na(declared)) "?" else declared))
+        if (zsz / 1024^2 > SIZE_WARN_MB) warnings <- c(warnings, sprintf("%s/zoning = %.1fMB (jsDelivr 50MB ceiling)", snap, zsz / 1024^2))
+        if (znon > 0)                    warnings <- c(warnings, sprintf("%s/zoning has %d non-polygon feature(s)", snap, znon))
+        if (!is.na(declared) && declared != nrow(zg))
+          warnings <- c(warnings, sprintf("%s/zoning manifest features=%d != file=%d", snap, declared, nrow(zg)))
+        tot$feat <- tot$feat + nrow(zg); tot$bytes <- tot$bytes + zsz
+        tot$nonpoly <- tot$nonpoly + znon; tot$maxshard <- max(tot$maxshard, zsz)
+      }
+    }
   }
 }
 
