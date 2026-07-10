@@ -38,10 +38,13 @@ Log '=== refresh transit + neighbourhood static assets ==='
 # --- Snapshot-age heartbeat (alert on ABSENCE, not just failure) -----------
 # Runs FIRST so every quarterly invocation checks it — the common "no asset
 # changes" outcome exits early below and must not skip the tripwire. If the
-# newest canonical AssessmentParcels snapshot is older than ~8 months
-# (semi-annual cadence + 2 months grace), email + a STALE marker at the
+# newest canonical AssessmentParcels snapshot is older than ~6.5 months
+# (semi-annual cadence + a few weeks grace), email + a STALE marker at the
 # archive root. Non-fatal to the asset refresh either way.
-$maxAgeDays = 245
+# 200 (not 245): a silently-missed June run leaves the newest snapshot ~212
+# days old at the July 1 heartbeat — 200 catches it there instead of Oct 1.
+# Healthy ages at check time never exceed ~122 days + StartWhenAvailable slack.
+$maxAgeDays = 200
 try {
   $newest = Get-ChildItem -Recurse -File -Path $archiveRoot -Filter 'AssessmentParcels_*.gpkg' -ErrorAction Stop |
     ForEach-Object {

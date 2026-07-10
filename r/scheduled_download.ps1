@@ -1,10 +1,11 @@
 # scheduled_download.ps1
 #
-# Semi-annual unattended job: download the four City of Winnipeg Open Data
-# layers (zoning, assessment parcels, survey parcels, addresses) via paginated
-# SODA, archive them into WpgSnapshots with provenance, then remove the repo-dir
-# copies that are now archived. Registered as a Windows Scheduled Task by
-# r/setup_schedule.ps1. Logs to WpgSnapshots\_download_logs\.
+# Semi-annual unattended job: download every City of Winnipeg Open Data layer
+# in the r/wpg_datasets.R registry (10 today: zoning, assessment parcels,
+# survey parcels, addresses + 6 OurWinnipeg dev-plan policy areas) via
+# paginated SODA, archive them into WpgSnapshots with provenance, then remove
+# the repo-dir copies that are now archived. Registered as a Windows Scheduled
+# Task by r/setup_schedule.ps1. Logs to WpgSnapshots\_download_logs\.
 #
 # Run manually any time:  powershell -ExecutionPolicy Bypass -File r\scheduled_download.ps1
 
@@ -73,4 +74,28 @@ Get-ChildItem $repo -File |
 # A clean run supersedes any earlier FAILED marker.
 Get-ChildItem $archiveRoot -File -Filter 'FAILED-download-*.txt' -ErrorAction SilentlyContinue |
   ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
+
+# Success reminder: archiving is automatic, but the app's historical overlay
+# stays on its pinned CDN snapshot until the shard pipeline is re-run and the
+# SHA re-pinned. Twice a year, so nudge by email too (best-effort).
+$reminder = @(
+  'The semi-annual snapshot download + archive completed cleanly.',
+  '',
+  'REMINDER: the app still serves its previously pinned historical snapshot.',
+  'To advance the historical overlay to this capture, run the shard pipeline:',
+  '  1. Rscript r\build_historical_shards.R --year <year of new snapshot>',
+  '  2. Rscript r\sanitize_shards.R',
+  '  3. Rscript r\build_lineage.R',
+  '  4. Rscript r\build_historical_shards.R --index-only',
+  '  5. Rscript r\verify_shards.R   (must pass before publishing)',
+  '  6. commit + push wpg-parcel-history, then pin the new commit SHA in',
+  '     web/src/soda.js (HISTORICAL_CDN), npm run build, commit + push.',
+  '(Remove the superseded snapshot dir from wpg-parcel-history first if the',
+  'retention prune deleted its archive source; see r\prune_snapshots.R.)',
+  '',
+  "Log: $log"
+) -join "`n"
+Log 'REMINDER: snapshot archived - run the historical shard rebuild to advance the app (see email / script header).'
+Send-FailureMail -Subject 'Wpg Open Data: semi-annual snapshot archived - shard rebuild pending' -Body $reminder |
+  Tee-Object -FilePath $log -Append | Out-Null
 Log '=== done ==='
