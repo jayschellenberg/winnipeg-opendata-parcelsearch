@@ -201,6 +201,30 @@ const BASEMAP_STYLE = {
   ],
 };
 
+// City of Winnipeg aerial ORTHO (7.5 cm, year-stamped) as an optional THIRD
+// basemap. Built offline from the City's whole-city ECW mosaic
+// (r/build_ortho_tiles.ps1) and hosted as raster PMTiles on Cloudflare R2.
+// Empty until the public R2 URL is pinned here (and that host added to
+// vercel.json's connect-src) — while empty, the basemap control stays a
+// 2-state streets<->satellite exactly as before, so this ships inert.
+export const ORTHO_YEAR = 2024;
+const ORTHO_PMTILES_URL = '';   // e.g. 'https://<public-r2-domain>/wpg-ortho-2024.pmtiles'
+if (ORTHO_PMTILES_URL) {
+  BASEMAP_STYLE.sources['ortho-wpg'] = {
+    type: 'raster',
+    url: `pmtiles://${ORTHO_PMTILES_URL}`,
+    tileSize: 256,
+    attribution: `Aerial imagery &copy; City of Winnipeg ${ORTHO_YEAR}`,
+  };
+  // Sits above the Esri imagery (which shows through beyond the City extent /
+  // when overzoomed) and below the two transparent label layers, so place +
+  // road names stay legible over the ortho.
+  const insertAt = BASEMAP_STYLE.layers.findIndex((l) => l.id === 'esri-transportation');
+  BASEMAP_STYLE.layers.splice(insertAt < 0 ? BASEMAP_STYLE.layers.length : insertAt, 0, {
+    id: 'ortho-wpg', type: 'raster', source: 'ortho-wpg', layout: { visibility: 'none' },
+  });
+}
+
 // mapbox-gl-draw style spec for the measurement tool. High-contrast
 // orange (#ff4d00) reads cleanly on both the cream CARTO Positron
 // streets basemap and the dark Esri imagery; white halo around each
@@ -2029,6 +2053,7 @@ function safeCssColor(value) {
  * current visibility off the layers each click so we don't have to track
  * a separate flag.
  */
+const BASEMAP_LABELS = { streets: 'Streets', satellite: 'Satellite', aerial: `Aerial ${ORTHO_YEAR}` };
 class BasemapToggleControl {
   onAdd(map) {
     this._map = map;
@@ -2036,28 +2061,49 @@ class BasemapToggleControl {
     this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group basemap-toggle';
     this._btn = document.createElement('button');
     this._btn.type = 'button';
-    this._btn.title = 'Toggle basemap (streets ⇄ satellite)';
-    this._btn.setAttribute('aria-label', 'Toggle basemap (streets ⇄ satellite)');
-    this._btn.textContent = 'Satellite';
     this._btn.addEventListener('click', () => this._toggle());
     this._container.appendChild(this._btn);
+    // Default state is streets → the button offers the next in the cycle.
+    // (Static here; getLayoutProperty isn't reliable until the style loads.)
+    this._btn.textContent = BASEMAP_LABELS.satellite;
+    this._btn.title = `Basemap: ${BASEMAP_LABELS.streets} (click for ${BASEMAP_LABELS.satellite})`;
+    this._btn.setAttribute('aria-label', this._btn.title);
     return this._container;
   }
+  // The ortho basemap is present only when ORTHO_PMTILES_URL is pinned; without
+  // it this stays a 2-state streets<->satellite toggle.
+  _cycle() { return this._map.getLayer('ortho-wpg') ? ['streets', 'satellite', 'aerial'] : ['streets', 'satellite']; }
+  _current() {
+    const m = this._map;
+    if (m.getLayer('ortho-wpg') && m.getLayoutProperty('ortho-wpg', 'visibility') === 'visible') return 'aerial';
+    if (m.getLayoutProperty('esri-imagery', 'visibility') === 'visible') return 'satellite';
+    return 'streets';
+  }
+  _set(state) {
+    const m = this._map;
+    // Esri imagery + its two transparent label layers are shown for BOTH the
+    // satellite and aerial states (aerial draws the City ortho on top, with
+    // Esri showing through beyond the City extent).
+    const imagery = state === 'satellite' || state === 'aerial';
+    m.setLayoutProperty('carto-positron',      'visibility', state === 'streets' ? 'visible' : 'none');
+    m.setLayoutProperty('esri-imagery',        'visibility', imagery ? 'visible' : 'none');
+    m.setLayoutProperty('esri-transportation', 'visibility', imagery ? 'visible' : 'none');
+    m.setLayoutProperty('esri-reference',      'visibility', imagery ? 'visible' : 'none');
+    if (m.getLayer('ortho-wpg')) m.setLayoutProperty('ortho-wpg', 'visibility', state === 'aerial' ? 'visible' : 'none');
+    this._render(state);
+  }
   _toggle() {
-    const map = this._map;
-    const imageryVisible = map.getLayoutProperty('esri-imagery', 'visibility') === 'visible';
-    const next = !imageryVisible;
-    const satVis   = next ? 'visible' : 'none';
-    const cartoVis = next ? 'none' : 'visible';
-    map.setLayoutProperty('esri-imagery',        'visibility', satVis);
-    // Hybrid: place names + road names follow the imagery so the
-    // satellite view stays labelled (street names visible, place
-    // names visible).
-    map.setLayoutProperty('esri-transportation', 'visibility', satVis);
-    map.setLayoutProperty('esri-reference',      'visibility', satVis);
-    map.setLayoutProperty('carto-positron',      'visibility', cartoVis);
-    this._btn.textContent = next ? 'Streets' : 'Satellite';
-    this._btn.classList.toggle('active', next);
+    const cycle = this._cycle();
+    const next = cycle[(cycle.indexOf(this._current()) + 1) % cycle.length];
+    this._set(next);
+  }
+  _render(cur) {
+    const cycle = this._cycle();
+    const next = cycle[(cycle.indexOf(cur) + 1) % cycle.length];
+    this._btn.textContent = BASEMAP_LABELS[next];
+    this._btn.title = `Basemap: ${BASEMAP_LABELS[cur]} (click for ${BASEMAP_LABELS[next]})`;
+    this._btn.setAttribute('aria-label', this._btn.title);
+    this._btn.classList.toggle('active', cur !== 'streets');
   }
   onRemove() {
     this._container.parentNode?.removeChild(this._container);
