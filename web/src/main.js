@@ -131,7 +131,6 @@ const $trafficLegend = document.getElementById('traffic-legend');
 const $historicalToggle = document.getElementById('historical-toggle');
 const $historicalArea   = document.getElementById('historical-area');
 const $historicalDate   = document.getElementById('historical-date');
-const $historicalZoningToggle = document.getElementById('historical-zoning-toggle');
 const $historicalBanner = document.getElementById('historical-banner');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
@@ -284,7 +283,6 @@ if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 if ($historicalToggle) $historicalToggle.addEventListener('click', () => toggleHistorical());
 if ($historicalArea)   $historicalArea.addEventListener('change', onHistoricalAreaChange);
 if ($historicalDate)   $historicalDate.addEventListener('change', onHistoricalDateChange);
-if ($historicalZoningToggle) $historicalZoningToggle.addEventListener('click', () => toggleHistoricalZoning());
 mapReady.then(() => map.on('moveend', onHistoricalMapMove));
 initHistoricalControls();
 // Tab-into-To auto-fill: when the user types a number in From and
@@ -1533,12 +1531,6 @@ let historicalZoningSnap = null;    // snapshot whose whole-city zoning is curre
 // the map shows the previous view's parcels while a newer view is in flight.
 let historicalLoadId = 0;
 
-// Historical zoning is a SEPARATE toggle (whole-city fill for the selected As-of
-// date), independent of the parcel/survey Area+viewport machinery above. Its own
-// active flag + monotonic load id (a date change mid-fetch supersedes).
-let historicalZoningActive = false;
-let historicalZoningLoadId = 0;
-
 // Follow-the-map guards. Below MIN_ZOOM (the zoom where the neighbourhood layer
 // itself appears) we ask the user to zoom in; the per-view neighbourhood cap
 // bounds the shard fetch. Tuned from real in-view counts: at zoom 15 a viewport
@@ -1709,18 +1701,14 @@ async function initHistoricalControls() {
   }
 
   if ($historicalToggle) $historicalToggle.disabled = false;
-  if ($historicalZoningToggle) $historicalZoningToggle.disabled = false;
 }
 
 // Re-load when the user picks a different snapshot date while active (keeps the
-// current Area / viewport mode). Also refreshes the zoning overlay if it's on.
+// current Area / viewport mode). Zoning rides along inside loadHistorical.
 function onHistoricalDateChange() {
   if (historicalActive && $historicalDate?.value) {
     historicalSnap = $historicalDate.value;
     loadHistorical(historicalSnap);
-  }
-  if (historicalZoningActive && $historicalDate?.value) {
-    loadHistoricalZoning($historicalDate.value);
   }
 }
 
@@ -1742,71 +1730,6 @@ function onHistoricalMapMove() {
   }, 400);
 }
 
-// ---------- Historical zoning (whole-city, as-of-date) ----------
-// Standalone toggle: draws the selected As-of snapshot's zoning districts as a
-// citywide fill (same palette as the live Zoning overlay). Independent of the
-// parcel/survey overlay + its Area picker — zoning is one whole-city file.
-async function toggleHistoricalZoning() {
-  if (!$historicalZoningToggle) return;
-  await mapReady;
-  if (historicalZoningActive) { deactivateHistoricalZoning(); return; }
-  const snap = $historicalDate?.value;
-  if (!snap) { setCount('Historical zoning: no snapshots available.'); return; }
-  historicalZoningActive = true;
-  $historicalZoningToggle.classList.add('active');
-  $historicalZoningToggle.setAttribute('aria-pressed', 'true');
-  await loadHistoricalZoning(snap);
-}
-
-function deactivateHistoricalZoning() {
-  historicalZoningActive = false;
-  mapReady.then(() => setHistoricalZoningVisible(map, false));
-  if ($historicalZoningToggle) {
-    $historicalZoningToggle.classList.remove('active');
-    $historicalZoningToggle.setAttribute('aria-pressed', 'false');
-    $historicalZoningToggle.textContent = 'Zoning (as-of)';
-  }
-}
-
-async function loadHistoricalZoning(snap) {
-  if (!$historicalZoningToggle || !snap) return;
-  const myId = ++historicalZoningLoadId;
-  $historicalZoningToggle.disabled = true;
-  $historicalZoningToggle.textContent = 'Loading…';
-  try {
-    await mapReady;
-    // Only snapshots whose index entry declares a zoning layer have a zoning.json.
-    if (!historicalIndexCache?.snapshots?.[snap]?.layers?.zoning) {
-      if (myId !== historicalZoningLoadId) return;
-      setHistoricalZoningData(map, null, snap);
-      setHistoricalZoningVisible(map, false);
-      setCount(`Historical zoning: none captured as of ${snap}.`);
-      return;
-    }
-    const fc = await fetchHistoricalZoning(snap);
-    if (myId !== historicalZoningLoadId) return;         // superseded by a newer load
-    if (!fc?.features?.length) {
-      setHistoricalZoningData(map, null, snap);
-      setHistoricalZoningVisible(map, false);
-      setCount(`Historical zoning: no data for ${snap}.`);
-      return;
-    }
-    setHistoricalZoningData(map, fc, snap);
-    setHistoricalZoningVisible(map, true);
-    setCount(`Historical zoning as of ${snap} — ${fc.features.length} districts, filled by zone. Click one for its as-of code + description. Verify against the current by-law.`);
-  } catch (err) {
-    console.warn('historical zoning load failed', err);
-    if (myId === historicalZoningLoadId) {
-      setCount('Historical zoning: load failed.');
-      deactivateHistoricalZoning();
-    }
-  } finally {
-    if (myId === historicalZoningLoadId) {
-      $historicalZoningToggle.disabled = false;
-      $historicalZoningToggle.textContent = historicalZoningActive ? 'Hide zoning (as-of)' : 'Zoning (as-of)';
-    }
-  }
-}
 
 async function toggleHistorical() {
   if (!$historicalToggle) return;
@@ -1979,7 +1902,11 @@ async function loadHistorical(snap, { frame = false } = {}) {
     // with the shard fetches. Only (re)fetched when the snapshot changed; a
     // view-mode pan reload keeps whatever's already on the map (it's city-wide,
     // so it doesn't depend on which neighbourhoods are in view).
-    const zoningPromise = (historicalZoningSnap !== snap)
+    // Only snapshots whose index entry declares a zoning layer have a zoning.json
+    // (older captures predate the zoning layer) — skip the fetch (and the 404) for
+    // the rest, and clear any stale zoning when switching to one of them.
+    const snapHasZoning = !!historicalIndexCache?.snapshots?.[snap]?.layers?.zoning;
+    const zoningPromise = (snapHasZoning && historicalZoningSnap !== snap)
       ? fetchHistoricalZoning(snap).catch(() => null)
       : null;
     // Fetch every neighbourhood's parcel + survey shard + both lineage maps in
@@ -2032,14 +1959,15 @@ async function loadHistorical(snap, { frame = false } = {}) {
     });
     setHistoricalVisible(map, true);
     // As-of zoning under the dashed lots (auto-on with the overlay). Uses the
-    // parallel fetch kicked off above; re-set only when the snapshot changed.
-    if (zoningPromise) {
-      const zoning = await zoningPromise;
+    // parallel fetch kicked off above; re-set only when the snapshot changed, and
+    // cleared (null) when switching to a snapshot that predates the zoning layer.
+    if (historicalZoningSnap !== snap) {
+      const zoning = zoningPromise ? await zoningPromise : null;
       if (myId !== historicalLoadId) return;            // superseded during the zoning fetch
       setHistoricalZoningData(map, zoning, snap);
-      historicalZoningSnap = snap;                       // marked loaded (even if the snapshot has no zoning)
+      historicalZoningSnap = snap;
     }
-    setHistoricalZoningVisible(map, true);
+    setHistoricalZoningVisible(map, snapHasZoning);
     updateHistoricalBanner(snap);
     const np = parcels.features.length;
     const ns = survey.features.length;
