@@ -208,12 +208,18 @@ const BASEMAP_STYLE = {
 // vercel.json's connect-src) — while empty, the basemap control stays a
 // 2-state streets<->satellite exactly as before, so this ships inert.
 export const ORTHO_YEAR = 2024;
-const ORTHO_PMTILES_URL = '';   // e.g. 'https://<public-r2-domain>/wpg-ortho-2024.pmtiles'
+const ORTHO_PMTILES_URL = 'https://pub-f351b204f73e4b2287acad946d79681c.r2.dev/wpg-ortho-2024.pmtiles';
 if (ORTHO_PMTILES_URL) {
   BASEMAP_STYLE.sources['ortho-wpg'] = {
     type: 'raster',
     url: `pmtiles://${ORTHO_PMTILES_URL}`,
     tileSize: 256,
+    // The archive spans z12–z20 (gdaladdo overview levels in build_ortho_tiles.ps1).
+    // Declare the range so MapLibre overzooms the z20 tiles past 20 rather than
+    // requesting tiles the pmtiles protocol answers with null (which blanks the
+    // layer), and doesn't fetch below z12 — where the Esri imagery shows through.
+    minzoom: 12,
+    maxzoom: 20,
     attribution: `Aerial imagery &copy; City of Winnipeg ${ORTHO_YEAR}`,
   };
   // Sits above the Esri imagery (which shows through beyond the City extent /
