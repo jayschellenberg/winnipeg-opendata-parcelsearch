@@ -201,33 +201,40 @@ const BASEMAP_STYLE = {
   ],
 };
 
-// City of Winnipeg aerial ORTHO (7.5 cm, year-stamped) as an optional THIRD
-// basemap. Built offline from the City's whole-city ECW mosaic
-// (r/build_ortho_tiles.ps1) and hosted as raster PMTiles on Cloudflare R2.
-// Empty until the public R2 URL is pinned here (and that host added to
-// vercel.json's connect-src) — while empty, the basemap control stays a
-// 2-state streets<->satellite exactly as before, so this ships inert.
-export const ORTHO_YEAR = 2024;
-const ORTHO_PMTILES_URL = 'https://pub-f351b204f73e4b2287acad946d79681c.r2.dev/wpg-ortho-2024.pmtiles';
-if (ORTHO_PMTILES_URL) {
-  BASEMAP_STYLE.sources['ortho-wpg'] = {
-    type: 'raster',
-    url: `pmtiles://${ORTHO_PMTILES_URL}`,
-    tileSize: 256,
-    // The archive spans z12–z20 (gdaladdo overview levels in build_ortho_tiles.ps1).
-    // Declare the range so MapLibre overzooms the z20 tiles past 20 rather than
-    // requesting tiles the pmtiles protocol answers with null (which blanks the
-    // layer), and doesn't fetch below z12 — where the Esri imagery shows through.
-    minzoom: 12,
-    maxzoom: 20,
-    attribution: `Aerial imagery &copy; City of Winnipeg ${ORTHO_YEAR}`,
-  };
-  // Sits above the Esri imagery (which shows through beyond the City extent /
-  // when overzoomed) and below the two transparent label layers, so place +
-  // road names stay legible over the ortho.
+// City of Winnipeg aerial ORTHO basemaps (7.5 cm, year-stamped) as an optional
+// THIRD basemap. Each year is built offline from the City's whole-city ECW
+// mosaic (r/build_ortho_tiles.ps1) and hosted as its own raster PMTiles archive
+// on Cloudflare R2 (one bucket, wpg-ortho-<year>.pmtiles). When the basemap
+// control is on Aerial, a year picker switches between the years below.
+//
+// ORTHO_YEARS is NEWEST FIRST — the first entry is the default aerial year.
+// Add a year: build + upload wpg-ortho-<year>.pmtiles to the bucket, then
+// prepend the year here (same R2 host, so no vercel.json CSP change needed).
+// Empty ⇒ the control stays a 2-state streets<->satellite toggle (ships inert).
+const ORTHO_R2_BASE = 'https://pub-f351b204f73e4b2287acad946d79681c.r2.dev';
+export const ORTHO_YEARS = [2026, 2024];
+export const ORTHO_YEAR = ORTHO_YEARS[0]; // newest; kept for single-year references
+if (ORTHO_YEARS.length) {
+  // Every ortho layer sits above the Esri imagery (which shows through beyond
+  // the City extent / when overzoomed) and below the two transparent label
+  // layers, so place + road names stay legible. Only one is ever visible.
   const insertAt = BASEMAP_STYLE.layers.findIndex((l) => l.id === 'esri-transportation');
-  BASEMAP_STYLE.layers.splice(insertAt < 0 ? BASEMAP_STYLE.layers.length : insertAt, 0, {
-    id: 'ortho-wpg', type: 'raster', source: 'ortho-wpg', layout: { visibility: 'none' },
+  ORTHO_YEARS.forEach((year, i) => {
+    BASEMAP_STYLE.sources[`ortho-${year}`] = {
+      type: 'raster',
+      url: `pmtiles://${ORTHO_R2_BASE}/wpg-ortho-${year}.pmtiles`,
+      tileSize: 256,
+      // The archives span z12–z20 (gdaladdo overview levels). Declare the range
+      // so MapLibre overzooms the z20 tiles past 20 rather than requesting tiles
+      // the pmtiles protocol answers with null (which blanks the layer), and
+      // doesn't fetch below z12 — where the Esri imagery shows through.
+      minzoom: 12,
+      maxzoom: 20,
+      attribution: `Aerial imagery &copy; City of Winnipeg ${year}`,
+    };
+    BASEMAP_STYLE.layers.splice(insertAt < 0 ? BASEMAP_STYLE.layers.length : insertAt + i, 0, {
+      id: `ortho-${year}`, type: 'raster', source: `ortho-${year}`, layout: { visibility: 'none' },
+    });
   });
 }
 
@@ -2053,35 +2060,66 @@ function safeCssColor(value) {
 }
 
 /**
- * Custom MapLibre control: a single button that flips the basemap between
- * CARTO Positron (streets) and Esri World Imagery (satellite). Sits in the
- * top-right gutter just under the zoom buttons. Stateless — reads the
- * current visibility off the layers each click so we don't have to track
- * a separate flag.
+ * Custom MapLibre control: cycles the basemap CARTO Positron (streets) → Esri
+ * World Imagery (satellite) → City aerial ortho, in the top-right gutter under
+ * the zoom buttons. When more than one ortho year is available, a small year
+ * picker appears under the button in the Aerial state to switch years.
+ * Stateless about the basemap (reads layer visibility each click); tracks only
+ * the selected ortho year.
  */
-const BASEMAP_LABELS = { streets: 'Streets', satellite: 'Satellite', aerial: `Aerial ${ORTHO_YEAR}` };
+const BASEMAP_LABELS = { streets: 'Streets', satellite: 'Satellite', aerial: 'Aerial' };
 class BasemapToggleControl {
+  constructor() {
+    // Selected aerial year (newest by default); null when no ortho is configured.
+    this._orthoYear = ORTHO_YEARS[0] ?? null;
+  }
   onAdd(map) {
     this._map = map;
     this._container = document.createElement('div');
     this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group basemap-toggle';
+
     this._btn = document.createElement('button');
     this._btn.type = 'button';
     this._btn.addEventListener('click', () => this._toggle());
     this._container.appendChild(this._btn);
+
+    // Year picker — a pill per ortho year, shown only in the Aerial state and
+    // only when more than one year exists. Built from ORTHO_YEARS (not the map)
+    // so it's correct even though the style hasn't loaded yet here in onAdd.
+    this._years = document.createElement('div');
+    this._years.className = 'basemap-year-picker';
+    this._years.style.display = 'none';
+    if (ORTHO_YEARS.length > 1) {
+      for (const year of ORTHO_YEARS) {
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'basemap-year';
+        pill.textContent = String(year);
+        pill.dataset.year = String(year);
+        pill.setAttribute('aria-label', `Aerial imagery year ${year}`);
+        pill.addEventListener('click', () => this._pickYear(year));
+        this._years.appendChild(pill);
+      }
+    }
+    this._container.appendChild(this._years);
+
     // Default state is streets → the button offers the next in the cycle.
     // (Static here; getLayoutProperty isn't reliable until the style loads.)
-    this._btn.textContent = BASEMAP_LABELS.satellite;
-    this._btn.title = `Basemap: ${BASEMAP_LABELS.streets} (click for ${BASEMAP_LABELS.satellite})`;
+    this._btn.textContent = this._label('satellite');
+    this._btn.title = `Basemap: ${this._label('streets')} (click for ${this._label('satellite')})`;
     this._btn.setAttribute('aria-label', this._btn.title);
+    this._syncYearPills();
     return this._container;
   }
-  // The ortho basemap is present only when ORTHO_PMTILES_URL is pinned; without
-  // it this stays a 2-state streets<->satellite toggle.
-  _cycle() { return this._map.getLayer('ortho-wpg') ? ['streets', 'satellite', 'aerial'] : ['streets', 'satellite']; }
+  _orthoId(year) { return `ortho-${year}`; }
+  // Driven by config, not the map, so it's valid before the style loads.
+  _hasOrtho() { return ORTHO_YEARS.length > 0; }
+  // "Aerial" is stamped with the selected year so the button reads "Aerial 2026".
+  _label(state) { return state === 'aerial' ? `Aerial ${this._orthoYear}` : BASEMAP_LABELS[state]; }
+  _cycle() { return this._hasOrtho() ? ['streets', 'satellite', 'aerial'] : ['streets', 'satellite']; }
   _current() {
     const m = this._map;
-    if (m.getLayer('ortho-wpg') && m.getLayoutProperty('ortho-wpg', 'visibility') === 'visible') return 'aerial';
+    if (this._hasOrtho() && ORTHO_YEARS.some((y) => m.getLayer(this._orthoId(y)) && m.getLayoutProperty(this._orthoId(y), 'visibility') === 'visible')) return 'aerial';
     if (m.getLayoutProperty('esri-imagery', 'visibility') === 'visible') return 'satellite';
     return 'streets';
   }
@@ -2095,8 +2133,21 @@ class BasemapToggleControl {
     m.setLayoutProperty('esri-imagery',        'visibility', imagery ? 'visible' : 'none');
     m.setLayoutProperty('esri-transportation', 'visibility', imagery ? 'visible' : 'none');
     m.setLayoutProperty('esri-reference',      'visibility', imagery ? 'visible' : 'none');
-    if (m.getLayer('ortho-wpg')) m.setLayoutProperty('ortho-wpg', 'visibility', state === 'aerial' ? 'visible' : 'none');
+    // Exactly one ortho layer visible — the selected year, and only in aerial.
+    for (const y of ORTHO_YEARS) {
+      const id = this._orthoId(y);
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', (state === 'aerial' && y === this._orthoYear) ? 'visible' : 'none');
+    }
+    // The year picker only makes sense in the aerial state (and with >1 year).
+    this._years.style.display = (state === 'aerial' && ORTHO_YEARS.length > 1) ? 'flex' : 'none';
     this._render(state);
+  }
+  _pickYear(year) {
+    if (year === this._orthoYear) return;
+    this._orthoYear = year;
+    // Swap the visible imagery live if we're already in aerial; else just relabel.
+    if (this._current() === 'aerial') this._set('aerial');
+    else this._render(this._current());
   }
   _toggle() {
     const cycle = this._cycle();
@@ -2106,10 +2157,16 @@ class BasemapToggleControl {
   _render(cur) {
     const cycle = this._cycle();
     const next = cycle[(cycle.indexOf(cur) + 1) % cycle.length];
-    this._btn.textContent = BASEMAP_LABELS[next];
-    this._btn.title = `Basemap: ${BASEMAP_LABELS[cur]} (click for ${BASEMAP_LABELS[next]})`;
+    this._btn.textContent = this._label(next);
+    this._btn.title = `Basemap: ${this._label(cur)} (click for ${this._label(next)})`;
     this._btn.setAttribute('aria-label', this._btn.title);
     this._btn.classList.toggle('active', cur !== 'streets');
+    this._syncYearPills();
+  }
+  _syncYearPills() {
+    for (const pill of this._years.querySelectorAll('.basemap-year')) {
+      pill.classList.toggle('active', Number(pill.dataset.year) === this._orthoYear);
+    }
   }
   onRemove() {
     this._container.parentNode?.removeChild(this._container);
