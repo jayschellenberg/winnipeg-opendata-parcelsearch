@@ -16,12 +16,15 @@
 #   4. pmtiles convert MBTiles -> wpg-ortho-<year>.pmtiles (~7-10 GB)
 #   5. print the Cloudflare R2 upload command (credentials stay with you)
 #
-# PREREQUISITES (one-time):
-#   - OSGeo4W GDAL WITH the ECW plugin:  the base GDAL can't read ECW. Install:
+# PREREQUISITES:
+#   - OSGeo4W GDAL with the ECW plugin (gdal_ECW_JP2ECW.dll under
+#     apps\gdal\lib\gdalplugins) — usually ALREADY present with OSGeo4W. This
+#     script sources C:\OSGeo4W\bin\o4w_env.bat itself (sets GDAL_DATA / PROJ_LIB
+#     / the plugin path), so a plain PowerShell run works — no OSGeo4W shell
+#     needed. If the ECW check below still fails, add the plugin once:
 #       C:\OSGeo4W\bin\osgeo4w-setup.exe -q -k -P gdal-ecw
-#     Verify:  gdalinfo --formats | findstr /I ECW      (should list "ECW")
 #   - go-pmtiles binary (already fetched to ..\..\tools\pmtiles.exe).
-#   - ~30 GB free disk during the build (zip + ecw + mbtiles); output ~7-10 GB.
+#   - ~40 GB free disk during the build (zip + ecw + mbtiles); output ~7-10 GB.
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File r\build_ortho_tiles.ps1            # 2024
@@ -46,6 +49,22 @@ $gdalwarp = Join-Path $GdalBin 'gdalwarp.exe'
 $gdaladdo = Join-Path $GdalBin 'gdaladdo.exe'
 foreach ($exe in @($gdalinfo, $gdalwarp, $gdaladdo, $PmtilesExe)) {
   if (-not (Test-Path $exe)) { throw "missing tool: $exe" }
+}
+
+# --- Load the OSGeo4W environment ------------------------------------------
+# The OSGeo4W GDAL exes need GDAL_DATA / PROJ_LIB and — crucially — the
+# gdal-plugins path on GDAL_DRIVER_PATH, or the ECW driver silently doesn't
+# load (and you get "GDAL_DATA is not defined" warnings). o4w_env.bat sets all
+# of it; import its vars into this session so a plain PowerShell run works.
+$o4w = Join-Path $GdalBin 'o4w_env.bat'
+if (Test-Path $o4w) {
+  cmd /c "`"$o4w`" >nul 2>&1 && set" | ForEach-Object {
+    if ($_ -match '^([^=]+)=(.*)$' -and $matches[1] -notmatch '^[=(]') {
+      try { Set-Item -Path "Env:\$($matches[1])" -Value $matches[2] -ErrorAction Stop } catch {}
+    }
+  }
+} else {
+  Write-Warning "OSGeo4W env script not found at $o4w — GDAL may miss its data / the ECW plugin."
 }
 
 # --- ECW plugin present? (the whole thing needs it) ------------------------
