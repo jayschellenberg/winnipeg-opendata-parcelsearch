@@ -32,7 +32,7 @@ This document explains how to build the same parcel-search tool for a different 
 - The Zoning column shows the **top-1 area-weighted** zoning code (via `@turf/intersect` + `@turf/area`), with separate columns for coverage % and the second-largest zone (when ≥ 1%). Reveals zoning splits that the Assessment dataset's single primary `zoning` text hides.
 - The Assess-{year} column shows total assessed value as a clickable link into the City's assessment portal (`winnipegassessment.com`). The header year is dynamically stamped from the most-common `current_assessment_year` in the result set.
 - Six **toggleable map overlays**: citywide Zoning (cached in IndexedDB for 7 days), Traffic Volumes (24-hour average count-study corridors + permanent stations), Secondary Plans (combined Precincts + Major Redev Sites), Infill Guideline Area (Mature Communities), Malls and Corridors PDO (combined Regional Centres + Urban + Regional Corridors), and Lot Dimensions (survey-edge feet labels at zoom ≥ 17).
-- A **Streets ⇄ Satellite basemap toggle** in the map's top-right gutter (Esri World Imagery, no API key).
+- A **Streets → Satellite → Aerial 2024 basemap cycle** in the map's top-right gutter: Esri World Imagery (no API key), plus an optional City-of-Winnipeg 7.5 cm aerial ortho self-hosted as raster PMTiles on Cloudflare R2 (see §8.7).
 - A **Screenshot Map** button captures the current view as a PNG with attribution composited, for dropping into reports.
 - **Floating zoning and traffic legends** appear on the map only when those overlays are on.
 - Results table is fully sortable; supports **CSV export**, **map-click → row scroll**, **row click → map fly-to-parcel**, **combined hover popup** for overlapping layers, and **Walkscore + Flood** external-link columns.
@@ -98,7 +98,7 @@ SODA paging is centralized in `fetchSodaPaged` / `fetchSodaRowsPaged`. Internal 
 
 **Dependencies** (`web/package.json`):
 
-- `maplibre-gl` — the map (CartoDB Positron + Esri World Imagery raster basemaps, no API keys)
+- `maplibre-gl` — the map (CartoDB Positron + Esri World Imagery + an optional City aerial-ortho PMTiles raster basemap, no API keys)
 - `@turf/bbox` — bounding boxes
 - `@turf/boolean-intersects` — defensive fallback when centroid coords are missing
 - `@turf/boolean-point-in-polygon` — primary client-side join primitive
@@ -703,6 +703,65 @@ assess  fill: #b22222  (firebrick)    line: #690000 (very dark red) 3px solid
 ```
 
 Pick high-contrast complementary colours. Keep one cool and one warm so they read as obviously different. Update the `.swatch.survey`, `.swatch.assess`, `.legend-pill.survey`, `.legend-pill.assess` rules in `style.css` to match.
+
+### 8.7 Aerial ortho basemap (optional)
+
+An optional **third basemap** — the City of Winnipeg's whole-city aerial ortho
+(7.5 cm, year-stamped) — alongside Streets and Satellite. The City publishes
+each year's ortho only as a single ~15 GB ECW mosaic (indexed by open-data
+dataset `sf35-zz6g`); there is **no web tile service**, so the tool tiles it
+once per year and self-hosts the result.
+
+**Web wiring** (`map.js`): gated on one constant, `ORTHO_PMTILES_URL` — empty ⇒
+the control stays a 2-state Streets⇄Satellite toggle; set ⇒ it becomes a
+3-state cycle. When set, an `ortho-wpg` raster source (`url: pmtiles://<R2 URL>`,
+`minzoom: 12, maxzoom: 20`) is spliced **between** `esri-imagery` and the Esri
+label layers, so Esri imagery shows through beyond the City extent / below z12
+and road + place labels stay legible over the ortho. `ORTHO_YEAR` stamps the
+button label and attribution.
+
+**Build** (`r/build_ortho_tiles.ps1`, run under **PowerShell 7**, not 5.1):
+resolves the year's ECW mosaic URL, downloads + unzips it, `gdalwarp`s ECW →
+EPSG:3857 MBTiles (JPEG), builds the overview pyramid (`gdaladdo`), and
+`pmtiles convert`s to `wpg-ortho-<year>.pmtiles`. Full city is ~3–4 h and needs
+OSGeo4W GDAL with the ECW plugin + ~50 GB scratch. 2024 output: 16.5 GB, z12–20.
+
+**Hosting — Cloudflare R2** (egress is free, so serving is ≈$0/mo):
+
+1. One bucket (`wpg-ortho`) holds every year as `wpg-ortho-<year>.pmtiles`.
+2. Enable the bucket's **Public Development URL** (`https://pub-<hash>.r2.dev`).
+3. Add a **CORS policy** — `AllowedMethods [GET, HEAD]`, `AllowedHeaders
+   [range, …]`, `AllowedOrigins` = the deployed site + `http://localhost:5173`.
+   The `Range` header is mandatory: PMTiles reads tiles via HTTP range requests.
+4. `rclone copy` the file up (S3 API, an **Account** R2 API token; multipart
+   handles the 16 GB).
+5. Pin `ORTHO_PMTILES_URL` to `<public URL>/wpg-ortho-<year>.pmtiles` and add the
+   R2 host to `connect-src` in `vercel.json` (tiles are fetched via `fetch()`
+   under the page CSP — `img-src` is not involved).
+
+**Add a later year** (e.g. 2026) reuses all of the above: `build_ortho_tiles.ps1
+-Year 2026` → `rclone copy` into the same bucket → bump the filename +
+`ORTHO_YEAR`. One bucket, per-year files.
+
+**Build gotchas** (each cost real time the first run):
+
+- **MBTiles needs an *exact* web-mercator zoom resolution.** `gdalwarp -of
+  MBTILES -tr 0.149` (approx z20) fails with *"Could not find an appropriate
+  zoom level that matches raster pixel size."* Snap `-tr` to the zoom's exact
+  m/px (`res0 / 2^round(log2(res0/target))`) + `-tap`; the script does this.
+- **OSGeo4W's `proj.db` can be stale vs its GDAL.** A GDAL nightly (PROJ 9.x,
+  layout ≥ 4) reading a 2021 `proj.db` (layout 1) fails *every* reprojection
+  (*"…DATABASE.LAYOUT.VERSION.MINOR = 1 … a number >= 4 is expected"*). Fix:
+  copy a modern `proj.db` (e.g. from R's `sf`/`terra`) over
+  `C:\OSGeo4W\share\proj\proj.db` (back up the old one first).
+- **Run the script under pwsh 7.** Windows PowerShell 5.1's parser rejects the
+  `&` in the SoQL query URL string and won't even parse the file.
+- **Unzip the ECW with .NET `ZipFile`, not Windows `tar`** — bsdtar reports the
+  ~15 GB ZIP64 as *"Damaged Zip archive"* (a streaming-reader limit); the
+  archive is fine.
+- **You can't confirm the render headlessly** ([Bug 10.10](#1010-document-visibility-blocks-maplibre-tile-loading)).
+  Verify instead with an in-page range `fetch()` of the R2 URL from the deployed
+  origin — a `206` + `PMTiles` magic bytes exercises CSP + CORS + R2 at once.
 
 ---
 

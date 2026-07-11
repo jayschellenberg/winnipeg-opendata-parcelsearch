@@ -7,7 +7,7 @@ for commercial-appraisal workflows.
 
 Search parcels by legal description (Lot / Block / Plan) or by roll number,
 civic address, zoning, and dwelling-unit count; see survey lots and assessment
-parcels together on a MapLibre map; toggle ~15 reference overlays (citywide
+parcels together on a MapLibre map (street, satellite, or 7.5 cm City aerial basemaps); toggle ~15 reference overlays (citywide
 zoning, traffic volumes, transit, OurWinnipeg policy areas, contaminated
 sites, neighbourhoods, parcel dimensions); browse **historical as-of-date
 parcels** with inferred lineage and size-change highlighting; upload a sales
@@ -41,7 +41,7 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 | `web/test/` | Unit tests, run by `npm test` |
 | `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods) |
 | `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcels, ~82 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Publish a rebuild with `gh release upload parcels-pmtiles web/public/parcels.pmtiles --clobber` |
-| `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, PMTiles build |
+| `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels + aerial-ortho PMTiles builds |
 | `extras/` | Early experiments kept for reference |
 
 ## Documentation
@@ -62,7 +62,7 @@ Data Portal, under the
 [Open Government Licence – Winnipeg](https://data.winnipeg.ca/open-data-licence).
 Transit overlays are derived from the Winnipeg Transit GTFS feed.
 Environmentally tracked sites: Manitoba Contaminated/Impacted Sites Registry.
-Basemaps © OpenStreetMap contributors / CARTO; imagery © Esri and partners.
+Basemaps © OpenStreetMap contributors / CARTO; satellite imagery © Esri and partners; aerial ortho imagery © City of Winnipeg (Open Government Licence – Winnipeg).
 
 ## Disclaimer
 
