@@ -114,12 +114,21 @@ Step "Warp -> MBTiles (3857, JPEG q$JpegQuality, $TargetResM m/px)"
 $mbt = Join-Path $WorkDir ("wpg-ortho-$Year.mbtiles")
 if (Test-Path $mbt) { if ($Force) { Remove-Item $mbt -Force } }
 if (-not (Test-Path $mbt)) {
-  # -tr in 3857 metres caps the base zoom (0.149 ~= z20). -b 1/2/3 drops any
-  # alpha so the JPEG tile format is happy. This is the long step (tens of min).
-  & $gdalwarp -t_srs EPSG:3857 -tr $TargetResM $TargetResM -r bilinear `
+  # The MBTiles driver only accepts a base resolution that is EXACTLY a
+  # web-mercator zoom level, else it dies with "Could not find an appropriate
+  # zoom level that matches raster pixel size". Snap the requested $TargetResM
+  # to the nearest zoom's exact 3857 m/px, and -tap so the output pixel grid
+  # aligns to the global tile grid (whose origin is an integer multiple of the
+  # zoom resolution). -b 1/2/3 drops alpha so the JPEG tile format is happy.
+  # This is the long step (tens of min).
+  $res0    = 2 * [math]::PI * 6378137 / 256                      # zoom-0 m/px (EPSG:3857)
+  $zoom    = [int][math]::Round([math]::Log($res0 / $TargetResM, 2))
+  $snapRes = $res0 / [math]::Pow(2, $zoom)
+  Write-Host "  base zoom z$zoom  ($([math]::Round($snapRes,6)) m/px, snapped from $TargetResM)"
+  & $gdalwarp -t_srs EPSG:3857 -tr $snapRes $snapRes -tap -r bilinear `
       -b 1 -b 2 -b 3 -of MBTILES `
       -co "TILE_FORMAT=JPEG" -co "QUALITY=$JpegQuality" `
-      -multi -wo NUM_THREADS=ALL_CPUS -co "NUM_THREADS=ALL_CPUS" `
+      -multi -wo NUM_THREADS=ALL_CPUS `
       $ecw.FullName $mbt
   if ($LASTEXITCODE -ne 0) { throw "gdalwarp failed ($LASTEXITCODE)" }
 
