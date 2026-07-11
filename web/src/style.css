@@ -2799,14 +2799,17 @@ body {
 }
 
 /* The tabs are <button>s inside .controls, so `.controls button { background:
-   var(--ui-brand) }` (specificity 0,1,1) was painting BOTH tabs black, beating
-   `.sidebar-tab { background: transparent }` (0,1,0) — aria-selected never got a
-   look-in. Scope under .sidebar-tabs to outrank it: inactive stays transparent
-   (reads grey on the light strip), only the active tab is brand. */
-.sidebar-tabs .sidebar-tab { background: transparent; }
+   var(--ui-brand); color: #fff }` (specificity 0,1,1) was painting BOTH tabs'
+   fill AND text, beating `.sidebar-tab { ... }` (0,1,0) — so aria-selected never
+   got a look-in and the INACTIVE tab rendered white text on the light strip
+   (unreadable). Scope under .sidebar-tabs (0,2,0) to outrank it: the inactive
+   tab is transparent with dark ink; only the active tab gets the brand pill +
+   white text. */
+.sidebar-tabs .sidebar-tab { background: transparent; color: var(--ui-ink-soft); }
 .sidebar-tabs .sidebar-tab[aria-selected="true"] {
   background: var(--ui-brand);
   border-color: var(--ui-brand);
+  color: #fff;
 }
 
 .sidebar-tab:focus-visible {
