@@ -727,6 +727,39 @@ export async function fetchCityZoning() {
   return _cityZoningPromise;
 }
 
+// Winnipeg Streets overlay — the City Road Network centrelines (ngsx-caav,
+// ROAD_NETWORK_URL) trimmed to just what the overlay needs: the street name for
+// labels, the class for styling, and the line geometry. ~0.8 MB gzipped for the
+// whole city. Streets change rarely, so it's IndexedDB-cached for a week like
+// the zoning layer, and the in-flight promise is memoised module-side.
+const WPG_STREETS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const WPG_STREETS_CACHE_KEY = 'wpgStreets';
+let _wpgStreetsPromise = null;
+export async function fetchWinnipegStreets() {
+  if (_wpgStreetsPromise) return _wpgStreetsPromise;
+  _wpgStreetsPromise = (async () => {
+    try {
+      const cached = await idbReadCache(WPG_STREETS_CACHE_KEY, WPG_STREETS_TTL_MS);
+      if (cached) return cached;
+    } catch (err) {
+      console.warn('IndexedDB read failed; falling back to network', err);
+    }
+    const params = new URLSearchParams({
+      $select: 'full_name,type,the_geom',
+      $order: 'segment_id',
+    });
+    const fc = await fetchSodaPaged(ROAD_NETWORK_URL, params, {
+      label: 'Winnipeg streets fetch',
+    });
+    idbWriteCache(WPG_STREETS_CACHE_KEY, fc).catch((err) =>
+      console.warn('IndexedDB write failed for wpgStreets', err)
+    );
+    return fc;
+  })();
+  _wpgStreetsPromise.catch(() => { _wpgStreetsPromise = null; });
+  return _wpgStreetsPromise;
+}
+
 export async function fetchZoningOverlap(parcelFc) {
   const key = parcelSetCacheKey(parcelFc);
   if (key && ZONING_CACHE.has(key)) {

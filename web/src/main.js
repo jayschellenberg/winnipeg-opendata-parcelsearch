@@ -62,6 +62,7 @@ import {
   fetchTransitStops,
   fetchNeighbourhoods,
   fetchNeighbourhoodClusters,
+  fetchWinnipegStreets,
   fetchHistoricalIndex,
   fetchHistoricalManifest,
   fetchHistoricalShard,
@@ -114,6 +115,7 @@ const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
+const $streetsToggle        = document.getElementById('streets-toggle');
 const $count = document.getElementById('count');
 const $tbody = document.querySelector('#results tbody');
 
@@ -157,6 +159,8 @@ let contamEnabled = false;
 let contamLoaded = false;
 let transitEnabled = false;
 let transitLoaded = false;
+let streetsEnabled = false;
+let streetsLoaded = false;
 let neighbourhoodsMode = 'off';
 let neighbourhoodsLoaded = { clusters: false, individual: false };
 
@@ -277,6 +281,7 @@ $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
+if ($streetsToggle) $streetsToggle.addEventListener('click', toggleStreets);
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 // Historical (as-of-date) overlay: a date picker feeds the toggle, which loads
 // the parcel + survey shards (and lineage) for the neighbourhoods in the current
@@ -461,6 +466,7 @@ function captureUrlState() {
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     transitToggle: false, contamToggle: false, dimensionsToggle: false,
+    streetsToggle: false,
   };
   const buttons = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
@@ -470,6 +476,7 @@ function captureUrlState() {
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
+    streetsToggle: $streetsToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
     if (!btn) continue;
@@ -529,6 +536,7 @@ function applyUrlState(state) {
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
+    streetsToggle: $streetsToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
     if (!btn || !(key in state)) continue;
@@ -600,6 +608,7 @@ for (const btn of [
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
   $transitToggle,
   $neighbourhoodsToggle,
+  $streetsToggle,
   $contamToggle, $dimensionsToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
@@ -919,6 +928,45 @@ async function toggleTransit() {
     }
   } else {
     $transitToggle.textContent = 'Transit';
+  }
+}
+
+// Winnipeg Streets overlay — City road-network centrelines + names, on/off,
+// available over every basemap. One 'streets' source feeds the casing, line and
+// label layers, so setOverlayVisible flips all three at once. Lazy-loads the
+// GeoJSON on first enable (then cached in IndexedDB by fetchWinnipegStreets).
+async function toggleStreets() {
+  if (!$streetsToggle) return;
+  streetsEnabled = !streetsEnabled;
+  $streetsToggle.setAttribute('aria-pressed', String(streetsEnabled));
+  $streetsToggle.classList.toggle('active', streetsEnabled);
+  await mapReady;
+  setOverlayVisible(map, 'streets', streetsEnabled);
+
+  if (streetsEnabled) {
+    if (streetsLoaded) {
+      $streetsToggle.textContent = 'Hide Streets';
+      return;
+    }
+    $streetsToggle.disabled = true;
+    $streetsToggle.textContent = 'Loading...';
+    try {
+      const fc = await fetchWinnipegStreets();
+      setOverlayData(map, 'streets', fc);
+      streetsLoaded = true;
+      $streetsToggle.textContent = 'Hide Streets';
+    } catch (err) {
+      console.warn('streets overlay failed', err);
+      streetsEnabled = false;
+      $streetsToggle.classList.remove('active');
+      $streetsToggle.setAttribute('aria-pressed', 'false');
+      $streetsToggle.textContent = 'Winnipeg Streets';
+      setOverlayVisible(map, 'streets', false);
+    } finally {
+      $streetsToggle.disabled = false;
+    }
+  } else {
+    $streetsToggle.textContent = 'Winnipeg Streets';
   }
 }
 

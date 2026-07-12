@@ -697,6 +697,60 @@ export function initMap(container, { onFeatureClick } = {}) {
         },
       });
 
+      // Winnipeg Streets — the City road-network centrelines (Open Data
+      // "Road Network", ngsx-caav), as an optional reference overlay that works
+      // over ANY basemap (streets / satellite / each aerial year). Source starts
+      // empty; main.js populates it on first toggle. A dark casing + white core
+      // reads on both the light street map and the dark imagery; street names
+      // follow the line (symbol-placement:line) and appear from zoom 13.
+      map.addSource('streets', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'streets-line-casing',
+        type: 'line',
+        source: 'streets',
+        layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': 'rgba(26,42,74,0.5)',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.8, 14, 3.4, 18, 9],
+        },
+      });
+      map.addLayer({
+        id: 'streets-line',
+        type: 'line',
+        source: 'streets',
+        layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.7, 14, 1.7, 18, 5.5],
+        },
+      });
+      map.addLayer({
+        id: 'streets-label',
+        type: 'symbol',
+        source: 'streets',
+        minzoom: 13,
+        layout: {
+          visibility: 'none',
+          'symbol-placement': 'line',
+          'text-field': ['coalesce', ['get', 'full_name'], ''],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 13, 10.5, 18, 14],
+          'symbol-spacing': 260,
+          'text-max-angle': 40,
+          'text-padding': 2,
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+        },
+        paint: {
+          'text-color': '#1a1a1a',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 2,
+        },
+      });
+
       // Citywide assessment parcels — every parcel (~245K) served as a
       // single PMTiles archive. Vector source so it's sharp at any zoom
       // and stays interactive (hover/click). Hidden by default; the

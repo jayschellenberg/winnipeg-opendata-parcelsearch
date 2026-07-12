@@ -312,8 +312,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 27 entries (11 inputs + 11 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 subjectRoll)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 27);
+test('SCHEMA — has exactly 28 entries (11 inputs + 12 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 subjectRoll)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 28);
 });
 
 // ---------- neighbourhoodsMode (3-state cycle) ----------
