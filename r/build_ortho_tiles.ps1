@@ -47,7 +47,8 @@ function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 $gdalinfo = Join-Path $GdalBin 'gdalinfo.exe'
 $gdalwarp = Join-Path $GdalBin 'gdalwarp.exe'
 $gdaladdo = Join-Path $GdalBin 'gdaladdo.exe'
-foreach ($exe in @($gdalinfo, $gdalwarp, $gdaladdo, $PmtilesExe)) {
+$gdalbuildvrt = Join-Path $GdalBin 'gdalbuildvrt.exe'
+foreach ($exe in @($gdalinfo, $gdalwarp, $gdaladdo, $gdalbuildvrt, $PmtilesExe)) {
   if (-not (Test-Path $exe)) { throw "missing tool: $exe" }
 }
 
@@ -100,14 +101,29 @@ if ($Force -or -not (Test-Path $zip)) {
 } else { Write-Host "  have $zip" }
 
 Step "Unzip ECW"
-$ecw = Get-ChildItem -Path $WorkDir -Filter '*.ecw' -File -ErrorAction SilentlyContinue |
-       Sort-Object Length -Descending | Select-Object -First 1
-if ($Force -or -not $ecw) {
+$ecws = Get-ChildItem -Path $WorkDir -Filter '*.ecw' -File -ErrorAction SilentlyContinue
+if ($Force -or -not $ecws) {
   Expand-Archive -Path $zip -DestinationPath $WorkDir -Force
-  $ecw = Get-ChildItem -Path $WorkDir -Filter '*.ecw' -File | Sort-Object Length -Descending | Select-Object -First 1
+  $ecws = Get-ChildItem -Path $WorkDir -Filter '*.ecw' -File
 }
-if (-not $ecw) { throw "no .ecw found after unzip" }
-Write-Host "  $($ecw.FullName)  ($([math]::Round($ecw.Length/1GB,1)) GB)"
+if (-not $ecws) { throw "no .ecw found after unzip" }
+
+# The City's "Mosaic" is a SINGLE whole-city ECW some years (2024:
+# MBCWPG24_Property.ecw, 14 GB) but a SET of large corner-named ECW tiles others
+# (2026: 15 tiles, ~102 GB total). More than one -> virtually mosaic them with a
+# VRT so the warp covers the WHOLE city; else we'd tile only the largest piece.
+if ($ecws.Count -eq 1) {
+  $warpInput = $ecws[0].FullName
+  Write-Host "  single ECW: $warpInput  ($([math]::Round($ecws[0].Length/1GB,1)) GB)"
+} else {
+  $vrt = Join-Path $WorkDir ("wpg-ortho-$Year.vrt")
+  $tot = [math]::Round((($ecws | Measure-Object Length -Sum).Sum)/1GB,1)
+  Write-Host "  $($ecws.Count) ECW tiles ($tot GB) -> VRT mosaic $vrt"
+  $tilePaths = @($ecws | ForEach-Object { $_.FullName })
+  & $gdalbuildvrt -overwrite $vrt @tilePaths
+  if ($LASTEXITCODE -ne 0) { throw "gdalbuildvrt failed ($LASTEXITCODE)" }
+  $warpInput = $vrt
+}
 
 # --- 3. warp ECW -> EPSG:3857 MBTiles (JPEG) + overview pyramid -------------
 Step "Warp -> MBTiles (3857, JPEG q$JpegQuality, $TargetResM m/px)"
@@ -129,7 +145,7 @@ if (-not (Test-Path $mbt)) {
       -b 1 -b 2 -b 3 -of MBTILES `
       -co "TILE_FORMAT=JPEG" -co "QUALITY=$JpegQuality" `
       -multi -wo NUM_THREADS=ALL_CPUS `
-      $ecw.FullName $mbt
+      $warpInput $mbt
   if ($LASTEXITCODE -ne 0) { throw "gdalwarp failed ($LASTEXITCODE)" }
 
   Step "Build overview pyramid (lower zooms)"
