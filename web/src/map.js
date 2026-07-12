@@ -140,7 +140,7 @@ const BASEMAP_STYLE = {
     // Transparent reference overlays for the hybrid satellite view —
     // place names, road names, boundaries. Stacked on top of the
     // imagery when Satellite is the active basemap (via the
-    // BasemapToggleControl); hidden when Streets is active so the
+    // BasemapMenuControl); hidden when Streets is active so the
     // CARTO Positron tiles (which carry their own labels) read
     // clean. Same Esri ArcGIS Online raster service Manitoba uses.
     'esri-transportation': {
@@ -323,7 +323,7 @@ export function initMap(container, { onFeatureClick } = {}) {
   });
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-  map.addControl(new BasemapToggleControl(), 'top-right');
+  map.addControl(new BasemapMenuControl(), 'top-right');
   // Distance / area measurement tool. mapbox-gl-draw owns the
   // in-progress geometry; MeasureControl wraps it in a small panel
   // with mode switches and a live readout. Explicit unfiltered
@@ -2060,115 +2060,124 @@ function safeCssColor(value) {
 }
 
 /**
- * Custom MapLibre control: cycles the basemap CARTO Positron (streets) → Esri
- * World Imagery (satellite) → City aerial ortho, in the top-right gutter under
- * the zoom buttons. When more than one ortho year is available, a small year
- * picker appears under the button in the Aerial state to switch years.
- * Stateless about the basemap (reads layer visibility each click); tracks only
- * the selected ortho year.
+ * Custom MapLibre control: a basemap menu in the top-right gutter under the zoom
+ * buttons. A trigger button shows the current basemap; hovering it (or tapping /
+ * focusing it, for touch + keyboard) opens a dropdown listing every basemap —
+ * Streets, each Aerial <year> newest-first, then Satellite — so any view is one
+ * click away instead of cycling. Stateless about the basemap: it reads layer
+ * visibility to know the current view and to highlight the active row.
  */
 const BASEMAP_LABELS = { streets: 'Streets', satellite: 'Satellite', aerial: 'Aerial' };
-class BasemapToggleControl {
-  constructor() {
-    // Selected aerial year (newest by default); null when no ortho is configured.
-    this._orthoYear = ORTHO_YEARS[0] ?? null;
-  }
+class BasemapMenuControl {
   onAdd(map) {
     this._map = map;
     this._container = document.createElement('div');
-    this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group basemap-toggle';
+    // Keeps .basemap-toggle for the shared top-right control look; .basemap-menu
+    // layers the dropdown behaviour on top.
+    this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group basemap-toggle basemap-menu';
 
+    // Flat list of selectable views: Streets, then Aerial years (newest first,
+    // from ORTHO_YEARS), then Satellite. Each row's key matches what _currentKey
+    // reports (the ortho layer id for aerials) and carries how to apply it.
+    this._views = [
+      { key: 'streets', label: BASEMAP_LABELS.streets, apply: () => this._set('streets') },
+      ...ORTHO_YEARS.map((y) => ({ key: `ortho-${y}`, label: `Aerial ${y}`, apply: () => this._set('aerial', y) })),
+      { key: 'satellite', label: BASEMAP_LABELS.satellite, apply: () => this._set('satellite') },
+    ];
+
+    // Trigger — shows the current view label (+ a CSS chevron).
     this._btn = document.createElement('button');
     this._btn.type = 'button';
-    this._btn.addEventListener('click', () => this._toggle());
+    this._btn.className = 'basemap-menu-trigger';
+    this._btn.setAttribute('aria-haspopup', 'true');
+    this._btn.setAttribute('aria-expanded', 'false');
+    this._labelEl = document.createElement('span');
+    this._labelEl.className = 'basemap-menu-label';
+    this._btn.appendChild(this._labelEl);
+    this._btn.addEventListener('click', (e) => { e.stopPropagation(); this._toggle(); });
     this._container.appendChild(this._btn);
 
-    // Year picker — a pill per ortho year, shown only in the Aerial state and
-    // only when more than one year exists. Built from ORTHO_YEARS (not the map)
-    // so it's correct even though the style hasn't loaded yet here in onAdd.
-    this._years = document.createElement('div');
-    this._years.className = 'basemap-year-picker';
-    this._years.style.display = 'none';
-    if (ORTHO_YEARS.length > 1) {
-      for (const year of ORTHO_YEARS) {
-        const pill = document.createElement('button');
-        pill.type = 'button';
-        pill.className = 'basemap-year';
-        pill.textContent = String(year);
-        pill.dataset.year = String(year);
-        pill.setAttribute('aria-label', `Aerial imagery year ${year}`);
-        pill.addEventListener('click', () => this._pickYear(year));
-        this._years.appendChild(pill);
-      }
+    // Dropdown — one row per view.
+    this._list = document.createElement('div');
+    this._list.className = 'basemap-menu-list';
+    this._list.setAttribute('role', 'menu');
+    for (const v of this._views) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'basemap-menu-item';
+      item.setAttribute('role', 'menuitem');
+      item.textContent = v.label;
+      item.dataset.key = v.key;
+      item.addEventListener('click', (e) => { e.stopPropagation(); v.apply(); this._close(); });
+      this._list.appendChild(item);
     }
-    this._container.appendChild(this._years);
+    this._container.appendChild(this._list);
 
-    // Default state is streets → the button offers the next in the cycle.
-    // (Static here; getLayoutProperty isn't reliable until the style loads.)
-    this._btn.textContent = this._label('satellite');
-    this._btn.title = `Basemap: ${this._label('streets')} (click for ${this._label('satellite')})`;
-    this._btn.setAttribute('aria-label', this._btn.title);
-    this._syncYearPills();
+    // Open on hover / keyboard focus; close on leave (slightly delayed so the
+    // pointer can cross the small gap into the list without it flickering shut),
+    // on blur out of the control, on Escape, and on a tap/click elsewhere.
+    this._container.addEventListener('mouseenter', () => this._open());
+    this._container.addEventListener('mouseleave', () => this._scheduleClose());
+    this._container.addEventListener('focusin', () => this._open());
+    this._container.addEventListener('focusout', (e) => { if (!this._container.contains(e.relatedTarget)) this._close(); });
+    this._container.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this._close(); this._btn.focus(); } });
+    this._onDocClick = (e) => { if (!this._container.contains(e.target)) this._close(); };
+    document.addEventListener('click', this._onDocClick);
+
+    this._render();
     return this._container;
   }
-  _orthoId(year) { return `ortho-${year}`; }
-  // Driven by config, not the map, so it's valid before the style loads.
-  _hasOrtho() { return ORTHO_YEARS.length > 0; }
-  // "Aerial" is stamped with the selected year so the button reads "Aerial 2026".
-  _label(state) { return state === 'aerial' ? `Aerial ${this._orthoYear}` : BASEMAP_LABELS[state]; }
-  _cycle() { return this._hasOrtho() ? ['streets', 'satellite', 'aerial'] : ['streets', 'satellite']; }
-  _current() {
+  _open() { clearTimeout(this._closeTimer); this._container.classList.add('open'); this._btn.setAttribute('aria-expanded', 'true'); }
+  _close() { clearTimeout(this._closeTimer); this._container.classList.remove('open'); this._btn.setAttribute('aria-expanded', 'false'); }
+  _scheduleClose() { clearTimeout(this._closeTimer); this._closeTimer = setTimeout(() => this._close(), 140); }
+  _toggle() { this._container.classList.contains('open') ? this._close() : this._open(); }
+  // Current view read from layer visibility, so it's right no matter how the
+  // basemap was last changed. Each getLayoutProperty is guarded by getLayer so
+  // this stays silent before the style loads — asking a non-existent layer for
+  // its paint props fires a map 'error' event (it doesn't throw, so a try/catch
+  // wouldn't help). Missing layers ⇒ nothing visible yet ⇒ the streets default.
+  _currentKey() {
     const m = this._map;
-    if (this._hasOrtho() && ORTHO_YEARS.some((y) => m.getLayer(this._orthoId(y)) && m.getLayoutProperty(this._orthoId(y), 'visibility') === 'visible')) return 'aerial';
-    if (m.getLayoutProperty('esri-imagery', 'visibility') === 'visible') return 'satellite';
+    for (const y of ORTHO_YEARS) {
+      const id = `ortho-${y}`;
+      if (m.getLayer(id) && m.getLayoutProperty(id, 'visibility') === 'visible') return id;
+    }
+    if (m.getLayer('esri-imagery') && m.getLayoutProperty('esri-imagery', 'visibility') === 'visible') return 'satellite';
     return 'streets';
   }
-  _set(state) {
+  _set(state, year) {
     const m = this._map;
-    // Esri imagery + its two transparent label layers are shown for BOTH the
-    // satellite and aerial states (aerial draws the City ortho on top, with
-    // Esri showing through beyond the City extent).
+    // Esri imagery + its two transparent label layers back BOTH satellite and
+    // aerial (aerial draws the City ortho on top; Esri shows through beyond the
+    // City extent).
     const imagery = state === 'satellite' || state === 'aerial';
     m.setLayoutProperty('carto-positron',      'visibility', state === 'streets' ? 'visible' : 'none');
     m.setLayoutProperty('esri-imagery',        'visibility', imagery ? 'visible' : 'none');
     m.setLayoutProperty('esri-transportation', 'visibility', imagery ? 'visible' : 'none');
     m.setLayoutProperty('esri-reference',      'visibility', imagery ? 'visible' : 'none');
-    // Exactly one ortho layer visible — the selected year, and only in aerial.
+    // Exactly one ortho layer visible — the picked year, and only in aerial.
     for (const y of ORTHO_YEARS) {
-      const id = this._orthoId(y);
-      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', (state === 'aerial' && y === this._orthoYear) ? 'visible' : 'none');
+      const id = `ortho-${y}`;
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', (state === 'aerial' && y === year) ? 'visible' : 'none');
     }
-    // The year picker only makes sense in the aerial state (and with >1 year).
-    this._years.style.display = (state === 'aerial' && ORTHO_YEARS.length > 1) ? 'flex' : 'none';
-    this._render(state);
+    this._render();
   }
-  _pickYear(year) {
-    if (year === this._orthoYear) return;
-    this._orthoYear = year;
-    // Swap the visible imagery live if we're already in aerial; else just relabel.
-    if (this._current() === 'aerial') this._set('aerial');
-    else this._render(this._current());
-  }
-  _toggle() {
-    const cycle = this._cycle();
-    const next = cycle[(cycle.indexOf(this._current()) + 1) % cycle.length];
-    this._set(next);
-  }
-  _render(cur) {
-    const cycle = this._cycle();
-    const next = cycle[(cycle.indexOf(cur) + 1) % cycle.length];
-    this._btn.textContent = this._label(next);
-    this._btn.title = `Basemap: ${this._label(cur)} (click for ${this._label(next)})`;
-    this._btn.setAttribute('aria-label', this._btn.title);
+  _render() {
+    const cur = this._currentKey();
+    const curView = this._views.find((v) => v.key === cur) ?? this._views[0];
+    this._labelEl.textContent = curView.label;
     this._btn.classList.toggle('active', cur !== 'streets');
-    this._syncYearPills();
-  }
-  _syncYearPills() {
-    for (const pill of this._years.querySelectorAll('.basemap-year')) {
-      pill.classList.toggle('active', Number(pill.dataset.year) === this._orthoYear);
+    this._btn.title = `Basemap: ${curView.label}`;
+    this._btn.setAttribute('aria-label', `Basemap: ${curView.label}. Open to choose another.`);
+    for (const item of this._list.querySelectorAll('.basemap-menu-item')) {
+      const on = item.dataset.key === cur;
+      item.classList.toggle('active', on);
+      item.setAttribute('aria-current', on ? 'true' : 'false');
     }
   }
   onRemove() {
+    clearTimeout(this._closeTimer);
+    if (this._onDocClick) document.removeEventListener('click', this._onDocClick);
     this._container.parentNode?.removeChild(this._container);
     this._map = null;
   }

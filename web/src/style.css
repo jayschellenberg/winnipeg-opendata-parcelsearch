@@ -2909,37 +2909,76 @@ body {
   color: #fff;
 }
 
-/* Aerial year picker — a row of compact pills under the basemap button, shown
-   only in the Aerial state (BasemapToggleControl). Scoped to (0,3,x) so it
-   overrides the generic .basemap-toggle button rules above. */
-.maplibregl-ctrl.basemap-toggle .basemap-year-picker {
-  display: flex;
-  gap: 3px;
-  padding: 3px;
-  background: #fff;
-  border-top: 1px solid var(--ui-line);
+/* Basemap menu — a trigger button that reveals a dropdown of every basemap
+   (Streets, each Aerial <year>, Satellite) on hover / focus / tap, replacing the
+   old streets→satellite→aerial cycle + year picker. The container keeps
+   .basemap-toggle for the shared top-right control look; .basemap-menu layers the
+   dropdown on top. Controls stay white in both themes, like the buttons above. */
+.maplibregl-ctrl.basemap-menu {
+  position: relative;
+  overflow: visible;               /* let the dropdown escape the ctrl-group clip */
 }
-.maplibregl-ctrl.basemap-toggle .basemap-year {
-  flex: 1 1 0;
-  min-width: 40px;
-  min-height: 0;
-  padding: 3px 7px;
-  font-size: 11px;
+.maplibregl-ctrl.basemap-menu .basemap-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 104px;                /* fits "Aerial 2026" without reflow */
+}
+.maplibregl-ctrl.basemap-menu .basemap-menu-trigger::after {
+  content: "";                     /* chevron */
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 1px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  opacity: 0.55;
+  transition: transform 140ms ease;
+}
+.maplibregl-ctrl.basemap-menu.open .basemap-menu-trigger::after {
+  transform: translateY(1px) rotate(-135deg);
+}
+.maplibregl-ctrl.basemap-menu .basemap-menu-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  min-width: 100%;
+  display: none;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 3px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-popover);
+}
+.maplibregl-ctrl.basemap-menu.open .basemap-menu-list {
+  display: flex;
+}
+.maplibregl-ctrl.basemap-menu .basemap-menu-item {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  justify-content: flex-start;
+  text-align: left;
+  white-space: nowrap;
+  padding: 6px 10px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 1.4;
   color: var(--ui-ink-soft);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--ui-radius);
 }
-.maplibregl-ctrl.basemap-toggle .basemap-year:hover {
+.maplibregl-ctrl.basemap-menu .basemap-menu-item:hover {
   color: var(--ui-ink);
   background: var(--ui-panel-muted);
 }
-.maplibregl-ctrl.basemap-toggle .basemap-year.active {
+.maplibregl-ctrl.basemap-menu .basemap-menu-item.active {
   color: #fff;
   background: var(--ui-brand);
-  border-color: var(--ui-brand);
 }
 
 .maplibregl-ctrl.measure-control .measure-panel {
