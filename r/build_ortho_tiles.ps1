@@ -34,6 +34,7 @@
 param(
   [int]    $Year        = 2024,
   [string] $Url         = '',                                   # override the auto-resolved mosaic URL
+  [string] $SourceSrs   = '',                                   # assign source SRS when the ECW lacks one (2021: EPSG:26914 = UTM 14N)
   [double] $TargetResM  = 0.149,                                # 3857 m/px: 0.149 ~= z20, 0.075 ~= z21, 0.3 ~= z19
   [int]    $JpegQuality = 82,
   [string] $WorkDir     = 'D:\WpgOrtho',                        # scratch: OUTSIDE Dropbox + the git repo (build churns ~35 GB of transient files — don't sync them)
@@ -48,7 +49,8 @@ $gdalinfo = Join-Path $GdalBin 'gdalinfo.exe'
 $gdalwarp = Join-Path $GdalBin 'gdalwarp.exe'
 $gdaladdo = Join-Path $GdalBin 'gdaladdo.exe'
 $gdalbuildvrt = Join-Path $GdalBin 'gdalbuildvrt.exe'
-foreach ($exe in @($gdalinfo, $gdalwarp, $gdaladdo, $gdalbuildvrt, $PmtilesExe)) {
+$gdalsrsinfo = Join-Path $GdalBin 'gdalsrsinfo.exe'
+foreach ($exe in @($gdalinfo, $gdalwarp, $gdaladdo, $gdalbuildvrt, $gdalsrsinfo, $PmtilesExe)) {
   if (-not (Test-Path $exe)) { throw "missing tool: $exe" }
 }
 
@@ -92,21 +94,30 @@ if (-not $Url) {
 }
 
 # --- 2. download (resumable) + unzip ---------------------------------------
+# Delivery format varies by year: a raw .ecw (2021: MBCWPG21_Property_Delivery.ecw,
+# 16 GB), a .zip holding one whole-city ECW (2024), or a .zip of many ECW tiles
+# (2026: 15). Pick the local name + whether to unzip from the URL extension.
+$isZip = $Url -match '\.zip($|\?)'
 Step "Download mosaic"
-$zip = Join-Path $WorkDir ("wpg-ortho-$Year.ecw.zip")
-if ($Force -or -not (Test-Path $zip)) {
-  # curl -C - resumes a partial file; the download is ~14 GB.
-  & curl.exe -fL -C - --retry 5 -o $zip $Url
+$dl = Join-Path $WorkDir ("wpg-ortho-$Year" + $(if ($isZip) { '.ecw.zip' } else { '.ecw' }))
+if ($Force -or -not (Test-Path $dl)) {
+  # curl -C - resumes a partial file.
+  & curl.exe -fL -C - --retry 5 -o $dl $Url
   if ($LASTEXITCODE -ne 0) { throw "download failed ($LASTEXITCODE)" }
-} else { Write-Host "  have $zip" }
+} else { Write-Host "  have $dl" }
 
-Step "Unzip ECW"
+Step "Unpack ECW"
 $ecws = Get-ChildItem -Path $WorkDir -Filter '*.ecw' -File -ErrorAction SilentlyContinue
-if ($Force -or -not $ecws) {
-  Expand-Archive -Path $zip -DestinationPath $WorkDir -Force
+if ($isZip) {
+  if ($Force -or -not $ecws) {
+    Expand-Archive -Path $dl -DestinationPath $WorkDir -Force
+    $ecws = Get-ChildItem -Path $WorkDir -Filter '*.ecw' -File
+  }
+} else {
+  # raw .ecw download IS the mosaic (saved as wpg-ortho-<year>.ecw)
   $ecws = Get-ChildItem -Path $WorkDir -Filter '*.ecw' -File
 }
-if (-not $ecws) { throw "no .ecw found after unzip" }
+if (-not $ecws) { throw "no .ecw found after download/unpack" }
 
 # The City's "Mosaic" is a SINGLE whole-city ECW some years (2024:
 # MBCWPG24_Property.ecw, 14 GB) but a SET of large corner-named ECW tiles others
@@ -141,7 +152,21 @@ if (-not (Test-Path $mbt)) {
   $zoom    = [int][math]::Round([math]::Log($res0 / $TargetResM, 2))
   $snapRes = $res0 / [math]::Pow(2, $zoom)
   Write-Host "  base zoom z$zoom  ($([math]::Round($snapRes,6)) m/px, snapped from $TargetResM)"
-  & $gdalwarp -t_srs EPSG:3857 -tr $snapRes $snapRes -tap -r bilinear `
+  # Some ECW mosaics ship WITHOUT an embedded SRS (2021's raw .ecw). Then gdalwarp
+  # treats the source pixel coords as if already EPSG:3857 -> tiles land at the
+  # wrong place + scale. If -SourceSrs is given, assign it (-s_srs); otherwise
+  # verify the source HAS an SRS and fail loudly if not.
+  $srcArgs = @()
+  if ($SourceSrs) {
+    $srcArgs = @('-s_srs', $SourceSrs)
+    Write-Host "  assigning source SRS: $SourceSrs"
+  } else {
+    & $gdalsrsinfo -o epsg $warpInput *> $null
+    if ($LASTEXITCODE -ne 0) {
+      throw "source $warpInput has NO embedded SRS. Re-run with -SourceSrs (City of Winnipeg ortho is UTM zone 14N = EPSG:26914)."
+    }
+  }
+  & $gdalwarp -t_srs EPSG:3857 @srcArgs -tr $snapRes $snapRes -tap -r bilinear `
       -b 1 -b 2 -b 3 -of MBTILES `
       -co "TILE_FORMAT=JPEG" -co "QUALITY=$JpegQuality" `
       -multi -wo NUM_THREADS=ALL_CPUS `
