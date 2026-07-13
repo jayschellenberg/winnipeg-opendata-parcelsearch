@@ -2916,7 +2916,7 @@ body {
    dropdown on top. Controls stay white in both themes, like the buttons above. */
 .maplibregl-ctrl.basemap-menu {
   position: relative;
-  z-index: 3;                      /* lift the picker + its open dropdown above the Measure control (z-index:auto) stacked below it */
+  z-index: 3;                      /* keep the open picker above the map canvas and built-in controls */
   overflow: visible;               /* let the dropdown escape the ctrl-group clip */
 }
 .maplibregl-ctrl.basemap-menu .basemap-menu-trigger {
@@ -2943,14 +2943,14 @@ body {
 }
 .maplibregl-ctrl.basemap-menu .basemap-menu-list {
   position: absolute;
-  top: 100%;
-  right: 0;
+  top: 0;
+  right: calc(100% + 6px);         /* open beside the trigger so it never covers Measure below */
   z-index: 5;
   min-width: 100%;
   display: none;
   flex-direction: column;
   gap: 1px;
-  margin-top: 3px;
+  margin-top: 0;
   padding: 4px;
   background: #fff;
   border: 1px solid var(--ui-line-strong);
