@@ -1129,6 +1129,7 @@ body {
 
 .maplibregl-ctrl.measure-control {
   position: relative;
+  overflow: visible;
 }
 .maplibregl-ctrl.measure-control > button {
   width: auto;
