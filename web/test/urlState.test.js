@@ -136,6 +136,7 @@ test('encodeState — every overlay toggle emits its short code', () => {
     surveyToggle: true,
     assessToggle: false,
     allParcelsToggle: true,
+    dwellingUnitsToggle: true,
     zoningToggle: true,
     trafficToggle: true,
     secondaryPlansToggle: true,
@@ -149,6 +150,7 @@ test('encodeState — every overlay toggle emits its short code', () => {
   assert.equal(params.get('sv'), '1');
   assert.equal(params.get('av'), '0');
   assert.equal(params.get('ap'), '1');
+  assert.equal(params.get('dl'), '1');
   assert.equal(params.get('zo'), '1');
   assert.equal(params.get('tr'), '1');
   assert.equal(params.get('sp'), '1');
@@ -249,6 +251,7 @@ test('round-trip — full state survives encode + decode', () => {
     surveyToggle: true,
     assessToggle: false,
     allParcelsToggle: true,
+    dwellingUnitsToggle: true,
     zoningToggle: true,
     trafficToggle: true,
     secondaryPlansToggle: true,
@@ -312,8 +315,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 28 entries (11 inputs + 12 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 subjectRoll)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 28);
+test('SCHEMA — has exactly 29 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 subjectRoll)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 29);
 });
 
 // ---------- neighbourhoodsMode (3-state cycle) ----------

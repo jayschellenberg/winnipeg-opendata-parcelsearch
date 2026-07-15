@@ -30,11 +30,13 @@ library(sf)
 library(httr2)
 library(jsonlite)
 library(digest)
+source(file.path("r", "lib_dwelling_units.R"))
 
 data_dir          <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
 public_dir        <- file.path(data_dir, "web", "public")
 output_geojson    <- file.path(public_dir, "parcels.geojson")
 output_centroids  <- file.path(public_dir, "parcels-centroids.geojson")
+output_condo_centroids <- file.path(public_dir, "dwelling-condo-labels.geojson")
 output_pmtiles    <- file.path(public_dir, "parcels.pmtiles")
 
 if (!dir.exists(public_dir)) dir.create(public_dir, recursive = TRUE)
@@ -136,6 +138,28 @@ if (is.na(live_count)) {
 cat(sprintf("RECONCILE d4mq-wa44: live=%s fetched=%d\n",
             ifelse(is.na(live_count), "?", live_count), length(all_features)))
 
+# --- Step 1.25: derive dwelling-unit counts -------------------------
+# This must run before geometry deduplication: condo unit records often share
+# one polygon, and their address-group count cannot be recovered afterwards.
+cat("Deriving dwelling-unit counts and condominium address groups...\n")
+dwelling_result <- annotate_dwelling_features(all_features)
+all_features <- dwelling_result$features
+dwelling_points <- build_condo_group_points(all_features, dwelling_result$condo_groups)
+dwelling_audit <- dwelling_result$audit
+cat(sprintf("  %d eligible residential records; %d condo address groups; %d invalid condo addresses\n",
+            dwelling_audit$eligible_records, dwelling_audit$condo_groups,
+            dwelling_audit$invalid_condo_addresses))
+if (length(dwelling_audit$included)) {
+  cat("  included PUCS:", paste(names(dwelling_audit$included), dwelling_audit$included, sep = "=", collapse = ", "), "\n")
+}
+if (length(dwelling_audit$unmatched)) {
+  cat("  residential-looking PUCS excluded for review:",
+      paste(names(dwelling_audit$unmatched), dwelling_audit$unmatched, sep = "=", collapse = ", "), "\n")
+}
+if (dwelling_points$skipped > 0L) {
+  cat("  WARNING:", dwelling_points$skipped, "condo groups had no usable polygon geometry and were skipped\n")
+}
+
 # --- Step 1.5: Deduplicate by geometry ------------------------------
 # Multi-unit buildings (condos especially) often have one assessment
 # record per unit, all sharing the SAME building polygon. Without
@@ -201,7 +225,11 @@ writeLines(toJSON(list(
   source_resource  = "d4mq-wa44",
   source_live_count = if (is.na(live_count)) NULL else live_count,
   features_fetched = n_before,
-  features_tiled   = n_after
+  features_tiled   = n_after,
+  dwelling_eligible_records = dwelling_audit$eligible_records,
+  dwelling_condo_groups = dwelling_audit$condo_groups,
+  dwelling_condo_points = nrow(dwelling_points$sf),
+  dwelling_pucs_codes = DWELLING_ALL_PUCS
 ), auto_unbox = TRUE, pretty = TRUE, null = "null"), meta_tmp)
 if (file.exists(meta_path)) file.remove(meta_path)
 if (!file.rename(meta_tmp, meta_path)) stop("rename failed: ", meta_tmp, " -> ", meta_path)
@@ -239,6 +267,21 @@ if (!file.rename(tmp_centroids, output_centroids)) stop("rename failed: ", tmp_c
 cat("Centroids: ", nrow(sf_centroids), " features, ",
     round(file.size(output_centroids) / 1e6, 1), " MB\n", sep = "")
 
+# One centroid per normalized condominium civic address. Ordinary residential
+# labels reuse parcels-labels; this small third layer prevents thousands of
+# duplicate condo-unit points while keeping archive growth bounded.
+cat("Writing grouped condominium dwelling-unit centroids...\n")
+tmp_condo_centroids <- paste0(output_condo_centroids, ".tmpwrite")
+if (file.exists(tmp_condo_centroids)) file.remove(tmp_condo_centroids)
+sf::st_write(dwelling_points$sf, tmp_condo_centroids, driver = "GeoJSON", quiet = TRUE,
+             layer_options = "COORDINATE_PRECISION=7")
+if (file.exists(output_condo_centroids)) file.remove(output_condo_centroids)
+if (!file.rename(tmp_condo_centroids, output_condo_centroids)) {
+  stop("rename failed: ", tmp_condo_centroids, " -> ", output_condo_centroids)
+}
+cat("Condo group centroids: ", nrow(dwelling_points$sf), " features, ",
+    round(file.size(output_condo_centroids) / 1e6, 1), " MB\n", sep = "")
+
 # --- Step 3: Print the tippecanoe command --------------------------
 # Uses the locally-built `felt-tippecanoe` image (Dockerfile.tippecanoe
 # at the repo root) — Felt's actively-maintained tippecanoe fork.
@@ -267,6 +310,7 @@ tippecanoe_cmd <- paste(
   '-o /data/web/public/parcels.pmtiles',
   '-L parcels:/data/web/public/parcels.geojson',
   '-L parcels-labels:/data/web/public/parcels-centroids.geojson',
+  '-L dwelling-condo-labels:/data/web/public/dwelling-condo-labels.geojson',
   '--maximum-zoom=18 --minimum-zoom=13',
   '--simplification=2 --full-detail=14',
   '--no-feature-limit --no-tile-size-limit --force'
@@ -277,4 +321,5 @@ cat("\nNext step (run from the project root in PowerShell):\n  ",
 cat("If the felt-tippecanoe image doesn't exist yet, build it first (one-time, ~3 min):\n",
     "  docker build -f Dockerfile.tippecanoe -t felt-tippecanoe:latest .\n\n", sep = "")
 cat("After tippecanoe finishes you can delete the GeoJSON intermediates:\n  ",
-    shQuote(output_geojson), "\n  ", shQuote(output_centroids), "\n", sep = "")
+    shQuote(output_geojson), "\n  ", shQuote(output_centroids), "\n  ",
+    shQuote(output_condo_centroids), "\n", sep = "")

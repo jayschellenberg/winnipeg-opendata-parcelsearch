@@ -12,7 +12,7 @@
  * The schema covers 28 keys:
  *   - 11 search inputs (lot, block, plan, desc, roll, addressFrom,
  *     addressTo, addressStreet, zoning, duMode, duMin)
- *   - 12 overlay toggles (survey, assess, allParcels, zoning,
+ *   - overlay toggles (survey, assess, allParcels, dwellingUnits, zoning,
  *     traffic, secondaryPlans, infill, mallsCorridors, transit,
  *     contam, dimensions, streets) — each a boolean
  *   - 1 neighbourhoods mode (3-state cycle: clusters / individual;
@@ -91,6 +91,7 @@ export const SCHEMA = {
   surveyToggle:         { param: 'sv', validate: cleanBool, format: formatBool },
   assessToggle:         { param: 'av', validate: cleanBool, format: formatBool },
   allParcelsToggle:     { param: 'ap', validate: cleanBool, format: formatBool },
+  dwellingUnitsToggle:  { param: 'dl', validate: cleanBool, format: formatBool },
   zoningToggle:         { param: 'zo', validate: cleanBool, format: formatBool },
   trafficToggle:        { param: 'tr', validate: cleanBool, format: formatBool },
   secondaryPlansToggle: { param: 'sp', validate: cleanBool, format: formatBool },

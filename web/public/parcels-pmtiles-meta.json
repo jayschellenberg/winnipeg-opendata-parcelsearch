@@ -1,7 +1,11 @@
 {
-  "built": "2026-07-10",
+  "built": "2026-07-15",
   "source_resource": "d4mq-wa44",
-  "source_live_count": 245211,
-  "features_fetched": 245211,
-  "features_tiled": 217071
+  "source_live_count": 245214,
+  "features_fetched": 245214,
+  "features_tiled": 217074,
+  "dwelling_eligible_records": 225342,
+  "dwelling_condo_groups": 1876,
+  "dwelling_condo_points": 1874,
+  "dwelling_pucs_codes": ["CNAPT", "CNCMP", "CNDRH", "CNRES", "RESAM", "RESAP", "RESDU", "RESMC", "RESMH", "RESMU", "RESPL", "RESRH", "RESSD", "RESSS", "RESTR", "RESSU", "RESMA"]
 }

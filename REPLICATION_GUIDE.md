@@ -161,10 +161,14 @@ repo-root/
 ```
 
 The build uses `npm ci` (strict-lockfile install) and runs `fetch:pmtiles`
-to pull the 82 MB citywide tile archive from the rolling `parcels-pmtiles`
-GitHub release — the archive is too large to keep in git history. The fetch
-is best-effort: a failure logs and disables the citywide overlay for that
-deploy instead of failing the build.
+to pull the approximately 96 MB citywide tile archive from the rolling
+`parcels-pmtiles` GitHub release. The archive contains parcel polygons,
+one-per-parcel address labels, and derived dwelling-unit totals (including
+one normalized-address centroid per condominium group), and is too large to
+keep in git history. Before publishing a rebuild, run
+`Rscript r/test_dwelling_units.R`; after uploading it, refresh
+`web/scripts/parcels.pmtiles.sha256`. The fetch is best-effort: a failure logs
+and disables the citywide overlay for that deploy instead of failing the build.
 
 ---
 

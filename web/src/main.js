@@ -74,7 +74,7 @@ import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
-  setCitywideParcelsVisible, probeCitywideParcels,
+  setCitywideParcelsVisible, setDwellingUnitsVisible, probeCitywideParcels,
   setContamData, setContamVisible,
   setSubjectData,
   setHistoricalData, setHistoricalVisible,
@@ -112,6 +112,7 @@ const $infillToggle         = document.getElementById('infill-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
+const $dwellingUnitsToggle  = document.getElementById('dwelling-units-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
@@ -177,6 +178,7 @@ const policyOverlayState = {
 };
 let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
+let dwellingUnitsEnabled = false;
 
 // ---------- Column sort ----------
 
@@ -281,6 +283,7 @@ $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infil
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
+if ($dwellingUnitsToggle) $dwellingUnitsToggle.addEventListener('click', toggleDwellingUnits);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
@@ -465,7 +468,7 @@ function captureUrlState() {
 
   // Toggle defaults: assess is the only one that ships ON.
   const defaults = {
-    surveyToggle: false, assessToggle: true, allParcelsToggle: false,
+    surveyToggle: false, assessToggle: true, allParcelsToggle: false, dwellingUnitsToggle: false,
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     transitToggle: false, contamToggle: false, dimensionsToggle: false,
@@ -473,7 +476,7 @@ function captureUrlState() {
   };
   const buttons = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
-    allParcelsToggle: $allParcelsToggle, zoningToggle: $zoningToggle,
+    allParcelsToggle: $allParcelsToggle, dwellingUnitsToggle: $dwellingUnitsToggle, zoningToggle: $zoningToggle,
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
@@ -533,7 +536,7 @@ function applyUrlState(state) {
 
   const toggles = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
-    allParcelsToggle: $allParcelsToggle, zoningToggle: $zoningToggle,
+    allParcelsToggle: $allParcelsToggle, dwellingUnitsToggle: $dwellingUnitsToggle, zoningToggle: $zoningToggle,
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
@@ -606,7 +609,7 @@ if ($roll) $roll.addEventListener('input', queueUrlWrite);
 // Every overlay toggle button — extra listener runs after the
 // toggle handler so it sees the post-flip aria-pressed value.
 for (const btn of [
-  $surveyToggle, $assessToggle, $allParcelsToggle,
+  $surveyToggle, $assessToggle, $allParcelsToggle, $dwellingUnitsToggle,
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle,
   $transitToggle,
@@ -1430,6 +1433,23 @@ async function toggleCitywideParcels() {
   $allParcelsToggle.setAttribute('aria-pressed', String(citywideParcelsEnabled));
   $allParcelsToggle.classList.toggle('active', citywideParcelsEnabled);
   setCitywideParcelsVisible(map, citywideParcelsEnabled);
+}
+
+/** Toggle derived dwelling-unit totals from the citywide PMTiles archive. */
+async function toggleDwellingUnits() {
+  await mapReady;
+  const available = await probeCitywideParcels();
+  if (!available) {
+    setCount(
+      'Dwelling Units: tiles not built. Run r/build_parcel_tiles.R + tippecanoe to rebuild web/public/parcels.pmtiles.'
+    );
+    return;
+  }
+  dwellingUnitsEnabled = !dwellingUnitsEnabled;
+  $dwellingUnitsToggle.textContent = dwellingUnitsEnabled ? 'Hide Dwelling Units' : 'Dwelling Units';
+  $dwellingUnitsToggle.setAttribute('aria-pressed', String(dwellingUnitsEnabled));
+  $dwellingUnitsToggle.classList.toggle('active', dwellingUnitsEnabled);
+  setDwellingUnitsVisible(map, dwellingUnitsEnabled);
 }
 
 // ---------- Legal-description flow ----------
