@@ -161,6 +161,8 @@ let transitEnabled = false;
 let transitLoaded = false;
 let streetsEnabled = false;
 let streetsLoaded = false;
+let streetsAutoManaged = false;
+let streetsBeforeAerial = false;
 let neighbourhoodsMode = 'off';
 let neighbourhoodsLoaded = { clusters: false, individual: false };
 
@@ -264,6 +266,7 @@ function updateSortIndicators() {
 
 const { map, ready: mapReady } = initMap($mapEl, {
   onFeatureClick: scrollToRow,
+  onBasemapChange,
 });
 
 $search.addEventListener('click', runSearch);
@@ -931,42 +934,58 @@ async function toggleTransit() {
   }
 }
 
-// Winnipeg Streets overlay — City road-network centrelines + names, on/off,
-// available over every basemap. One 'streets' source feeds the casing, line and
-// label layers, so setOverlayVisible flips all three at once. Lazy-loads the
-// GeoJSON on first enable (then cached in IndexedDB by fetchWinnipegStreets).
-async function toggleStreets() {
+// Winnipeg Streets overlay — current City road-network centrelines + names.
+// Entering a City aerial automatically enables it and leaving restores the
+// user's prior state. The button remains a manual override, including a clean
+// imagery view. Switching between aerial years does not reset that override.
+async function setStreetsEnabled(enabled) {
   if (!$streetsToggle) return;
-  streetsEnabled = !streetsEnabled;
+  streetsEnabled = enabled;
   $streetsToggle.setAttribute('aria-pressed', String(streetsEnabled));
   $streetsToggle.classList.toggle('active', streetsEnabled);
+  $streetsToggle.textContent = streetsEnabled ? 'Hide Current Streets' : 'Current Winnipeg Streets';
   await mapReady;
   setOverlayVisible(map, 'streets', streetsEnabled);
 
   if (streetsEnabled) {
-    if (streetsLoaded) {
-      $streetsToggle.textContent = 'Hide Streets';
-      return;
-    }
+    if (streetsLoaded) return;
     $streetsToggle.disabled = true;
     $streetsToggle.textContent = 'Loading...';
     try {
       const fc = await fetchWinnipegStreets();
       setOverlayData(map, 'streets', fc);
       streetsLoaded = true;
-      $streetsToggle.textContent = 'Hide Streets';
+      // A basemap switch or manual click may have changed the desired state
+      // while the network request was running.
+      setOverlayVisible(map, 'streets', streetsEnabled);
     } catch (err) {
       console.warn('streets overlay failed', err);
       streetsEnabled = false;
+      streetsAutoManaged = false;
       $streetsToggle.classList.remove('active');
       $streetsToggle.setAttribute('aria-pressed', 'false');
-      $streetsToggle.textContent = 'Winnipeg Streets';
       setOverlayVisible(map, 'streets', false);
     } finally {
       $streetsToggle.disabled = false;
+      $streetsToggle.textContent = streetsEnabled ? 'Hide Current Streets' : 'Current Winnipeg Streets';
     }
-  } else {
-    $streetsToggle.textContent = 'Winnipeg Streets';
+  }
+}
+
+async function toggleStreets() {
+  streetsAutoManaged = false;
+  await setStreetsEnabled(!streetsEnabled);
+}
+
+async function onBasemapChange({ state, previousState }) {
+  if (state === 'aerial' && previousState !== 'aerial') {
+    streetsBeforeAerial = streetsEnabled;
+    streetsAutoManaged = true;
+    await setStreetsEnabled(true);
+  } else if (state !== 'aerial' && previousState === 'aerial' && streetsAutoManaged) {
+    const restore = streetsBeforeAerial;
+    streetsAutoManaged = false;
+    await setStreetsEnabled(restore);
   }
 }
 

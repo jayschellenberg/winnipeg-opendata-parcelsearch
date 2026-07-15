@@ -137,12 +137,10 @@ const BASEMAP_STYLE = {
       attribution:
         'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
     },
-    // Transparent reference overlays for the hybrid satellite view —
-    // place names, road names, boundaries. Stacked on top of the
-    // imagery when Satellite is the active basemap (via the
-    // BasemapMenuControl); hidden when Streets is active so the
-    // CARTO Positron tiles (which carry their own labels) read
-    // clean. Same Esri ArcGIS Online raster service Manitoba uses.
+    // Transparent reference overlays for imagery views. Satellite uses both
+    // Esri transportation and place/boundary labels. City aerials use only the
+    // place/boundary layer; their road overlay comes from Winnipeg's current
+    // vector Road Network instead (loaded by main.js on aerial entry).
     'esri-transportation': {
       type: 'raster',
       tiles: [
@@ -300,7 +298,7 @@ const MEASURE_DRAW_STYLES = [
   },
 ];
 
-export function initMap(container, { onFeatureClick } = {}) {
+export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
   const map = new maplibregl.Map({
     container,
     style: BASEMAP_STYLE,
@@ -324,7 +322,7 @@ export function initMap(container, { onFeatureClick } = {}) {
   });
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-  map.addControl(new BasemapMenuControl(), 'top-right');
+  map.addControl(new BasemapMenuControl(onBasemapChange), 'top-right');
   // Distance / area measurement tool. mapbox-gl-draw owns the
   // in-progress geometry; MeasureControl wraps it in a small panel
   // with mode switches and a live readout. Explicit unfiltered
@@ -2124,6 +2122,10 @@ function safeCssColor(value) {
  */
 const BASEMAP_LABELS = { streets: 'Streets', satellite: 'Satellite', aerial: 'Aerial' };
 class BasemapMenuControl {
+  constructor(onChange) {
+    this._onChange = onChange;
+  }
+
   onAdd(map) {
     this._map = map;
     this._container = document.createElement('div');
@@ -2202,13 +2204,16 @@ class BasemapMenuControl {
   }
   _set(state, year) {
     const m = this._map;
-    // Esri imagery + its two transparent label layers back BOTH satellite and
-    // aerial (aerial draws the City ortho on top; Esri shows through beyond the
-    // City extent).
+    const previousKey = this._currentKey();
+    const previousState = previousKey.startsWith('ortho-') ? 'aerial' : previousKey;
+    // Esri imagery backs both satellite and aerial (showing through beyond the
+    // City ortho extent). Esri transportation belongs to Satellite only;
+    // aerials instead use the sharper City road network. Esri place/boundary
+    // labels remain useful on both imagery modes.
     const imagery = state === 'satellite' || state === 'aerial';
     m.setLayoutProperty('carto-positron',      'visibility', state === 'streets' ? 'visible' : 'none');
     m.setLayoutProperty('esri-imagery',        'visibility', imagery ? 'visible' : 'none');
-    m.setLayoutProperty('esri-transportation', 'visibility', imagery ? 'visible' : 'none');
+    m.setLayoutProperty('esri-transportation', 'visibility', state === 'satellite' ? 'visible' : 'none');
     m.setLayoutProperty('esri-reference',      'visibility', imagery ? 'visible' : 'none');
     // Exactly one ortho layer visible — the picked year, and only in aerial.
     for (const y of ORTHO_YEARS) {
@@ -2216,6 +2221,10 @@ class BasemapMenuControl {
       if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', (state === 'aerial' && y === year) ? 'visible' : 'none');
     }
     this._render();
+    if (this._onChange) {
+      Promise.resolve(this._onChange({ state, year, previousState }))
+        .catch((err) => console.warn('basemap change handler failed', err));
+    }
   }
   _render() {
     const cur = this._currentKey();
