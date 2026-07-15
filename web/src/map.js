@@ -213,7 +213,7 @@ const BASEMAP_STYLE = {
 // older one; same R2 host, so no vercel.json CSP change needed).
 // Empty ⇒ the control stays a 2-state streets<->satellite toggle (ships inert).
 const ORTHO_R2_BASE = 'https://pub-f351b204f73e4b2287acad946d79681c.r2.dev';
-export const ORTHO_YEARS = [2026, 2024, 2021];
+export const ORTHO_YEARS = [2026, 2024, 2021, 2018, 2016];
 export const ORTHO_YEAR = ORTHO_YEARS[0]; // newest; kept for single-year references
 if (ORTHO_YEARS.length) {
   // Every ortho layer sits above the Esri imagery (which shows through beyond
