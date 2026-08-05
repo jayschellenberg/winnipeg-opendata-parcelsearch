@@ -31,6 +31,7 @@ import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 import { intersect } from '@turf/intersect';
 import { area } from '@turf/area';
 import { waterTokens } from './lib/water.js';
+import { dedupeAddresses } from './lib/addressFormat.js';
 
 /**
  * The assessment-parcel field list, shared by every path that returns
@@ -571,15 +572,23 @@ export async function enrichAssessmentAddresses(assessFc) {
         .filter(Boolean);
       if (matches.length === 0) continue;
       const primary = parcel.properties?.full_address || '';
-      const distinct = [...new Set(matches.map((a) => a.trim()))];
-      distinct.sort((a, b) => {
+      const ordered = [...new Set(matches.map((a) => a.trim()))];
+      ordered.sort((a, b) => {
         // Keep the primary first; everything else alphabetical.
         if (a === primary) return -1;
         if (b === primary) return 1;
         return a.localeCompare(b);
       });
-      if (primary && !distinct.includes(primary)) distinct.unshift(primary);
-      parcel.properties.full_address = distinct.join(', ');
+      if (primary) ordered.unshift(primary);
+      // Collapse spellings of the SAME address. The assessment record
+      // writes the street type in full ("407 LYNDALE DRIVE") and the
+      // civic dataset abbreviates it ("407 LYNDALE DR"), so an exact
+      // dedupe kept both and the cell read the address twice. Unit
+      // designators collapse too — every unit's address point falls
+      // inside a shared condo footprint, so one roll could otherwise
+      // list hundreds of entries naming the same street address.
+      // Primary is first, so the assessment's own spelling survives.
+      parcel.properties.full_address = dedupeAddresses(ordered).join(', ');
 
       // Stash each address point for the map layer, deduped on the
       // full_address string. Stamp a `street_num` (digits before the
