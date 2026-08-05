@@ -76,6 +76,7 @@ import {
   setCitywideParcelsVisible, setDwellingUnitsVisible, probeCitywideParcels,
   setContamData, setContamVisible, setWaterInfluenceVisible,
   setSubjectData,
+  setParcelNumberData, setParcelNumbersVisible,
   setHistoricalData, setHistoricalVisible,
   setHistoricalZoningData, setHistoricalZoningVisible,
 } from './map.js';
@@ -102,6 +103,7 @@ import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
 import { COLUMNS, csvSchemaForMode, buildThead, columnCellClasses } from './lib/columnsRegistry.js';
+import { assignParcelSeq, clearParcelSeq } from './lib/parcelNumbering.js';
 // Cell-value formatters still used by the parcel-summary card (not table cells).
 // The DOM constructors td/badgeTd/linkTd/etc are consumed inside the registry
 // render functions and never need to be imported here.
@@ -155,6 +157,8 @@ const $historicalToggle = document.getElementById('historical-toggle');
 const $historicalArea   = document.getElementById('historical-area');
 const $historicalDate   = document.getElementById('historical-date');
 const $historicalBanner = document.getElementById('historical-banner');
+const $numberingToggle  = document.getElementById('numbering-toggle');
+const $numberingLabel   = document.getElementById('numbering-toggle-label');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
@@ -171,6 +175,13 @@ let fullRows = [];
 // Counts behind the "· X of Y shown (area filter)" clause setCount appends.
 let shapeShown = 0;
 let shapeTotal = 0;
+// "Number parcels" (results toolbar). `numberingOn` is the user's choice;
+// `numberable` is whether the current result set has more than one
+// numbered subject. Numbers only appear when both hold — a lone "1" on a
+// single parcel is noise, and the checkbox itself stays hidden until it
+// would do something.
+let numberingOn = false;
+let numberable = false;
 // Unfiltered FCs most recently pushed through setParcels, so a shape
 // change can re-narrow them without re-searching.
 let lastFullSurveyFc = { type: 'FeatureCollection', features: [] };
@@ -235,6 +246,9 @@ let currentSort = { col: 'roll', dir: 'asc' };
 // Maps each data-col key to a function that extracts a comparable value from
 // a row. Strings lower-cased; numbers use -Infinity so nulls sort last.
 const SORT_KEYS = {
+  // Map badge number. Rows in one numbered group share a value, so the
+  // secondary ordering inside a group is whatever sortRows falls back to.
+  seq:     (r) => finiteOrNeg(r.assess?.properties?._seq ?? r.survey?.properties?._seq),
   lot:     (r) => numOrStr(r.survey?.properties?.lot),
   block:   (r) => strKey(r.survey?.properties?.block),
   plan:    (r) => numOrStr(r.survey?.properties?.plan),
@@ -347,6 +361,18 @@ if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
 if ($streetsToggle) $streetsToggle.addEventListener('click', toggleStreets);
 document.getElementById('water-toggle')?.addEventListener('click', toggleWaterOverlay);
+// "Number parcels". No re-render: `_seq` is already stamped and the "#"
+// cells are already in the DOM — the body class is what reveals them, so
+// flipping the checkbox is a class toggle plus a map visibility call.
+if ($numberingToggle) {
+  $numberingToggle.addEventListener('change', () => {
+    numberingOn = $numberingToggle.checked;
+    const active = numberingOn && numberable;
+    document.body.classList.toggle('numbering-on', active);
+    mapReady.then(() => setParcelNumbersVisible(map, active));
+    queueUrlWrite();
+  });
+}
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 // Historical (as-of-date) overlay: a date picker feeds the toggle, which loads
 // the parcel + survey shards (and lineage) for the neighbourhoods in the current
@@ -554,6 +580,12 @@ function captureUrlState() {
     s.neighbourhoodsMode = neighbourhoodMode;
   }
 
+  // "Number parcels" — emit the user's CHOICE, not whether it's currently
+  // in effect. `numberable` depends on a result set the recipient hasn't
+  // run yet; dropping the param because this page happens to show one
+  // parcel would strip the setting out of a shared link.
+  if (numberingOn) s.numberingToggle = true;
+
   if (currentSort?.col) s.sortCol = currentSort.col;
   if (currentSort?.dir) s.sortDir = currentSort.dir;
 
@@ -611,6 +643,16 @@ function applyUrlState(state) {
 
   if (state.neighbourhoodsMode === 'clusters' || state.neighbourhoodsMode === 'individual') {
     setNeighbourhoodsMode(state.neighbourhoodsMode);
+  }
+
+  // Numbering: set the flag and the checkbox directly rather than
+  // .click()ing it. There is no result set yet at this point in init, so
+  // the change handler would only toggle a body class that the first
+  // renderTable recomputes anyway — and clicking would fire an extra URL
+  // write mid-restore.
+  if ('numberingToggle' in state) {
+    numberingOn = !!state.numberingToggle;
+    if ($numberingToggle) $numberingToggle.checked = numberingOn;
   }
 
   if (state.sortCol) {
@@ -2365,6 +2407,72 @@ function clearTable() {
   setExportEnabled(false);
   showEmptyState(true);
   if ($parcelSummary) $parcelSummary.hidden = true;
+  // Drop the badges with the rows. The checkbox keeps its state — it
+  // just goes back into hiding until the next multi-parcel result set —
+  // so a user who numbered one search doesn't have to re-tick for the
+  // next one.
+  numberable = false;
+  if ($numberingLabel) $numberingLabel.hidden = true;
+  document.body.classList.remove('numbering-on');
+  mapReady.then(() => {
+    setParcelNumberData(map, []);
+    setParcelNumbersVisible(map, false);
+  });
+}
+
+// ---------- Parcel numbering ----------
+//
+// The "Number parcels" toggle stamps a stable 1..N on the result set,
+// shown as a red badge on each parcel and in the grid's "#" column, so a
+// map exhibit and a comp table can be read against each other. The
+// numbering rules (roll order; one number per subject, where a
+// multi-parcel sale and a repeat sale of one parcel are each ONE subject)
+// live in lib/parcelNumbering.js; drawing lives in map.js. This is the
+// "when".
+
+/** The geometry/property-bearing feature for a row. Assessment side when
+ *  there is one — it's what the map draws and what carries the sale
+ *  fields — falling back to the survey lot for a legal-description search
+ *  that found no assessment match. */
+function rowFeature(r) {
+  return r?.assess || r?.survey || null;
+}
+
+/**
+ * Assign numbers over `fullRows`, push badges for `shownRows`, and sync
+ * the toggle's own visibility.
+ *
+ * Numbering runs over the FULL set, never the shown one. A drawn-shape
+ * area filter narrows what is displayed; re-deriving numbers from the
+ * narrowed set would renumber every parcel the moment a shape is drawn,
+ * moved or erased, and #4 in a report would stop meaning one parcel.
+ * assignParcelSeq derives its own roll order, so calling it on every
+ * render is idempotent — re-sorting the grid can't shift the numbers
+ * either.
+ *
+ * Badges, by contrast, follow the SHOWN set: a parcel filtered out of the
+ * table shouldn't still be tagged on the map. It keeps its number for
+ * when the shape is erased.
+ */
+function applyParcelNumbering(fullRows, shownRows) {
+  const all = fullRows.map(rowFeature).filter(Boolean);
+  assignParcelSeq(all);
+  // Count SUBJECTS, not rows. Five rows that are all one repeat-sold
+  // parcel collapse to a single number, and numbering that set would put
+  // a solitary "1" on the map while claiming to have numbered something.
+  const subjects = new Set(all.map((f) => f.properties._seq)).size;
+  numberable = subjects > 1;
+  if (!numberable) clearParcelSeq(all);
+
+  if ($numberingLabel) $numberingLabel.hidden = !numberable;
+  const active = numberingOn && numberable;
+  document.body.classList.toggle('numbering-on', active);
+
+  const shownFeatures = numberable ? shownRows.map(rowFeature).filter(Boolean) : [];
+  mapReady.then(() => {
+    setParcelNumberData(map, shownFeatures);
+    setParcelNumbersVisible(map, active);
+  });
 }
 
 /**
@@ -2387,6 +2495,9 @@ function renderTable(rows) {
   currentRows = shown;
   rowFeatureMap.clear();
   showEmptyState(shown.length === 0);
+  // Must precede sortRows: `seq` is a sortable column, so the key has to
+  // exist before the comparator can read it.
+  applyParcelNumbering(rows, shown);
   const sorted = sortRows(shown);
   // Stamp the dominant assessment year onto the column header so it
   // reads "Assess-2026" (or whatever year the source data carries).
@@ -2608,7 +2719,10 @@ function exportCsv() {
   // header order and adds the sales-mode columns to the export when sales
   // mode is active (closes the gap audit finding M5).
   const mode = document.body.classList.contains('sales-mode') ? 'sales' : 'property';
-  const { headers, cells } = csvSchemaForMode(mode);
+  // The "#" column joins the export only when the set is actually
+  // numbered — that's when it's the key tying the spreadsheet to the map
+  // exhibit. Otherwise the export keeps the schema it has always had.
+  const { headers, cells } = csvSchemaForMode(mode, { numbering: numberingOn && numberable });
   const lines = [headers.map(csvCell).join(',')];
   for (const row of currentRows) {
     const s = row.survey?.properties || {};

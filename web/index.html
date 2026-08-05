@@ -581,6 +581,22 @@
                 <option value="Full detail">Full detail</option>
               </select>
             </label>
+            <!-- Number parcels. Lives on the results toolbar rather than
+                 inside a tab panel because it annotates the RESULTS
+                 TABLE + MAP, which both tabs share — numbering a sales
+                 comp set and numbering a property search are the same
+                 operation. Hidden by main.js until the current result
+                 set has more than one numberable subject, since a "1"
+                 on a single parcel says nothing. -->
+            <label
+              id="numbering-toggle-label"
+              class="numbering-toggle"
+              title="Number the result parcels 1..N on the map and show a matching # column in the grid. Ordered by roll number; a multi-parcel sale and a repeat sale of the same parcel each carry one number. The number stays fixed to a parcel through re-sorts and area filters, and joins the CSV export."
+              hidden
+            >
+              <input type="checkbox" id="numbering-toggle" />
+              <span>Number parcels</span>
+            </label>
             <div class="results-toolbar-spacer"></div>
             <div class="columns-popover-wrap">
               <button

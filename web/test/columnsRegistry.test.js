@@ -26,7 +26,7 @@ import {
   COLUMNS, COLUMN_KEYS, SORTABLE_COLUMN_KEYS,
   columnsForMode, csvSchemaForMode,
 } from '../src/lib/columnsRegistry.js';
-import { PRESETS } from '../src/lib/columns.js';
+import { PRESETS, isColumnVisible } from '../src/lib/columns.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(here, '..');
@@ -151,6 +151,58 @@ test('csvSchemaForMode — property-mode headers carry the Assessment-URL trio',
   for (const wanted of ['Total Assessed Value', 'Assessment Year', 'Assessment URL', 'Walkscore URL', 'Flood URL']) {
     assert.ok(headers.includes(wanted), `property CSV missing column "${wanted}"`);
   }
+});
+
+test('csvSchemaForMode — the "#" column joins ONLY when numbering is on', () => {
+  // The map badge number is the join between the exported spreadsheet and
+  // the map exhibit, so it belongs in the CSV — but only once the set is
+  // actually numbered. Emitting an always-blank "#" would silently change
+  // the export schema for every existing workflow.
+  for (const mode of ['property', 'sales']) {
+    assert.ok(!csvSchemaForMode(mode).headers.includes('#'),
+      `${mode} CSV emitted "#" with numbering off`);
+    assert.ok(csvSchemaForMode(mode, { numbering: true }).headers.includes('#'),
+      `${mode} CSV dropped "#" with numbering on`);
+  }
+});
+
+test('csvSchemaForMode — headers and extractors stay 1:1 in both numbering states', () => {
+  for (const mode of ['property', 'sales']) {
+    for (const numbering of [false, true]) {
+      const { headers, cells } = csvSchemaForMode(mode, { numbering });
+      assert.equal(headers.length, cells.length,
+        `${mode}/numbering=${numbering}: ${headers.length} headers vs ${cells.length} extractors`);
+    }
+  }
+});
+
+test('seq is never marked col-hidden — the "Number parcels" toggle owns it', () => {
+  // The "#" column is gated by a body.numbering-on CSS rule. If
+  // lib/columns.js ALSO governed it, every existing user's persisted
+  // visible-set (which predates the column) would mark it col-hidden and
+  // turning numbering on would number the map but not the grid. The
+  // exemption in columns.js is what closes that; presets are irrelevant
+  // to it by design, which is why this asserts behaviour, not membership.
+  // Default state is the Quick lookup set, which does not list seq — so
+  // a `true` here can only come from the exemption.
+  assert.ok(!PRESETS['Quick lookup'].has('seq'));
+  assert.equal(isColumnVisible('seq'), true, 'seq must always report visible');
+  // A governed column still behaves normally, so the exemption is not a
+  // blanket "everything is visible".
+  assert.equal(isColumnVisible('saleDate'), false,
+    'Quick lookup should still hide sale-only columns');
+});
+
+test('seq is not offered in the column-visibility presets', () => {
+  // Listing it would imply the presets control it. They don't.
+  for (const [name, set] of Object.entries(PRESETS)) {
+    if (set == null) continue;      // 'Full detail' = everything
+    assert.ok(!set.has('seq'), `preset "${name}" lists seq, which it does not govern`);
+  }
+});
+
+test('seq is the first column, so the "#" reads as a row label', () => {
+  assert.equal(COLUMN_KEYS[0], 'seq');
 });
 
 test('csvSchemaForMode — extractors run without throwing on a minimal row', () => {

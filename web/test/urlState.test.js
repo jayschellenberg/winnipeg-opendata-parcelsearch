@@ -315,8 +315,15 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 29 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 subjectRoll)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 29);
+test('SCHEMA — has exactly 30 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 numbering + 1 subjectRoll)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 30);
+});
+
+test('numberingToggle round-trips as the nu param', () => {
+  assert.equal(encodeState({ numberingToggle: true }), 'nu=1');
+  assert.deepEqual(decodeState('?nu=1'), { numberingToggle: true });
+  assert.deepEqual(decodeState('?nu=0'), { numberingToggle: false });
+  assert.deepEqual(decodeState('?nu=maybe'), {});
 });
 
 // ---------- neighbourhoodsMode (3-state cycle) ----------

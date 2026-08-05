@@ -63,6 +63,17 @@ function yearBuiltOf(a) {
   return a?._saleYearBuilt || a?.year_built || null;
 }
 
+/**
+ * The map badge number. Read from whichever side of the row carries it:
+ * main.js stamps `_seq` on the assessment feature when there is one and
+ * the survey feature otherwise, so a legal-description search (which can
+ * return a survey lot with no assessment match) still numbers.
+ */
+function seqOf(a, s) {
+  const v = a?._seq ?? s?._seq;
+  return v != null ? String(v) : null;
+}
+
 // Per-column entry:
 //   key          stable identifier (data-col attribute, sort key, URL param)
 //   header       <th> text content
@@ -84,6 +95,19 @@ function yearBuiltOf(a) {
 export const COLUMNS = [
   // Order is authoritative: drives <thead> emission, renderTable cell order,
   // CSV column order, and SORT_COLS list order.
+
+  // The map badge number. First column so it reads as a row label rather
+  // than a data field. Unlike every other column its visibility is NOT
+  // governed by the column presets — `seq-col` is a display:none CSS rule
+  // keyed off body.numbering-on, so the "Number parcels" toggle is the
+  // single switch for both the badges and this column. `seq` is still
+  // listed in every preset (lib/columns.js) so a preset can't fight the
+  // toggle by marking it col-hidden underneath.
+  { key: 'seq',          header: '#',             mode: 'always', sortable: true,
+    theadClass: 'seq-col',
+    theadTitle: 'Map number. Parcels are numbered 1..N by roll number; a multi-parcel sale and a repeat sale of the same parcel each carry ONE number. Turn on with "Number parcels" above the table.',
+    render: (a, s) => td(seqOf(a, s), 'num'),
+    csv: { header: '#', extract: (a, s) => seqOf(a, s) } },
 
   { key: 'roll',         header: 'Roll Number',   mode: 'always', sortable: true,
     render: (a) => linkTd(assessmentUrl(a), a.roll_number),
@@ -285,11 +309,17 @@ export function columnsForMode(mode) {
  * Build the CSV header + row extractors for the given mode. Each entry in
  * `cells` is (assess, survey) => raw value. Headers and cells line up 1:1
  * (a column declaring `csv: [...]` contributes N matching entries to both).
+ *
+ * `numbering` mirrors the "Number parcels" toggle. It defaults to false so
+ * the export keeps the schema it has always had; the `#` column joins only
+ * when the user has actually numbered the set, where it is the join key
+ * between the spreadsheet and the map exhibit.
  */
-export function csvSchemaForMode(mode) {
+export function csvSchemaForMode(mode, { numbering = false } = {}) {
   const headers = [];
   const cells = [];
   for (const col of columnsForMode(mode)) {
+    if (col.key === 'seq' && !numbering) continue;
     const entries = Array.isArray(col.csv) ? col.csv : [col.csv];
     for (const { header, extract } of entries) {
       headers.push(header);

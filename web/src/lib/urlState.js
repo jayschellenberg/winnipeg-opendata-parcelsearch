@@ -9,7 +9,7 @@
  * Empty / default values aren't emitted so a fresh page load
  * produces a clean URL.
  *
- * The schema covers 28 keys:
+ * The schema covers 30 keys:
  *   - 11 search inputs (lot, block, plan, desc, roll, addressFrom,
  *     addressTo, addressStreet, zoning, duMode, duMin)
  *   - overlay toggles (survey, assess, allParcels, dwellingUnits, zoning,
@@ -19,6 +19,7 @@
  *     omitted means off)
  *   - 2 sort (sortCol, sortDir)
  *   - 1 tab (property | sales) — Phase 7
+ *   - 1 numberingToggle (the results-toolbar "Number parcels" checkbox)
  *   - 1 subjectRoll (the sales-tab subject parcel) — Phase 7 fu2
  *
  * Map center/zoom/basemap are deliberately NOT encoded (the locked
@@ -113,6 +114,13 @@ export const SCHEMA = {
   // captureUrlState should only emit `tab` when it differs from the
   // page default ('property') so a fresh load keeps a clean URL.
   tab: { param: 't', validate: oneOf(['property', 'sales']), format: (v) => v },
+
+  // --- Number parcels (1) ---
+  // The results-toolbar "Number parcels" checkbox. Worth a param because
+  // the numbers are what a shared link is usually FOR — "look at #7" is
+  // meaningless if the recipient's map opens unnumbered. Off by default,
+  // so captureState only emits it when on.
+  numberingToggle: { param: 'nu', validate: cleanBool, format: formatBool },
 
   // --- Subject roll (1, Phase 7 follow-up 2) ---
   // The subject parcel against which loaded sales are compared

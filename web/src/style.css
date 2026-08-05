@@ -1945,6 +1945,35 @@ body:not(.sales-mode) .sales-only {
 body:not(.subject-set) .subj-col {
   display: none !important;
 }
+/* The map-badge "#" column. Same pattern, third instance: the class is
+   applied to BOTH the <th> and the <td> by columnCellClasses(), which is
+   what keeps every later column lined up under its own heading. Applying
+   it to one side only shifts the whole row one place — that has already
+   shipped once, with Instrument landing under the Lot heading. */
+body:not(.numbering-on) .seq-col {
+  display: none !important;
+}
+
+/* "Number parcels" checkbox on the results toolbar. Sits left of the
+   spacer, so it reads as part of the same control strip as the column
+   preset rather than as a table heading. */
+.numbering-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 14px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.numbering-toggle[hidden] {
+  display: none;
+}
+.numbering-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
 
 /* -----------------------------------------------------------------
    Visual refresh: Treadwell-inspired operational interface.

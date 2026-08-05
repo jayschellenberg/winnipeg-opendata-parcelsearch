@@ -48,6 +48,12 @@ const CITYWIDE_PARCELS_URL = 'pmtiles:///parcels.pmtiles';
 
 const WINNIPEG_CENTER = [-97.14, 49.89];
 
+// Parcel-number badge colour, matched to the Manitoba app so a Winnipeg
+// and a Manitoba exhibit sitting side by side in one report read as the
+// same convention. Deep red, chosen to stay legible over both the cream
+// streets basemap and the dark aerial imagery.
+const PARCEL_NUM_COLOR = 'rgb(149, 18, 30)';
+
 // Categorical fill colors keyed off the dataset's `map_colour` field. Values
 // taken from a $group=map_colour query against dxrp-w6re — 13 categories
 // covering ~99% of city zones, with a neutral grey fallback for anything
@@ -1807,6 +1813,62 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         },
       });
 
+      // ---- Parcel numbering ------------------------------------------
+      // When the "Number parcels" toggle is on and the result set has
+      // more than one subject, main.js stamps a stable 1..N `_seq` on
+      // each parcel (lib/parcelNumbering.js) and pushes them here. Each
+      // numbered parcel gets a red disc with its number, centred on the
+      // parcel's bbox midpoint, at a constant screen size no matter the
+      // zoom — a number drawn INSIDE the polygon would shrink below
+      // readable size on a typical city lot.
+      //
+      // This is the reduced first cut of the Manitoba callout system:
+      // badges sit ON the parcel rather than offset with leader lines
+      // and de-confliction (mb-parcelsearch lib/calloutPlacement.js).
+      // Where result parcels crowd together, badges will overlap; the
+      // leader-line port is the fix if that turns out to matter.
+      //
+      // GL layers rather than HTML markers, deliberately: they belong to
+      // the WebGL canvas, so anything that reads map.getCanvas() for an
+      // image export captures them. DOM markers would not be captured.
+      map.addSource('parcel-num-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'parcel-num-badge',
+        type: 'circle',
+        source: 'parcel-num-labels',
+        layout: { visibility: 'none' },
+        paint: {
+          // Grows a step at a time so 2- and 3-digit numbers still fit
+          // inside the disc instead of spilling over the white ring.
+          'circle-radius': ['step', ['length', ['to-string', ['get', '_seq']]], 11, 2, 12.65, 3, 14.85],
+          'circle-color': PARCEL_NUM_COLOR,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2.2,
+        },
+      });
+      map.addLayer({
+        id: 'parcel-num-text',
+        type: 'symbol',
+        source: 'parcel-num-labels',
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', '_seqStr'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 14.3,
+          // A number must ALWAYS draw. MapLibre's default collision
+          // handling would silently cull a badge's digits where two
+          // parcels sit close together, leaving a numberless red disc —
+          // worse than an overlap, because it reads as a different mark.
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': '#ffffff',
+          'text-halo-color': PARCEL_NUM_COLOR,
+          'text-halo-width': 0.6,
+        },
+      });
+
       // Area-selection shapes go in LAST — after every overlay and
       // after the moveLayer reordering above — so a shape the user
       // just drew can never hide beneath a parcel or basemap-reference
@@ -1892,6 +1954,56 @@ export function setAssessContext(map, fc) {
 export function setSubjectData(map, fc) {
   const src = map.getSource('subject');
   if (src) src.setData(fc || { type: 'FeatureCollection', features: [] });
+}
+
+/**
+ * Push the numbered-parcel badges onto the map. `features` are the result
+ * parcels; those carrying a `_seq` (stamped by main.js via
+ * lib/parcelNumbering.js) get a badge at their bounding-box midpoint.
+ * Pass an empty / `_seq`-less set to clear.
+ *
+ * Badges are deduped by rounded position, lowest number winning. Two
+ * things make that necessary rather than tidy: a condo building carries
+ * one roll per unit over ONE footprint (635 Ballantrae has 52), and
+ * setParcels already dedupes the drawn polygons by geometry hash. Without
+ * this, 52 discs would stack on one polygon into an unreadable smear.
+ * `_seq` grouping in parcelNumbering.js handles the repeat-sale and
+ * multi-parcel-sale cases upstream; this catches same-footprint parcels,
+ * which are a different relation entirely.
+ */
+export function setParcelNumberData(map, features) {
+  const src = map.getSource('parcel-num-labels');
+  if (!src) return;
+  const byPosition = new Map();
+  for (const f of features || []) {
+    const seq = f?.properties?._seq;
+    if (seq == null) continue;
+    const c = polygonBboxMidpoint(f.geometry);
+    if (!c) continue;
+    // ~0.1 m at this latitude — fine enough that two genuinely distinct
+    // parcels never collapse, coarse enough to catch float drift between
+    // copies of one footprint.
+    const key = `${c[0].toFixed(6)},${c[1].toFixed(6)}`;
+    const existing = byPosition.get(key);
+    if (existing && existing.seq <= seq) continue;
+    byPosition.set(key, { seq, coords: c });
+  }
+  const out = [...byPosition.values()]
+    .sort((a, b) => a.seq - b.seq)
+    .map(({ seq, coords }) => ({
+      type: 'Feature',
+      properties: { _seq: seq, _seqStr: String(seq) },
+      geometry: { type: 'Point', coordinates: coords },
+    }));
+  src.setData({ type: 'FeatureCollection', features: out });
+}
+
+/** Show or hide the numbered badges (disc + digits together). */
+export function setParcelNumbersVisible(map, on) {
+  const vis = on ? 'visible' : 'none';
+  for (const id of ['parcel-num-badge', 'parcel-num-text']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  }
 }
 
 /**

@@ -22,6 +22,9 @@
  *                      area, propertyType, groupSize, salePrice,
  *                      pricePerSf, saleToAsmt, dist)
  *
+ * The map-badge "#" column (`seq`) is deliberately outside this whole
+ * mechanism — see UNGOVERNED below.
+ *
  * Quick lookup is the property-mode default; Sales analysis is the
  * sales-mode default. The active mode is controlled via setMode()
  * — main.js calls setMode('sales') from runSalesAnalysis and
@@ -30,6 +33,22 @@
 
 const STORAGE_KEY_PROPERTY = 'wps_table_columns_v1';
 const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
+
+/*
+ * Columns this module does not govern. `seq` (the map badge "#") is gated
+ * solely by the "Number parcels" toggle, via a `body.numbering-on` CSS
+ * rule — so it must never also be marked col-hidden here, and it isn't
+ * offered in the gear popover (a checkbox that can't win is worse than no
+ * checkbox).
+ *
+ * An exemption rather than a membership in every preset, because presets
+ * are only half the story: the visible-set PERSISTS to localStorage, so
+ * every existing user carries a stored set that predates this column.
+ * Adding `seq` to the preset literals would leave the "#" column hidden
+ * for exactly the people who have used the app before — which is
+ * everyone. The exemption is read at query time and has no such gap.
+ */
+const UNGOVERNED = new Set(['seq']);
 
 const QUICK_LOOKUP = ['lot', 'block', 'plan', 'roll', 'address', 'water', 'area'];
 // Residential property search: what actually matters on a house — the
@@ -123,6 +142,7 @@ export function listAllColumns() {
   const seen = new Map();
   for (const th of document.querySelectorAll('#results thead th[data-col]')) {
     const key = th.dataset.col;
+    if (UNGOVERNED.has(key)) continue;   // not ours to show or hide
     if (!seen.has(key)) {
       seen.set(key, {
         key,
@@ -134,6 +154,9 @@ export function listAllColumns() {
 }
 
 export function isColumnVisible(key) {
+  // Ungoverned columns are never marked col-hidden — something else owns
+  // their visibility (see UNGOVERNED).
+  if (UNGOVERNED.has(key)) return true;
   // `null` set = full-detail mode; treat as everything visible.
   const v = visibleByMode[mode];
   return v == null ? true : v.has(key);
