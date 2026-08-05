@@ -25,8 +25,22 @@ export function td(value, className) {
   } else {
     el.textContent = value;
   }
-  if (className) el.classList.add(className);
+  addClasses(el, className);
   return el;
+}
+
+/**
+ * Add one or more space-separated classes. `classList.add` THROWS on a
+ * multi-token string ("num sworn-mismatch"), which is easy to hit as
+ * soon as a column composes a base class with a conditional modifier —
+ * and it throws mid-render, taking the whole table down rather than
+ * degrading to an unstyled cell.
+ */
+function addClasses(el, className) {
+  if (!className) return;
+  for (const c of String(className).trim().split(/\s+/)) {
+    if (c) el.classList.add(c);
+  }
 }
 
 /**
@@ -36,7 +50,7 @@ export function td(value, className) {
  */
 export function badgeTd(value, badgeClass, extraTdClass) {
   const el = document.createElement('td');
-  if (extraTdClass) el.classList.add(extraTdClass);
+  addClasses(el, extraTdClass);
   if (value == null || value === '') {
     el.textContent = EMPTY;
     el.classList.add('empty');
@@ -102,7 +116,7 @@ export function truncatedTd(value, maxChars, className) {
   } else {
     el.textContent = str;
   }
-  if (className) el.classList.add(className);
+  addClasses(el, className);
   return el;
 }
 

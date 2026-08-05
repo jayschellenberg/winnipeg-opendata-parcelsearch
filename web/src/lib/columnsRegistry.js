@@ -74,6 +74,17 @@ function seqOf(a, s) {
   return v != null ? String(v) : null;
 }
 
+/**
+ * Cell classes for the Sale Price / Sworn pair. When the two figures
+ * disagree the Sold Price is not what the property changed hands for —
+ * SABRE writes a nominal amount on a non-arms-length transfer and puts
+ * the real figure in Sworn Value — so both cells are tinted together.
+ * Tinting only one would leave it ambiguous which number is the odd one.
+ */
+function swornCellClass(a) {
+  return a?._saleSwornMismatch ? 'num sworn-mismatch' : 'num';
+}
+
 // Per-column entry:
 //   key          stable identifier (data-col attribute, sort key, URL param)
 //   header       <th> text content
@@ -172,12 +183,12 @@ export const COLUMNS = [
 
   { key: 'salePrice',    header: 'Sale Price',    mode: 'sales',  sortable: true,
     theadTitle: 'Sold price from the uploaded CSV',
-    render: (a) => td(formatDollars(a._salePrice), 'num'),
+    render: (a) => td(formatDollars(a._salePrice), swornCellClass(a)),
     csv: { header: 'Sale Price', extract: (a) => a._salePrice } },
 
   { key: 'swornValue',   header: 'Sworn',         mode: 'sales',  sortable: true,
     theadTitle: 'Sworn (declared land-transfer) value from the CSV. Normally equals the Sale Price; where it does not — a $1 sale price against a large sworn value — the transfer is non-arms-length. Never substituted into Sale Price.',
-    render: (a) => td(formatDollars(a._saleSwornValue), 'num'),
+    render: (a) => td(formatDollars(a._saleSwornValue), swornCellClass(a)),
     csv: { header: 'Sworn Value', extract: (a) => a._saleSwornValue } },
 
   { key: 'numUnits',     header: 'Units',         mode: 'sales',  sortable: true,

@@ -54,6 +54,32 @@ const WINNIPEG_CENTER = [-97.14, 49.89];
 // streets basemap and the dark aerial imagery.
 const PARCEL_NUM_COLOR = 'rgb(149, 18, 30)';
 
+/*
+ * Assessment-result highlight, matched to the Manitoba app so a Winnipeg
+ * and a Manitoba exhibit read identically side by side in one report.
+ *
+ * Both values are shared by the dashed colour line and its solid black
+ * underlay. The two MUST stay in lockstep: the underlay exists to show
+ * through the dashes, so any width difference turns it into a casing
+ * around the yellow instead of alternating with it.
+ *
+ * `groupHover` is set on every parcel of a multi-parcel sale when the
+ * cursor enters any one of them, so a hovered transaction lifts as a
+ * whole rather than one lot at a time.
+ */
+const ASSESS_LINE_WIDTH = [
+  'case',
+  ['boolean', ['feature-state', 'groupHover'], false],
+  3.0,
+  2.0,
+];
+const ASSESS_FILL_OPACITY = [
+  'case',
+  ['boolean', ['feature-state', 'groupHover'], false],
+  0.5,
+  0.3,
+];
+
 // Categorical fill colors keyed off the dataset's `map_colour` field. Values
 // taken from a $group=map_colour query against dxrp-w6re — 13 categories
 // covering ~99% of city zones, with a neutral grey fallback for anything
@@ -944,8 +970,16 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // disconnected from the building itself. Drawn as a faint orange
       // outline + light fill *under* the parcel-results layer so the
       // primary highlight stays on top.
+      // promoteId lifts roll_number to the feature id at the SOURCE
+      // level, which is what lets setFeatureState({source, id}) key into
+      // a parcel by roll — required by the multi-parcel-sale group
+      // highlight. Setting `id` on each GeoJSON Feature instead is not
+      // reliably picked up after the source re-renders, so promoteId is
+      // the canonical path. Roll is unique per drawn feature because
+      // setParcels dedupes the map FC by geometry first.
       map.addSource('assess-context', {
         type: 'geojson',
+        promoteId: 'roll_number',
         data: { type: 'FeatureCollection', features: [] },
       });
       // Phase 6: explicit layout.visibility so getLayoutProperty
@@ -961,28 +995,72 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         // Yellow highlight (Mat. yellow-A400) lifted from the
         // Manitoba sister app so a selected assessment parcel
         // reads identically across both tools.
+        //
+        // The fill deliberately does NOT distinguish sale groups. A 30%
+        // fill is the worst possible carrier for a subtle colour cue —
+        // it dilutes toward whatever is beneath it, so the same hex
+        // reads differently over cream basemap, dark tree cover and bare
+        // soil, and the shift ends up looking like an artefact of the
+        // imagery. The group cue lives entirely on the outline below,
+        // which draws at 75% and stays true.
         paint: {
           'fill-color': '#ffea00',
-          'fill-opacity': 0.3,
+          'fill-opacity': ASSESS_FILL_OPACITY,
         },
       });
+      // Solid black under-stroke for the selection outline. Sits directly
+      // beneath assess-context-line at exactly the same width, so the
+      // dashed yellow on top alternates with black through its gaps —
+      // the "caution-tape" border that stays legible on the pale Voyager
+      // basemap, where a plain yellow outline washes out. Matching the
+      // width exactly is what stops the black peeking out as a casing.
       map.addLayer({
-        id: 'assess-context-line',
+        id: 'assess-context-line-underlay',
         type: 'line',
         source: 'assess-context',
-        // Dashed outline so the highlight reads as a "selection"
-        // rather than competing with solid parcel-fabric lines.
-        // Manitoba uses [3, 2] (3-width dash, 2-width gap) at
-        // 2.5 px stroke — match exactly.
         layout: {
           visibility: 'visible',
           'line-cap': 'butt',
           'line-join': 'round',
         },
         paint: {
-          'line-color': '#ffea00',
-          'line-width': 2.5,
-          'line-dasharray': [3, 2],
+          'line-color': '#000000',
+          'line-width': ASSESS_LINE_WIDTH,
+          // Same 75% as the colour on top, so the black backing eases in
+          // step rather than dominating.
+          'line-opacity': 0.75,
+        },
+      });
+      map.addLayer({
+        id: 'assess-context-line',
+        type: 'line',
+        source: 'assess-context',
+        // Dashed outline so the highlight reads as a "selection" rather
+        // than competing with solid parcel-fabric lines. Equal dash/gap
+        // ([3,3] in line-widths) so the black underlay shows through as
+        // equal-length dashes.
+        layout: {
+          visibility: 'visible',
+          'line-cap': 'butt',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': [
+            'case',
+            // Multi-parcel sale (rows sharing an Instrument Number). The
+            // ONLY thing that marks a group: the same hue as the single-
+            // parcel yellow to within 0.1°, just ~17% less bright. Not a
+            // second colour — the same colour, a shade down. Brightness
+            // survives on a 2 px stroke where a small hue shift does not,
+            // and the alternating black underlay gives the eye a fixed
+            // reference to read the yellow against.
+            ['>', ['to-number', ['coalesce', ['get', '_saleGroupSize'], 1]], 1],
+            '#e6d300',
+            '#ffea00',
+          ],
+          'line-width': ASSESS_LINE_WIDTH,
+          'line-dasharray': [3, 3],
+          'line-opacity': 0.75,
         },
       });
 
@@ -1333,12 +1411,59 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         closeButton: false,
         closeOnClick: false,
       });
+      // ---- Multi-parcel-sale group highlight -------------------------
+      // Hovering any parcel of a sale lights up every parcel in the same
+      // transaction (outline 2→3 px, fill 0.3→0.5) so an assembly reads
+      // as one deal rather than several neighbouring lots. Driven by
+      // `_saleGroupRollIds`, the JSON list of sibling rolls stamped in
+      // lib/sales.js; a property search has no such stamp and no-ops.
+      let activeGroupRolls = [];
+      const clearGroupHover = () => {
+        for (const id of activeGroupRolls) {
+          map.setFeatureState({ source: 'assess-context', id }, { groupHover: false });
+        }
+        activeGroupRolls = [];
+      };
+      const setGroupHover = (rolls) => {
+        if (!Array.isArray(rolls) || rolls.length === 0) { clearGroupHover(); return; }
+        // No-op when the same group is already lit, so a mousemove across
+        // one parcel doesn't churn feature-state on every pixel.
+        if (activeGroupRolls.length === rolls.length
+            && activeGroupRolls.every((v, i) => v === rolls[i])) return;
+        clearGroupHover();
+        for (const id of rolls) {
+          if (id == null || id === '') continue;
+          map.setFeatureState({ source: 'assess-context', id }, { groupHover: true });
+          activeGroupRolls.push(id);
+        }
+      };
+      // Leaving the canvas entirely fires no mousemove, so the last
+      // hovered group would stay lit until the cursor came back.
+      map.getCanvas().addEventListener('mouseout', clearGroupHover);
+      // Exposed so the data setters can drop stale state when the result
+      // set changes — a roll that reappears in a later search would
+      // otherwise come back still lit from the previous one.
+      map._clearGroupHover = clearGroupHover;
+      /** Parse `_saleGroupRollIds` back to an array. MapLibre hands
+       *  properties back as strings, and the value may already be an
+       *  array when read straight off the source, so accept both. */
+      const readSaleGroupRolls = (props) => {
+        const raw = props?._saleGroupRollIds;
+        if (raw == null) return null;
+        if (Array.isArray(raw)) return raw.map(String);
+        try {
+          const parsed = JSON.parse(String(raw));
+          return Array.isArray(parsed) ? parsed.map(String) : null;
+        } catch { return null; }
+      };
+
       map.on('mousemove', (e) => {
         if (!map.isStyleLoaded()) return;
         // Stand down while an area-selection tool is armed: the hover
         // popup would sit on top of the exact point being aimed at.
         if (isShapeDrawing()) {
           popup.remove();
+          clearGroupHover();
           return;
         }
         const dwellingHits = DWELLING_LAYER_IDS
@@ -1355,6 +1480,10 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         const contextHits = map.getLayer('assess-context-fill')
           ? map.queryRenderedFeatures(e.point, { layers: ['assess-context-fill'] })
           : [];
+        // Light the hovered parcel's whole sale group. Runs before the
+        // early returns below so moving off a parcel onto an overlay
+        // still clears it.
+        setGroupHover(readSaleGroupRolls(contextHits[0]?.properties) || []);
         // Citywide-parcels-fill is consulted only when no search-result
         // layer matches. queryRenderedFeatures honours layer visibility,
         // so this is a no-op when Show All Parcels is off. Search results
@@ -1898,6 +2027,7 @@ export function showResults(
   { fit = true } = {},
 ) {
   map.getSource('parcel-results').setData(surveyFc);
+  clearAssessGroupState(map);
   map.getSource('assess-context').setData(assessFc);
   // `fit: false` is for re-renders driven by a drawn-shape area filter:
   // the shape was placed in the current viewport, so the narrowed set is
@@ -1942,7 +2072,17 @@ export function flyToFeature(map, feature) {
  */
 export function setAssessContext(map, fc) {
   const src = map.getSource('assess-context');
-  if (src) src.setData(fc);
+  if (!src) return;
+  clearAssessGroupState(map);
+  src.setData(fc);
+}
+
+/** Drop every feature-state on assess-context. Called before new data
+ *  lands so a roll that appears in both the old and new result sets
+ *  can't arrive still lit from the previous hover. */
+function clearAssessGroupState(map) {
+  if (typeof map._clearGroupHover === 'function') map._clearGroupHover();
+  try { map.removeFeatureState({ source: 'assess-context' }); } catch { /* source not ready */ }
 }
 
 /**

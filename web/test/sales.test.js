@@ -254,6 +254,45 @@ test('buildSaleFeatures — a nominal $1 keeps its price and surfaces the sworn 
   assert.equal(f.properties._saleSwornValue, 4080000, 'the real figure rides alongside it');
 });
 
+test('buildSaleFeatures — _saleSwornMismatch flags only a genuine disagreement', () => {
+  const mism = (price, sworn) => {
+    const { sales, groups } = dedupAndGroupSales([
+      row({ 'Sold Price': price, 'Sworn Value': sworn }),
+    ]);
+    return buildSaleFeatures(sales, new Map(), groups)[0].properties._saleSwornMismatch;
+  };
+  assert.equal(mism('1', '4080000'), true, 'nominal price vs real sworn value');
+  assert.equal(mism('350000', '350000'), false, 'ordinary sale: the two agree');
+  // One side missing is not a disagreement — it's an incomplete export,
+  // and flagging it would cry wolf on every row of a CSV with no sworn
+  // column at all.
+  assert.equal(mism('350000', ''), false, 'no sworn value');
+  assert.equal(mism('', '350000'), false, 'no sale price');
+});
+
+test('buildSaleFeatures — _saleGroupRollIds lists every sibling roll, on every member', () => {
+  // Drives the map's group-hover: hovering any parcel must be able to
+  // find all of its siblings, so the list is stamped on each of them.
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Parcel ID': '06070731000', 'Instrument Number': 'I1' }),
+    row({ 'Parcel ID': '06070732000', 'Instrument Number': 'I1' }),
+  ]);
+  const feats = buildSaleFeatures(sales, new Map(), groups);
+  assert.equal(feats.length, 2);
+  for (const f of feats) {
+    // JSON, because MapLibre stringifies non-primitive properties on the
+    // way back out of queryRenderedFeatures.
+    const rolls = JSON.parse(f.properties._saleGroupRollIds);
+    assert.deepEqual(rolls.sort(), ['06070731000', '06070732000']);
+  }
+});
+
+test('buildSaleFeatures — a single-parcel sale lists just itself', () => {
+  const { sales, groups } = dedupAndGroupSales([row({})]);
+  const [f] = buildSaleFeatures(sales, new Map(), groups);
+  assert.deepEqual(JSON.parse(f.properties._saleGroupRollIds), ['06070731000']);
+});
+
 console.log('');
 console.log(`${passed}/${passed + failed} passed`);
 if (failed > 0) process.exit(1);

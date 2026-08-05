@@ -227,6 +227,19 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     // large sworn value is a non-arms-length transfer, and folding the
     // two would launder it into the comp set as a market sale.
     p._saleSwornValue = sale.swornValue > 0 ? sale.swornValue : null;
+    // Flagged when the two figures disagree — the signal that the Sold
+    // Price is not what the property actually changed hands for. The
+    // grid tints both cells and marks the row off this one property so
+    // the two numbers are never read as an ordinary sale.
+    p._saleSwornMismatch = !!(p._salePrice && p._saleSwornValue
+      && p._salePrice !== p._saleSwornValue);
+    // Sibling rolls in this sale, for the map's group-hover highlight:
+    // hovering any parcel lights up every parcel in the same
+    // transaction. Stamped as JSON because MapLibre stringifies
+    // non-primitive feature properties when they come back out of
+    // queryRenderedFeatures, so an array would arrive as "[object
+    // Object]" — a string we control round-trips predictably.
+    p._saleGroupRollIds = JSON.stringify(group.map((g) => g.roll));
     let landSf = sale.landSf;
     if (isMulti) {
       landSf = group.reduce((sum, g) => sum + (g.landSf || 0), 0);

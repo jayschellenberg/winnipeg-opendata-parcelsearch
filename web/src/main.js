@@ -2542,7 +2542,15 @@ function renderTable(rows) {
       if (flyFeature) rowFeatureMap.set(String(key), flyFeature);
     }
     tr.classList.add('clickable');
-    tr.title = 'Click to zoom map to this parcel';
+    // Sale Price and Sworn disagree — a non-arms-length transfer. Marked
+    // on the ROW as well as the two cells so it's findable while
+    // scrolling, without having to scan those two columns.
+    if (a._saleSwornMismatch) {
+      tr.classList.add('sworn-mismatch-row');
+      tr.title = 'Sale Price and Sworn Value disagree — the sold price is not what this property changed hands for. Click to zoom map to this parcel.';
+    } else {
+      tr.title = 'Click to zoom map to this parcel';
+    }
     tr.addEventListener('click', () => {
       const f = rowFeatureMap.get(tr.dataset.rowKey);
       if (f) mapReady.then(() => flyToFeature(map, f));

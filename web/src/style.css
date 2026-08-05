@@ -3688,3 +3688,31 @@ body.shape-drawing .maplibregl-canvas {
 .controls .sales-street-input:hover {
   border-color: #98a69e;
 }
+
+/* -----------------------------------------------------------------
+   Sale Price / Sworn Value mismatch.
+
+   The two figures agreeing is the normal case. When they DON'T, the
+   Sold Price is not what the property changed hands for — SABRE writes
+   a nominal amount on a non-arms-length transfer and carries the real
+   figure in Sworn Value — and reading that row as an ordinary market
+   sale would put a non-market transfer into a comp set.
+
+   Both cells are tinted, never one: tinting a single cell leaves it
+   ambiguous which of the two numbers is the odd one out. The row also
+   takes a left border so a mismatch is findable while scrolling rather
+   than only when those two columns happen to be in view.
+   ----------------------------------------------------------------- */
+#results tbody td.sworn-mismatch {
+  background: #fdf0d5;
+  color: #8a4b08;
+  font-weight: 600;
+}
+#results tbody tr.sworn-mismatch-row > td:first-child {
+  box-shadow: inset 3px 0 0 #d97706;
+}
+/* Keep the flag visible through the row-hover and click-flash states,
+   which otherwise repaint the whole row and swallow the tint. */
+#results tbody tr:hover td.sworn-mismatch {
+  background: #fbe6b8;
+}
