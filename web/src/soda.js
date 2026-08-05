@@ -783,6 +783,34 @@ const CITY_ZONING_CACHE_KEY = 'cityZoning';
 let _cityZoningPromise = null;
 
 /**
+ * Guard for the CITYWIDE overlays (zoning, streets), where zero features is
+ * always a defect and never a legitimate answer — unlike a parcel search,
+ * which may correctly match nothing.
+ *
+ * The failure this exists for is a stale dataset id. Socrata answers an
+ * unknown-but-well-formed resource with 200 and an empty page rather than an
+ * error, so the overlay just silently renders nothing. The streets layer is
+ * the exposed one: `ngsx-caav` is a metadata `modifyingViewUid`, not the
+ * portal-facing dataset id, and the City republishing that view changes it.
+ *
+ * Refusing to CACHE an empty result matters as much as the warning: these
+ * layers are IndexedDB-cached for a week, so caching emptiness would keep the
+ * overlay blank for days after the City had already fixed things.
+ *
+ * @returns {boolean} true when the result is usable, and safe to cache
+ */
+export function isUsableCitywideFc(fc, label, resourceUrl) {
+  if (fc?.features?.length) return true;
+  console.warn(
+    `[${label}] returned 0 features — treating as a failure, not caching it. `
+    + `The dataset id in ${resourceUrl} has most likely changed; re-check it on `
+    + `data.winnipeg.ca (for view-backed layers the live id is the metadata's `
+    + `modifyingViewUid, not the id in the portal URL).`
+  );
+  return false;
+}
+
+/**
  * Return the entire dxrp-w6re zoning dataset (~18,400 polygons).
  * Reads from IndexedDB if a fresh entry exists; otherwise hits the
  * network and writes the result back to IndexedDB for next time. The
@@ -806,9 +834,11 @@ export async function fetchCityZoning() {
       label: 'Citywide zoning fetch',
     });
     // Fire-and-forget so the caller doesn't wait on the disk write.
-    idbWriteCache(CITY_ZONING_CACHE_KEY, fc).catch((err) =>
-      console.warn('IndexedDB write failed for cityZoning', err)
-    );
+    if (isUsableCitywideFc(fc, 'Citywide zoning', ZONING_URL)) {
+      idbWriteCache(CITY_ZONING_CACHE_KEY, fc).catch((err) =>
+        console.warn('IndexedDB write failed for cityZoning', err)
+      );
+    }
     return fc;
   })();
   // Clear the memoisation slot if the fetch fails so a retry can run.
@@ -840,9 +870,11 @@ export async function fetchWinnipegStreets() {
     const fc = await fetchSodaPaged(ROAD_NETWORK_URL, params, {
       label: 'Winnipeg streets fetch',
     });
-    idbWriteCache(WPG_STREETS_CACHE_KEY, fc).catch((err) =>
-      console.warn('IndexedDB write failed for wpgStreets', err)
-    );
+    if (isUsableCitywideFc(fc, 'Winnipeg streets', ROAD_NETWORK_URL)) {
+      idbWriteCache(WPG_STREETS_CACHE_KEY, fc).catch((err) =>
+        console.warn('IndexedDB write failed for wpgStreets', err)
+      );
+    }
     return fc;
   })();
   _wpgStreetsPromise.catch(() => { _wpgStreetsPromise = null; });

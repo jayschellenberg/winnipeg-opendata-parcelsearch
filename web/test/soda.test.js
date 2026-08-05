@@ -18,6 +18,7 @@ import {
   buildAddressClauses,
   normalizeStreetQuery,
   zoningClause,
+  isUsableCitywideFc,
 } from '../src/soda.js';
 
 let passed = 0;
@@ -327,6 +328,40 @@ test('zoningClause — empty / hyphen-only input → null', () => {
   assert.equal(zoningClause(''), null);
   assert.equal(zoningClause(null), null);
   assert.equal(zoningClause('--'), null);
+});
+
+// A citywide overlay that comes back empty means a stale dataset id, not a
+// legitimate "no matches" — Socrata answers an unknown-but-well-formed
+// resource with 200 and an empty page. The return value gates the IndexedDB
+// write, so getting it wrong caches the emptiness for a week.
+function captureWarn(fn) {
+  const original = console.warn;
+  const calls = [];
+  console.warn = (...args) => calls.push(args.join(' '));
+  try { return { result: fn(), calls }; } finally { console.warn = original; }
+}
+
+test('isUsableCitywideFc — a populated collection is usable and silent', () => {
+  const { result, calls } = captureWarn(() =>
+    isUsableCitywideFc({ type: 'FeatureCollection', features: [{}, {}] }, 'Streets', 'u'));
+  assert.equal(result, true);
+  assert.equal(calls.length, 0);
+});
+
+test('isUsableCitywideFc — empty / missing / null all warn and block caching', () => {
+  for (const fc of [{ type: 'FeatureCollection', features: [] }, {}, null, undefined]) {
+    const { result, calls } = captureWarn(() => isUsableCitywideFc(fc, 'Streets', 'ngsx-caav'));
+    assert.equal(result, false, `expected ${JSON.stringify(fc)} to be unusable`);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /0 features/);
+  }
+});
+
+test('isUsableCitywideFc — the warning names the layer and the resource', () => {
+  const { calls } = captureWarn(() =>
+    isUsableCitywideFc(null, 'Winnipeg streets', 'https://data.winnipeg.ca/resource/ngsx-caav.geojson'));
+  assert.match(calls[0], /Winnipeg streets/);
+  assert.match(calls[0], /ngsx-caav/);
 });
 
 console.log('');
