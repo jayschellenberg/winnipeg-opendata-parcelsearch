@@ -10,7 +10,10 @@
  * trample their property-mode preferences and vice versa.
  *
  * Four presets are baked in:
- *   - Quick lookup:    lot, block, plan, roll, address, area
+ *   - Quick lookup:    lot, block, plan, roll, address, water, area
+ *   - Residential:     roll, address, buildingType, yearBuilt,
+ *                      livingArea, rooms, dwellingUnits, area, zoning,
+ *                      water, value
  *   - Zoning detail:   lot, block, plan, roll, address, zoning,
  *                      zoningPct, zoning2, area
  *   - Full detail:     null (everything)
@@ -29,6 +32,15 @@ const STORAGE_KEY_PROPERTY = 'wps_table_columns_v1';
 const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
 
 const QUICK_LOOKUP = ['lot', 'block', 'plan', 'roll', 'address', 'water', 'area'];
+// Residential property search: what actually matters on a house — the
+// dwelling itself (type, age, floor area, rooms, units), the lot, its
+// zoning and water influence, and the assessment. Deliberately omits
+// the legal-description columns (Lot/Block/Plan) and the sales-only
+// columns, neither of which a residential lookup is asking about.
+const RESIDENTIAL = [
+  'roll', 'address', 'buildingType', 'yearBuilt', 'livingArea',
+  'rooms', 'dwellingUnits', 'area', 'zoning', 'water', 'value',
+];
 const ZONING_DETAIL = [
   'lot', 'block', 'plan', 'roll', 'address',
   'zoning', 'zoningPct', 'zoning2', 'area',
@@ -48,6 +60,7 @@ export const DEFAULT_VISIBLE = new Set(QUICK_LOOKUP);
 
 export const PRESETS = {
   'Quick lookup':    new Set(QUICK_LOOKUP),
+  'Residential':     new Set(RESIDENTIAL),
   'Zoning detail':   new Set(ZONING_DETAIL),
   'Full detail':     null,
   'Sales analysis':  new Set(SALES_DEFAULT),

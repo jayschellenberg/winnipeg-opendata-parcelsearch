@@ -259,8 +259,13 @@ const SORT_KEYS = {
   saleToAsmt:   (r) => finiteOrNeg(r.assess?.properties?._saleToAsmt),
   dist:         (r) => finiteOrNeg(r.assess?.properties?._dist),
   useCode:      (r) => strKey(r.assess?.properties?._saleUseCode),
-  livingArea:   (r) => finiteOrNeg(r.assess?.properties?._saleLivingArea),
-  yearBuilt:    (r) => numOrStr(r.assess?.properties?._saleYearBuilt),
+  livingArea:   (r) => finiteOrNeg(r.assess?.properties?._saleLivingArea
+                                   ?? r.assess?.properties?.total_living_area),
+  yearBuilt:    (r) => numOrStr(r.assess?.properties?._saleYearBuilt
+                                ?? r.assess?.properties?.year_built),
+  buildingType:  (r) => strKey(r.assess?.properties?.building_type),
+  rooms:         (r) => finiteOrNeg(r.assess?.properties?.rooms),
+  dwellingUnits: (r) => finiteOrNeg(r.assess?.properties?.dwelling_units),
   instrument:   (r) => strKey(r.assess?.properties?._saleInstrument),
   propertyType: (r) => strKey(r.assess?.properties?._salePropertyType),
   groupSize:    (r) => finiteOrNeg(r.assess?.properties?._saleGroupSize),

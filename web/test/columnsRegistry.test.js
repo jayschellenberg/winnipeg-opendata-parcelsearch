@@ -106,6 +106,25 @@ test('every key in lib/columns.js PRESETS exists in the registry', () => {
 });
 
 // 5. CSV schema =============================================================
+test('every PRESETS entry is offered in the index.html preset dropdown', () => {
+  // PRESETS keys were already checked against the registry, but nothing
+  // checked that a preset actually REACHES the user: the dropdown's
+  // <option>s are hand-written markup. Adding "Residential" to PRESETS
+  // without adding the option left it unselectable, which is exactly
+  // the drift this guards.
+  const select = indexHtml.match(/<select id="columns-preset"[\s\S]*?<\/select>/);
+  assert.ok(select, 'preset <select> present in index.html');
+  const offered = [...select[0].matchAll(/<option value="([^"]*)"/g)]
+    .map((m) => m[1])
+    .filter(Boolean);
+  for (const name of Object.keys(PRESETS)) {
+    assert.ok(offered.includes(name), `preset "${name}" has an <option>`);
+  }
+  for (const name of offered) {
+    assert.ok(name in PRESETS, `dropdown option "${name}" is a real preset`);
+  }
+});
+
 test('columnsForMode("property") excludes sales-mode columns', () => {
   const keys = columnsForMode('property').map((c) => c.key);
   for (const c of COLUMNS) {

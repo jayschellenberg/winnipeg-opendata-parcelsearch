@@ -50,6 +50,19 @@ function waterTd(a) {
   return cell;
 }
 
+/** Floor area: the sales CSV's value when present, else the live record. */
+function livingAreaOf(a) {
+  const sale = Number(a?._saleLivingArea);
+  if (Number.isFinite(sale) && sale > 0) return sale;
+  const live = Number(a?.total_living_area);
+  return Number.isFinite(live) && live > 0 ? live : null;
+}
+
+/** Year built: same dual source. */
+function yearBuiltOf(a) {
+  return a?._saleYearBuilt || a?.year_built || null;
+}
+
 // Per-column entry:
 //   key          stable identifier (data-col attribute, sort key, URL param)
 //   header       <th> text content
@@ -90,29 +103,34 @@ export const COLUMNS = [
     render: (a) => badgeTd(a._saleUseCode || null, 'badge-pucs'),
     csv: { header: 'PUCS', extract: (a) => a._saleUseCode } },
 
-  { key: 'livingArea',   header: 'Living Area',   mode: 'sales',  sortable: true,
-    theadTitle: 'Building floor area in square feet (from the CSV)',
-    render: (a) => td(formatSqFt(a._saleLivingArea), 'num'),
-    csv: { header: 'Living Area', extract: (a) => a._saleLivingArea } },
+  // Living Area and Year Built are dual-source: the sales CSV value when
+  // there is one, otherwise the live assessment record. That makes them
+  // usable in a plain property search (where no CSV exists) without a
+  // second near-identical pair of columns.
+  { key: 'livingArea',   header: 'Living Area',   mode: 'always', sortable: true,
+    theadTitle: 'Building floor area in square feet — from the sales CSV when loaded, otherwise the assessment record',
+    render: (a) => td(formatSqFt(livingAreaOf(a)), 'num'),
+    csv: { header: 'Living Area', extract: (a) => livingAreaOf(a) } },
 
-  { key: 'yearBuilt',    header: 'Year Built',    mode: 'sales',  sortable: true,
-    theadTitle: "Oldest Year Built across the parcel's building components (from the CSV)",
-    render: (a) => td(a._saleYearBuilt || null),
-    csv: { header: 'Year Built', extract: (a) => a._saleYearBuilt } },
+  { key: 'yearBuilt',    header: 'Year Built',    mode: 'always', sortable: true,
+    theadTitle: "Year built — from the sales CSV when loaded (oldest across the parcel's building components), otherwise the assessment record",
+    render: (a) => td(yearBuiltOf(a)),
+    csv: { header: 'Year Built', extract: (a) => yearBuiltOf(a) } },
 
-  // Water influence, straight off the City's own property_influences
-  // field. Three states — a classified verdict, an explicit "no water
-  // noted" once we've actually looked, and blank when we haven't — so
-  // the cell never claims a check it didn't run. See lib/water.js.
-  { key: 'water',        header: 'Water',         mode: 'always', sortable: true,
-    theadTitle: 'Water influence from the City assessment record. Dark = adjacent (frontage), pale = near water without frontage. An assessor\'s classification, not a measured distance.',
-    render: (a) => waterTd(a),
-    csv: [
-      { header: 'Water',       extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[0] },
-      { header: 'Water Class', extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[1] },
-      { header: 'Water Body',  extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[2] },
-      { header: 'Water Type',  extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[3] },
-    ] },
+  { key: 'buildingType', header: 'Building',      mode: 'always', sortable: true,
+    theadTitle: 'Building type from the assessment record (ONE STOREY, TWO STOREY, BUNGALOW…)',
+    render: (a) => truncatedTd(a.building_type, 18),
+    csv: { header: 'Building Type', extract: (a) => a.building_type } },
+
+  { key: 'rooms',        header: 'Rooms',         mode: 'always', sortable: true,
+    theadTitle: 'Room count from the assessment record',
+    render: (a) => td(a.rooms != null ? String(a.rooms) : null, 'num'),
+    csv: { header: 'Rooms', extract: (a) => a.rooms } },
+
+  { key: 'dwellingUnits', header: 'DU',           mode: 'always', sortable: true,
+    theadTitle: 'Dwelling units on the parcel (assessment record). 0 = vacant lot.',
+    render: (a) => td(a.dwelling_units != null ? String(a.dwelling_units) : null, 'num'),
+    csv: { header: 'Dwelling Units', extract: (a) => a.dwelling_units } },
 
   { key: 'area',         header: 'Lot Size (sf)', mode: 'always', sortable: true,
     render: (a) => td(formatSqFt(a.assessed_land_area), 'num'),
@@ -208,13 +226,19 @@ export const COLUMNS = [
       { header: 'Zoning 2 %', extract: (a) => a.zoning_top2_pct },
     ] },
 
-  { key: 'lat',          header: 'Lat',           mode: 'always', sortable: true,
-    render: (a) => td(formatCoord(a.centroid_lat), 'num'),
-    csv: { header: 'Lat', extract: (a) => a.centroid_lat } },
-
-  { key: 'lon',          header: 'Lon',           mode: 'always', sortable: true,
-    render: (a) => td(formatCoord(a.centroid_lon), 'num'),
-    csv: { header: 'Lon', extract: (a) => a.centroid_lon } },
+  // Water influence, straight off the City's own property_influences
+  // field. Three states — a classified verdict, an explicit "no water
+  // noted" once we've actually looked, and blank when we haven't — so
+  // the cell never claims a check it didn't run. See lib/water.js.
+  { key: 'water',        header: 'Water',         mode: 'always', sortable: true,
+    theadTitle: 'Water influence from the City assessment record. Dark = adjacent (frontage), pale = near water without frontage. An assessor\'s classification, not a measured distance.',
+    render: (a) => waterTd(a),
+    csv: [
+      { header: 'Water',       extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[0] },
+      { header: 'Water Class', extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[1] },
+      { header: 'Water Body',  extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[2] },
+      { header: 'Water Type',  extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[3] },
+    ] },
 
   { key: 'value',        header: 'Assessment',    mode: 'always', sortable: true,
     theadId: 'value-header',
@@ -238,6 +262,13 @@ export const COLUMNS = [
     theadTitle: 'Run this parcel through the Manitoba flood-screening tool',
     render: (a) => linkTd(floodToolUrl(a), 'Flood'),
     csv: { header: 'Flood URL', extract: (a) => floodToolUrl(a) } },
+  { key: 'lat',          header: 'Lat',           mode: 'always', sortable: true,
+    render: (a) => td(formatCoord(a.centroid_lat), 'num'),
+    csv: { header: 'Lat', extract: (a) => a.centroid_lat } },
+
+  { key: 'lon',          header: 'Lon',           mode: 'always', sortable: true,
+    render: (a) => td(formatCoord(a.centroid_lon), 'num'),
+    csv: { header: 'Lon', extract: (a) => a.centroid_lon } },
 ];
 
 export const COLUMN_KEYS = COLUMNS.map((c) => c.key);

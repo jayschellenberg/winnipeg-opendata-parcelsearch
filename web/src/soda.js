@@ -54,7 +54,10 @@ const ASSESS_SELECT = [
   'roll_number', 'full_address', 'zoning', 'property_use_code',
   'centroid_lat', 'centroid_lon', 'assessed_land_area', 'dwelling_units',
   'total_assessed_value', 'detail_url', 'current_assessment_year',
-  'property_class_1', 'property_influences', 'geometry',
+  'property_class_1', 'property_influences',
+  // Residential attributes behind the Residential column preset.
+  'building_type', 'year_built', 'total_living_area', 'rooms',
+  'geometry',
 ].join(',');
 
 /**
