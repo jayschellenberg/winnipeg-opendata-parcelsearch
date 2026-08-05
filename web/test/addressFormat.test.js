@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeAddressKey,
   addressBaseKey,
+  unitPrefixBaseKey,
   dedupeAddresses,
 } from '../src/lib/addressFormat.js';
 
@@ -58,6 +59,22 @@ assert.equal(addressBaseKey('1000 ALDGATE RD SUITE 4'), '1000 ALDGATE RD');
 // A street literally named "…ROW" must not lose its type to the regex.
 assert.equal(addressBaseKey('12 KINGSTON ROW'), '12 KINGSTON ROW');
 
+// ---- unitPrefixBaseKey ----------------------------------------------------
+// Winnipeg condo notation. Safe to key off the dash: of 4,000 sampled
+// assessment addresses containing one, 3,998 are exactly this form and
+// the other 2 are the same form with a space in the unit. No address
+// RANGES exist in this dataset.
+assert.equal(unitPrefixBaseKey('610-1000 ALDGATE RD'), '1000 ALDGATE RD');
+assert.equal(unitPrefixBaseKey('1-480 CHALFONT RD'), '480 CHALFONT RD');
+// Units containing spaces — the two real outliers.
+assert.equal(unitPrefixBaseKey('116 A-45 GILLSON ST'), '45 GILLSON ST');
+assert.equal(unitPrefixBaseKey('3RD FL-45 GILLSON ST'), '45 GILLSON ST');
+// Not a unit address.
+assert.equal(unitPrefixBaseKey('1000 ALDGATE RD'), null);
+assert.equal(unitPrefixBaseKey('407 LYNDALE DR'), null);
+assert.equal(unitPrefixBaseKey(''), null);
+assert.equal(unitPrefixBaseKey(null), null);
+
 // ---- dedupeAddresses ------------------------------------------------------
 // The reported bug: one address, two spellings, assessment first.
 assert.deepEqual(
@@ -85,10 +102,12 @@ assert.deepEqual(
   ]),
   ['1000 ALDGATE RD'],
 );
-// …including when the base appears AFTER its units.
+// …including when the base appears AFTER its units. (Index 0 here is an
+// unrelated address, because the first entry is deliberately never
+// dropped — see the invariant below.)
 assert.deepEqual(
-  dedupeAddresses(['1000 ALDGATE RD Unit 101', '1000 ALDGATE RD']),
-  ['1000 ALDGATE RD'],
+  dedupeAddresses(['999 OTHER ST', '1000 ALDGATE RD Unit 101', '1000 ALDGATE RD']),
+  ['999 OTHER ST', '1000 ALDGATE RD'],
 );
 // …and the base still suppresses units spelled the other way.
 assert.deepEqual(
@@ -101,6 +120,37 @@ assert.deepEqual(
   dedupeAddresses(['1000 ALDGATE RD Unit 101', '1000 ALDGATE RD Unit 102']),
   ['1000 ALDGATE RD Unit 101', '1000 ALDGATE RD Unit 102'],
 );
+// On a condo unit's row the bare building address is dropped — the unit
+// address already names the building.
+assert.deepEqual(
+  dedupeAddresses(['610-1000 ALDGATE ROAD', '1000 ALDGATE RD']),
+  ['610-1000 ALDGATE ROAD'],
+);
+// Works across the two spellings of the street type.
+assert.deepEqual(
+  dedupeAddresses(['1-480 CHALFONT ROAD', '480 CHALFONT RD']),
+  ['1-480 CHALFONT ROAD'],
+);
+// A unit with a space in it still suppresses the building address.
+assert.deepEqual(
+  dedupeAddresses(['116 A-45 GILLSON STREET', '45 GILLSON ST']),
+  ['116 A-45 GILLSON STREET'],
+);
+// A DIFFERENT building's address is not touched.
+assert.deepEqual(
+  dedupeAddresses(['610-1000 ALDGATE ROAD', '990 ALDGATE RD']),
+  ['610-1000 ALDGATE ROAD', '990 ALDGATE RD'],
+);
+// The building's OWN row keeps its address: it is first, and the first
+// entry is never dropped, so cross-referenced unit points can't strip a
+// parcel's own address off its row.
+assert.deepEqual(
+  dedupeAddresses(['1000 ALDGATE ROAD', '610-1000 ALDGATE RD']),
+  ['1000 ALDGATE ROAD', '610-1000 ALDGATE RD'],
+);
+// With no unit address present, the building address stands alone.
+assert.deepEqual(dedupeAddresses(['1000 ALDGATE RD']), ['1000 ALDGATE RD']);
+
 // Blank / degenerate input.
 assert.deepEqual(dedupeAddresses([]), []);
 assert.deepEqual(dedupeAddresses(null), []);

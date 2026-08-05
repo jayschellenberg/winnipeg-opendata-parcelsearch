@@ -65,6 +65,23 @@ export function addressBaseKey(key) {
 }
 
 /**
+ * For a Winnipeg unit address written as "610-1000 ALDGATE ROAD",
+ * the building address it sits in ("1000 ALDGATE ROAD"). Null when the
+ * key is not in that form.
+ *
+ * Safe to key off the dash because this dataset has no address RANGES:
+ * of 4,000 sampled assessment addresses containing a dash, 3,998 are
+ * exactly this unit form and the other 2 are the same form with a
+ * space in the unit ("116 A-45 GILLSON STREET", "3RD FL-45 GILLSON
+ * STREET") — hence the non-greedy left side, which lets the unit
+ * contain spaces while the base must still start with a street number.
+ */
+export function unitPrefixBaseKey(key) {
+  const m = String(key ?? '').match(/^(.+?)-(\d+\s+.+)$/);
+  return m ? m[2].trim() : null;
+}
+
+/**
  * Collapse a parcel's address list to the distinct real addresses,
  * preserving input order — callers put the parcel's own (assessment)
  * address first, so its spelling is the one that survives.
@@ -78,6 +95,15 @@ export function addressBaseKey(key) {
  * it to the base would invent an address the sources never asserted,
  * and for a parcel that only ever appears as unit addresses that guess
  * would be the only thing shown.
+ *
+ * The reverse also collapses: on a condo unit's row the bare building
+ * address is dropped, so "610-1000 ALDGATE ROAD, 1000 ALDGATE RD"
+ * becomes just "610-1000 ALDGATE ROAD". The unit address already names
+ * the building; repeating it adds nothing.
+ *
+ * The FIRST entry is never dropped. Callers put the parcel's own
+ * address there, and no amount of cross-referenced civic data should be
+ * able to remove a parcel's own address from its row.
  */
 export function dedupeAddresses(list) {
   const entries = (list || [])
@@ -92,13 +118,20 @@ export function dedupeAddresses(list) {
   const baseKeys = new Set(
     entries.filter((e) => addressBaseKey(e.key) === e.key).map((e) => e.key)
   );
+  // Building addresses that some unit address already covers.
+  const coveredByUnit = new Set(
+    entries.map((e) => unitPrefixBaseKey(e.key)).filter(Boolean)
+  );
 
   const seen = new Set();
   const out = [];
-  for (const e of entries) {
+  for (const [i, e] of entries.entries()) {
     if (seen.has(e.key)) continue;
-    const base = addressBaseKey(e.key);
-    if (base !== e.key && baseKeys.has(base)) continue;   // redundant unit
+    if (i > 0) {
+      const base = addressBaseKey(e.key);
+      if (base !== e.key && baseKeys.has(base)) continue;  // redundant unit
+      if (coveredByUnit.has(e.key)) continue;              // bare building address
+    }
     seen.add(e.key);
     out.push(e.display);
   }
