@@ -340,17 +340,31 @@ const SABRE = [
   assert.equal(feats[0].properties._pricePerSf, 3150000 / (88493 + 85102));
 }
 {
-  // Same roll + same instrument stays ONE parcel (component rows), which
-  // is what keeps the 6 BANNERMAN unit rows from reading as 6 parcels.
+  // 185 BANNERMAN, verbatim from the SABRE sample: six rows on one
+  // instrument that all carry the SAME Parcel ID. That is one sale of
+  // ONE parcel containing six units — confirmed with Jason 2026-08-05 —
+  // not a six-parcel sale.
+  //
+  // The land figure is the reason this matters. Land Actual sqft is
+  // 5757 REPEATED on each of the six rows, not 5757 apiece. Collapsing
+  // to one record counts it once and yields $224/sf; treating the rows
+  // as six group members would sum it to 34,542 sf and report $37/sf —
+  // a 6x understatement of the land rate.
+  const bannermanRow = (unit) =>
+    `14060118000\t5835797\t02-03-2026\t1290000\t${unit}\t5757`;
   const componentRows = [
-    'Parcel ID\tInstrument Number\tSale Dates\tSold Price\tNumber of Unit',
-    '14060118000\t5835797\t02-03-2026\t1290000\t1',
-    '14060118000\t5835797\t02-03-2026\t1290000\t6',
+    'Parcel ID\tInstrument Number\tSale Dates\tSold Price\tNumber of Unit\tLand Actual sqft',
+    ...[1, 2, 3, 4, 5, 6].map(bannermanRow),
   ].join('\n');
   const { sales, groups } = dedupAndGroupSales(parseSalesText(componentRows).rows);
-  assert.equal(sales.length, 1);
+  assert.equal(sales.length, 1, 'six component rows collapse to one sale');
   assert.equal(groups.get('5835797').length, 1, 'one PARCEL, six units — not six parcels');
   assert.equal(sales[0].numUnits, 6);
+  assert.equal(sales[0].landSf, 5757, 'repeated land is counted ONCE, not summed to 34,542');
+
+  const p = buildSaleFeatures(sales, new Map(), groups)[0].properties;
+  assert.equal(p._saleGroupSize, 1);
+  assert.equal(Math.round(p._pricePerSf), 224, '$1,290,000 ÷ 5,757 sf — not ÷ 34,542');
 }
 {
   // A blank Instrument Number can't be grouped, so the row is dropped —
