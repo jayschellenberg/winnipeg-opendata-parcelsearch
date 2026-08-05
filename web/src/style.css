@@ -3485,3 +3485,33 @@ body.shape-drawing .maplibregl-canvas {
   gap: 6px;
   margin-top: 4px;
 }
+
+/* Water-influence column dot. Colour comes from lib/water.js (dark =
+   frontage, pale = near water without it) via an inline style. */
+.water-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.28);
+  vertical-align: middle;
+}
+/* The two waterfront search filters. Stacked so each full label is
+   readable — "Near water (no frontage)" is the whole point of the
+   second one and must not truncate. */
+.water-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+}
+.water-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--color-neutral-700, #3f3f46);
+  cursor: pointer;
+}
+.water-filter input[type="checkbox"] { flex: none; margin: 0; }

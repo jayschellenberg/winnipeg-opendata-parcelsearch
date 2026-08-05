@@ -74,7 +74,7 @@ import {
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
   setCitywideParcelsVisible, setDwellingUnitsVisible, probeCitywideParcels,
-  setContamData, setContamVisible,
+  setContamData, setContamVisible, setWaterInfluenceVisible,
   setSubjectData,
   setHistoricalData, setHistoricalVisible,
   setHistoricalZoningData, setHistoricalZoningVisible,
@@ -97,6 +97,7 @@ import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
 import { buildClusterIndex, clusterForFeature } from './lib/clusters.js';
 import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
+import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
@@ -116,6 +117,8 @@ const $addressTo = document.getElementById('address-to');
 const $addressStreet = document.getElementById('address-street');
 const $zoning = document.getElementById('zoning');
 const $duMode = document.getElementById('du-mode');
+const $waterFront = document.getElementById('water-front');
+const $waterNear  = document.getElementById('water-near');
 const $duMin = document.getElementById('du-min');
 const $search = document.getElementById('search');
 const $clear = document.getElementById('clear');
@@ -261,6 +264,7 @@ const SORT_KEYS = {
   instrument:   (r) => strKey(r.assess?.properties?._saleInstrument),
   propertyType: (r) => strKey(r.assess?.properties?._salePropertyType),
   groupSize:    (r) => finiteOrNeg(r.assess?.properties?._saleGroupSize),
+  water:        (r) => waterSortRank(waterOf(r.assess?.properties), waterLoaded(r.assess?.properties)),
   cluster:      (r) => strKey(r.assess?.properties?._cluster),
   swornValue:   (r) => finiteOrNeg(r.assess?.properties?._saleSwornValue),
   numUnits:     (r) => finiteOrNeg(r.assess?.properties?._saleNumUnits),
@@ -337,6 +341,7 @@ if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
 if ($streetsToggle) $streetsToggle.addEventListener('click', toggleStreets);
+document.getElementById('water-toggle')?.addEventListener('click', toggleWaterOverlay);
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 // Historical (as-of-date) overlay: a date picker feeds the toggle, which loads
 // the parcel + survey shards (and lineage) for the neighbourhoods in the current
@@ -721,12 +726,19 @@ async function runSearch() {
     // The minimum is captured separately so it persists across mode swaps.
     duMode: $duMode.value,
     duMin: parseInt($duMin.value, 10) || null,
+    // Water influence. Either box on its own is a real query — the
+    // whole point is that frontage and near-water are different
+    // markets — so each counts as an assessment-side filter and can
+    // drive a search with no other field filled.
+    waterfront: !!$waterFront?.checked,
+    nearWater:  !!$waterNear?.checked,
   };
 
   const anyLegal = inputs.lot || inputs.block || inputs.plan || inputs.desc;
   const anyDu = inputs.duMode === 'zero' || (inputs.duMode === 'min' && inputs.duMin > 0);
   const anyAddress = inputs.addressFrom || inputs.addressTo || inputs.addressStreet;
-  const anyAssess = inputs.roll || anyAddress || inputs.zoning || anyDu;
+  const anyWater = inputs.waterfront || inputs.nearWater;
+  const anyAssess = inputs.roll || anyAddress || inputs.zoning || anyDu || anyWater;
 
   if (!anyLegal && !anyAssess) {
     setCount('Enter at least one search field.');
@@ -761,7 +773,25 @@ async function runSearch() {
  * the zoning toggle refresh without re-running the search. Triggers a
  * zoning refresh if the layer is currently enabled.
  */
+/**
+ * Stamp `_waterColor` on each feature so the water-influence layers can
+ * paint straight off a data-driven `['get', '_waterColor']` expression.
+ * A MapLibre `match` over the raw property_influences string could not
+ * do this: the field is multi-valued, so the colour depends on parsing
+ * it, which only lib/water.js does.
+ */
+function stampWaterColors(fc) {
+  for (const f of fc?.features || []) {
+    const c = waterColor(waterOf(f.properties));
+    if (c) f.properties._waterColor = c;
+    else delete f.properties?._waterColor;
+  }
+  return fc;
+}
+
 function setParcels(surveyFc, assessFc = EMPTY_FC, { fit = true } = {}) {
+  stampWaterColors(surveyFc);
+  stampWaterColors(assessFc);
   // Remember what was handed in BEFORE the area filter narrows it, so
   // erasing a shape can restore the full set without a re-search.
   lastFullSurveyFc = surveyFc;
@@ -1089,6 +1119,26 @@ async function setStreetsEnabled(enabled) {
       $streetsToggle.textContent = streetsEnabled ? 'Hide Current Streets' : 'Current Winnipeg Streets';
     }
   }
+}
+
+let waterOverlayEnabled = false;
+/**
+ * Water-influence overlay toggle.
+ *
+ * OFF by default and it never auto-arms — not even when the waterfront
+ * search filters are ticked. Painting the map without being asked takes
+ * control away from the user; if the button is hard to find, that is a
+ * discoverability problem to fix in the button, not by seizing the map.
+ */
+function toggleWaterOverlay() {
+  waterOverlayEnabled = !waterOverlayEnabled;
+  const btn = document.getElementById('water-toggle');
+  if (btn) {
+    btn.classList.toggle('active', waterOverlayEnabled);
+    btn.setAttribute('aria-pressed', String(waterOverlayEnabled));
+    btn.textContent = waterOverlayEnabled ? 'Hide Water Influence' : 'Water Influence';
+  }
+  mapReady.then(() => setWaterInfluenceVisible(map, waterOverlayEnabled));
 }
 
 async function toggleStreets() {

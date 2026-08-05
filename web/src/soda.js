@@ -30,6 +30,44 @@ import booleanIntersects from '@turf/boolean-intersects';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 import { intersect } from '@turf/intersect';
 import { area } from '@turf/area';
+import { waterTokens } from './lib/water.js';
+
+/**
+ * The assessment-parcel field list, shared by every path that returns
+ * d4mq-wa44 features. ONE constant on purpose: it was previously
+ * duplicated between the attribute search and the address
+ * cross-reference fetch, and the two had already drifted —
+ * property_class_1 was added to the first only, so a parcel surfaced
+ * via the address cross-reference came back with no assessment class.
+ * A field that only some paths return is worse than one no path
+ * returns, because the gap shows up as a blank cell on an arbitrary
+ * subset of rows.
+ *
+ *   property_class_1     — the sales-tab "Filter by class" control.
+ *   property_influences  — the City's own water verdicts
+ *                          (RED RIVER ADJACENT, RETENTION POND
+ *                          INFLUENCE, …) behind the Water column and
+ *                          the waterfront filters. See lib/water.js.
+ */
+const ASSESS_SELECT = [
+  'roll_number', 'full_address', 'zoning', 'property_use_code',
+  'centroid_lat', 'centroid_lon', 'assessed_land_area', 'dwelling_units',
+  'total_assessed_value', 'detail_url', 'current_assessment_year',
+  'property_class_1', 'property_influences', 'geometry',
+].join(',');
+
+/**
+ * Stamp every assessment record as having been asked about its water
+ * influences — see the three-state note in lib/water.js. Socrata omits
+ * null fields, so without this a parcel with no influences is
+ * indistinguishable from a query that never requested them.
+ */
+function stampWaterLoaded(fc) {
+  for (const f of fc?.features || []) {
+    if (f.properties) f.properties._waterLoaded = true;
+  }
+  return fc;
+}
 
 const SURVEY_URL = 'https://data.winnipeg.ca/resource/sjjm-nj47.geojson';
 const ASSESS_URL = 'https://data.winnipeg.ca/resource/d4mq-wa44.geojson';
@@ -129,7 +167,7 @@ export async function fetchAssessmentOverlap(surveyFc) {
   return fetchPerFeatureBboxUnion({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
-    select: 'roll_number,full_address,zoning,property_use_code,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
+    select: ASSESS_SELECT,
     dedupeKey: 'roll_number',
     fc: surveyFc,
   });
@@ -189,6 +227,7 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
  */
 export async function searchAssessmentParcels({
   roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+  waterfront, nearWater,
 }) {
   const clauses = [];
   const rc = rollClause(roll);
@@ -200,25 +239,51 @@ export async function searchAssessmentParcels({
   if (zc)      clauses.push(zc);
   const duClause = buildDuClause(duMode, duMin);
   if (duClause) clauses.push(duClause);
+  const wc = buildWaterClause({ waterfront, nearWater });
+  if (wc)      clauses.push(wc);
   if (clauses.length === 0) {
     return { type: 'FeatureCollection', features: [] };
   }
 
   const params = new URLSearchParams({
     $where: clauses.join(' AND '),
-    // property_class_1 drives the sales-tab "Filter by class" control.
-    // It lives only on the live assessment record — the SABRE sales
-    // export has no class column — so it has to ride along here rather
-    // than come off the pasted rows.
-    $select: 'roll_number,full_address,zoning,property_use_code,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,property_class_1,geometry',
+    $select: ASSESS_SELECT,
     $order: 'full_address',
   });
-  return fetchSodaPaged(ASSESS_URL, params, {
+  const fc = await fetchSodaPaged(ASSESS_URL, params, {
     pageSize: USER_SEARCH_LIMIT,
     maxRows: USER_SEARCH_LIMIT,
     allowTruncated: true,
     label: 'Assessment parcel search',
   });
+  return stampWaterLoaded(fc);
+}
+
+/**
+ * SoQL clause for the water-influence filters.
+ *
+ * Runs SERVER-SIDE on purpose. A post-filter over the fetched page
+ * would return "the waterfront ones among the first N matches" rather
+ * than all the waterfront ones — the mistake the Manitoba app made and
+ * had to work around, where a muni-wide search surfaced 1 waterfront
+ * parcel out of 378.
+ *
+ * Matches on the FULL token. `property_influences` also contains
+ * COMMERCIAL ADJACENT and COMMERCIAL INFLUENCE, so a `like '%ADJACENT%'`
+ * would sweep commercial parcels into a waterfront search. The token
+ * list comes from lib/water.js, the same one the column parses with, so
+ * the filter and the verdict can never disagree about what counts.
+ *
+ * Both boxes ticked = the union (any water influence at all), which is
+ * what ticking both plainly means.
+ */
+function buildWaterClause({ waterfront, nearWater }) {
+  if (!waterfront && !nearWater) return null;
+  const tokens = waterfront && nearWater
+    ? waterTokens()
+    : waterTokens(!!waterfront);
+  const ors = tokens.map((t) => `property_influences like '%${t}%'`);
+  return `(${ors.join(' OR ')})`;
 }
 
 /**
@@ -292,14 +357,16 @@ export async function searchAssessmentParcelsByRolls(rolls) {
  */
 export async function searchAssessmentParcelsExpanded({
   roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+  waterfront, nearWater,
 }) {
   const directPromise = searchAssessmentParcels({
     roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+    waterfront, nearWater,
   });
   const xrefPromise = (addressFrom || addressTo || addressStreet)
     ? searchAddressesAndFindParcels(
         { addressFrom, addressTo, addressStreet },
-        { roll, zoning, duMode, duMin }
+        { roll, zoning, duMode, duMin, waterfront, nearWater }
       )
     : Promise.resolve({ type: 'FeatureCollection', features: [] });
   const [directFc, xrefFc] = await Promise.all([directPromise, xrefPromise]);
@@ -639,6 +706,12 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
   if (zc2) extras.push(zc2);
   const duClause = buildDuClause(extraFilters.duMode, extraFilters.duMin);
   if (duClause) extras.push(duClause);
+  // The water filter has to apply on THIS path too. Without it a
+  // "Waterfront only" search would still pull in every parcel the
+  // address cross-reference happened to touch, quietly leaking
+  // non-waterfront rows into the result.
+  const wc = buildWaterClause(extraFilters);
+  if (wc) extras.push(wc);
   return fetchPerFeatureBboxUnion({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
@@ -646,7 +719,7 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
     dedupeKey: 'roll_number',
     fc: addressFc,
     extraWhere: extras.length ? extras.join(' AND ') : null,
-  });
+  }).then(stampWaterLoaded);
 }
 
 /**

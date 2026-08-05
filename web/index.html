@@ -275,6 +275,26 @@
               <span class="tip">Minimum dwelling units (when 'Min DU')</span>
             </span>
           </div>
+          <!-- Water influence. Two boxes, not one Yes/No: a lot
+               fronting the Red River and a lot across the road from it
+               are both "near water" and are not comparable, so the
+               frontage split has to stay in the user's hands. Both
+               ticked = any water influence. These narrow the QUERY
+               (server-side SoQL over property_influences), not the
+               fetched page, so a search returns every matching parcel
+               rather than the matches among the first N rows. -->
+          <div class="water-row">
+            <label class="water-filter">
+              <input id="water-front" type="checkbox" />
+              <span>Waterfront only</span>
+              <span class="tip">Parcels the City assesses as ADJACENT to a river, creek or retention pond — i.e. with frontage.</span>
+            </label>
+            <label class="water-filter">
+              <input id="water-near" type="checkbox" />
+              <span>Near water (no frontage)</span>
+              <span class="tip">Parcels assessed as water INFLUENCE — near the water but with a road, parkland or another parcel between. A different market from frontage.</span>
+            </label>
+          </div>
         </details>
 
         <div class="action-row">
@@ -455,6 +475,7 @@
           <button id="contam-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Manitoba Contaminated Sites Registry — designated and impacted sites in Winnipeg. Click any circle for details + a link to the official registry record.">Environmentally Tracked Sites</button>
           <button id="transit-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg Transit bus route lines and stops. Routes use colours from the agency GTFS feed; stops appear from zoom 12+. Click a route or stop for details.">Transit</button>
           <button id="neighbourhoods-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg neighbourhood boundaries. Click cycles: Off to Clusters to Neighbourhoods to Off. Click a polygon for the name and cluster.">Neighbourhoods</button>
+          <button id="water-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Paint the result parcels by water influence — dark blue = adjacent to a river, creek or retention pond (frontage), pale blue = near water without frontage. From the City assessment record's property influences; a screening aid, not a measured distance.">Water Influence</button>
           <button id="streets-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Current City of Winnipeg street centrelines and names (Open Data Road Network). Automatically shown over City aerial imagery; turn off for a clean historical image. Street names appear from zoom 13.">Current Winnipeg Streets</button>
 
           <!-- Historical is collapsed by default: it's a three-control

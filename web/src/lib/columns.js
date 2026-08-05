@@ -28,13 +28,13 @@
 const STORAGE_KEY_PROPERTY = 'wps_table_columns_v1';
 const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
 
-const QUICK_LOOKUP = ['lot', 'block', 'plan', 'roll', 'address', 'area'];
+const QUICK_LOOKUP = ['lot', 'block', 'plan', 'roll', 'address', 'water', 'area'];
 const ZONING_DETAIL = [
   'lot', 'block', 'plan', 'roll', 'address',
   'zoning', 'zoningPct', 'zoning2', 'area',
 ];
 const SALES_DEFAULT = [
-  'roll', 'address', 'cluster', 'saleDate', 'useCode',
+  'roll', 'address', 'cluster', 'water', 'saleDate', 'useCode',
   'livingArea', 'yearBuilt', 'area',
   'propertyType', 'groupSize',
   // Sworn is on by default: it only renders when it DIFFERS from the

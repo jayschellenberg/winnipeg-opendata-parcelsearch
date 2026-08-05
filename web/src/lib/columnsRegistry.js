@@ -21,6 +21,34 @@ import {
   formatDollars, formatPct, formatZone2, formatCoord, formatDist,
   stripZoningCode, propertyTypeBadgeClass,
 } from './cells.js';
+import {
+  waterOf, waterLoaded, waterColor, waterCellText, waterTooltip, waterCsvCells,
+} from './water.js';
+
+/**
+ * Water cell: a colour dot plus the water body, with the full verdict
+ * in the tooltip.
+ *
+ * A parcel with no water reads as the ordinary empty dash rather than
+ * "No water noted" — 97% of the roll has no water influence, and a
+ * default-visible column repeating that on every row is noise. The
+ * grid therefore never asserts absence, which is the safe direction:
+ * it cannot claim a check it didn't run. The checked-and-none vs
+ * never-checked distinction is preserved where it can actually be
+ * used — the CSV export, which pivots on it.
+ */
+function waterTd(a) {
+  const w = waterOf(a);
+  if (!w) return td(null);
+  const cell = document.createElement('td');
+  cell.title = waterTooltip(w);
+  const dot = document.createElement('span');
+  dot.className = 'water-dot';
+  dot.style.background = waterColor(w);
+  cell.appendChild(dot);
+  cell.appendChild(document.createTextNode(waterCellText(w)));
+  return cell;
+}
 
 // Per-column entry:
 //   key          stable identifier (data-col attribute, sort key, URL param)
@@ -71,6 +99,20 @@ export const COLUMNS = [
     theadTitle: "Oldest Year Built across the parcel's building components (from the CSV)",
     render: (a) => td(a._saleYearBuilt || null),
     csv: { header: 'Year Built', extract: (a) => a._saleYearBuilt } },
+
+  // Water influence, straight off the City's own property_influences
+  // field. Three states — a classified verdict, an explicit "no water
+  // noted" once we've actually looked, and blank when we haven't — so
+  // the cell never claims a check it didn't run. See lib/water.js.
+  { key: 'water',        header: 'Water',         mode: 'always', sortable: true,
+    theadTitle: 'Water influence from the City assessment record. Dark = adjacent (frontage), pale = near water without frontage. An assessor\'s classification, not a measured distance.',
+    render: (a) => waterTd(a),
+    csv: [
+      { header: 'Water',       extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[0] },
+      { header: 'Water Class', extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[1] },
+      { header: 'Water Body',  extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[2] },
+      { header: 'Water Type',  extract: (a) => waterCsvCells(waterOf(a), waterLoaded(a))[3] },
+    ] },
 
   { key: 'area',         header: 'Lot Size (sf)', mode: 'always', sortable: true,
     render: (a) => td(formatSqFt(a.assessed_land_area), 'num'),

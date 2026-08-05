@@ -1760,6 +1760,32 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         if (map.getLayer(id)) map.moveLayer(id);
       }
 
+      // Water influence — result parcels repainted on the blue ramp
+      // from lib/water.js (dark = frontage, pale = near water without
+      // it). Drawn over the parcel layers, off by default.
+      map.addLayer({
+        id: 'water-influence-fill',
+        type: 'fill',
+        source: 'assess-context',
+        layout: { visibility: 'none' },
+        filter: ['has', '_waterColor'],
+        paint: {
+          'fill-color': ['get', '_waterColor'],
+          'fill-opacity': 0.75,
+        },
+      });
+      map.addLayer({
+        id: 'water-influence-line',
+        type: 'line',
+        source: 'assess-context',
+        layout: { visibility: 'none' },
+        filter: ['has', '_waterColor'],
+        paint: {
+          'line-color': ['get', '_waterColor'],
+          'line-width': 1.2,
+        },
+      });
+
       // Area-selection shapes go in LAST — after every overlay and
       // after the moveLayer reordering above — so a shape the user
       // just drew can never hide beneath a parcel or basemap-reference
@@ -1878,6 +1904,31 @@ export function setZoningMode(map, mode) {
  *  is bounded; turning the layer on instantly draws what's on screen.
  *  Promise-returning `probeCitywideParcels()` below lets the caller
  *  check whether the archive exists before flipping the toggle. */
+/**
+ * Show / hide the water-influence overlay.
+ *
+ * Painted from the `assess-context` source, not `parcel-results`: the
+ * water verdict lives on the ASSESSMENT record, and in the
+ * legal-description flow parcel-results holds survey lots that carry
+ * none of it.
+ *
+ * While the overlay is on, `assess-context-fill` drops to opacity 0 —
+ * NOT visibility 'none'. That fill is the hit-test layer for the hover
+ * popup and the click-to-scroll-the-table handler; hiding it kills
+ * both. Opacity 0 keeps the events alive while the water colours paint
+ * unpolluted (the yellow highlight underneath tinted every ramp
+ * colour).
+ */
+export function setWaterInfluenceVisible(map, visible) {
+  const v = visible ? 'visible' : 'none';
+  for (const id of ['water-influence-fill', 'water-influence-line']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+  }
+  if (map.getLayer('assess-context-fill')) {
+    map.setPaintProperty('assess-context-fill', 'fill-opacity', visible ? 0 : 0.3);
+  }
+}
+
 export function setCitywideParcelsVisible(map, visible) {
   const v = visible ? 'visible' : 'none';
   if (map.getLayer('citywide-parcels-fill')) map.setLayoutProperty('citywide-parcels-fill', 'visibility', v);
