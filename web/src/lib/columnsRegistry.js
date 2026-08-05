@@ -101,6 +101,11 @@ export const COLUMNS = [
     render: (a) => td(a._saleNumUnits != null ? String(a._saleNumUnits) : null, 'num'),
     csv: { header: 'Units', extract: (a) => a._saleNumUnits } },
 
+  { key: 'cluster',      header: 'Cluster',       mode: 'sales',  sortable: true,
+    theadTitle: 'City neighbourhood cluster containing the parcel centroid (23 clusters over 235 neighbourhoods). Derived geometrically, not from the truncated neighbourhood_area field.',
+    render: (a) => truncatedTd(a._cluster, 22),
+    csv: { header: 'Cluster', extract: (a) => a._cluster } },
+
   { key: 'saleZoning',   header: 'Zoning (sale)', mode: 'sales',  sortable: true,
     theadTitle: 'Zoning as recorded on the sale record, which can differ from the parcel’s current zoning',
     render: (a) => td(a._saleZoning || null),
@@ -231,15 +236,40 @@ export function csvSchemaForMode(mode) {
  *  - any extras declared in theadClass     ('subj-col' on Dist)
  * Pass-throughs: theadTitle → title attr; theadId → id attr.
  */
+/**
+ * The conditional classes a column's cells carry — 'sales-only' for
+ * sales-mode columns, plus any `theadClass` extra ('subj-col' on Dist).
+ *
+ * BOTH the <th> and the <td> must get these, which is the whole reason
+ * this is a shared function. The CSS rules behind them
+ * (`body:not(.sales-mode) .sales-only`, `body:not(.subject-set)
+ * .subj-col`) are `display: none`, so applying them to only one of the
+ * two makes that column's header and its cells disagree about how many
+ * boxes exist — and every column after it renders one place off from
+ * its heading. That shipped: with a sales CSV loaded and no subject
+ * roll set, Dist's header was hidden while its cells were not, so the
+ * Instrument value appeared under the Lot heading, zoning under %, and
+ * so on down the row.
+ *
+ * Note this is invisible to applyVisibility() in lib/columns.js, which
+ * toggles `col-hidden` on the th and td at the same CHILD index and so
+ * stays aligned regardless — the bug only bites for a column that
+ * applyVisibility considers visible while a CSS class hides its header.
+ */
+export function columnCellClasses(col) {
+  const classes = [];
+  if (col.mode === 'sales') classes.push('sales-only');
+  if (col.theadClass)       classes.push(col.theadClass);
+  return classes;
+}
+
 export function buildThead(tr) {
   if (!tr) return;
   while (tr.firstChild) tr.removeChild(tr.firstChild);
   for (const col of COLUMNS) {
     const th = document.createElement('th');
     th.dataset.col = col.key;
-    const classes = [];
-    if (col.mode === 'sales') classes.push('sales-only');
-    if (col.theadClass)       classes.push(col.theadClass);
+    const classes = columnCellClasses(col);
     if (classes.length)       th.className = classes.join(' ');
     if (col.theadTitle)       th.title = col.theadTitle;
     if (col.theadId)          th.id    = col.theadId;

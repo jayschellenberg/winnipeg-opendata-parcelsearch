@@ -34,7 +34,7 @@ const ZONING_DETAIL = [
   'zoning', 'zoningPct', 'zoning2', 'area',
 ];
 const SALES_DEFAULT = [
-  'roll', 'address', 'saleDate', 'useCode',
+  'roll', 'address', 'cluster', 'saleDate', 'useCode',
   'livingArea', 'yearBuilt', 'area',
   'propertyType', 'groupSize',
   // Sworn is on by default: it only renders when it DIFFERS from the

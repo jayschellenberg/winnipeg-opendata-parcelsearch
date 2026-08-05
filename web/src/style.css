@@ -3247,27 +3247,35 @@ body.shape-drawing .maplibregl-canvas {
   font-size: 12px;
   color: var(--color-neutral-600, #52525b);
 }
-/* `.controls` prefix is required: the sidebar's own `.controls button`
-   rule paints every button in the panel as a solid brand-dark primary.
-   Paste is the ALTERNATIVE to the dropzone, not a competing call to
-   action, so it gets the secondary (white, bordered) treatment the
-   map-toggle buttons use. */
+/* Matches the Manitoba app's Sales-tab "Paste data…" treatment: a
+   link, not a button. It is the quiet alternative to the dropzone, so
+   it should not compete with a solid call to action. Same declarations
+   as MB's .parcel-list-import-trigger — the accent variables just
+   resolve to this app's palette.
+
+   The `.controls` prefix is required: the sidebar's own `.controls
+   button` rule otherwise paints every button in the panel as a solid
+   brand-dark primary. */
 .controls .sales-import-trigger {
+  appearance: none;
   min-height: 0;
-  padding: 5px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--color-neutral-300, #d4d4d8);
-  background: #fff;
-  color: var(--color-primary-500, #1e293b);
+  padding: 2px 4px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: none;
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
+  color: var(--color-accent-600, #1d4ed8);
   cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .controls .sales-import-trigger:hover {
-  background: #fff;
-  border-color: var(--color-accent-500, #2563eb);
-  color: var(--color-accent-600, #1d4ed8);
+  background: rgba(37, 99, 235, 0.06);
+  border: none;
+  color: var(--color-accent-700, #1e40af);
 }
 .controls .sales-import-trigger:focus-visible {
   outline: 2px solid var(--color-accent-500, #2563eb);

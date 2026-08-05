@@ -95,10 +95,11 @@ import {
 } from './lib/shapeFilter.js';
 import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
+import { buildClusterIndex, clusterForFeature } from './lib/clusters.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
-import { COLUMNS, csvSchemaForMode, buildThead } from './lib/columnsRegistry.js';
+import { COLUMNS, csvSchemaForMode, buildThead, columnCellClasses } from './lib/columnsRegistry.js';
 // Cell-value formatters still used by the parcel-summary card (not table cells).
 // The DOM constructors td/badgeTd/linkTd/etc are consumed inside the registry
 // render functions and never need to be imported here.
@@ -259,6 +260,7 @@ const SORT_KEYS = {
   instrument:   (r) => strKey(r.assess?.properties?._saleInstrument),
   propertyType: (r) => strKey(r.assess?.properties?._salePropertyType),
   groupSize:    (r) => finiteOrNeg(r.assess?.properties?._saleGroupSize),
+  cluster:      (r) => strKey(r.assess?.properties?._cluster),
   swornValue:   (r) => finiteOrNeg(r.assess?.properties?._saleSwornValue),
   numUnits:     (r) => finiteOrNeg(r.assess?.properties?._saleNumUnits),
   saleZoning:   (r) => strKey(r.assess?.properties?._saleZoning),
@@ -2406,7 +2408,14 @@ function renderTable(rows) {
     // column is now ONE edit (in the registry); the columnsRegistry test
     // additionally fails CI if SORT_KEYS / PRESETS lose track.
     for (const col of COLUMNS) {
-      tr.appendChild(col.render(a, s));
+      const cell = col.render(a, s);
+      // Same data-col + conditional classes the <th> carries. Without
+      // this the `.sales-only` / `.subj-col` display:none rules hide a
+      // heading while its cells stay put, and every column after it
+      // renders one place off. See columnCellClasses.
+      cell.dataset.col = col.key;
+      for (const cls of columnCellClasses(col)) cell.classList.add(cls);
+      tr.appendChild(cell);
     }
     frag.appendChild(tr);
   }
@@ -3325,6 +3334,20 @@ async function runSalesAnalysis() {
     }
   }
 
+  // Neighbourhood cluster, from the parcel centroid. Non-fatal: if the
+  // geojson can't be fetched the column just stays blank rather than
+  // taking the whole analysis down with it.
+  try {
+    const index = await clusterIndex();
+    if (index) {
+      for (const f of saleFc.features) {
+        f.properties._cluster = clusterForFeature(index, f) || '';
+      }
+    }
+  } catch (err) {
+    console.warn('Cluster lookup failed (Cluster column stays blank):', err);
+  }
+
   tagFeatures(saleFc, 'assess');
 
   // Race guard: if a newer runSalesAnalysis started while we were
@@ -3368,6 +3391,19 @@ async function runSalesAnalysis() {
   setParcels(EMPTY_FC, mappable);
 
   renderTable(rows);
+}
+
+// Neighbourhood-cluster index, built once from the committed
+// wpg-neighbourhoods.geojson (soda.js caches the fetch, and the
+// historical overlay already loads the same file, so this costs no
+// extra download). Null on failure so callers can degrade to a blank
+// Cluster column.
+let _clusterIndex = null;
+async function clusterIndex() {
+  if (_clusterIndex) return _clusterIndex;
+  const fc = await fetchNeighbourhoods();
+  _clusterIndex = buildClusterIndex(fc);
+  return _clusterIndex;
 }
 
 function featureCentroid(f) {
