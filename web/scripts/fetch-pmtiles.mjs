@@ -14,14 +14,18 @@
 // like any other failure (warn + disable the overlay + exit 0) rather
 // than a hard error, so a *legitimate* re-publish that forgot to refresh
 // the checksum degrades gracefully instead of breaking the deploy — the
-// warning in the build log says to update the hash. When you re-publish:
+// warning in the build log says to update the hash.
 //
-//   gh release upload parcels-pmtiles web/public/parcels.pmtiles --clobber
-//   # then refresh the pinned checksum and commit it:
-//   #   bash:       sha256sum web/public/parcels.pmtiles | cut -d' ' -f1 > web/scripts/parcels.pmtiles.sha256
-//   #   PowerShell: (Get-FileHash web/public/parcels.pmtiles -Algorithm SHA256).Hash.ToLower() > web/scripts/parcels.pmtiles.sha256
+// TO RE-PUBLISH, run the job — it uploads, verifies, swaps, refreshes this
+// checksum, and pushes, all in the right order:
 //
-//   node scripts/fetch-pmtiles.mjs        (or: npm run fetch:pmtiles)
+//   powershell -ExecutionPolicy Bypass -File r\rebuild_tiles.ps1
+//
+// Do NOT publish by hand with `gh release upload --clobber`. It deletes the
+// live asset *before* uploading the replacement, so a failed upload leaves
+// the release with no asset at all and every subsequent deploy silently
+// disables the overlay — that is exactly the 2026-08-05 outage. r/lib_gh.ps1
+// uploads under a staging name and swaps by metadata rename instead.
 
 import { existsSync, statSync, renameSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';

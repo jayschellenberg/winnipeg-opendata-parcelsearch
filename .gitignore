@@ -14,11 +14,14 @@ AssessmentParcels_*.csv
 web/node_modules/
 web/dist/
 
-# Citywide-parcels tile archive: too big for git (82 MB, and a rebuild used
+# Citywide-parcels tile archive: too big for git (96 MB, and a rebuild used
 # to add ~80 MB of history every time). The deployed copy is fetched from
 # the `parcels-pmtiles` GitHub release in vercel.json's buildCommand; keep
 # a local copy here for dev. Publish a rebuild with:
-#   gh release upload parcels-pmtiles web/public/parcels.pmtiles --clobber
+#   powershell -ExecutionPolicy Bypass -File r\rebuild_tiles.ps1
+# Do NOT publish with `gh release upload --clobber`: it deletes the live
+# asset before uploading, so a failed upload leaves the release empty and
+# every deploy silently loses the overlay. That is the 2026-08-05 outage.
 web/public/parcels.pmtiles
 
 # Editor / Vite scratch files (created during dev, not part of the source)

@@ -72,6 +72,11 @@ emails for itself but a job that never starts cannot:
   `STALE-*.txt` marker when either trips. It checks against the schedule
   rather than a fixed age so an off-cycle capture can't shrink the margin
   below one missed run.
+- The quarterly job also checks the release is **servable** — that the asset
+  exists, is finalised, and its SHA-256 equals the committed checksum. That
+  is the only property the deploy actually tests, and it is independent of
+  the age checks: on 2026-08-05 a failed publish emptied the release while
+  the committed sidecar stayed perfectly fresh.
 - The deployed app itself warns in the browser console when the tile sidecar
   is over 90 days old — the only signal that survives the scheduler machine
   being off entirely.
@@ -87,6 +92,14 @@ To rebuild and publish tiles by hand:
 ```bash
 powershell -ExecutionPolicy Bypass -File r\rebuild_tiles.ps1
 ```
+
+Publishing never deletes the live release asset before its replacement is
+uploaded and digest-verified: the new archive goes up under a staging name,
+and the swap is two metadata renames ([lib_gh.ps1](r/lib_gh.ps1)). Do **not**
+publish by hand with `gh release upload --clobber` — it deletes first, so a
+failed upload leaves the release with no asset and every deploy silently
+loses the overlay. `r/test_gh_publish.ps1` exercises the real upload, verify,
+and swap against scratch asset names on the live release.
 
 ## Documentation
 

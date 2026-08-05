@@ -123,6 +123,78 @@ try {
   Log "tile heartbeat check errored (non-fatal): $($_.Exception.Message)"
 }
 
+# --- Release liveness check (is the overlay actually SERVABLE?) -------------
+# The age heartbeat above reads only the committed sidecar, so it answers "were
+# the tiles rebuilt recently" and NOT "can the deploy still fetch them". On
+# 2026-08-05 a failed publish left the GitHub release with zero assets while
+# that sidecar was perfectly fresh - the age check would have reported all-clear
+# for as long as it took someone to read an email.
+#
+# This is the one property fetch-pmtiles.mjs actually tests at deploy time:
+# the asset exists, is finalised, and its sha256 equals the committed one.
+# One API call, no bytes transferred. Non-fatal to the asset refresh.
+function Short($h) {
+  if (-not $h) { return 'n/a' }
+  if ($h.Length -le 12) { return $h }
+  return $h.Substring(0, 12)
+}
+try {
+  . (Join-Path $PSScriptRoot 'lib_gh.ps1')
+  $ghRepo     = 'jayschellenberg/winnipeg-opendata-parcelsearch'
+  $releaseTag = 'parcels-pmtiles'
+  $assetName  = 'parcels.pmtiles'
+  $shaFile    = Join-Path $repo 'web\scripts\parcels.pmtiles.sha256'
+
+  if (-not (Initialize-Gh)) {
+    # Fail LOUD, not open: a watchdog that goes quiet when its tool disappears
+    # is indistinguishable from a healthy system, which is the failure mode
+    # this whole exercise exists to remove.
+    $why = 'release liveness: gh.exe is not on PATH, so the published release could NOT be checked. The overlay may be down without any alarm.'
+    Log "WARNING: $why"; Mail-Fail $why
+  } else {
+    # Compare against ORIGIN/MAIN, not the working tree. Vercel builds from
+    # origin/main, so that is the checksum the deploy will actually enforce -
+    # and on a run that published but failed to push, the working-tree file
+    # already holds the new hash and would give a false all-clear for exactly
+    # the outage this check was added to catch.
+    $committed = ''
+    $fromGit = & git -C $repo show "origin/main:web/scripts/parcels.pmtiles.sha256" 2>$null
+    if ($LASTEXITCODE -eq 0 -and $fromGit) {
+      $committed = ("$fromGit").Trim().ToLower().Split()[0]
+    } elseif (Test-Path $shaFile) {
+      Log 'release liveness: could not read the checksum from origin/main - falling back to the working-tree copy.'
+      $committed = (Get-Content $shaFile -Raw).Trim().ToLower()
+    }
+    $rel   = Read-Release $releaseTag $ghRepo 3 $null
+    $asset = Get-Asset $rel $assetName
+    $dig   = Get-AssetDigest $asset
+
+    if (-not $rel) {
+      Log 'release liveness: the release could not be read - NOT evaluated (no alarm raised on an unknown).'
+    } elseif (-not $asset) {
+      $why = "release liveness: the GitHub release has NO asset named $assetName. Every Vercel deploy from now on ships with the parcel overlay DISABLED. Re-publish with r\rebuild_tiles.ps1."
+      Log "WARNING: $why"; Mail-Fail $why
+      @("$(Get-Date -Format 's')  release liveness tripped", "Reason: $why") |
+        Set-Content -Path (Join-Path $archiveRoot ("STALE-tiles-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))
+    } elseif ($asset.state -ne 'uploaded') {
+      $why = "release liveness: asset $assetName is in state '$($asset.state)', not 'uploaded' - it is not downloadable. Re-publish with r\rebuild_tiles.ps1."
+      Log "WARNING: $why"; Mail-Fail $why
+    } elseif ($committed -and $dig -and $dig -ne $committed) {
+      # Short() rather than .Substring(0,12): a truncated or empty checksum
+      # file would throw here, and the outer catch would swallow the ALARM -
+      # the one path that must never fail silently.
+      $why = "release liveness: the published asset ($(Short $dig)) does not match the checksum on origin/main ($(Short $committed)). fetch-pmtiles.mjs rejects that, so the overlay is disabled on every deploy. Re-publish with r\rebuild_tiles.ps1."
+      Log "WARNING: $why"; Mail-Fail $why
+      @("$(Get-Date -Format 's')  release liveness tripped", "Reason: $why") |
+        Set-Content -Path (Join-Path $archiveRoot ("STALE-release-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))
+    } else {
+      Log "release liveness: OK - $assetName state=uploaded digest=$(Short $dig) matches the checksum on origin/main"
+    }
+  }
+} catch {
+  Log "release liveness check errored (non-fatal): $($_.Exception.Message)"
+}
+
 Log 'npm run refresh:transit'
 & npm --prefix (Join-Path $repo 'web') run refresh:transit *>> $log 2>&1
 $t = $LASTEXITCODE
