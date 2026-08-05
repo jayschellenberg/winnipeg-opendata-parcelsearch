@@ -409,13 +409,34 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       if (setupDone) { clearInterval(poll); return; }
       trySetup();
     }, 250);
+    // At 30 s, warn and force one attempt — but KEEP POLLING.
+    //
+    // This used to clearInterval(poll) here, on the theory that "a later
+    // style event can still rescue it". It cannot. The forced runSetup()
+    // throws "Style is not done loading" while the style is still
+    // resolving, which resets setupDone and leaves the retry entirely to
+    // the 'load'/'idle'/'styledata' handlers — and those do not fire
+    // again reliably once the map has settled. Killing the poll therefore
+    // removed the only dependable retry.
+    //
+    // Observed on production: a cold load left the map with its 9 base
+    // style layers and NOTHING else — no parcel fill, no zoning, no
+    // overlays — because the five ortho pmtiles archives each need a
+    // header fetch from R2 before the style counts as loaded, which can
+    // exceed 30 s. Firing 'styledata' by hand afterwards immediately
+    // built all 69 layers, confirming the setup code was fine and only
+    // the retry had been switched off.
     setTimeout(() => {
-      clearInterval(poll);
-      if (!setupDone) {
-        console.warn('[map] style not loaded after 30 s — forcing layer setup (a later style event can still rescue it if this fails)');
-        runSetup();
-      }
+      if (setupDone) return;
+      console.warn('[map] style not loaded after 30 s — forcing layer setup; polling continues until it succeeds');
+      runSetup();
     }, 30000);
+    // Hard stop, so a genuinely broken style can't poll forever.
+    setTimeout(() => {
+      if (setupDone) return;
+      clearInterval(poll);
+      console.error('[map] layer setup never succeeded after 5 min — the map will show the basemap only');
+    }, 300000);
 
     function setupLayers() {
       // Zoning layer goes in first so it draws *under* the parcel highlight.
