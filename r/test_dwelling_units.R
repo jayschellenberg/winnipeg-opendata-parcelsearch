@@ -47,6 +47,40 @@ stopifnot(
 
 cat("dwelling-unit aggregation fixtures passed\n")
 
+# --- PUCS classification drift ---------------------------------------
+# Every residential-looking (CN*/RES*) code must be either counted or on the
+# reviewed-exclusion list. Anything else is drift and must surface, because a
+# silently-uncounted code makes the Dwelling Units overlay undercount with no
+# visible symptom.
+drift <- annotate_dwelling_features(list(
+  feature(900, "1 A ST",  "RESSD - DETACHED SINGLE DWELLING", 1),  # counted
+  feature(901, "2 A ST",  "RESOT - RESIDENTIAL OUTBUILDING"),      # reviewed exclusion
+  feature(902, "3 A ST",  "CNVAC - CONDO VACANT"),                 # reviewed exclusion
+  feature(903, "4 A ST",  "RESZZ - SOMETHING NEW"),                # unreviewed -> must flag
+  feature(904, "5 A ST",  "CNZZZ - NEW CONDO KIND"),               # unreviewed -> must flag
+  feature(905, "6 A ST",  "CMOFF - OFFICE")                        # not residential-looking
+))$audit
+
+stopifnot(
+  # Both never-classified codes surface...
+  setequal(names(drift$unreviewed), c("RESZZ", "CNZZZ")),
+  # ...while knowingly-skipped ones stay quiet even though they are uncounted.
+  all(c("RESOT", "CNVAC") %in% names(drift$unmatched)),
+  !any(c("RESOT", "CNVAC") %in% names(drift$unreviewed)),
+  # A commercial code is not residential-looking and must not appear at all.
+  !("CMOFF" %in% names(drift$unmatched)),
+  drift$eligible_records == 1
+)
+
+# The real dataset's four open questions as of 2026-08-05: none of them may be
+# silently counted, and none may be silently dropped either.
+stopifnot(
+  !any(c("RESGC", "RESMB", "RESRM", "CNCST") %in% DWELLING_ALL_PUCS),
+  !any(c("RESGC", "RESMB", "RESRM", "CNCST") %in% DWELLING_REVIEWED_EXCLUSIONS)
+)
+
+cat("PUCS classification drift fixtures passed\n")
+
 square <- function(x0, y0, x1, y1) list(
   type = "Polygon",
   coordinates = list(list(c(x0, y0), c(x1, y0), c(x1, y1), c(x0, y1), c(x0, y0)))

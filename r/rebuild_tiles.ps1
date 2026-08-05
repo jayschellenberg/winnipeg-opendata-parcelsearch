@@ -201,6 +201,52 @@ if ($archive.Length -lt 1MB) { Fail "archive is only $($archive.Length) bytes - 
 # shrink against the previous build. Keep both logs in the same units.
 Log ("  archive OK: {0:N1} MB ({1:N0} bytes), written {2}" -f ($archive.Length / 1e6), $archive.Length, $archive.LastWriteTime)
 
+# --- Step 3b: PUCS drift notice (non-fatal) ------------------------------
+# The City can add a residential property-use code at any time. Until someone
+# classifies it, its parcels are silently missing from the dwelling-unit
+# totals - an undercount with no symptom, because the overlay still renders.
+# The build already detected this and wrote it to a log nobody reads; this
+# turns it into mail. Deliberately NOT a failure: a classification question
+# must not block a tile rebuild, and the tiles are still correct for every
+# code that IS classified.
+try {
+  $meta = Get-Content (Join-Path $repo $metaRel) -Raw | ConvertFrom-Json
+  # Absent field != empty list. A sidecar written before this check existed has
+  # no such field, and treating that as "none unreviewed" would report all-clear
+  # for something never evaluated - the trap _waterLoaded exists to avoid in the
+  # web app.
+  $hasField   = $meta.PSObject.Properties.Name -contains 'dwelling_unreviewed_pucs'
+  $unreviewed = if ($hasField) { @($meta.dwelling_unreviewed_pucs) } else { @() }
+
+  if (-not $hasField) {
+    Log '  PUCS: sidecar predates the drift check (no dwelling_unreviewed_pucs field) - NOT evaluated.'
+  } elseif ($unreviewed.Count) {
+    $list = $unreviewed -join ', '
+    Log "  PUCS DRIFT: $($unreviewed.Count) unreviewed residential code(s): $list"
+    $body = @(
+      "These City property-use codes look residential (CN*/RES*), are NOT counted as",
+      "dwelling units, and have never been classified:",
+      "",
+      "  $list",
+      "",
+      "Parcels carrying them are missing from the Dwelling Units overlay totals.",
+      "",
+      "Decide each one in r/lib_dwelling_units.R:",
+      "  - counts as housing  -> add to DWELLING_RESIDENTIAL_PUCS or DWELLING_CONDO_PUCS",
+      "  - does not           -> add to DWELLING_REVIEWED_EXCLUSIONS with a reason",
+      "Then re-run r\rebuild_tiles.ps1. This stops as soon as the list is empty.",
+      "",
+      "Log: $log"
+    ) -join "`n"
+    Send-FailureMail -Subject "Wpg Open Data: $($unreviewed.Count) unreviewed residential PUCS code(s)" -Body $body |
+      Tee-Object -FilePath $log -Append | Out-Null
+  } else {
+    Log '  PUCS: every residential-looking code is explicitly classified'
+  }
+} catch {
+  Log "PUCS drift check errored (non-fatal): $($_.Exception.Message)"
+}
+
 # --- Step 4: refresh the pinned checksum ---------------------------------
 # fetch-pmtiles.mjs verifies the downloaded asset against this value at
 # deploy time, so it must be refreshed in the same run that uploads.

@@ -191,8 +191,19 @@ if (length(dwelling_audit$included)) {
   cat("  included PUCS:", paste(names(dwelling_audit$included), dwelling_audit$included, sep = "=", collapse = ", "), "\n")
 }
 if (length(dwelling_audit$unmatched)) {
-  cat("  residential-looking PUCS excluded for review:",
+  cat("  residential-looking PUCS not counted:",
       paste(names(dwelling_audit$unmatched), dwelling_audit$unmatched, sep = "=", collapse = ", "), "\n")
+}
+# The drift signal. Loud on purpose: this line previously read "excluded for
+# review" for BOTH knowingly-skipped and never-classified codes, so the ones
+# that actually needed a decision were indistinguishable from the ones that
+# did not -- and the whole line sat unread in a log file. It now names only
+# codes nobody has classified, and r/rebuild_tiles.ps1 emails on it.
+if (length(dwelling_audit$unreviewed)) {
+  cat("  !! UNREVIEWED PUCS - not counted as dwellings and never classified:",
+      paste(names(dwelling_audit$unreviewed), dwelling_audit$unreviewed, sep = "=", collapse = ", "), "\n")
+  cat("     Decide each one: add to DWELLING_RESIDENTIAL_PUCS/DWELLING_CONDO_PUCS to count it,\n",
+      "    or to DWELLING_REVIEWED_EXCLUSIONS (with a reason) to keep skipping it.\n", sep = "")
 }
 if (dwelling_points$skipped > 0L) {
   cat("  WARNING:", dwelling_points$skipped, "condo groups had no usable polygon geometry and were skipped\n")
@@ -275,7 +286,18 @@ write_meta <- function() {
     dwelling_eligible_records = dwelling_audit$eligible_records,
     dwelling_condo_groups = dwelling_audit$condo_groups,
     dwelling_condo_points = nrow(dwelling_points$sf),
-    dwelling_pucs_codes = DWELLING_ALL_PUCS
+    dwelling_pucs_codes = DWELLING_ALL_PUCS,
+    # Carried into the committed sidecar so PUCS drift shows up in git history
+    # and r/rebuild_tiles.ps1 can alert on it without re-parsing the build log.
+    # Empty array = every residential-looking code the City publishes is
+    # explicitly classified.
+    # I() keeps this a JSON ARRAY: auto_unbox would collapse a single
+    # unreviewed code to a bare string, and the consumer counts elements.
+    dwelling_unreviewed_pucs = I(if (length(dwelling_audit$unreviewed)) {
+      names(dwelling_audit$unreviewed)
+    } else {
+      character(0)
+    })
   ), auto_unbox = TRUE, pretty = TRUE, null = "null"), meta_tmp)
   if (file.exists(meta_path)) file.remove(meta_path)
   if (!file.rename(meta_tmp, meta_path)) stop("rename failed: ", meta_tmp, " -> ", meta_path)

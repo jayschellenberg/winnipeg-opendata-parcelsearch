@@ -66,12 +66,21 @@ emails for itself but a job that never starts cannot:
 
 - Each job emails on failure and drops a dated `FAILED-*.txt` marker at the
   archive root.
-- The quarterly job checks the age of both the newest snapshot (200-day
-  limit) and the published tiles (80-day limit), emailing and writing a
-  `STALE-*.txt` marker when either trips.
+- The quarterly job verifies the archive actually contains the most recent
+  scheduled capture (Jun 1 / Dec 1, plus 21 days of grace) and that the
+  published tiles are under 80 days old, emailing and writing a
+  `STALE-*.txt` marker when either trips. It checks against the schedule
+  rather than a fixed age so an off-cycle capture can't shrink the margin
+  below one missed run.
 - The deployed app itself warns in the browser console when the tile sidecar
   is over 90 days old — the only signal that survives the scheduler machine
   being off entirely.
+- The tile rebuild emails when the City publishes a residential property-use
+  code nobody has classified. Every `CN*`/`RES*` code must appear in either
+  the counted set or `DWELLING_REVIEWED_EXCLUSIONS` in
+  [lib_dwelling_units.R](r/lib_dwelling_units.R); anything in neither is
+  reported, because an unclassified code drops its parcels from dwelling-unit
+  totals with no visible symptom.
 
 To rebuild and publish tiles by hand:
 

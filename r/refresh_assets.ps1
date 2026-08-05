@@ -37,14 +37,22 @@ Log '=== refresh transit + neighbourhood static assets ==='
 
 # --- Snapshot-age heartbeat (alert on ABSENCE, not just failure) -----------
 # Runs FIRST so every quarterly invocation checks it - the common "no asset
-# changes" outcome exits early below and must not skip the tripwire. If the
-# newest canonical AssessmentParcels snapshot is older than ~6.5 months
-# (semi-annual cadence + a few weeks grace), email + a STALE marker at the
-# archive root. Non-fatal to the asset refresh either way.
-# 200 (not 245): a silently-missed June run leaves the newest snapshot ~212
-# days old at the July 1 heartbeat - 200 catches it there instead of Oct 1.
-# Healthy ages at check time never exceed ~122 days + StartWhenAvailable slack.
-$maxAgeDays = 200
+# changes" outcome exits early below and must not skip the tripwire. Non-fatal
+# to the asset refresh either way.
+#
+# SCHEDULE-AWARE, not a fixed age. This used to allow a flat 200 days, which
+# had a blind spot: the captures are semi-annual (Jun 1 / Dec 1) but the checks
+# are quarterly, so the allowance had to cover a healthy 122-day gap, and a
+# snapshot taken off-cycle shrank the margin below one missed run. Concretely,
+# with the newest capture at 2026-07-01, a missed Dec 1 2026 download would be
+# only 184 days old at the Jan 1 2027 check and would NOT have tripped - the
+# miss would have surfaced in April at the earliest.
+#
+# Instead: work out the most recent scheduled capture that has had time to
+# finish, and require the archive to contain it. Healthy always passes,
+# a missed run is caught at the very next quarterly check, and there is no
+# day-count to re-tune when a capture lands off-cycle.
+$graceDays = 21   # StartWhenAvailable can defer a run to the next logon
 try {
   $newest = Get-ChildItem -Recurse -File -Path $archiveRoot -Filter 'AssessmentParcels_*.gpkg' -ErrorAction Stop |
     ForEach-Object {
@@ -57,10 +65,20 @@ try {
     $why = "snapshot heartbeat: NO canonical AssessmentParcels_*.gpkg found under $archiveRoot."
     Log "WARNING: $why"; Mail-Fail $why
   } else {
-    $ageDays = [int]((Get-Date) - $newest).TotalDays
-    Log "snapshot heartbeat: newest AssessmentParcels snapshot $($newest.ToString('yyyy-MM-dd')) ($ageDays days old; limit $maxAgeDays)"
-    if ($ageDays -gt $maxAgeDays) {
-      $why = "snapshot heartbeat: newest AssessmentParcels snapshot is $ageDays days old (> $maxAgeDays). The semi-annual download likely never fired - run r\scheduled_download.ps1 manually and check the WpgOpenDataSemiAnnualDownload task."
+    # Latest Jun 1 / Dec 1 that is at least $graceDays in the past. Two years
+    # of candidates so a January check still sees the previous December.
+    $cutoff = (Get-Date).Date.AddDays(-$graceDays)
+    $due = @()
+    foreach ($y in @($cutoff.Year, ($cutoff.Year - 1))) {
+      $due += (Get-Date -Year $y -Month 6  -Day 1).Date
+      $due += (Get-Date -Year $y -Month 12 -Day 1).Date
+    }
+    $expected = $due | Where-Object { $_ -le $cutoff } | Sort-Object -Descending | Select-Object -First 1
+    $ageDays  = [int]((Get-Date) - $newest).TotalDays
+    Log ("snapshot heartbeat: newest {0} ({1} days old); must be on/after the {2} capture" -f
+      $newest.ToString('yyyy-MM-dd'), $ageDays, $expected.ToString('yyyy-MM-dd'))
+    if ($newest -lt $expected) {
+      $why = "snapshot heartbeat: newest AssessmentParcels snapshot is $($newest.ToString('yyyy-MM-dd')) ($ageDays days old), but the $($expected.ToString('yyyy-MM-dd')) capture should already be archived. The semi-annual download likely never fired - run r\scheduled_download.ps1 manually and check the WpgOpenDataSemiAnnualDownload task."
       Log "WARNING: $why"; Mail-Fail $why
       @("$(Get-Date -Format 's')  snapshot heartbeat tripped", "Reason: $why") |
         Set-Content -Path (Join-Path $archiveRoot ("STALE-snapshots-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))

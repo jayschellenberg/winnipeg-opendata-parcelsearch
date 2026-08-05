@@ -9,6 +9,20 @@ DWELLING_RESIDENTIAL_PUCS <- c(
 )
 DWELLING_ALL_PUCS <- c(DWELLING_CONDO_PUCS, DWELLING_RESIDENTIAL_PUCS)
 
+# Residential-LOOKING codes (CN*/RES*) that are deliberately NOT counted as
+# dwellings, each with the reason. This list exists so that every CN*/RES*
+# code the City publishes is explicitly classified as either counted
+# (DWELLING_ALL_PUCS) or knowingly skipped (here). Anything in neither list is
+# reported as UNREVIEWED -- see annotate_dwelling_features(). Without that,
+# a code the City adds later is silently dropped from dwelling totals, which
+# is invisible: the overlay just quietly undercounts.
+DWELLING_REVIEWED_EXCLUSIONS <- c(
+  "CNCOM",  # CONDO COMMERCIAL      - commercial unit, no dwelling
+  "CNIND",  # CONDO INDUSTRIAL      - industrial unit, no dwelling
+  "CNVAC",  # CONDO VACANT          - vacant parcel, nothing built yet
+  "RESOT"   # RESIDENTIAL OUTBUILDING - shed/garage, not habitable space
+)
+
 extract_pucs_code <- function(value) {
   value <- toupper(trimws(ifelse(is.null(value) || is.na(value), "", as.character(value))))
   sub("\\s*-.*$", "", value)
@@ -109,12 +123,21 @@ annotate_dwelling_features <- function(features) {
   included <- sort(table(codes[eligible]), decreasing = TRUE)
   invalid_condo_addresses <- sum(eligible & condo & is.na(addresses))
 
+  # UNREVIEWED = residential-looking, not counted, and not on the reviewed
+  # exclusion list. This is the drift signal: a code appears here only when
+  # the City has published a CN*/RES* code nobody has classified yet. The
+  # caller escalates it (build_parcel_tiles.R records it in the meta sidecar;
+  # r/rebuild_tiles.ps1 emails on it). It is deliberately NOT an error --
+  # a classification question must not block a tile rebuild.
+  unreviewed <- unmatched[!(names(unmatched) %in% DWELLING_REVIEWED_EXCLUSIONS)]
+
   list(
     features = features,
     condo_groups = condo_groups,
     audit = list(
       included = included,
       unmatched = unmatched,
+      unreviewed = unreviewed,
       invalid_condo_addresses = invalid_condo_addresses,
       eligible_records = sum(eligible),
       condo_groups = length(condo_groups)
