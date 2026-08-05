@@ -17,8 +17,7 @@ import assert from 'node:assert/strict';
 import {
   parseBound, saleGroupLandSf, passesSizeFilter,
   saleAddressText, normalizeStreetQuery, passesStreetFilter,
-  salePriceOf, salePricePerSfOf, passesRange,
-  passesPriceFilter, passesPricePerSfFilter,
+  salePriceOf, passesRange, passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
 } from '../src/lib/salesFilters.js';
 
@@ -220,34 +219,7 @@ test('passesPriceFilter — bounds, inclusivity, and missing-excluded', () => {
   assert.equal(passesPriceFilter(priced('I1', 1, 5000), 0, 999999), false);
 });
 
-// 6. $/sf ==================================================================
-test('salePricePerSfOf divides by the GROUP land, matching $/Lot SF', () => {
-  const a = priced('I1', 600000, 4000);
-  const b = priced('I1', 600000, 4000);
-  const g = groupsOf(a, b);
-  // 600,000 / 8,000 = 75, NOT 600,000 / 4,000 = 150.
-  assert.equal(salePricePerSfOf(a, g), 75);
-  assert.equal(salePricePerSfOf(b, g), 75);
-});
-
-test('salePricePerSfOf refuses an incomplete group', () => {
-  // The 185 Bannerman trap: a partial denominator inflates the rate.
-  const a = priced('I1', 600000, 4000);
-  const b = priced('I1', 600000, 0);
-  assert.equal(salePricePerSfOf(a, groupsOf(a, b)), null);
-});
-
-test('passesPricePerSfFilter — range plus missing-excluded', () => {
-  const a = priced('I1', 250000, 5000);   // $50/sf
-  const g = groupsOf(a);
-  assert.equal(passesPricePerSfFilter(a, g, null, null), true);
-  assert.equal(passesPricePerSfFilter(a, g, 40, 60), true);
-  assert.equal(passesPricePerSfFilter(a, g, 60, null), false);
-  const noLand = priced('I2', 250000, 0);
-  assert.equal(passesPricePerSfFilter(noLand, groupsOf(noLand), 0, 9999), false);
-  assert.equal(passesPricePerSfFilter(noLand, groupsOf(noLand), null, null), true);
-});
-
+// 6. Shared range semantics =============================================
 test('passesRange — shared semantics', () => {
   assert.equal(passesRange(null, null, null), true);
   assert.equal(passesRange(null, 1, null), false);

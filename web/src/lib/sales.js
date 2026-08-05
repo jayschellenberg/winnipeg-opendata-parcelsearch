@@ -12,6 +12,52 @@ import { normalizeRoll } from '../soda.js';
 export { normalizeRoll };
 
 /**
+ * Parse a numeric cell out of a SABRE export.
+ *
+ * Every money and area field has to come through here rather than a bare
+ * parseFloat, because parseFloat reads formatted numbers WRONG rather
+ * than refusing them:
+ *
+ *   parseFloat('1,234,567')   -> 1        (stops at the first comma)
+ *   parseFloat('$1,234,567')  -> NaN -> 0 (leading symbol)
+ *
+ * The first is the dangerous one. A $1.2M sale silently became a sale
+ * price of 1 — which then looks exactly like SABRE's nominal $1
+ * non-arms-length sentinel, so the "Hide $0 / $1 transfers" filter
+ * removed the whole transaction from the comp set without a word. The
+ * second is what left Sworn Value blank on rows that plainly had a
+ * value: it parsed to 0, and 0 reads as "not provided".
+ *
+ * Strips currency symbols, thousands separators and whitespace, and
+ * accepts accounting-style negatives — (1,234) meaning -1234 — so a
+ * credit or adjustment column can't come back positive.
+ *
+ * Returns `null` for anything that isn't a number, letting each caller
+ * decide what missing means, rather than collapsing "absent" and "zero".
+ */
+export function parseNumeric(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  let s = String(value).trim();
+  if (s === '') return null;
+  let negative = false;
+  if (/^\(.*\)$/.test(s)) { negative = true; s = s.slice(1, -1); }
+  // Keep digits, decimal point and a leading sign; drop $ , spaces and
+  // any stray currency code.
+  s = s.replace(/[^0-9.\-+]/g, '');
+  if (s === '' || s === '-' || s === '+' || s === '.') return null;
+  const n = Number.parseFloat(s);
+  if (!Number.isFinite(n)) return null;
+  return negative ? -n : n;
+}
+
+/** parseNumeric, collapsed to 0 for the callers that want a plain sum. */
+function numOrZero(value) {
+  const n = parseNumeric(value);
+  return n == null ? 0 : n;
+}
+
+/**
  * Dedup by (Parcel ID, Instrument Number) — multi-building rows
  * on the same sale roll up into one record. Then group by
  * Instrument Number so multi-parcel sales can compute group
@@ -40,22 +86,25 @@ export function dedupAndGroupSales(rows) {
     if (!roll || !inst) { dropped++; continue; }
     const key = `${roll}|${inst}`;
     const existing = merged.get(key);
-    const livingArea = Number.parseFloat(r['Living Area']) || 0;
-    const numUnits = Number.parseInt(r['Number of Unit'], 10) || null;
+    const livingArea = numOrZero(r['Living Area']);
+    // Unit counts are whole numbers, and 0 is "not stated" rather than a
+    // count — keeping it would report a blank cell as a zero-unit parcel.
+    const numUnitsRaw = parseNumeric(r['Number of Unit']);
+    const numUnits = numUnitsRaw != null && numUnitsRaw > 0 ? Math.trunc(numUnitsRaw) : null;
     if (!existing) {
       merged.set(key, {
         roll,
         instrument: inst,
         saleDate: r['Sale Dates'] || null,
-        salePrice: Number.parseFloat(r['Sold Price']) || 0,
+        salePrice: numOrZero(r['Sold Price']),
         // Value declared for land-transfer purposes. Carried separately
         // from salePrice and never substituted into it: a $1 Sold Price
         // with a large sworn value is a non-arms-length transfer, and
         // collapsing the two would launder it into the comp set as a
         // market sale. See the sentinel note in main.js.
-        swornValue: Number.parseFloat(r['Sworn Value']) || 0,
-        landSf: Number.parseFloat(r['Land Actual sqft']) || 0,
-        landAssessedSf: Number.parseFloat(r['Land Assessed sqft']) || 0,
+        swornValue: numOrZero(r['Sworn Value']),
+        landSf: numOrZero(r['Land Actual sqft']),
+        landAssessedSf: numOrZero(r['Land Assessed sqft']),
         livingArea,
         yearBuilt: r['Year Built'] || null,
         useCode: r['Par Use Code'] || null,
@@ -74,8 +123,8 @@ export function dedupAndGroupSales(rows) {
       // HIGGINS rows at 2008 / 2012 / 2012 report 2008. Use code
       // falls back to the first non-empty value.
       existing.livingArea += livingArea;
-      const yb = Number.parseInt(r['Year Built'], 10);
-      const existingYb = Number.parseInt(existing.yearBuilt, 10);
+      const yb = parseNumeric(r['Year Built']);
+      const existingYb = parseNumeric(existing.yearBuilt);
       if (Number.isFinite(yb) && (!Number.isFinite(existingYb) || yb < existingYb)) {
         existing.yearBuilt = r['Year Built'];
       }
@@ -90,7 +139,7 @@ export function dedupAndGroupSales(rows) {
       }
       // Sworn value is a sale-level figure repeated on every component
       // row; keep the largest in case a component row leaves it blank.
-      const sworn = Number.parseFloat(r['Sworn Value']) || 0;
+      const sworn = numOrZero(r['Sworn Value']);
       if (sworn > existing.swornValue) existing.swornValue = sworn;
     }
   }
@@ -163,12 +212,21 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     p._saleYearBuilt = sale.yearBuilt;
     p._saleZoning = sale.zoning || null;
     p._saleNumUnits = sale.numUnits ?? null;
-    // Only surfaced when it actually says something the Sale Price
-    // doesn't — i.e. a nominal/sentinel price hiding a real declared
-    // value. Showing it on every row would just duplicate Sale Price.
-    p._saleSwornValue = (sale.swornValue > 0 && sale.swornValue !== sale.salePrice)
-      ? sale.swornValue
-      : null;
+    // Shown whenever the CSV carries one.
+    //
+    // This used to blank the cell when the sworn value EQUALLED the sale
+    // price, on the theory that a duplicate column says nothing. In
+    // practice that made the column unreadable: on an ordinary arm's-
+    // length sale the two figures agree, so the column was empty exactly
+    // when the data was fine, and a blank could mean either "no sworn
+    // value in the export" or "sworn value present and matching". An
+    // appraiser can't tell those apart, and the second is a positive
+    // confirmation worth having.
+    //
+    // Still NEVER substituted into _salePrice — a $1 sale price with a
+    // large sworn value is a non-arms-length transfer, and folding the
+    // two would launder it into the comp set as a market sale.
+    p._saleSwornValue = sale.swornValue > 0 ? sale.swornValue : null;
     let landSf = sale.landSf;
     if (isMulti) {
       landSf = group.reduce((sum, g) => sum + (g.landSf || 0), 0);

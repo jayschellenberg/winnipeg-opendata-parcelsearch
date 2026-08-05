@@ -6,7 +6,9 @@
 //   node test/sales.test.js
 
 import assert from 'node:assert/strict';
-import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from '../src/lib/sales.js';
+import {
+  normalizeRoll, dedupAndGroupSales, buildSaleFeatures, parseNumeric,
+} from '../src/lib/sales.js';
 
 let passed = 0;
 let failed = 0;
@@ -177,6 +179,79 @@ test('buildSaleFeatures — single-parcel sale uses its own land + assessment', 
   assert.equal(f.properties._pricePerSf, 350000 / 5000);
   assert.equal(f.properties._saleToAsmt, (350000 / 340000) * 100);
   assert.equal(f.properties._saleGroupSize, 1);
+});
+
+// ---- parseNumeric ---------------------------------------------------------
+// The formatting bug this closes was silent and expensive, so the cases
+// are pinned individually rather than in one loop.
+
+test('parseNumeric — plain numbers and whitespace', () => {
+  assert.equal(parseNumeric('1234567'), 1234567);
+  assert.equal(parseNumeric(' 1234567 '), 1234567);
+  assert.equal(parseNumeric('1234.56'), 1234.56);
+  assert.equal(parseNumeric(1234567), 1234567);
+});
+
+test('parseNumeric — thousands separators (the dangerous case)', () => {
+  // A bare parseFloat returns 1 here: it stops at the first comma. A
+  // $1.29M sale then looked exactly like SABRE's nominal $1
+  // non-arms-length sentinel, and the "Hide $0 / $1" filter removed the
+  // whole transaction from the comp set without a word.
+  assert.equal(parseNumeric('1,234,567'), 1234567);
+  assert.equal(parseNumeric('1,234,567.00'), 1234567);
+  assert.equal(parseNumeric('1,290,000'), 1290000);
+});
+
+test('parseNumeric — currency symbols', () => {
+  // These returned NaN -> 0, which is what left Sworn Value blank on
+  // rows that plainly had a value.
+  assert.equal(parseNumeric('$1,234,567'), 1234567);
+  assert.equal(parseNumeric('$1234567'), 1234567);
+  assert.equal(parseNumeric('1,234,567 CAD'), 1234567);
+});
+
+test('parseNumeric — accounting negatives', () => {
+  assert.equal(parseNumeric('(1,234)'), -1234);
+  assert.equal(parseNumeric('-1234'), -1234);
+});
+
+test('parseNumeric — non-numbers are null, NOT zero', () => {
+  // Keeping "absent" distinct from "zero" is what lets each caller
+  // decide; collapsing them is how a missing land area became 0 sf.
+  for (const v of [null, undefined, '', '   ', 'N/A', 'SEE DOCUMENT', '$', '-', '.']) {
+    assert.equal(parseNumeric(v), null, `expected null for ${JSON.stringify(v)}`);
+  }
+});
+
+test('dedupAndGroupSales — a comma-formatted price survives the import', () => {
+  // End-to-end guard on the same bug, through the real entry point.
+  const { sales } = dedupAndGroupSales([
+    row({ 'Sold Price': '1,290,000', 'Sworn Value': '$1,290,000', 'Land Actual sqft': '5,757' }),
+  ]);
+  assert.equal(sales[0].salePrice, 1290000);
+  assert.equal(sales[0].swornValue, 1290000);
+  assert.equal(sales[0].landSf, 5757);
+});
+
+test('buildSaleFeatures — sworn value is shown even when it equals the price', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Sold Price': '350000', 'Sworn Value': '350000' }),
+  ]);
+  const [f] = buildSaleFeatures(sales, new Map(), groups);
+  assert.equal(f.properties._saleSwornValue, 350000);
+  // …and is still never substituted into the price.
+  assert.equal(f.properties._salePrice, 350000);
+});
+
+test('buildSaleFeatures — a nominal $1 keeps its price and surfaces the sworn value', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Sold Price': '1', 'Sworn Value': '4,080,000' }),
+  ]);
+  const [f] = buildSaleFeatures(sales, new Map(), groups);
+  // The $1 is stamped as-is — it's the "Hide $0 / $1" filter, not the
+  // stamping, that keeps a nominal transfer out of the comp set.
+  assert.equal(f.properties._salePrice, 1);
+  assert.equal(f.properties._saleSwornValue, 4080000, 'the real figure rides alongside it');
 });
 
 console.log('');

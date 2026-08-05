@@ -1098,17 +1098,17 @@ body {
   color: var(--color-neutral-700, #3f3f46);
   border-color: var(--color-neutral-200, #e4e4e7);
 }
-#results .badge-property-type.badge-pt-residential {
+#results .badge.badge-pt-residential {
   background: #dcfce7;
   color: #166534;
   border-color: #bbf7d0;
 }
-#results .badge-property-type.badge-pt-industrial {
+#results .badge.badge-pt-industrial {
   background: #fef3c7;
   color: #92400e;
   border-color: #fde68a;
 }
-#results .badge-property-type.badge-pt-commercial {
+#results .badge.badge-pt-commercial {
   background: #dbeafe;
   color: #1e40af;
   border-color: #bfdbfe;
@@ -2786,19 +2786,19 @@ body {
   border-color: #d6ded7;
 }
 
-#results .badge-property-type.badge-pt-residential {
+#results .badge.badge-pt-residential {
   background: #e3f5e7;
   color: #21623a;
   border-color: #c4e7cc;
 }
 
-#results .badge-property-type.badge-pt-industrial {
+#results .badge.badge-pt-industrial {
   background: #f7ecd8;
   color: #785421;
   border-color: #ead4ae;
 }
 
-#results .badge-property-type.badge-pt-commercial {
+#results .badge.badge-pt-commercial {
   background: #e3edf7;
   color: #29547e;
   border-color: #c8d9ea;

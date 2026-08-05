@@ -19,7 +19,7 @@ import { assessmentUrl, walkscoreUrl, floodToolUrl } from './links.js';
 import {
   td, badgeTd, truncatedTd, linkTd, assessmentTd,
   formatDollars, formatPct, formatZone2, formatCoord, formatDist,
-  stripZoningCode, propertyTypeBadgeClass,
+  stripZoningCode, propertyTypeBadgeClass, pucsBadgeClass,
 } from './cells.js';
 import {
   waterOf, waterLoaded, waterColor, waterCellText, waterTooltip, waterCsvCells,
@@ -124,7 +124,7 @@ export const COLUMNS = [
 
   { key: 'useCode',      header: 'PUCS',          mode: 'sales',  sortable: true,
     theadTitle: 'Par Use Code — Winnipeg property assessment use code (e.g. RESMC, RESRH, INWWH, CMRRE)',
-    render: (a) => badgeTd(a._saleUseCode || null, 'badge-pucs'),
+    render: (a) => badgeTd(a._saleUseCode || null, pucsBadgeClass(a._salePropertyType)),
     csv: { header: 'PUCS', extract: (a) => a._saleUseCode } },
 
   // Living Area and Year Built are dual-source: the sales CSV value when
@@ -176,7 +176,7 @@ export const COLUMNS = [
     csv: { header: 'Sale Price', extract: (a) => a._salePrice } },
 
   { key: 'swornValue',   header: 'Sworn',         mode: 'sales',  sortable: true,
-    theadTitle: 'Sworn (declared land-transfer) value, shown only when it differs from the Sale Price — a $1 sale price with a large sworn value marks a non-arms-length transfer. Never substituted into Sale Price.',
+    theadTitle: 'Sworn (declared land-transfer) value from the CSV. Normally equals the Sale Price; where it does not — a $1 sale price against a large sworn value — the transfer is non-arms-length. Never substituted into Sale Price.',
     render: (a) => td(formatDollars(a._saleSwornValue), 'num'),
     csv: { header: 'Sworn Value', extract: (a) => a._saleSwornValue } },
 

@@ -502,25 +502,6 @@
             />
           </div>
 
-          <!-- $/Lot SF range — the same rate the $/Lot SF column shows
-               (sale price over the sale's total land). -->
-          <div class="sales-range-row">
-            <span class="sales-range-label">$/Lot SF:</span>
-            <input
-              type="number" min="0" step="1"
-              id="sales-ppsf-low" class="sales-range-input"
-              placeholder="Min" aria-label="Minimum dollars per lot square foot"
-              title="Minimum sale price per square foot of land — the same figure the $/Lot SF column shows. Empty = no lower limit. A sale whose land area is missing or incomplete has no rate to test and is excluded while this is set."
-            />
-            <span class="sales-range-sep" aria-hidden="true">–</span>
-            <input
-              type="number" min="0" step="1"
-              id="sales-ppsf-high" class="sales-range-input"
-              placeholder="Max" aria-label="Maximum dollars per lot square foot"
-              title="Maximum sale price per square foot of land. Empty = no upper limit."
-            />
-          </div>
-
           <!-- Lot size range, in square feet. Compares against the
                SALE's total land (the sum across a multi-parcel sale),
                which is the same denominator $/Lot SF uses — so the

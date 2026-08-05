@@ -101,22 +101,6 @@ export function salePriceOf(sale) {
 }
 
 /**
- * The sale's rate per square foot of land — price over the GROUP's land,
- * the identical calculation lib/sales.js stamps as `_pricePerSf` for the
- * $/Lot SF column. Null whenever either half is unusable, including a
- * group whose land total is incomplete: a partial denominator inflates
- * the rate, which is the exact failure the 185 Bannerman case documented
- * ($224/sf against a true $37/sf).
- */
-export function salePricePerSfOf(sale, groups) {
-  const price = salePriceOf(sale);
-  if (price == null) return null;
-  const { landSf, complete } = saleGroupLandSf(sale, groups);
-  if (!complete || landSf <= 0) return null;
-  return price / landSf;
-}
-
-/**
  * Generic inclusive range test over a value that may be null. Both bounds
  * null is a no-op; otherwise a null value fails ("missing is excluded").
  */
@@ -131,12 +115,6 @@ export function passesRange(value, lo, hi) {
 /** Total sale price inside [lo, hi]. */
 export function passesPriceFilter(sale, lo, hi) {
   return passesRange(salePriceOf(sale), lo, hi);
-}
-
-/** Sale rate per square foot of land inside [lo, hi]. */
-export function passesPricePerSfFilter(sale, groups, lo, hi) {
-  if (lo == null && hi == null) return true;
-  return passesRange(salePricePerSfOf(sale, groups), lo, hi);
 }
 
 /**

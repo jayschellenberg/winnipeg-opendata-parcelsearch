@@ -293,9 +293,11 @@ const SABRE = [
   // price was NOT quietly replaced by 4,080,000.
   assert.equal(nominal._salePrice, 1);
   assert.equal(nominal._saleSwornValue, 4080000, 'the real figure is surfaced separately');
-  // An ordinary sale (sworn === sold) leaves the Sworn cell empty
-  // rather than duplicating the Sale Price column.
-  assert.equal(byInst.get('5835797')._saleSwornValue, null);
+  // An ordinary sale (sworn === sold) now SHOWS its sworn value. Blanking
+  // it made the column empty exactly when the data was fine, so a blank
+  // could mean either "not in the export" or "present and matching" —
+  // indistinguishable, and the second is worth confirming.
+  assert.equal(byInst.get('5835797')._saleSwornValue, 1290000);
   assert.equal(byInst.get('5835797')._saleNumUnits, 6);
   assert.equal(byInst.get('5835797')._saleZoning, 'R2');
 }

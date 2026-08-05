@@ -100,7 +100,7 @@ import { buildClusterIndex, clusterForFeature } from './lib/clusters.js';
 import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
 import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
-  passesPriceFilter, passesPricePerSfFilter,
+  passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
 } from './lib/salesFilters.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
@@ -3070,15 +3070,13 @@ function wireSalesTab() {
   const $street   = document.getElementById('sales-street-name');
   const $priceLow  = document.getElementById('sales-price-low');
   const $priceHigh = document.getElementById('sales-price-high');
-  const $ppsfLow   = document.getElementById('sales-ppsf-low');
-  const $ppsfHigh  = document.getElementById('sales-ppsf-high');
   let filterTimer = null;
   const rerunSoon = () => {
     if (!salesData) return;
     clearTimeout(filterTimer);
     filterTimer = setTimeout(() => runSalesAnalysis(), 300);
   };
-  for (const el of [$sizeLow, $sizeHigh, $street, $priceLow, $priceHigh, $ppsfLow, $ppsfHigh]) {
+  for (const el of [$sizeLow, $sizeHigh, $street, $priceLow, $priceHigh]) {
     if (el) el.addEventListener('input', rerunSoon);
   }
 
@@ -3417,18 +3415,6 @@ async function runSalesAnalysis() {
     visibleSales = visibleSales.filter((s) => passesPriceFilter(s, priceLo, priceHi));
   }
 
-  // $/Lot SF — the same rate the column shows: price over the sale's
-  // GROUP land. A sale whose land total is missing or incomplete has no
-  // honest rate (an incomplete denominator inflates it, the 185
-  // Bannerman failure) and drops out while the filter is set.
-  const ppsfLo = parseBound(document.getElementById('sales-ppsf-low')?.value);
-  const ppsfHi = parseBound(document.getElementById('sales-ppsf-high')?.value);
-  const ppsfActive = ppsfLo != null || ppsfHi != null;
-  if (ppsfActive) {
-    visibleSales = visibleSales.filter(
-      (s) => passesPricePerSfFilter(s, salesData.groups, ppsfLo, ppsfHi)
-    );
-  }
 
   if (!visibleSales.length) {
     let msg;
@@ -3442,9 +3428,6 @@ async function runSalesAnalysis() {
     } else if (priceActive) {
       msg = `${salesData.sales.length} sales loaded, but none fall inside the sale-price range `
           + `($0 / $1 nominal transfers have no price to test and are excluded while it's set).`;
-    } else if (ppsfActive) {
-      msg = `${salesData.sales.length} sales loaded, but none fall inside the $/Lot SF range `
-          + `(sales missing Land Actual sqft have no rate and are excluded while it's set).`;
     } else if (sizeActive) {
       // Says WHY a row can fail, because "missing = excluded" is not
       // guessable: a sale whose CSV rows carry no Land Actual sqft

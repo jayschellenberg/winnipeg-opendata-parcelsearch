@@ -53,13 +53,33 @@ export function badgeTd(value, badgeClass, extraTdClass) {
  * Map a Property Type string to the matching badge-pt-* CSS modifier.
  * Unknown values fall back to the base pill (no colour family).
  */
-export function propertyTypeBadgeClass(value) {
-  if (!value) return 'badge-property-type';
+/**
+ * The colour-family modifier for a Property Type, with no base class.
+ * Split out so a second badge can borrow the same colour: the PUCS badge
+ * is tinted by its row's property type, so PUCS and Property Type read
+ * as one green/amber/blue signal per row rather than a coloured chip
+ * beside a permanently grey one.
+ */
+export function propertyTypeBadgeModifier(value) {
+  if (!value) return '';
   const v = String(value).trim().toLowerCase();
-  if (v === 'residential') return 'badge-property-type badge-pt-residential';
-  if (v === 'industrial')  return 'badge-property-type badge-pt-industrial';
-  if (v === 'commercial')  return 'badge-property-type badge-pt-commercial';
-  return 'badge-property-type';
+  if (v === 'residential') return 'badge-pt-residential';
+  if (v === 'industrial')  return 'badge-pt-industrial';
+  if (v === 'commercial')  return 'badge-pt-commercial';
+  return '';
+}
+
+export function propertyTypeBadgeClass(value) {
+  const mod = propertyTypeBadgeModifier(value);
+  return mod ? `badge-property-type ${mod}` : 'badge-property-type';
+}
+
+/** The PUCS badge's classes: its own base plus the row's property-type
+ *  colour, so the two chips agree. Falls back to plain slate when the
+ *  row has no property type (a property search, or a blank CSV cell). */
+export function pucsBadgeClass(propertyType) {
+  const mod = propertyTypeBadgeModifier(propertyType);
+  return mod ? `badge-pucs ${mod}` : 'badge-pucs';
 }
 
 /**
