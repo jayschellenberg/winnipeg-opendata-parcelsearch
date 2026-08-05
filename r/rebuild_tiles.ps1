@@ -195,7 +195,11 @@ if ($archive.LastWriteTime -lt $runStart) {
   Fail ("archive was not rewritten by this run (last write {0}, run started {1}) - refusing to publish a stale file." -f $archive.LastWriteTime, $runStart)
 }
 if ($archive.Length -lt 1MB) { Fail "archive is only $($archive.Length) bytes - truncated." }
-Log ("  archive OK: {0:N1} MB, written {1}" -f ($archive.Length / 1MB), $archive.LastWriteTime)
+# Decimal MB (1e6), matching the size band build_parcel_tiles.R enforces and
+# quotes in its failure message. PowerShell's 1MB literal is 1048576 (MiB),
+# which logged the 95.8 MB archive as "91.4 MB" and read like an unexplained
+# shrink against the previous build. Keep both logs in the same units.
+Log ("  archive OK: {0:N1} MB ({1:N0} bytes), written {2}" -f ($archive.Length / 1e6), $archive.Length, $archive.LastWriteTime)
 
 # --- Step 4: refresh the pinned checksum ---------------------------------
 # fetch-pmtiles.mjs verifies the downloaded asset against this value at
