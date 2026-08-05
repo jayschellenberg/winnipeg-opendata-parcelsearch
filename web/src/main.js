@@ -96,6 +96,7 @@ import {
 import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
 import { buildClusterIndex, clusterForFeature } from './lib/clusters.js';
+import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
@@ -2759,10 +2760,10 @@ function wrapToWidth(ctx, text, maxWidth) {
 //   { sales: SaleRecord[], rolls: Set<string>, groups: Map<inst, SaleRecord[]> }
 let salesData = null;
 
-// PUCS multi-select filter state. `null` = no filter (all PUCS
-// values pass); otherwise a Set of selected PUCS codes (rows whose
-// useCode is in the Set pass). Reset to null on every fresh CSV.
-let salesPucsFilter = null;
+// The PUCS and assessment-class multi-selects own their own selection
+// state — see pucsFilter / classFilter below and lib/multiSelectFilter.js
+// for the tri-state (null = no filter / Set = those only / empty Set =
+// show nothing). Both are reset on every fresh CSV.
 
 // Monotonically increasing token so concurrent runSalesAnalysis
 // calls (e.g. user rapid-clicking PUCS checkboxes) only let the
@@ -2886,139 +2887,68 @@ function wireSalesTab() {
     $dateTo.addEventListener('change', () => { if (salesData) runSalesAnalysis(); });
   }
 
-  // PUCS multi-select filter. Button toggles the popover; the
-  // popover's checkboxes drive salesPucsFilter and re-run the
-  // analysis on change. Click-away + Esc dismiss.
-  const $pucsBtn = document.getElementById('pucs-filter-btn');
-  const $pucsPopover = document.getElementById('pucs-filter-popover');
-  if ($pucsBtn && $pucsPopover) {
-    $pucsBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if ($pucsBtn.disabled) return;
-      const open = $pucsPopover.classList.toggle('open');
-      $pucsBtn.setAttribute('aria-expanded', String(open));
-    });
-    document.addEventListener('click', (e) => {
-      if (!$pucsPopover.classList.contains('open')) return;
-      if ($pucsPopover.contains(e.target) || $pucsBtn.contains(e.target)) return;
-      $pucsPopover.classList.remove('open');
-      $pucsBtn.setAttribute('aria-expanded', 'false');
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && $pucsPopover.classList.contains('open')) {
-        $pucsPopover.classList.remove('open');
-        $pucsBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
-  }
-
   setSalesCount('');
 }
 
-/**
- * Rebuild the PUCS filter popover from the current salesData.
- * Each distinct PUCS gets a checkbox + label + per-PUCS count.
- * Selecting / unselecting re-runs the analysis. Empty selection
- * (nothing checked) is treated the same as all-checked: no filter,
- * to avoid the trap of "filtered to zero results."
+/*
+ * Sales-tab multi-select filters. Both use the same controller
+ * (lib/multiSelectFilter.js); they differ only in where their values
+ * come from:
+ *
+ *   PUCS   — off the pasted CSV rows, so the list is known before any
+ *            network call and is rebuilt on upload.
+ *   Class  — off the LIVE assessment record (property_class_1); the
+ *            SABRE export carries no class column, so the list can only
+ *            be built after the roll lookup and is therefore rebuilt
+ *            from each run's joined results.
  */
+
+const pucsFilter = createMultiSelectFilter({
+  btnId: 'pucs-filter-btn',
+  popoverId: 'pucs-filter-popover',
+  label: 'Filter by PUCS',
+  onChange: () => runSalesAnalysis(),
+});
+
+const classFilter = createMultiSelectFilter({
+  btnId: 'class-filter-btn',
+  popoverId: 'class-filter-popover',
+  label: 'Filter by class',
+  onChange: () => runSalesAnalysis(),
+});
+
+/** Rebuild the PUCS options from the loaded CSV. Counts are per SALE,
+ *  not per raw row — dedup has already collapsed component rows. */
 function rebuildPucsFilter() {
-  const $btn = document.getElementById('pucs-filter-btn');
-  const $popover = document.getElementById('pucs-filter-popover');
-  if (!$btn || !$popover) return;
-
-  if (!salesData || !salesData.sales.length) {
-    $btn.disabled = true;
-    $btn.querySelector('.sales-pucs-btn-label').textContent = 'Filter by PUCS';
-    $popover.innerHTML = '';
-    $popover.classList.remove('open');
-    $btn.setAttribute('aria-expanded', 'false');
-    return;
-  }
-
-  // Tally per-PUCS row counts (count distinct sales, not raw CSV
-  // rows, because dedup already collapsed multi-building entries).
   const counts = new Map();
-  for (const s of salesData.sales) {
+  for (const s of salesData?.sales || []) {
     const k = s.useCode || '(blank)';
     counts.set(k, (counts.get(k) || 0) + 1);
   }
-  const codes = [...counts.keys()].sort();
+  pucsFilter.setOptions(counts);
+}
 
-  // Reset filter to "all" whenever the set of codes changes between
-  // CSV uploads. salesPucsFilter null means no filter; once the
-  // user picks a subset it becomes a Set.
-  if (salesPucsFilter == null) {
-    // no-op — null is the default, "all selected" rendering
-  } else {
-    // Drop any codes from the saved selection that no longer exist.
-    const valid = new Set(codes);
-    for (const c of [...salesPucsFilter]) if (!valid.has(c)) salesPucsFilter.delete(c);
-    if (salesPucsFilter.size === codes.length) salesPucsFilter = null;
+/**
+ * Rebuild the assessment-class options from the joined features.
+ *
+ * Must be tallied from the set BEFORE the class filter narrows it —
+ * counting the filtered set would shrink the option list on every
+ * change and the user could never get back the classes they unticked.
+ */
+function rebuildClassFilter(features) {
+  const counts = new Map();
+  for (const f of features) {
+    counts.set(saleClassOf(f), (counts.get(saleClassOf(f)) || 0) + 1);
   }
+  classFilter.setOptions(counts);
+}
 
-  $btn.disabled = false;
-  const selectedCount = salesPucsFilter == null ? codes.length : salesPucsFilter.size;
-  $btn.querySelector('.sales-pucs-btn-label').textContent =
-    salesPucsFilter == null
-      ? `Filter by PUCS · all ${codes.length}`
-      : `Filter by PUCS · ${selectedCount} of ${codes.length}`;
-
-  $popover.innerHTML = '';
-  const actions = document.createElement('div');
-  actions.className = 'sales-pucs-popover-actions';
-  const allBtn = document.createElement('button');
-  allBtn.type = 'button';
-  allBtn.textContent = 'All';
-  allBtn.addEventListener('click', () => {
-    salesPucsFilter = null;
-    rebuildPucsFilter();
-    runSalesAnalysis();
-  });
-  const noneBtn = document.createElement('button');
-  noneBtn.type = 'button';
-  noneBtn.textContent = 'None';
-  noneBtn.addEventListener('click', () => {
-    salesPucsFilter = new Set();
-    rebuildPucsFilter();
-    runSalesAnalysis();
-  });
-  actions.appendChild(allBtn);
-  actions.appendChild(noneBtn);
-  $popover.appendChild(actions);
-
-  for (const code of codes) {
-    const label = document.createElement('label');
-    label.className = 'sales-pucs-popover-item';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = salesPucsFilter == null || salesPucsFilter.has(code);
-    cb.addEventListener('change', () => {
-      // First user-driven change materializes the filter Set.
-      if (salesPucsFilter == null) salesPucsFilter = new Set(codes);
-      if (cb.checked) salesPucsFilter.add(code);
-      else salesPucsFilter.delete(code);
-      // If all codes are checked, collapse back to "no filter".
-      if (salesPucsFilter.size === codes.length) salesPucsFilter = null;
-      // Update the button label inline; no full rebuild needed
-      // until the user reopens the popover.
-      const sel = salesPucsFilter == null ? codes.length : salesPucsFilter.size;
-      $btn.querySelector('.sales-pucs-btn-label').textContent =
-        salesPucsFilter == null
-          ? `Filter by PUCS · all ${codes.length}`
-          : `Filter by PUCS · ${sel} of ${codes.length}`;
-      runSalesAnalysis();
-    });
-    const text = document.createElement('span');
-    text.textContent = code;
-    const count = document.createElement('span');
-    count.className = 'sales-pucs-popover-count';
-    count.textContent = `${counts.get(code)}`;
-    label.appendChild(cb);
-    label.appendChild(text);
-    label.appendChild(count);
-    $popover.appendChild(label);
-  }
+/** A sale's assessment class, bucketing the rolls that matched no live
+ *  record — they genuinely have no class rather than a blank one. */
+function saleClassOf(f) {
+  const p = f?.properties || {};
+  if (p._noLiveMatch) return '(no live match)';
+  return p.property_class_1 || '(blank)';
 }
 
 // Cap the uploaded sales CSV so a huge file can't read-into-memory / hang the
@@ -3092,7 +3022,8 @@ async function handleSalesUpload({ name, text }, remember = true) {
     // Fresh CSV = fresh filter. The user's previous PUCS picks
     // don't carry across uploads (different sale sets, different
     // codes).
-    salesPucsFilter = null;
+    pucsFilter.reset();
+    classFilter.reset();
     rebuildPucsFilter();
     // Same reasoning for drawn area shapes: a stale include shape over
     // the previous CSV's neighbourhood would filter the new sale set to
@@ -3215,8 +3146,9 @@ async function runSalesAnalysis() {
   // PUCS multi-select. null = no filter; empty Set = "no codes
   // selected" which we treat as a deliberate "show nothing" (the
   // status message hints to use the All button).
-  if (salesPucsFilter != null) {
-    visibleSales = visibleSales.filter((s) => salesPucsFilter.has(s.useCode || '(blank)'));
+  const pucsSelected = pucsFilter.getSelected();
+  if (pucsSelected != null) {
+    visibleSales = visibleSales.filter((s) => pucsSelected.has(s.useCode || '(blank)'));
   }
   // Sale-date range. CSV dates are ISO YYYY-MM-DD so lexical >= / <=
   // comparison works without parsing.
@@ -3226,11 +3158,11 @@ async function runSalesAnalysis() {
   if (dateTo)   visibleSales = visibleSales.filter((s) => s.saleDate && s.saleDate <= dateTo);
   if (!visibleSales.length) {
     let msg;
-    if (salesPucsFilter && salesPucsFilter.size === 0) {
+    if (pucsFilter.isEmptySelection()) {
       msg = `No PUCS selected — click All in the Filter by PUCS popover, or pick one or more codes.`;
     } else if (dateFrom || dateTo) {
       msg = `${salesData.sales.length} sales loaded, but none fall inside the selected date range.`;
-    } else if (salesPucsFilter) {
+    } else if (pucsSelected) {
       msg = `${salesData.sales.length} sales loaded, but none match the current PUCS filter.`;
     } else {
       msg = `All ${salesData.sales.length} sales are $0 / $1 transfers — uncheck "Hide non-arms-length" to view.`;
@@ -3363,9 +3295,26 @@ async function runSalesAnalysis() {
   // re-renders. See toggleZoning.
   lastSurveyFc = EMPTY_FC;
 
-  const rows = saleFc.features.map((f) => ({ assess: f, survey: null }));
+  // Assessment class. Unlike PUCS this can only run HERE: the class
+  // lives on the live record, so it doesn't exist until the roll lookup
+  // above has resolved. Options are tallied from the full joined set
+  // (before narrowing) so unticking a class never removes it from the
+  // list the user needs in order to tick it back on.
+  rebuildClassFilter(saleFc.features);
+  const classSelected = classFilter.getSelected();
+  const visibleFeatures = classSelected == null
+    ? saleFc.features
+    : saleFc.features.filter((f) => classSelected.has(saleClassOf(f)));
+  const classHidden = saleFc.features.length - visibleFeatures.length;
+
+  const rows = visibleFeatures.map((f) => ({ assess: f, survey: null }));
   const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
-  const repeatSales = rows.length - liveByRoll.size - unmatched;
+  // Counted off the SHOWN rows rather than liveByRoll, which spans the
+  // whole pre-class-filter set — subtracting it once the class filter
+  // has narrowed things would understate (and could go negative).
+  const matchedRows = rows.filter((r) => !r.assess.properties._noLiveMatch);
+  const distinctShownRolls = new Set(matchedRows.map((r) => r.assess.properties.roll_number)).size;
+  const repeatSales = matchedRows.length - distinctShownRolls;
   setSalesCount(
     `${rows.length} sale${rows.length === 1 ? '' : 's'} shown` +
     (repeatSales > 0 ? ` · ${repeatSales} repeat sale${repeatSales === 1 ? '' : 's'} of the same parcel` : '') +
@@ -3379,14 +3328,18 @@ async function runSalesAnalysis() {
       : '') +
     (hiddenWithSworn
       ? ` · ${hiddenWithSworn} $0/$1 transfer${hiddenWithSworn === 1 ? '' : 's'} hidden despite a sworn value — untick the filter to inspect`
-      : '')
+      : '') +
+    // Name the class narrowing for the same reason the area filter is
+    // named: a filter the user can forget they set must never silently
+    // shrink the comp set.
+    (classHidden ? ` · ${classHidden} hidden by the class filter` : '')
   );
 
   // Draw matched parcels on the map. Repeat sales share one polygon;
   // setParcels' geometry-hash dedupe draws it once.
   const mappable = {
     type: 'FeatureCollection',
-    features: saleFc.features.filter((f) => f.geometry),
+    features: visibleFeatures.filter((f) => f.geometry),
   };
   setParcels(EMPTY_FC, mappable);
 

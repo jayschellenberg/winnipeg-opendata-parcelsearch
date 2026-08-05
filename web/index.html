@@ -405,6 +405,33 @@
             ></div>
           </div>
 
+          <!-- Assessment class multi-select. Same control as PUCS above
+               (and reusing its .sales-pucs-* visual classes), but the
+               values come from the LIVE assessment join rather than the
+               CSV, so the list is rebuilt from each run's joined
+               results. All-checked = no filter. -->
+          <div class="sales-pucs-filter">
+            <button
+              type="button"
+              id="class-filter-btn"
+              class="sales-pucs-btn"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="class-filter-popover"
+              title="Filter to one or more assessment classes (Residential 1/2/3, Other, Institutional, Farm…). Classes come from the live assessment record for each sale's roll, not from the pasted CSV. Leave everything ticked for no filter."
+              disabled
+            >
+              <span class="sales-pucs-btn-label">Filter by class</span>
+              <span class="sales-pucs-btn-caret" aria-hidden="true">▾</span>
+            </button>
+            <div
+              id="class-filter-popover"
+              class="sales-pucs-popover"
+              role="menu"
+              aria-label="Filter by assessment class"
+            ></div>
+          </div>
+
           <span id="sales-count" class="count"></span>
         </section><!-- /tab-panel-sales -->
 

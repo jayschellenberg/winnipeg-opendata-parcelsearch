@@ -206,7 +206,11 @@ export async function searchAssessmentParcels({
 
   const params = new URLSearchParams({
     $where: clauses.join(' AND '),
-    $select: 'roll_number,full_address,zoning,property_use_code,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
+    // property_class_1 drives the sales-tab "Filter by class" control.
+    // It lives only on the live assessment record — the SABRE sales
+    // export has no class column — so it has to ride along here rather
+    // than come off the pasted rows.
+    $select: 'roll_number,full_address,zoning,property_use_code,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,property_class_1,geometry',
     $order: 'full_address',
   });
   return fetchSodaPaged(ASSESS_URL, params, {
