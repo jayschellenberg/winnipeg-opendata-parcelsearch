@@ -3247,39 +3247,17 @@ body.shape-drawing .maplibregl-canvas {
   font-size: 12px;
   color: var(--color-neutral-600, #52525b);
 }
-/* Matches the Manitoba app's Sales-tab "Paste data…" treatment: a
-   link, not a button. It is the quiet alternative to the dropzone, so
-   it should not compete with a solid call to action. Same declarations
-   as MB's .parcel-list-import-trigger — the accent variables just
-   resolve to this app's palette.
-
-   The `.controls` prefix is required: the sidebar's own `.controls
-   button` rule otherwise paints every button in the panel as a solid
-   brand-dark primary. */
+/* "Paste data…" matches the Manitoba app's Sales-tab treatment, which
+   is simply the app's PRIMARY button with an underline — read off the
+   live MB deploy: rgb(18,22,19) background, white text, 6px radius,
+   600 weight, underlined. Winnipeg's own `.controls button` already
+   supplies all of that, so the ONLY thing needed here is the underline.
+   (An earlier pass styled this as a bare link, which was backwards —
+   MB's link-like .parcel-list-import-trigger base rule is overridden by
+   its later visual-refresh block.) */
 .controls .sales-import-trigger {
-  appearance: none;
-  min-height: 0;
-  padding: 2px 4px;
-  border: none;
-  border-radius: 3px;
-  background: transparent;
-  box-shadow: none;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-accent-600, #1d4ed8);
-  cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
-}
-.controls .sales-import-trigger:hover {
-  background: rgba(37, 99, 235, 0.06);
-  border: none;
-  color: var(--color-accent-700, #1e40af);
-}
-.controls .sales-import-trigger:focus-visible {
-  outline: 2px solid var(--color-accent-500, #2563eb);
-  outline-offset: 1px;
 }
 
 .recent-uploads {
