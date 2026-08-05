@@ -66,8 +66,16 @@ assert.equal(reconcileSelection(null, []), null);
 assert.equal(reconcileSelection(new Set(['OTHER']), []).size, 0);
 
 // ---- selectionLabel -------------------------------------------------------
-assert.equal(selectionLabel('Filter by class', null, 3), 'Filter by class · all 3');
-assert.equal(selectionLabel('Filter by class', new Set(['OTHER']), 3), 'Filter by class · 1 of 3');
-assert.equal(selectionLabel('Filter by PUCS', new Set(), 7), 'Filter by PUCS · 0 of 7');
+// Short labels: the PUCS and class pickers share one row at half width,
+// so anything longer ellipsises to nothing useful.
+assert.equal(selectionLabel('class', null, 3), 'Any class');
+assert.equal(selectionLabel('PUCS', null, 7), 'Any PUCS');
+// Exactly one ticked shows the value itself — more informative than a
+// count, and it fits.
+assert.equal(selectionLabel('class', new Set(['OTHER']), 3), 'OTHER');
+// Beyond one, the count.
+assert.equal(selectionLabel('class', new Set(['OTHER', 'FARM']), 3), '2 of 3');
+// The deliberate show-nothing state must not read as "Any".
+assert.equal(selectionLabel('PUCS', new Set(), 7), 'None');
 
 console.log('multiSelectFilter.test.js: all assertions passed');

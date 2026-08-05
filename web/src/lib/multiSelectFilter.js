@@ -34,11 +34,22 @@ export function reconcileSelection(selected, options) {
   return next;
 }
 
-/** "Filter by PUCS · all 7" / "Filter by PUCS · 3 of 7". */
-export function selectionLabel(prefix, selected, total) {
-  return selected == null
-    ? `${prefix} · all ${total}`
-    : `${prefix} · ${selected.size} of ${total}`;
+/**
+ * The closed control's one-line summary, matching the Manitoba app:
+ * "Any PUCS" when nothing is filtering, the value itself when exactly
+ * one is ticked, "3 of 7" beyond that, and "None" for the deliberate
+ * show-nothing state.
+ *
+ * Short on purpose. The PUCS and class pickers share one row at half
+ * width each, so the old "Filter by PUCS · all 7" form ellipsised to
+ * "Filter by PU…" and the control stopped saying anything. `noun` is
+ * the bare word ("PUCS", "class"), not a sentence.
+ */
+export function selectionLabel(noun, selected, total) {
+  if (selected == null) return `Any ${noun}`;
+  if (selected.size === 0) return 'None';
+  if (selected.size === 1) return [...selected][0];
+  return `${selected.size} of ${total}`;
 }
 
 /** Membership test matching the tri-state above. */
@@ -80,6 +91,10 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange }) {
   const syncLabel = () => {
     const el = $label();
     if (el) el.textContent = selectionLabel(label, selected, options.length);
+    // `has-selection` drives the filled-in look (dark ink, semibold,
+    // stronger border) so a glance down the panel shows which pickers
+    // are actually narrowing the set, rather than reading every label.
+    $btn.classList.toggle('has-selection', selected != null);
   };
 
   // Popover open/close: click the button to toggle, click away or press
@@ -163,7 +178,8 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange }) {
       if (options.length === 0) {
         $btn.disabled = true;
         const el = $label();
-        if (el) el.textContent = label;
+        if (el) el.textContent = `Any ${label}`;
+        $btn.classList.remove('has-selection');
         $popover.innerHTML = '';
         $popover.classList.remove('open');
         $btn.setAttribute('aria-expanded', 'false');

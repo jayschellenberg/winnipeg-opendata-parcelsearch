@@ -98,6 +98,9 @@ import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
 import { buildClusterIndex, clusterForFeature } from './lib/clusters.js';
 import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
+import {
+  parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
+} from './lib/salesFilters.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
@@ -3056,6 +3059,30 @@ function wireSalesTab() {
     $dateTo.addEventListener('change', () => { if (salesData) runSalesAnalysis(); });
   }
 
+  // Lot-size range + street name. 'input' rather than 'change' so the
+  // set narrows as you type — these two are the filters you tune by
+  // watching the count, unlike the date pickers which commit once.
+  // Debounced, because each run re-joins against the live records.
+  const $sizeLow  = document.getElementById('sales-size-low');
+  const $sizeHigh = document.getElementById('sales-size-high');
+  const $street   = document.getElementById('sales-street-name');
+  let filterTimer = null;
+  const rerunSoon = () => {
+    if (!salesData) return;
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(() => runSalesAnalysis(), 300);
+  };
+  for (const el of [$sizeLow, $sizeHigh, $street]) {
+    if (el) el.addEventListener('input', rerunSoon);
+  }
+
+  // Clear — the same hard reset the Property tab uses. A soft clear
+  // would have to unwind the loaded CSV, both multi-selects, every
+  // range input, the subject roll, the map layers and the column mode;
+  // a reload of the bare URL cannot leave a corner of that behind.
+  const $salesClear = document.getElementById('sales-clear');
+  if ($salesClear) $salesClear.addEventListener('click', clearAll);
+
   setSalesCount('');
 }
 
@@ -3075,14 +3102,14 @@ function wireSalesTab() {
 const pucsFilter = createMultiSelectFilter({
   btnId: 'pucs-filter-btn',
   popoverId: 'pucs-filter-popover',
-  label: 'Filter by PUCS',
+  label: 'PUCS',
   onChange: () => runSalesAnalysis(),
 });
 
 const classFilter = createMultiSelectFilter({
   btnId: 'class-filter-btn',
   popoverId: 'class-filter-popover',
-  label: 'Filter by class',
+  label: 'class',
   onChange: () => runSalesAnalysis(),
 });
 
@@ -3325,10 +3352,41 @@ async function runSalesAnalysis() {
   const dateTo   = (document.getElementById('sales-date-to')?.value || '').trim();
   if (dateFrom) visibleSales = visibleSales.filter((s) => s.saleDate && s.saleDate >= dateFrom);
   if (dateTo)   visibleSales = visibleSales.filter((s) => s.saleDate && s.saleDate <= dateTo);
+
+  // Lot-size range + street name (lib/salesFilters.js, unit-tested).
+  // Applied here, pre-join, for the same reason the date and PUCS
+  // filters are: every row removed is a roll that never has to be
+  // fetched from d4mq-wa44. Size measures the SALE's total land, not
+  // the parcel's — the same denominator $/Lot SF uses — so a
+  // multi-parcel sale passes or fails as one transaction.
+  const sizeLo = parseBound(document.getElementById('sales-size-low')?.value);
+  const sizeHi = parseBound(document.getElementById('sales-size-high')?.value);
+  const sizeActive = sizeLo != null || sizeHi != null;
+  if (sizeActive) {
+    visibleSales = visibleSales.filter(
+      (s) => passesSizeFilter(s, salesData.groups, sizeLo, sizeHi)
+    );
+  }
+  const streetQuery = normalizeStreetQuery(document.getElementById('sales-street-name')?.value);
+  if (streetQuery) {
+    visibleSales = visibleSales.filter((s) => passesStreetFilter(s, streetQuery));
+  }
+
   if (!visibleSales.length) {
     let msg;
     if (pucsFilter.isEmptySelection()) {
-      msg = `No PUCS selected — click All in the Filter by PUCS popover, or pick one or more codes.`;
+      msg = `No PUCS selected — click All in the PUCS popover, or pick one or more codes.`;
+    } else if (streetQuery) {
+      // Named before the ranges because a typo'd street is the most
+      // likely cause of an unexpectedly empty grid, and the least
+      // likely for the user to spot in a one-line text box.
+      msg = `${salesData.sales.length} sales loaded, but none have an address containing "${streetQuery}".`;
+    } else if (sizeActive) {
+      // Says WHY a row can fail, because "missing = excluded" is not
+      // guessable: a sale whose CSV rows carry no Land Actual sqft
+      // has no size to test and drops out silently otherwise.
+      msg = `${salesData.sales.length} sales loaded, but none fall inside the lot-size range `
+          + `(sales missing Land Actual sqft can't be measured and are excluded while it's set).`;
     } else if (dateFrom || dateTo) {
       msg = `${salesData.sales.length} sales loaded, but none fall inside the selected date range.`;
     } else if (pucsSelected) {

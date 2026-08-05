@@ -1836,6 +1836,19 @@ body {
 /* PUCS multi-select. Button opens an inline popover listing every
    distinct Par Use Code in the loaded CSV; the popover positions
    absolute so opening it doesn't reflow the sidebar. */
+/* PUCS + class pickers share one row at half width each, matching the
+   Manitoba app's .class-row. `min-width: 0` on the children is what
+   actually lets them halve — without it each flex item refuses to
+   shrink below its button's intrinsic text width and the pair wraps. */
+.sales-filter-pair {
+  display: flex;
+  gap: 6px;
+}
+.sales-filter-pair > .sales-pucs-filter {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+
 .sales-pucs-filter {
   position: relative;
   display: flex;
@@ -1846,13 +1859,15 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 6px 8px;
   background: #fff;
   border: 1px solid var(--color-neutral-300, #d4d4d8);
-  border-radius: 4px;
-  font-size: 12.5px;
+  border-radius: var(--ui-radius, 6px);
+  font-size: 12px;
   font-weight: 500;
-  color: var(--color-primary-500, #1e293b);
+  /* Muted while it reads "Any PUCS" — an unset filter is a placeholder,
+     not a value. `.has-selection` below flips it to real ink. */
+  color: var(--ui-muted, #6d7771);
   cursor: pointer;
   font-family: inherit;
   text-align: left;
@@ -1870,9 +1885,85 @@ body {
   border-color: var(--color-accent-500, #2563eb);
   color: var(--color-accent-600, #1d4ed8);
 }
+/* An active filter reads like a filled-in field rather than a
+   placeholder, so scanning the panel shows which pickers are actually
+   narrowing the set without reading each label. Set by
+   lib/multiSelectFilter.js whenever the tri-state leaves "all". */
+.sales-pucs-btn.has-selection {
+  color: var(--ui-ink, #151916);
+  font-weight: 600;
+  border-color: var(--ui-line-strong, #b8c3ba);
+}
+/* The label is the part that must give way when the control is halved —
+   ellipsis it, and keep the caret at full size beside it. */
+.sales-pucs-btn-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 .sales-pucs-btn-caret {
+  flex: 0 0 auto;
   font-size: 10px;
   opacity: 0.8;
+  transition: transform 140ms ease;
+}
+.sales-pucs-btn[aria-expanded="true"] .sales-pucs-btn-caret {
+  transform: rotate(180deg);
+}
+
+/* Lot-size range — label + Min + dash + Max, same idiom as the
+   sale-date range directly above it so the panel reads consistently. */
+.sales-range-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--color-primary-500, #1e293b);
+}
+.sales-range-label {
+  font-weight: 600;
+  color: var(--color-neutral-700, #3f3f46);
+  flex: 0 0 auto;
+}
+.sales-range-sep {
+  flex: 0 0 auto;
+  color: var(--color-neutral-500, #71717a);
+}
+.sales-range-input {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: var(--ui-radius, 6px);
+  background: #fff;
+  color: var(--ui-ink, #151916);
+}
+
+.sales-street-row {
+  display: flex;
+}
+.sales-street-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: var(--ui-radius, 6px);
+  background: #fff;
+  color: var(--ui-ink, #151916);
+}
+
+/* The Sales tab's Clear sits alone, so it shouldn't stretch across the
+   panel the way the Property tab's three-button action row does. */
+.sales-action-row {
+  justify-content: flex-start;
+}
+.sales-action-row button {
+  flex: 0 0 auto;
 }
 
 .sales-pucs-popover {
@@ -3522,3 +3613,73 @@ body.shape-drawing .maplibregl-canvas {
   cursor: pointer;
 }
 .water-filter input[type="checkbox"] { flex: none; margin: 0; }
+
+/* -----------------------------------------------------------------
+   Sales-tab filter controls, restated inside the visual-refresh layer.
+
+   The refresh layer's `.controls button` default fills every sidebar
+   button dark, which beats the earlier .sales-pucs-btn block on both
+   specificity and order — so the PUCS and class pickers rendered as
+   solid dark slabs. They are pickers, not actions, and read as the
+   Manitoba app's do: a white field showing muted placeholder text
+   ("Any PUCS") that fills in with real ink and a stronger border once
+   the filter is actually narrowing something.
+   ----------------------------------------------------------------- */
+/* `:not(:disabled)` is load-bearing, not decoration. The refresh
+   layer's `.controls button:disabled` carries one more pseudo-class
+   than a plain `.controls .sales-pucs-btn`, so it outranks it and the
+   greyed-out treatment wins even on an enabled control — leaving the
+   two states looking identical, which is exactly the affordance these
+   pickers need (they ARE disabled until a CSV is loaded). Matching its
+   specificity puts the enabled look back in front. */
+.controls .sales-pucs-btn:not(:disabled) {
+  background: #fff;
+  color: var(--ui-muted);
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--ui-radius);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.78) inset;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  justify-content: space-between;
+  padding: 6px 8px;
+}
+.controls .sales-pucs-btn {
+  border-radius: var(--ui-radius);
+  font-size: 12px;
+  text-align: left;
+  justify-content: space-between;
+  padding: 6px 8px;
+}
+.controls .sales-pucs-btn:hover:not(:disabled):not([disabled]) {
+  background: var(--ui-panel-muted);
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-dark);
+}
+.controls .sales-pucs-btn.has-selection:not(:disabled) {
+  color: var(--ui-ink);
+  font-weight: 600;
+  border-color: var(--ui-accent);
+}
+.controls .sales-pucs-btn[aria-expanded="true"]:not(:disabled) {
+  background: var(--ui-panel-muted);
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-dark);
+}
+
+/* Range + text inputs on the sales tab pick up the same field styling
+   the refresh layer gives .controls input, which they otherwise miss
+   by being declared earlier in the file. */
+.controls .sales-range-input,
+.controls .sales-street-input {
+  min-height: 36px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--ui-radius);
+  background: var(--ui-panel);
+  color: var(--ui-ink);
+  box-shadow: inset 0 1px 0 rgba(18, 22, 19, 0.03);
+}
+.controls .sales-range-input:hover,
+.controls .sales-street-input:hover {
+  border-color: #98a69e;
+}

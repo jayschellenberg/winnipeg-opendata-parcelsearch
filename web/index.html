@@ -401,55 +401,102 @@
             <input type="date" id="sales-date-to" class="sales-date-input" aria-label="Sale date to" />
           </div>
 
-          <!-- PUCS multi-select. Button opens a popover listing every
-               distinct Par Use Code in the loaded CSV; user ticks the
-               ones to keep. All-checked = no filter. -->
-          <div class="sales-pucs-filter">
-            <button
-              type="button"
-              id="pucs-filter-btn"
-              class="sales-pucs-btn"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-controls="pucs-filter-popover"
-              disabled
-            >
-              <span class="sales-pucs-btn-label">Filter by PUCS</span>
-              <span class="sales-pucs-btn-caret" aria-hidden="true">▾</span>
-            </button>
-            <div
-              id="pucs-filter-popover"
-              class="sales-pucs-popover"
-              role="menu"
-              aria-label="Filter by Par Use Code"
-            ></div>
+          <!-- PUCS + assessment-class multi-selects, one row at half
+               width each (Manitoba's .class-row layout). Both are the
+               same control: a trigger button that opens a popover of
+               every distinct value, ticked to keep. All-ticked = no
+               filter. PUCS values come from the loaded CSV; classes
+               come from the LIVE assessment join, so that list is
+               rebuilt from each run's joined results. -->
+          <div class="sales-filter-pair">
+            <div class="sales-pucs-filter">
+              <button
+                type="button"
+                id="pucs-filter-btn"
+                class="sales-pucs-btn"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="pucs-filter-popover"
+                title="Filter to one or more Par Use Codes (RESMC, RESRH, INWWH, CMRRE…) found in the loaded CSV. Leave everything ticked for no filter."
+                disabled
+              >
+                <span class="sales-pucs-btn-label">Any PUCS</span>
+                <span class="sales-pucs-btn-caret" aria-hidden="true">▾</span>
+              </button>
+              <div
+                id="pucs-filter-popover"
+                class="sales-pucs-popover"
+                role="menu"
+                aria-label="Filter by Par Use Code"
+              ></div>
+            </div>
+
+            <div class="sales-pucs-filter">
+              <button
+                type="button"
+                id="class-filter-btn"
+                class="sales-pucs-btn"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="class-filter-popover"
+                title="Filter to one or more assessment classes (Residential 1/2/3, Other, Institutional, Farm…). Classes come from the live assessment record for each sale's roll, not from the pasted CSV. Leave everything ticked for no filter."
+                disabled
+              >
+                <span class="sales-pucs-btn-label">Any class</span>
+                <span class="sales-pucs-btn-caret" aria-hidden="true">▾</span>
+              </button>
+              <div
+                id="class-filter-popover"
+                class="sales-pucs-popover"
+                role="menu"
+                aria-label="Filter by assessment class"
+              ></div>
+            </div>
           </div>
 
-          <!-- Assessment class multi-select. Same control as PUCS above
-               (and reusing its .sales-pucs-* visual classes), but the
-               values come from the LIVE assessment join rather than the
-               CSV, so the list is rebuilt from each run's joined
-               results. All-checked = no filter. -->
-          <div class="sales-pucs-filter">
-            <button
-              type="button"
-              id="class-filter-btn"
-              class="sales-pucs-btn"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-controls="class-filter-popover"
-              title="Filter to one or more assessment classes (Residential 1/2/3, Other, Institutional, Farm…). Classes come from the live assessment record for each sale's roll, not from the pasted CSV. Leave everything ticked for no filter."
-              disabled
-            >
-              <span class="sales-pucs-btn-label">Filter by class</span>
-              <span class="sales-pucs-btn-caret" aria-hidden="true">▾</span>
-            </button>
-            <div
-              id="class-filter-popover"
-              class="sales-pucs-popover"
-              role="menu"
-              aria-label="Filter by assessment class"
-            ></div>
+          <!-- Lot size range, in square feet. Compares against the
+               SALE's total land (the sum across a multi-parcel sale),
+               which is the same denominator $/Lot SF uses — so the
+               filter and the column can't disagree about how big a
+               sale is. Either bound may be left empty. -->
+          <div class="sales-range-row">
+            <span class="sales-range-label">Lot size (sf):</span>
+            <input
+              type="number" min="0" step="1"
+              id="sales-size-low" class="sales-range-input"
+              placeholder="Min" aria-label="Minimum lot size in square feet"
+              title="Minimum total land area for the sale, in square feet. Empty = no lower limit. A sale whose CSV rows are missing Land Actual sqft can't be measured and is excluded while this filter is set."
+            />
+            <span class="sales-range-sep" aria-hidden="true">–</span>
+            <input
+              type="number" min="0" step="1"
+              id="sales-size-high" class="sales-range-input"
+              placeholder="Max" aria-label="Maximum lot size in square feet"
+              title="Maximum total land area for the sale, in square feet. Empty = no upper limit."
+            />
+          </div>
+
+          <!-- Street name substring. Matched against the CSV's own
+               Street Number / Direction / Name, so it behaves the same
+               whether or not the roll matched a live record. -->
+          <div class="sales-street-row">
+            <input
+              type="text"
+              id="sales-street-name"
+              class="sales-street-input"
+              placeholder="Street name"
+              autocomplete="off"
+              aria-label="Filter sales by street name"
+              title="Keep only sales whose address contains this text. Case-insensitive substring, so BANNER finds BANNERMAN. Empty = no filter."
+            />
+          </div>
+
+          <!-- Clear. Same hard reset as the Property tab's Clear: a
+               reload of the bare URL, so every filter, the loaded CSV,
+               the subject roll and the map all go back to first-load
+               rather than leaving a stale corner of state behind. -->
+          <div class="action-row sales-action-row">
+            <button id="sales-clear" type="button" class="secondary">Clear</button>
           </div>
 
           <span id="sales-count" class="count"></span>
