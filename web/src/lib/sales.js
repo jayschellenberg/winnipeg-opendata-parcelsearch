@@ -26,12 +26,18 @@ export { normalizeRoll };
  */
 export function dedupAndGroupSales(rows) {
   const merged = new Map(); // key = `${roll}|${instrument}`
+  // Rows we could not place. The Instrument Number is THE identifier for
+  // a transaction — it is what decides whether two parcels are one sale
+  // — so a row without one cannot be grouped and has to be dropped. That
+  // is a whole sale leaving the comp set, which the caller reports
+  // rather than letting it vanish unremarked.
+  let dropped = 0;
   for (const r of rows) {
     // 11-digit zero-pad so 10-digit CSV rolls (`6070731000`) match
     // their 11-digit d4mq-wa44 records (`06070731000`).
     const roll = normalizeRoll(r['Parcel ID']);
     const inst = String(r['Instrument Number'] ?? '').trim();
-    if (!roll || !inst) continue;
+    if (!roll || !inst) { dropped++; continue; }
     const key = `${roll}|${inst}`;
     const existing = merged.get(key);
     const livingArea = Number.parseFloat(r['Living Area']) || 0;
@@ -90,12 +96,20 @@ export function dedupAndGroupSales(rows) {
   }
   const sales = Array.from(merged.values());
   const rolls = new Set(sales.map((s) => s.roll));
+  // Group by Instrument Number ALONE. The instrument is the unique
+  // identifier for a transaction, so every distinct parcel sharing one
+  // is a member of the same sale — that is what makes a group size > 1
+  // mean "this sale covered N parcels", and what drives the group
+  // aggregates in buildSaleFeatures ($/Lot SF over the group's summed
+  // land, Sale/Asmt over its summed assessment). Deliberately NOT keyed
+  // on date or price: two parcels can sell the same day for the same
+  // amount under separate instruments and are then separate sales.
   const groups = new Map();
   for (const s of sales) {
     if (!groups.has(s.instrument)) groups.set(s.instrument, []);
     groups.get(s.instrument).push(s);
   }
-  return { sales, rolls, groups };
+  return { sales, rolls, groups, dropped };
 }
 
 /**

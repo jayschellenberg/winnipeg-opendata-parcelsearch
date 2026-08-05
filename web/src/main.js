@@ -3347,6 +3347,13 @@ async function runSalesAnalysis() {
     `${rows.length} sale${rows.length === 1 ? '' : 's'} shown` +
     (repeatSales > 0 ? ` · ${repeatSales} repeat sale${repeatSales === 1 ? '' : 's'} of the same parcel` : '') +
     (unmatched ? ` · ${unmatched} not in d4mq-wa44` : '') +
+    // Rows with no Parcel ID or no Instrument Number can't be placed or
+    // grouped, so they never enter the analysis. Saying so matters: the
+    // instrument identifies the transaction, and a blank one silently
+    // removes a whole sale from the comp set.
+    (salesData?.dropped
+      ? ` · ${salesData.dropped} row${salesData.dropped === 1 ? '' : 's'} skipped (no Parcel ID / Instrument Number)`
+      : '') +
     (hiddenWithSworn
       ? ` · ${hiddenWithSworn} $0/$1 transfer${hiddenWithSworn === 1 ? '' : 's'} hidden despite a sworn value — untick the filter to inspect`
       : '')

@@ -300,6 +300,74 @@ const SABRE = [
   assert.equal(byInst.get('5835797')._saleZoning, 'R2');
 }
 
+// ---- The Instrument Number is what defines a sale -------------------------
+// It is the unique identifier for a transaction, so it alone decides
+// whether two parcels belong to one multi-parcel sale. Two things this
+// has to get right, and the SABRE sample contains both traps.
+{
+  // Trap 1: 3092986065 and 3092986060 sold the SAME DAY for the SAME
+  // PRICE — but under instruments 5852912 and 5852911. Different
+  // instruments = two separate single-parcel sales. Anything keying on
+  // date+price would wrongly fuse them into one two-parcel sale.
+  const sameDayDifferentInstruments = [
+    'Parcel ID\tInstrument Number\tSale Dates\tSold Price\tLand Actual sqft',
+    '3092986065\t5852912\t04-02-2026\t3150000\t88493',
+    '3092986060\t5852911\t04-02-2026\t3150000\t85102',
+  ].join('\n');
+  const { sales, groups } = dedupAndGroupSales(parseSalesText(sameDayDifferentInstruments).rows);
+  assert.equal(sales.length, 2);
+  assert.equal(groups.size, 2, 'same day + same price + different instruments = TWO sales');
+  assert.equal(groups.get('5852912').length, 1);
+  assert.equal(groups.get('5852911').length, 1);
+}
+{
+  // Trap 2: the converse — two DIFFERENT parcels on ONE instrument is a
+  // single sale spanning both, and the group aggregates must span it too.
+  const twoParcelsOneInstrument = [
+    'Parcel ID\tInstrument Number\tSale Dates\tSold Price\tLand Actual sqft',
+    '3092986065\t5852912\t04-02-2026\t3150000\t88493',
+    '3092986060\t5852912\t04-02-2026\t3150000\t85102',
+  ].join('\n');
+  const { sales, groups } = dedupAndGroupSales(parseSalesText(twoParcelsOneInstrument).rows);
+  assert.equal(sales.length, 2, 'still one record per parcel');
+  assert.equal(groups.size, 1, 'one instrument = ONE sale');
+  assert.equal(groups.get('5852912').length, 2, 'covering two parcels');
+
+  const feats = buildSaleFeatures(sales, new Map(), groups);
+  assert.equal(feats[0].properties._saleGroupSize, 2, 'Group # reports the parcel count');
+  // Sold Price is the whole-sale total on every member row, so $/Lot SF
+  // divides by the group's SUMMED land, not one parcel's.
+  assert.equal(feats[0].properties._pricePerSf, 3150000 / (88493 + 85102));
+}
+{
+  // Same roll + same instrument stays ONE parcel (component rows), which
+  // is what keeps the 6 BANNERMAN unit rows from reading as 6 parcels.
+  const componentRows = [
+    'Parcel ID\tInstrument Number\tSale Dates\tSold Price\tNumber of Unit',
+    '14060118000\t5835797\t02-03-2026\t1290000\t1',
+    '14060118000\t5835797\t02-03-2026\t1290000\t6',
+  ].join('\n');
+  const { sales, groups } = dedupAndGroupSales(parseSalesText(componentRows).rows);
+  assert.equal(sales.length, 1);
+  assert.equal(groups.get('5835797').length, 1, 'one PARCEL, six units — not six parcels');
+  assert.equal(sales[0].numUnits, 6);
+}
+{
+  // A blank Instrument Number can't be grouped, so the row is dropped —
+  // but the count comes back so the UI can say a sale went missing
+  // instead of it vanishing unremarked.
+  const missingInstrument = [
+    'Parcel ID\tInstrument Number\tSale Dates\tSold Price',
+    '3092986065\t5852912\t04-02-2026\t3150000',
+    '3092986060\t\t04-02-2026\t3150000',
+    '\t5852999\t04-02-2026\t3150000',
+  ].join('\n');
+  const out = dedupAndGroupSales(parseSalesText(missingInstrument).rows);
+  assert.equal(out.sales.length, 1);
+  assert.equal(out.dropped, 2, 'both unplaceable rows are counted, not silently lost');
+}
+assert.equal(dedupAndGroupSales([]).dropped, 0);
+
 // ---- delimitedRows tokenizers --------------------------------------------
 assert.deepEqual(tokenizeRows('a,b\n1,2', ','), [['a', 'b'], ['1', '2']]);
 assert.deepEqual(tokenizeRows('a\tb\r\n1\t2', '\t'), [['a', 'b'], ['1', '2']]);
