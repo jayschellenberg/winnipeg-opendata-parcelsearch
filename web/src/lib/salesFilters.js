@@ -84,6 +84,108 @@ export function passesSizeFilter(sale, groups, lo, hi) {
 }
 
 /**
+ * The sale's total consideration. SABRE repeats the WHOLE sale price on
+ * every component row of a multi-parcel sale, so this is already a
+ * transaction-level figure and needs no group summing — summing it would
+ * multiply a three-lot sale's price by three.
+ *
+ * Zero and the $1 sentinel come back null: they are not prices. (The
+ * sentinel rows are normally filtered upstream by the non-arms-length
+ * checkbox, but a user can untick that, and a $1 transfer must not then
+ * satisfy a "under $50,000" search as though it were a market sale.)
+ */
+export function salePriceOf(sale) {
+  const n = Number(sale?.salePrice);
+  if (!Number.isFinite(n) || n <= 1) return null;
+  return n;
+}
+
+/**
+ * The sale's rate per square foot of land — price over the GROUP's land,
+ * the identical calculation lib/sales.js stamps as `_pricePerSf` for the
+ * $/Lot SF column. Null whenever either half is unusable, including a
+ * group whose land total is incomplete: a partial denominator inflates
+ * the rate, which is the exact failure the 185 Bannerman case documented
+ * ($224/sf against a true $37/sf).
+ */
+export function salePricePerSfOf(sale, groups) {
+  const price = salePriceOf(sale);
+  if (price == null) return null;
+  const { landSf, complete } = saleGroupLandSf(sale, groups);
+  if (!complete || landSf <= 0) return null;
+  return price / landSf;
+}
+
+/**
+ * Generic inclusive range test over a value that may be null. Both bounds
+ * null is a no-op; otherwise a null value fails ("missing is excluded").
+ */
+export function passesRange(value, lo, hi) {
+  if (lo == null && hi == null) return true;
+  if (value == null || !Number.isFinite(value)) return false;
+  if (lo != null && value < lo) return false;
+  if (hi != null && value > hi) return false;
+  return true;
+}
+
+/** Total sale price inside [lo, hi]. */
+export function passesPriceFilter(sale, lo, hi) {
+  return passesRange(salePriceOf(sale), lo, hi);
+}
+
+/** Sale rate per square foot of land inside [lo, hi]. */
+export function passesPricePerSfFilter(sale, groups, lo, hi) {
+  if (lo == null && hi == null) return true;
+  return passesRange(salePricePerSfOf(sale, groups), lo, hi);
+}
+
+/**
+ * Every zoning code a joined sale feature carries, de-duplicated and
+ * stripped to the bare code.
+ *
+ * Winnipeg has two independent sources and they disagree often enough to
+ * matter, so the filter reads BOTH:
+ *
+ *   - `_saleZoning`, the zoning recorded on the sale itself. Always
+ *     present, and it is what the "Zoning (sale)" column shows.
+ *   - `zoning_top1` / `zoning_top2`, the parcel's CURRENT zoning by
+ *     area-weighted intersection. Only populated once the Zoning overlay
+ *     has run — sales-mode zoning enrichment is deferred so a large CSV
+ *     doesn't block on it.
+ *
+ * A sale matches if ANY of its codes is ticked, which is also how the
+ * Manitoba app treats its two zone columns. Reading only the current
+ * zoning would make the control do nothing until the overlay is
+ * switched on; reading only the sale zoning would ignore a rezoning.
+ *
+ * `strip` is injected (lib/cells.js owns stripZoningCode) to keep this
+ * file free of any dependency that touches the DOM.
+ */
+export function saleZoningCodes(feature, strip = (v) => v) {
+  const p = feature?.properties || {};
+  const out = new Set();
+  for (const raw of [p._saleZoning, p.zoning_top1, p.zoning_top2, p.zoning]) {
+    if (raw == null) continue;
+    const code = String(strip(raw) ?? '').trim().toUpperCase();
+    if (code !== '') out.add(code);
+  }
+  return out;
+}
+
+/**
+ * Does this feature match the ticked zoning set? `selected` is the
+ * multi-select tri-state: null = no filter. A sale carrying no zoning at
+ * all fails an active filter, same rule as everywhere else here.
+ */
+export function passesZoningFilter(feature, selected, strip) {
+  if (selected == null) return true;
+  const codes = saleZoningCodes(feature, strip);
+  if (codes.size === 0) return false;
+  for (const c of codes) if (selected.has(c)) return true;
+  return false;
+}
+
+/**
  * The address text a street filter is matched against: the sale's own
  * Street Number / Direction / Name from the CSV, upper-cased and
  * whitespace-collapsed.

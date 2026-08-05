@@ -100,6 +100,8 @@ import { buildClusterIndex, clusterForFeature } from './lib/clusters.js';
 import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
 import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
+  passesPriceFilter, passesPricePerSfFilter,
+  saleZoningCodes, passesZoningFilter,
 } from './lib/salesFilters.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
@@ -3066,13 +3068,17 @@ function wireSalesTab() {
   const $sizeLow  = document.getElementById('sales-size-low');
   const $sizeHigh = document.getElementById('sales-size-high');
   const $street   = document.getElementById('sales-street-name');
+  const $priceLow  = document.getElementById('sales-price-low');
+  const $priceHigh = document.getElementById('sales-price-high');
+  const $ppsfLow   = document.getElementById('sales-ppsf-low');
+  const $ppsfHigh  = document.getElementById('sales-ppsf-high');
   let filterTimer = null;
   const rerunSoon = () => {
     if (!salesData) return;
     clearTimeout(filterTimer);
     filterTimer = setTimeout(() => runSalesAnalysis(), 300);
   };
-  for (const el of [$sizeLow, $sizeHigh, $street]) {
+  for (const el of [$sizeLow, $sizeHigh, $street, $priceLow, $priceHigh, $ppsfLow, $ppsfHigh]) {
     if (el) el.addEventListener('input', rerunSoon);
   }
 
@@ -3113,6 +3119,17 @@ const classFilter = createMultiSelectFilter({
   onChange: () => runSalesAnalysis(),
 });
 
+// Zoning — like Class, this can only be built after the join, because
+// half its vocabulary (the parcel's CURRENT zoning) comes from the live
+// record. Unlike Class it has a second source that IS in the CSV, so the
+// list is never empty: see saleZoningCodes in lib/salesFilters.js.
+const zoningFilter = createMultiSelectFilter({
+  btnId: 'zoning-filter-btn',
+  popoverId: 'zoning-filter-popover',
+  label: 'zoning',
+  onChange: () => runSalesAnalysis(),
+});
+
 /** Rebuild the PUCS options from the loaded CSV. Counts are per SALE,
  *  not per raw row — dedup has already collapsed component rows. */
 function rebuildPucsFilter() {
@@ -3137,6 +3154,25 @@ function rebuildClassFilter(features) {
     counts.set(saleClassOf(f), (counts.get(saleClassOf(f)) || 0) + 1);
   }
   classFilter.setOptions(counts);
+}
+
+/**
+ * Rebuild the zoning picker from the joined results.
+ *
+ * A sale carrying two different codes (its recorded sale zoning and a
+ * since-changed current zoning) counts toward BOTH options, which is what
+ * makes it findable under either — the count is "sales carrying this
+ * code", not a partition of the set, so the counts can sum to more than
+ * the number of sales.
+ */
+function rebuildZoningFilter(features) {
+  const counts = new Map();
+  for (const f of features) {
+    for (const code of saleZoningCodes(f, stripZoningCode)) {
+      counts.set(code, (counts.get(code) || 0) + 1);
+    }
+  }
+  zoningFilter.setOptions(counts);
 }
 
 /** A sale's assessment class, bucketing the rolls that matched no live
@@ -3372,6 +3408,28 @@ async function runSalesAnalysis() {
     visibleSales = visibleSales.filter((s) => passesStreetFilter(s, streetQuery));
   }
 
+  // Sale price — the whole transaction's consideration, so a
+  // multi-parcel sale is tested once as one deal rather than per lot.
+  const priceLo = parseBound(document.getElementById('sales-price-low')?.value);
+  const priceHi = parseBound(document.getElementById('sales-price-high')?.value);
+  const priceActive = priceLo != null || priceHi != null;
+  if (priceActive) {
+    visibleSales = visibleSales.filter((s) => passesPriceFilter(s, priceLo, priceHi));
+  }
+
+  // $/Lot SF — the same rate the column shows: price over the sale's
+  // GROUP land. A sale whose land total is missing or incomplete has no
+  // honest rate (an incomplete denominator inflates it, the 185
+  // Bannerman failure) and drops out while the filter is set.
+  const ppsfLo = parseBound(document.getElementById('sales-ppsf-low')?.value);
+  const ppsfHi = parseBound(document.getElementById('sales-ppsf-high')?.value);
+  const ppsfActive = ppsfLo != null || ppsfHi != null;
+  if (ppsfActive) {
+    visibleSales = visibleSales.filter(
+      (s) => passesPricePerSfFilter(s, salesData.groups, ppsfLo, ppsfHi)
+    );
+  }
+
   if (!visibleSales.length) {
     let msg;
     if (pucsFilter.isEmptySelection()) {
@@ -3381,6 +3439,12 @@ async function runSalesAnalysis() {
       // likely cause of an unexpectedly empty grid, and the least
       // likely for the user to spot in a one-line text box.
       msg = `${salesData.sales.length} sales loaded, but none have an address containing "${streetQuery}".`;
+    } else if (priceActive) {
+      msg = `${salesData.sales.length} sales loaded, but none fall inside the sale-price range `
+          + `($0 / $1 nominal transfers have no price to test and are excluded while it's set).`;
+    } else if (ppsfActive) {
+      msg = `${salesData.sales.length} sales loaded, but none fall inside the $/Lot SF range `
+          + `(sales missing Land Actual sqft have no rate and are excluded while it's set).`;
     } else if (sizeActive) {
       // Says WHY a row can fail, because "missing = excluded" is not
       // guessable: a sale whose CSV rows carry no Land Actual sqft
@@ -3529,10 +3593,20 @@ async function runSalesAnalysis() {
   // list the user needs in order to tick it back on.
   rebuildClassFilter(saleFc.features);
   const classSelected = classFilter.getSelected();
-  const visibleFeatures = classSelected == null
+  const afterClass = classSelected == null
     ? saleFc.features
     : saleFc.features.filter((f) => classSelected.has(saleClassOf(f)));
-  const classHidden = saleFc.features.length - visibleFeatures.length;
+  const classHidden = saleFc.features.length - afterClass.length;
+
+  // Zoning. Options come off the FULL joined set (like Class) so
+  // unticking a code never removes it from the list you need in order to
+  // tick it back on. Applied after Class so the two narrow together.
+  rebuildZoningFilter(saleFc.features);
+  const zoningSelected = zoningFilter.getSelected();
+  const visibleFeatures = zoningSelected == null
+    ? afterClass
+    : afterClass.filter((f) => passesZoningFilter(f, zoningSelected, stripZoningCode));
+  const zoningHidden = afterClass.length - visibleFeatures.length;
 
   const rows = visibleFeatures.map((f) => ({ assess: f, survey: null }));
   const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
@@ -3559,7 +3633,8 @@ async function runSalesAnalysis() {
     // Name the class narrowing for the same reason the area filter is
     // named: a filter the user can forget they set must never silently
     // shrink the comp set.
-    (classHidden ? ` · ${classHidden} hidden by the class filter` : '')
+    (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
+    (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '')
   );
 
   // Draw matched parcels on the map. Repeat sales share one polygon;

@@ -1921,10 +1921,15 @@ body {
   font-size: 12.5px;
   color: var(--color-primary-500, #1e293b);
 }
+/* Fixed label column so the three range rows (Sale price, $/Lot SF, Lot
+   size) put their Min/Max boxes on the same two vertical lines. Without
+   it each row's inputs start wherever its label happens to end, and the
+   stack reads as three unrelated controls. */
 .sales-range-label {
   font-weight: 600;
   color: var(--color-neutral-700, #3f3f46);
   flex: 0 0 auto;
+  min-width: 76px;
 }
 .sales-range-sep {
   flex: 0 0 auto;

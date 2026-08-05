@@ -17,6 +17,9 @@ import assert from 'node:assert/strict';
 import {
   parseBound, saleGroupLandSf, passesSizeFilter,
   saleAddressText, normalizeStreetQuery, passesStreetFilter,
+  salePriceOf, salePricePerSfOf, passesRange,
+  passesPriceFilter, passesPricePerSfFilter,
+  saleZoningCodes, passesZoningFilter,
 } from '../src/lib/salesFilters.js';
 
 let passed = 0;
@@ -180,6 +183,122 @@ test('passesStreetFilter — case-insensitive substring match', () => {
 
 test('passesStreetFilter — a sale with no address fails an active query', () => {
   assert.equal(passesStreetFilter(sale('I1', 0), normalizeStreetQuery('main')), false);
+});
+
+// 5. Price ================================================================
+/** SaleRecord with a price. */
+function priced(instrument, salePrice, landSf) {
+  return { instrument, salePrice, landSf };
+}
+
+test('salePriceOf — reads the sale total, rejects 0 and the $1 sentinel', () => {
+  assert.equal(salePriceOf(priced('I1', 250000, 5000)), 250000);
+  assert.equal(salePriceOf(priced('I1', 0, 5000)), null);
+  // SABRE's nominal $1 on a non-arms-length transfer is not a price, and
+  // must not satisfy an "under $50,000" search as though it were one.
+  assert.equal(salePriceOf(priced('I1', 1, 5000)), null);
+  assert.equal(salePriceOf({}), null);
+});
+
+test('salePriceOf is NOT summed across a group', () => {
+  // SABRE repeats the whole sale price on every component row; summing
+  // would treble a three-lot sale.
+  const a = priced('I1', 600000, 4000);
+  const b = priced('I1', 600000, 4000);
+  groupsOf(a, b);
+  assert.equal(salePriceOf(a), 600000);
+  assert.equal(salePriceOf(b), 600000);
+});
+
+test('passesPriceFilter — bounds, inclusivity, and missing-excluded', () => {
+  const a = priced('I1', 250000, 5000);
+  assert.equal(passesPriceFilter(a, null, null), true);
+  assert.equal(passesPriceFilter(a, 200000, 300000), true);
+  assert.equal(passesPriceFilter(a, 250000, 250000), true);
+  assert.equal(passesPriceFilter(a, 300000, null), false);
+  assert.equal(passesPriceFilter(a, null, 200000), false);
+  assert.equal(passesPriceFilter(priced('I1', 1, 5000), 0, 999999), false);
+});
+
+// 6. $/sf ==================================================================
+test('salePricePerSfOf divides by the GROUP land, matching $/Lot SF', () => {
+  const a = priced('I1', 600000, 4000);
+  const b = priced('I1', 600000, 4000);
+  const g = groupsOf(a, b);
+  // 600,000 / 8,000 = 75, NOT 600,000 / 4,000 = 150.
+  assert.equal(salePricePerSfOf(a, g), 75);
+  assert.equal(salePricePerSfOf(b, g), 75);
+});
+
+test('salePricePerSfOf refuses an incomplete group', () => {
+  // The 185 Bannerman trap: a partial denominator inflates the rate.
+  const a = priced('I1', 600000, 4000);
+  const b = priced('I1', 600000, 0);
+  assert.equal(salePricePerSfOf(a, groupsOf(a, b)), null);
+});
+
+test('passesPricePerSfFilter — range plus missing-excluded', () => {
+  const a = priced('I1', 250000, 5000);   // $50/sf
+  const g = groupsOf(a);
+  assert.equal(passesPricePerSfFilter(a, g, null, null), true);
+  assert.equal(passesPricePerSfFilter(a, g, 40, 60), true);
+  assert.equal(passesPricePerSfFilter(a, g, 60, null), false);
+  const noLand = priced('I2', 250000, 0);
+  assert.equal(passesPricePerSfFilter(noLand, groupsOf(noLand), 0, 9999), false);
+  assert.equal(passesPricePerSfFilter(noLand, groupsOf(noLand), null, null), true);
+});
+
+test('passesRange — shared semantics', () => {
+  assert.equal(passesRange(null, null, null), true);
+  assert.equal(passesRange(null, 1, null), false);
+  assert.equal(passesRange(5, 5, 5), true);
+  assert.equal(passesRange(NaN, 1, 10), false);
+});
+
+// 7. Zoning ================================================================
+const strip = (v) => (v == null || v === '' ? v : String(v).split(' - ')[0].trim());
+/** Joined feature carrying zoning from either/both sources. */
+function zoned({ sale, top1, top2 } = {}) {
+  return { properties: { _saleZoning: sale, zoning_top1: top1, zoning_top2: top2 } };
+}
+
+test('saleZoningCodes reads BOTH the sale zoning and the current zoning', () => {
+  // The two disagree after a rezoning, and the filter has to see both:
+  // current zoning is blank until the Zoning overlay runs, and sale
+  // zoning ignores a rezoning.
+  const f = zoned({ sale: 'R2', top1: 'C2 - Commercial', top2: 'M1' });
+  assert.deepEqual([...saleZoningCodes(f, strip)].sort(), ['C2', 'M1', 'R2']);
+});
+
+test('saleZoningCodes strips the " - Description" suffix and upper-cases', () => {
+  const f = zoned({ top1: 'r2 - Two Family Residential' });
+  assert.deepEqual([...saleZoningCodes(f, strip)], ['R2']);
+});
+
+test('saleZoningCodes de-duplicates when both sources agree', () => {
+  const f = zoned({ sale: 'R2', top1: 'R2 - Two Family Residential' });
+  assert.deepEqual([...saleZoningCodes(f, strip)], ['R2']);
+});
+
+test('saleZoningCodes drops blanks and nulls', () => {
+  assert.equal(saleZoningCodes(zoned({ sale: '', top1: null }), strip).size, 0);
+  assert.equal(saleZoningCodes(null, strip).size, 0);
+});
+
+test('passesZoningFilter — null selection is no filter', () => {
+  assert.equal(passesZoningFilter(zoned({ sale: 'R2' }), null, strip), true);
+  assert.equal(passesZoningFilter(zoned({}), null, strip), true);
+});
+
+test('passesZoningFilter — matches if ANY of the sale’s codes is ticked', () => {
+  const f = zoned({ sale: 'R2', top1: 'C2' });
+  assert.equal(passesZoningFilter(f, new Set(['C2']), strip), true, 'current zoning ticked');
+  assert.equal(passesZoningFilter(f, new Set(['R2']), strip), true, 'sale zoning ticked');
+  assert.equal(passesZoningFilter(f, new Set(['M1']), strip), false);
+});
+
+test('passesZoningFilter — a sale with no zoning fails an active filter', () => {
+  assert.equal(passesZoningFilter(zoned({}), new Set(['R2']), strip), false);
 });
 
 console.log('');
