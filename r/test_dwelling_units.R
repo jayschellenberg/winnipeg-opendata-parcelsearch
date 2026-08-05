@@ -72,11 +72,16 @@ stopifnot(
   drift$eligible_records == 1
 )
 
-# The real dataset's four open questions as of 2026-08-05: none of them may be
-# silently counted, and none may be silently dropped either.
+# The four codes the drift check surfaced on 2026-08-05, now resolved: rooming
+# houses and multiple-building residential are housing and count; group care
+# and the condo cost record do not.
 stopifnot(
-  !any(c("RESGC", "RESMB", "RESRM", "CNCST") %in% DWELLING_ALL_PUCS),
-  !any(c("RESGC", "RESMB", "RESRM", "CNCST") %in% DWELLING_REVIEWED_EXCLUSIONS)
+  all(c("RESMB", "RESRM") %in% DWELLING_ALL_PUCS),
+  all(c("RESGC", "CNCST") %in% DWELLING_REVIEWED_EXCLUSIONS),
+  # A code in both lists would be counted AND claim to be deliberately
+  # skipped. The classification has to be unambiguous for the drift check
+  # to mean anything.
+  length(intersect(DWELLING_ALL_PUCS, DWELLING_REVIEWED_EXCLUSIONS)) == 0L
 )
 
 cat("PUCS classification drift fixtures passed\n")

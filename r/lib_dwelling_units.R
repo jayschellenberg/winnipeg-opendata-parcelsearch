@@ -5,7 +5,11 @@
 DWELLING_CONDO_PUCS <- c("CNAPT", "CNCMP", "CNDRH", "CNRES")
 DWELLING_RESIDENTIAL_PUCS <- c(
   "RESAM", "RESAP", "RESDU", "RESMC", "RESMH", "RESMU", "RESPL",
-  "RESRH", "RESSD", "RESSS", "RESTR", "RESSU", "RESMA"
+  "RESRH", "RESSD", "RESSS", "RESTR", "RESSU", "RESMA",
+  # Added 2026-08-05 (Jason's call) after the drift check surfaced them as
+  # never-classified. Both are housing, so both count:
+  "RESMB",  # RESIDENTIAL MULTIPLE BUILDINGS - 69 parcels at the time
+  "RESRM"   # ROOMING HOUSE                  - 40 parcels at the time
 )
 DWELLING_ALL_PUCS <- c(DWELLING_CONDO_PUCS, DWELLING_RESIDENTIAL_PUCS)
 
@@ -20,7 +24,10 @@ DWELLING_REVIEWED_EXCLUSIONS <- c(
   "CNCOM",  # CONDO COMMERCIAL      - commercial unit, no dwelling
   "CNIND",  # CONDO INDUSTRIAL      - industrial unit, no dwelling
   "CNVAC",  # CONDO VACANT          - vacant parcel, nothing built yet
-  "RESOT"   # RESIDENTIAL OUTBUILDING - shed/garage, not habitable space
+  "RESOT",  # RESIDENTIAL OUTBUILDING - shed/garage, not habitable space
+  # Reviewed 2026-08-05 (Jason's call), surfaced by the drift check:
+  "RESGC",  # RESIDENTIAL GROUP CARE - care facility, not dwelling units
+  "CNCST"   # CONDO COST             - valuation record, not a dwelling
 )
 
 extract_pucs_code <- function(value) {
