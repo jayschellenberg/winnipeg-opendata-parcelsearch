@@ -4,8 +4,9 @@
   "source_live_count": 245248,
   "features_fetched": 245248,
   "features_tiled": 217071,
-  "dwelling_eligible_records": 225516,
+  "dwelling_eligible_records": 225625,
   "dwelling_condo_groups": 1878,
   "dwelling_condo_points": 1876,
-  "dwelling_pucs_codes": ["CNAPT", "CNCMP", "CNDRH", "CNRES", "RESAM", "RESAP", "RESDU", "RESMC", "RESMH", "RESMU", "RESPL", "RESRH", "RESSD", "RESSS", "RESTR", "RESSU", "RESMA"]
+  "dwelling_pucs_codes": ["CNAPT", "CNCMP", "CNDRH", "CNRES", "RESAM", "RESAP", "RESDU", "RESMC", "RESMH", "RESMU", "RESPL", "RESRH", "RESSD", "RESSS", "RESTR", "RESSU", "RESMA", "RESMB", "RESRM"],
+  "dwelling_unreviewed_pucs": []
 }
