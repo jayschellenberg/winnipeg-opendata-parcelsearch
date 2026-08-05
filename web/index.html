@@ -320,6 +320,37 @@
             />
           </div>
 
+          <!-- Paste alternative. Opens the sales-import modal (paste a
+               block copied straight out of SABRE or a spreadsheet, or
+               pick a CSV/TSV). The modal loads immediately with no
+               mapping step — the sales schema is fixed and
+               lib/salesImport.js auto-detects the header aliases. -->
+          <div class="sales-paste-row">
+            <span>or</span>
+            <button
+              type="button"
+              id="sales-import-trigger"
+              class="sales-import-trigger"
+              title="Paste sales rows copied from SABRE or a spreadsheet (tab- or comma-separated). Parcel ID, Instrument Number, Sale Dates and Sold Price are required."
+            >Paste data…</button>
+          </div>
+
+          <!-- Recent uploads (last 5 cached in localStorage). Hidden by
+               populateRecentUploads when no cache exists. -->
+          <div class="recent-uploads" id="recent-uploads-row" hidden>
+            <span class="recent-uploads-label">Recent:</span>
+            <select id="recent-uploads-select" aria-label="Reload a recent sales upload">
+              <option value="">—</option>
+            </select>
+            <button
+              type="button"
+              id="recent-uploads-clear"
+              class="recent-uploads-clear"
+              title="Forget all recent uploads"
+              aria-label="Forget all recent uploads"
+            >×</button>
+          </div>
+
           <span class="field chip-input-field">
             <div class="chip-input" data-target="subject-roll">
               <input id="subject-roll" type="hidden" />
@@ -568,6 +599,63 @@
       of Winnipeg Assessment &amp; Taxation department, or a qualified
       professional.
     </footer>
+
+    <!-- Sales paste modal. Single step: paste a sales block (or pick a
+         CSV/TSV) and Load. There's no column-mapping screen because the
+         sales schema is fixed — lib/salesImport.js auto-detects the
+         header aliases and the delimiter. On Load the driver hands
+         { name, text } straight to handleSalesUpload, the same pipeline
+         the dropzone uses. -->
+    <dialog id="sales-import-modal" class="sales-modal">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title">Paste sales data</h2>
+          <button
+            type="button"
+            id="sales-import-close"
+            class="sales-modal-close"
+            aria-label="Close paste dialog"
+          >×</button>
+        </header>
+
+        <section class="sales-modal-step">
+          <p class="sales-modal-help">
+            Paste rows copied straight out of SABRE or a spreadsheet
+            (tab- or comma-separated). <strong>Include the header row.</strong>
+            <strong>Parcel ID</strong>, <strong>Instrument Number</strong>,
+            <strong>Sale Dates</strong> and <strong>Sold Price</strong> are
+            required; Land Actual sqft, Living Area, Year Built, Par Use Code,
+            Property Type and the Street columns are used when present.
+          </p>
+          <textarea
+            id="sales-import-text"
+            class="sales-modal-textarea"
+            rows="10"
+            placeholder="Parcel ID&#9;Instrument Number&#9;Sale Dates&#9;Sold Price&#9;Land Actual sqft&#9;Year Built&#9;Par Use Code"
+            spellcheck="false"
+          ></textarea>
+          <div class="sales-modal-or">— or —</div>
+          <label class="sales-modal-file">
+            <input
+              type="file"
+              id="sales-import-file"
+              accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+            />
+            <span>Choose CSV/TSV file…</span>
+          </label>
+          <div
+            id="sales-import-error"
+            class="sales-modal-error"
+            role="alert"
+            hidden
+          ></div>
+          <footer class="sales-modal-actions">
+            <button type="button" id="sales-import-cancel" class="sales-modal-btn">Cancel</button>
+            <button type="button" id="sales-import-load" class="sales-modal-btn primary">Load sales</button>
+          </footer>
+        </section>
+      </div>
+    </dialog>
 
     <script type="module" src="./src/main.js"></script>
   </body>

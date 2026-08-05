@@ -37,7 +37,11 @@ const SALES_DEFAULT = [
   'roll', 'address', 'saleDate', 'useCode',
   'livingArea', 'yearBuilt', 'area',
   'propertyType', 'groupSize',
-  'salePrice', 'pricePerSf', 'saleToAsmt', 'dist',
+  // Sworn is on by default: it only renders when it DIFFERS from the
+  // sale price, so on an ordinary comp set the column sits empty, and
+  // when it does fill in it is flagging a nominal-price transfer the
+  // appraiser must not read as a market sale.
+  'salePrice', 'swornValue', 'pricePerSf', 'saleToAsmt', 'dist',
 ];
 
 export const DEFAULT_VISIBLE = new Set(QUICK_LOOKUP);

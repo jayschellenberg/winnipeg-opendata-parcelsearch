@@ -44,7 +44,6 @@ import {
   searchAssessmentParcels,
   searchAssessmentParcelsByRolls,
   searchAssessmentParcelsExpanded,
-  parseCsv,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
   fetchCityZoning,
@@ -94,6 +93,8 @@ import {
   featureCentroid as shapeFeatureCentroid,
   rowCentroid as shapeRowCentroid,
 } from './lib/shapeFilter.js';
+import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
+import { initSalesPasteImport } from './lib/salesPasteImport.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
@@ -177,6 +178,11 @@ let lastFullAssessFc = { type: 'FeatureCollection', features: [] };
 let lastCountBase = '';
 let lastSalesCountBase = '';
 let lastSalesCountError = false;
+// Recent sales uploads — see the Recent-uploads section further down.
+// Up here for the same temporal-dead-zone reason: wireSalesTab() calls
+// populateRecentUploads() during module evaluation.
+const RECENT_STORAGE_KEY = 'wpg_recent_sales_csvs_v1';
+const RECENT_CAP = 5;
 
 // Map of row key -> feature for the table-row → map-fly handler. The key
 // is the same string we put on data-row-key (e.g. "a:13052686500"); the
@@ -253,6 +259,9 @@ const SORT_KEYS = {
   instrument:   (r) => strKey(r.assess?.properties?._saleInstrument),
   propertyType: (r) => strKey(r.assess?.properties?._salePropertyType),
   groupSize:    (r) => finiteOrNeg(r.assess?.properties?._saleGroupSize),
+  swornValue:   (r) => finiteOrNeg(r.assess?.properties?._saleSwornValue),
+  numUnits:     (r) => finiteOrNeg(r.assess?.properties?._saleNumUnits),
+  saleZoning:   (r) => strKey(r.assess?.properties?._saleZoning),
 };
 
 // Numeric-smart string key: if the value looks like a number, compare it
@@ -2752,12 +2761,10 @@ let salesPucsFilter = null;
 // before render and abort if a newer run has started.
 let salesRunToken = 0;
 
-// Required columns the CSV must contain. The parser is tolerant
-// of extra columns and surrounding whitespace, but missing any of
-// these surfaces an error in the sidebar status.
-const SALES_REQUIRED_COLS = [
-  'Parcel ID', 'Sale Dates', 'Sold Price', 'Instrument Number',
-];
+// The required-column list now lives in lib/salesImport.js alongside the
+// header aliases that satisfy it, so the schema and the vocabulary that
+// maps onto it can't drift apart. describeHeaderProblem() turns a
+// failure into the message shown in the sidebar status.
 
 // normalizeRoll + dedupAndGroupSales live in lib/sales.js (pure, tested
 // in test/sales.test.js); imported at the top of this file.
@@ -2780,7 +2787,7 @@ function wireSalesTab() {
 
   $fileInput.addEventListener('change', () => {
     const file = $fileInput.files?.[0];
-    if (file) loadSalesCsv(file);
+    if (file) loadSalesFile(file);
     // Reset so re-selecting the same file re-fires change.
     $fileInput.value = '';
   });
@@ -2799,8 +2806,43 @@ function wireSalesTab() {
     e.preventDefault();
     $dropzone.classList.remove('drag-over');
     const file = e.dataTransfer?.files?.[0];
-    if (file) loadSalesCsv(file);
+    if (file) loadSalesFile(file);
   });
+
+  // "Paste data…" — opens the single-step paste modal. Its Load button
+  // hands { name, text } to the same pipeline the dropzone feeds, then
+  // hops to the Sales tab so the user lands on the result.
+  const salesImportModal = initSalesPasteImport({
+    onSubmit: async ({ name, text }) => {
+      await handleSalesUpload({ name, text });
+      setActiveTab('sales', { skipFocus: true });
+    },
+  });
+  document.getElementById('sales-import-trigger')
+    ?.addEventListener('click', () => salesImportModal.open());
+
+  // Recent uploads — picker + Forget-all. Picking an entry replays the
+  // cached text; `remember: false` because it is already cached and a
+  // replay shouldn't reshuffle the list under the user's cursor.
+  const $recentSelect = document.getElementById('recent-uploads-select');
+  const $recentClear  = document.getElementById('recent-uploads-clear');
+  if ($recentSelect) {
+    $recentSelect.addEventListener('change', async () => {
+      const name = $recentSelect.value;
+      $recentSelect.value = '';
+      if (!name) return;
+      const entry = loadRecentUploads().find((e) => e.name === name);
+      if (!entry) return;
+      await handleSalesUpload({ name: entry.name, text: entry.text }, false);
+    });
+  }
+  if ($recentClear) {
+    $recentClear.addEventListener('click', () => {
+      saveRecentUploads([]);
+      populateRecentUploads();
+    });
+  }
+  populateRecentUploads();
 
   // Subject-roll chip input. Same lib as #roll; hidden input
   // #subject-roll holds the canonical value. Re-runs the analysis
@@ -2975,28 +3017,69 @@ function rebuildPucsFilter() {
 // only stops accidental or pathological inputs (self-inflicted DoS).
 const MAX_SALES_CSV_BYTES = 25 * 1024 * 1024;
 
-async function loadSalesCsv(file) {
+/**
+ * Read a dropped / picked File and hand it to handleSalesUpload. The
+ * size guard runs here, on the File, so a pathological file is rejected
+ * before it is read into memory.
+ */
+async function loadSalesFile(file) {
+  if (!file) return;
+  if (file.size > MAX_SALES_CSV_BYTES) {
+    setSalesCount(
+      `${file.name} is ${(file.size / 1e6).toFixed(1)} MB — too large (max ${MAX_SALES_CSV_BYTES / 1e6} MB). Trim the file and retry.`,
+      true,
+    );
+    return;
+  }
+  setSalesCount(`Reading ${file.name}…`);
+  let text;
   try {
-    if (file.size > MAX_SALES_CSV_BYTES) {
+    text = await file.text();
+  } catch (err) {
+    console.warn('Sales file read failed:', err);
+    setSalesCount(`Couldn't read ${file.name}: ${err.message || 'unknown error'}.`, true);
+    return;
+  }
+  await handleSalesUpload({ name: file.name, text });
+}
+
+/**
+ * The single sales-load pipeline. Every entry point funnels through
+ * here — the dropzone / file picker (via loadSalesFile), the "Paste
+ * data…" modal, and a Recent-uploads replay — so a pasted SABRE block
+ * and an uploaded CSV behave identically from this point on.
+ *
+ * @param {{ name: string, text: string }} payload
+ * @param {boolean} [remember=true] cache in Recent uploads. False when
+ *   replaying an entry that is already cached.
+ */
+async function handleSalesUpload({ name, text }, remember = true) {
+  const label = name || 'pasted data';
+  try {
+    if (String(text || '').length > MAX_SALES_CSV_BYTES) {
       setSalesCount(
-        `${file.name} is ${(file.size / 1e6).toFixed(1)} MB — too large (max ${MAX_SALES_CSV_BYTES / 1e6} MB). Trim the file and retry.`,
+        `That input is too large (max ${MAX_SALES_CSV_BYTES / 1e6} MB). Trim it and retry.`,
         true,
       );
       return;
     }
-    setSalesCount(`Reading ${file.name}…`);
-    const text = await file.text();
-    const rows = parseSalesCsv(text);
-    if (!rows.length) {
-      setSalesCount(`No data rows found in ${file.name}.`, true);
+    setSalesCount(`Reading ${label}…`);
+    const parsed = parseSalesText(text);
+    // Header trouble comes first: "no data rows" is a misleading way to
+    // report a block whose columns simply weren't recognised. The
+    // message names the missing canonicals AND echoes the headers that
+    // were actually seen, so an unrecognised SABRE header can be read
+    // off the screen and added to SALES_HEADER_ALIASES.
+    const headerProblem = describeHeaderProblem(parsed);
+    if (headerProblem) {
+      setSalesCount(`${label}: ${headerProblem}`, true);
       return;
     }
-    const missing = SALES_REQUIRED_COLS.filter((c) => !(c in rows[0]));
-    if (missing.length) {
-      setSalesCount(`CSV is missing required column(s): ${missing.join(', ')}.`, true);
+    if (!parsed.rows.length) {
+      setSalesCount(`No data rows found in ${label}.`, true);
       return;
     }
-    salesData = dedupAndGroupSales(rows);
+    salesData = dedupAndGroupSales(parsed.rows);
     // Fresh CSV = fresh filter. The user's previous PUCS picks
     // don't carry across uploads (different sale sets, different
     // codes).
@@ -3008,35 +3091,76 @@ async function loadSalesCsv(file) {
     // NB: only on UPLOAD — the sentinel/PUCS/date filters re-run
     // runSalesAnalysis constantly and must not cost the user their shape.
     resetShapesSilently();
+    // Cache for the Recent-uploads picker only once the load has
+    // actually succeeded — a rejected block (wrong headers, no rows) is
+    // not worth offering to replay.
+    if (remember) rememberUpload(label, text);
     await runSalesAnalysis();
   } catch (err) {
-    console.warn('Sales CSV load failed:', err);
-    setSalesCount(`Couldn't read ${file.name}: ${err.message || 'unknown error'}.`, true);
+    console.warn('Sales load failed:', err);
+    setSalesCount(`Couldn't read ${label}: ${err.message || 'unknown error'}.`, true);
   }
 }
 
-/**
- * Sales-CSV row parser — array of header-keyed objects. Defers the
- * row tokenization to soda.js's parseCsv so quoted fields, embedded
- * commas, and "" escapes Just Work the day the City exporter starts
- * quoting (the prior split-based parser would silently corrupt those
- * rows). Whitespace trimmed from each cell per the existing contract.
- */
-function parseSalesCsv(text) {
-  const rows = parseCsv(text);
-  if (rows.length < 2) return [];
-  const headers = rows[0].map((h) => h.trim());
-  const out = [];
-  for (let i = 1; i < rows.length; i++) {
-    const cells = rows[i];
-    if (cells.length === 1 && !String(cells[0] ?? '').trim()) continue;
-    const row = {};
-    for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = String(cells[j] ?? '').trim();
-    }
-    out.push(row);
+// ---------- Recent uploads ----------
+//
+// Last N sales inputs cached in localStorage, each { name, text, ts }
+// where `text` is the raw CSV / pasted block. A realistic sales export
+// is tens of KB, so 5 entries sit comfortably under the ~5 MB quota.
+// Picking one replays it through handleSalesUpload — the same pipeline
+// the dropzone and the paste modal use.
+
+// (RECENT_STORAGE_KEY / RECENT_CAP are declared at the top of this file
+// — wireSalesTab() calls populateRecentUploads() during module
+// evaluation, so a const down here would still be in its temporal dead
+// zone. loadRecentUploads' catch would swallow the ReferenceError and
+// return [], leaving the picker permanently empty on a fresh load.)
+
+function loadRecentUploads() {
+  try {
+    const raw = localStorage.getItem(RECENT_STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.slice(0, RECENT_CAP) : [];
+  } catch { return []; }
+}
+
+function saveRecentUploads(list) {
+  try {
+    localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(list.slice(0, RECENT_CAP)));
+  } catch { /* quota / private mode — best-effort */ }
+}
+
+function rememberUpload(name, text) {
+  if (!name || !text) return;
+  // De-dup by name, newest first. Re-loading the same file refreshes
+  // both the timestamp and the cached text, which is what you want when
+  // the export picks up new sales between sessions.
+  const list = loadRecentUploads().filter((e) => e.name !== name);
+  list.unshift({ name, text, ts: Date.now() });
+  saveRecentUploads(list);
+  populateRecentUploads();
+}
+
+function populateRecentUploads() {
+  const $row    = document.getElementById('recent-uploads-row');
+  const $select = document.getElementById('recent-uploads-select');
+  if (!$row || !$select) return;
+  const list = loadRecentUploads();
+  $select.innerHTML = '';
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = list.length ? 'Pick a recent CSV…' : '—';
+  $select.appendChild(blank);
+  for (const e of list) {
+    const opt = document.createElement('option');
+    opt.value = e.name;
+    const dt = new Date(e.ts || 0);
+    const ts = Number.isFinite(dt.valueOf()) ? dt.toISOString().slice(0, 10) : '';
+    opt.textContent = ts ? `${e.name} (${ts})` : e.name;
+    $select.appendChild(opt);
   }
-  return out;
+  $row.hidden = list.length === 0;
 }
 
 function setSalesCount(text, isError = false) {
@@ -3070,6 +3194,15 @@ async function runSalesAnalysis() {
   let visibleSales = hideSentinels
     ? salesData.sales.filter((s) => s.salePrice > 1)
     : salesData.sales.slice();
+  // SABRE writes a NOMINAL $1 Sold Price on non-arms-length transfers
+  // while the sworn value carries the real figure — a $1 sale with a
+  // $4.08M sworn value is a transfer worth knowing about, not noise.
+  // The sentinel filter still hides it (it is not a market sale and
+  // must not enter a comp set), but hiding a multi-million-dollar
+  // transfer without saying so would be the wrong kind of quiet.
+  const hiddenWithSworn = hideSentinels
+    ? salesData.sales.filter((s) => s.salePrice <= 1 && s.swornValue > 1).length
+    : 0;
   // PUCS multi-select. null = no filter; empty Set = "no codes
   // selected" which we treat as a deliberate "show nothing" (the
   // status message hints to use the All button).
@@ -3213,7 +3346,10 @@ async function runSalesAnalysis() {
   setSalesCount(
     `${rows.length} sale${rows.length === 1 ? '' : 's'} shown` +
     (repeatSales > 0 ? ` · ${repeatSales} repeat sale${repeatSales === 1 ? '' : 's'} of the same parcel` : '') +
-    (unmatched ? ` · ${unmatched} not in d4mq-wa44` : '')
+    (unmatched ? ` · ${unmatched} not in d4mq-wa44` : '') +
+    (hiddenWithSworn
+      ? ` · ${hiddenWithSworn} $0/$1 transfer${hiddenWithSworn === 1 ? '' : 's'} hidden despite a sworn value — untick the filter to inspect`
+      : '')
   );
 
   // Draw matched parcels on the map. Repeat sales share one polygon;

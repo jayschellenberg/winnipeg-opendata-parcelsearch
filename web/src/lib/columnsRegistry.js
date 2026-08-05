@@ -91,6 +91,21 @@ export const COLUMNS = [
     render: (a) => td(formatDollars(a._salePrice), 'num'),
     csv: { header: 'Sale Price', extract: (a) => a._salePrice } },
 
+  { key: 'swornValue',   header: 'Sworn',         mode: 'sales',  sortable: true,
+    theadTitle: 'Sworn (declared land-transfer) value, shown only when it differs from the Sale Price — a $1 sale price with a large sworn value marks a non-arms-length transfer. Never substituted into Sale Price.',
+    render: (a) => td(formatDollars(a._saleSwornValue), 'num'),
+    csv: { header: 'Sworn Value', extract: (a) => a._saleSwornValue } },
+
+  { key: 'numUnits',     header: 'Units',         mode: 'sales',  sortable: true,
+    theadTitle: 'Number of units on the parcel (max of Number of Unit across the sale’s component rows)',
+    render: (a) => td(a._saleNumUnits != null ? String(a._saleNumUnits) : null, 'num'),
+    csv: { header: 'Units', extract: (a) => a._saleNumUnits } },
+
+  { key: 'saleZoning',   header: 'Zoning (sale)', mode: 'sales',  sortable: true,
+    theadTitle: 'Zoning as recorded on the sale record, which can differ from the parcel’s current zoning',
+    render: (a) => td(a._saleZoning || null),
+    csv: { header: 'Zoning (sale)', extract: (a) => a._saleZoning } },
+
   { key: 'pricePerSf',   header: '$/Lot SF',      mode: 'sales',  sortable: true,
     theadTitle: 'Sale price ÷ Land Actual sqft. For multi-parcel sales, divides by the group total land.',
     render: (a) => td(formatDollars(a._pricePerSf), 'num'),

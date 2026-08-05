@@ -3231,3 +3231,205 @@ body.shape-drawing .maplibregl-canvas {
   white-space: nowrap;
 }
 .shape-radius-readout[hidden] { display: none; }
+
+/* ---------------------------------------------------------------------------
+   Sales Analysis — "Paste data…" affordance, Recent-uploads picker, and the
+   paste modal. Ported from the Manitoba sister app; the modal skin is new
+   here (this app had no <dialog> before) and follows the sidebar's own
+   panel/border tokens rather than MB's palette.
+   --------------------------------------------------------------------------- */
+.sales-paste-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-neutral-600, #52525b);
+}
+/* `.controls` prefix is required: the sidebar's own `.controls button`
+   rule paints every button in the panel as a solid brand-dark primary.
+   Paste is the ALTERNATIVE to the dropzone, not a competing call to
+   action, so it gets the secondary (white, bordered) treatment the
+   map-toggle buttons use. */
+.controls .sales-import-trigger {
+  min-height: 0;
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  background: #fff;
+  color: var(--color-primary-500, #1e293b);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.controls .sales-import-trigger:hover {
+  background: #fff;
+  border-color: var(--color-accent-500, #2563eb);
+  color: var(--color-accent-600, #1d4ed8);
+}
+.controls .sales-import-trigger:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: 1px;
+}
+
+.recent-uploads {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-neutral-600, #52525b);
+}
+.recent-uploads[hidden] { display: none; }
+.recent-uploads-label { flex: none; }
+.recent-uploads select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  font-family: inherit;
+  font-size: 12px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+  background: #fff;
+}
+/* Same `.controls` specificity note as .sales-import-trigger above. */
+.controls .recent-uploads-clear {
+  flex: none;
+  min-height: 0;
+  width: 24px;
+  padding: 3px 0;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--color-neutral-600, #52525b);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.controls .recent-uploads-clear:hover {
+  background: #fff;
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+/* The modal itself. <dialog> centres natively; ::backdrop dims the page. */
+.sales-modal {
+  width: min(720px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  color: var(--color-primary-500, #1e293b);
+  background: #fff;
+}
+.sales-modal::backdrop {
+  background: rgba(15, 23, 42, 0.45);
+}
+.sales-modal-inner { padding: 16px 18px 14px; }
+.sales-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.sales-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.sales-modal-close {
+  border: none;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  color: var(--color-neutral-600, #52525b);
+  font-family: inherit;
+}
+.sales-modal-close:hover { color: #b91c1c; }
+.sales-modal-help {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-neutral-700, #3f3f46);
+}
+.sales-modal-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+  resize: vertical;
+  /* Tab-separated pastes are wide; wrapping them makes the columns
+     unreadable, so scroll horizontally instead. */
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+.sales-modal-textarea:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: 1px;
+}
+.sales-modal-or {
+  margin: 10px 0 8px;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-neutral-500, #71717a);
+}
+.sales-modal-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-neutral-700, #3f3f46);
+}
+.sales-modal-file input[type="file"] { font-size: 12px; font-family: inherit; }
+.sales-modal-error {
+  margin-top: 10px;
+  padding: 7px 9px;
+  border-radius: 4px;
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.sales-modal-error[hidden] { display: none; }
+.sales-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.sales-modal-btn {
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  background: #fff;
+  color: var(--color-primary-500, #1e293b);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sales-modal-btn:hover { border-color: var(--color-accent-500, #2563eb); }
+.sales-modal-btn.primary {
+  background: var(--color-accent-500, #2563eb);
+  border-color: var(--color-accent-500, #2563eb);
+  color: #fff;
+  font-weight: 500;
+}
+.sales-modal-btn.primary:hover { background: var(--color-accent-600, #1d4ed8); }
+.sales-modal-btn:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: 1px;
+}

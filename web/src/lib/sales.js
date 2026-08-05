@@ -35,12 +35,19 @@ export function dedupAndGroupSales(rows) {
     const key = `${roll}|${inst}`;
     const existing = merged.get(key);
     const livingArea = Number.parseFloat(r['Living Area']) || 0;
+    const numUnits = Number.parseInt(r['Number of Unit'], 10) || null;
     if (!existing) {
       merged.set(key, {
         roll,
         instrument: inst,
         saleDate: r['Sale Dates'] || null,
         salePrice: Number.parseFloat(r['Sold Price']) || 0,
+        // Value declared for land-transfer purposes. Carried separately
+        // from salePrice and never substituted into it: a $1 Sold Price
+        // with a large sworn value is a non-arms-length transfer, and
+        // collapsing the two would launder it into the comp set as a
+        // market sale. See the sentinel note in main.js.
+        swornValue: Number.parseFloat(r['Sworn Value']) || 0,
         landSf: Number.parseFloat(r['Land Actual sqft']) || 0,
         landAssessedSf: Number.parseFloat(r['Land Assessed sqft']) || 0,
         livingArea,
@@ -48,10 +55,11 @@ export function dedupAndGroupSales(rows) {
         useCode: r['Par Use Code'] || null,
         propertyType: r['Property Type'] || null,
         propertySubType: r['Property Sub Type'] || null,
+        zoning: r['Zoning'] || null,
         streetNumber: r['Street Number'] || null,
         streetDirection: r['Street Direction'] || null,
         streetName: r['Street Name'] || null,
-        numUnits: Number.parseInt(r['Number of Unit'], 10) || null,
+        numUnits,
       });
     } else {
       // Merge: same Parcel ID + same Instrument Number = multiple
@@ -66,6 +74,18 @@ export function dedupAndGroupSales(rows) {
         existing.yearBuilt = r['Year Built'];
       }
       if (!existing.useCode && r['Par Use Code']) existing.useCode = r['Par Use Code'];
+      if (!existing.zoning && r['Zoning']) existing.zoning = r['Zoning'];
+      // SABRE enumerates a multi-unit parcel one row per unit, with
+      // Number of Unit running 1..N (six rows for 185 BANNERMAN). The
+      // first row's value is 1, so keeping it would report a six-unit
+      // property as one unit — the MAX is the count.
+      if (numUnits != null && (existing.numUnits == null || numUnits > existing.numUnits)) {
+        existing.numUnits = numUnits;
+      }
+      // Sworn value is a sale-level figure repeated on every component
+      // row; keep the largest in case a component row leaves it blank.
+      const sworn = Number.parseFloat(r['Sworn Value']) || 0;
+      if (sworn > existing.swornValue) existing.swornValue = sworn;
     }
   }
   const sales = Array.from(merged.values());
@@ -127,6 +147,14 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     p._salePropertyType = sale.propertyType;
     p._saleLivingArea = sale.livingArea > 0 ? sale.livingArea : null;
     p._saleYearBuilt = sale.yearBuilt;
+    p._saleZoning = sale.zoning || null;
+    p._saleNumUnits = sale.numUnits ?? null;
+    // Only surfaced when it actually says something the Sale Price
+    // doesn't — i.e. a nominal/sentinel price hiding a real declared
+    // value. Showing it on every row would just duplicate Sale Price.
+    p._saleSwornValue = (sale.swornValue > 0 && sale.swornValue !== sale.salePrice)
+      ? sale.swornValue
+      : null;
     let landSf = sale.landSf;
     if (isMulti) {
       landSf = group.reduce((sum, g) => sum + (g.landSf || 0), 0);
