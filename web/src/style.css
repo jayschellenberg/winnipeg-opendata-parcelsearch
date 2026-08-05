@@ -3433,3 +3433,47 @@ body.shape-drawing .maplibregl-canvas {
   outline: 2px solid var(--color-accent-500, #2563eb);
   outline-offset: 1px;
 }
+
+/* ---------------------------------------------------------------------------
+   Collapsible overlay group (Historical). A <details> spanning both grid
+   columns, whose body re-establishes the same 2-column grid so the
+   expanded state looks exactly like the old always-open markup.
+   --------------------------------------------------------------------------- */
+.sidebar .overlay-grid .overlay-group-collapse {
+  grid-column: 1 / -1;
+}
+.sidebar .overlay-grid .overlay-group-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  /* Suppress the native disclosure triangle in favour of the caret
+     below, which inherits the group-title colour. */
+  list-style: none;
+}
+.sidebar .overlay-grid .overlay-group-summary::-webkit-details-marker {
+  display: none;
+}
+.sidebar .overlay-grid .overlay-group-summary::before {
+  content: '';
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform 120ms ease;
+}
+.sidebar .overlay-grid .overlay-group-collapse[open] > .overlay-group-summary::before {
+  transform: rotate(90deg);
+}
+.sidebar .overlay-grid .overlay-group-summary:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: 2px;
+}
+.sidebar .overlay-grid .overlay-group-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
