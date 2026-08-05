@@ -93,6 +93,12 @@ $reminder = @(
   '(Remove the superseded snapshot dir from wpg-parcel-history first if the',
   'retention prune deleted its archive source; see r\prune_snapshots.R.)',
   '',
+  'NOT part of this reminder: the citywide PARCEL TILES. They rebuild and',
+  'deploy themselves on the 2nd of every even month - including tomorrow -',
+  'via WpgParcelTilesBiMonthly -> r\rebuild_tiles.ps1. Do not rebuild them',
+  'by hand just because a snapshot landed; the historical shards above are',
+  'the only thing this capture still needs from you.',
+  '',
   "Log: $log"
 ) -join "`n"
 Log 'REMINDER: snapshot archived - run the historical shard rebuild to advance the app (see email / script header).'

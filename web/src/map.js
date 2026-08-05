@@ -2230,6 +2230,34 @@ let _citywideTilesAvailable = null;
 // attributes can disagree with live data — the popup says so. Null when the
 // sidecar is missing (pre-sidecar tile builds): the popup just omits the line.
 let _citywideBuiltDate = null;
+
+// Console-only staleness backstop for the citywide tiles, in the same spirit
+// as the historical-pin check in soda.js (audit H-1). The archive rebuilds on
+// the 2nd of every even month (WpgParcelTilesBiMonthly -> r/rebuild_tiles.ps1),
+// so a healthy one is at most ~62 days old.
+//
+// This catches the one failure the server-side heartbeat in r/refresh_assets.ps1
+// cannot: the scheduler machine being off, or every task disabled — no job runs
+// to notice that no job ran. Here the signal comes from the deployed app, which
+// only needs a visitor. Console-only, so normal users never see it.
+//
+// 90 days = two consecutive missed rebuilds. Anything tighter would cry wolf on
+// a single run that merely started late (StartWhenAvailable defers to logon).
+const TILE_STALE_DAYS = 90;
+function warnIfTilesStale(builtDate) {
+  const built = Date.parse(`${builtDate}T00:00:00Z`);
+  if (!Number.isFinite(built)) return;
+  const ageDays = Math.floor((Date.now() - built) / 86_400_000);
+  if (ageDays > TILE_STALE_DAYS) {
+    console.warn(
+      `[citywide-parcels] tile archive is ${ageDays} days old (built ${builtDate}) — the `
+      + `bi-monthly rebuild has not published since. Check the WpgParcelTilesBiMonthly `
+      + `scheduled task and r/rebuild_tiles.ps1; parcels created since then are missing `
+      + `from Show All Parcels and Dwelling Units.`
+    );
+  }
+}
+
 export async function probeCitywideParcels() {
   if (_citywideTilesAvailable !== null) return _citywideTilesAvailable;
   try {
@@ -2245,7 +2273,10 @@ export async function probeCitywideParcels() {
       .then((r) => (r.ok ? r.json() : null))
       .then((meta) => {
         const d = meta?.built;
-        if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) _citywideBuiltDate = d;
+        if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+          _citywideBuiltDate = d;
+          warnIfTilesStale(d);
+        }
       })
       .catch(() => { /* sidecar optional */ });
   }

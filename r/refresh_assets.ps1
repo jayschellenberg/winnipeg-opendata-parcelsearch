@@ -36,13 +36,13 @@ function Mail-Fail($why) {
 Log '=== refresh transit + neighbourhood static assets ==='
 
 # --- Snapshot-age heartbeat (alert on ABSENCE, not just failure) -----------
-# Runs FIRST so every quarterly invocation checks it — the common "no asset
+# Runs FIRST so every quarterly invocation checks it - the common "no asset
 # changes" outcome exits early below and must not skip the tripwire. If the
 # newest canonical AssessmentParcels snapshot is older than ~6.5 months
 # (semi-annual cadence + a few weeks grace), email + a STALE marker at the
 # archive root. Non-fatal to the asset refresh either way.
 # 200 (not 245): a silently-missed June run leaves the newest snapshot ~212
-# days old at the July 1 heartbeat — 200 catches it there instead of Oct 1.
+# days old at the July 1 heartbeat - 200 catches it there instead of Oct 1.
 # Healthy ages at check time never exceed ~122 days + StartWhenAvailable slack.
 $maxAgeDays = 200
 try {
@@ -68,6 +68,41 @@ try {
   }
 } catch {
   Log "snapshot heartbeat check errored (non-fatal): $($_.Exception.Message)"
+}
+
+# --- Parcel-tile-age heartbeat (alert on ABSENCE) --------------------------
+# Same reasoning as the snapshot heartbeat above, for the bi-monthly tile
+# rebuild (WpgParcelTilesBiMonthly -> r/rebuild_tiles.ps1). A FAILED run emails
+# for itself; this is the tripwire for the run that NEVER STARTS - a disabled
+# task, or a machine that was off through the whole window.
+#
+# 80 days: this job runs Jan/Apr/Jul/Oct 1 and tiles rebuild on the 2nd of even
+# months, so the newest healthy build seen here is ~60 days old (Oct 1 sees the
+# Aug 2 build). One missed rebuild pushes that to ~120, which 80 catches at the
+# very next quarterly check instead of a quarter later.
+#
+# Reads the same committed sidecar the app serves, so this alarm and the
+# overlay's "Tile snapshot as of" line can never disagree.
+$maxTileAgeDays = 80
+try {
+  $metaPath = Join-Path $repo 'web\public\parcels-pmtiles-meta.json'
+  if (-not (Test-Path $metaPath)) {
+    $why = "tile heartbeat: no parcels-pmtiles-meta.json at $metaPath - the citywide overlay may never have been built."
+    Log "WARNING: $why"; Mail-Fail $why
+  } else {
+    $built = (Get-Content $metaPath -Raw | ConvertFrom-Json).built
+    $builtDate = [datetime]::ParseExact($built, 'yyyy-MM-dd', $null)
+    $tileAge = [int]((Get-Date) - $builtDate).TotalDays
+    Log "tile heartbeat: parcels.pmtiles built $built ($tileAge days old; limit $maxTileAgeDays)"
+    if ($tileAge -gt $maxTileAgeDays) {
+      $why = "tile heartbeat: the citywide parcel tiles are $tileAge days old (> $maxTileAgeDays). The bi-monthly rebuild likely never fired - run r\rebuild_tiles.ps1 manually and check the WpgParcelTilesBiMonthly task."
+      Log "WARNING: $why"; Mail-Fail $why
+      @("$(Get-Date -Format 's')  tile heartbeat tripped", "Reason: $why") |
+        Set-Content -Path (Join-Path $archiveRoot ("STALE-tiles-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))
+    }
+  }
+} catch {
+  Log "tile heartbeat check errored (non-fatal): $($_.Exception.Message)"
 }
 
 Log 'npm run refresh:transit'
