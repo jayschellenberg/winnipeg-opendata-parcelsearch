@@ -80,6 +80,20 @@ import {
   setHistoricalData, setHistoricalVisible,
   setHistoricalZoningData, setHistoricalZoningVisible,
 } from './map.js';
+import {
+  getShapes as getMapShapes,
+  resetShapesSilently,
+  onShapesChanged,
+} from './drawShapes.js';
+// Aliased: main.js already has its own featureCentroid for the sales-tab
+// subject distance, which returns a [lon, lat] ARRAY from the
+// centroid_lat/lon properties only. The shape-filter pair returns
+// {lng, lat} and reads real geometry — different contracts, kept apart.
+import {
+  passesShapeFilter,
+  featureCentroid as shapeFeatureCentroid,
+  rowCentroid as shapeRowCentroid,
+} from './lib/shapeFilter.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
@@ -138,8 +152,31 @@ const $historicalBanner = document.getElementById('historical-banner');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
-// Most recent table rows, kept around for CSV export.
+// Most recent table rows, kept around for CSV export. When a drawn-shape
+// area filter is active this holds the NARROWED set — export, sort and
+// the map all follow the table.
 let currentRows = [];
+
+// The unfiltered row set most recently handed to renderTable. Erasing a
+// shape re-runs the filter against this instead of re-searching, and a
+// search/enrichment re-render that lands while shapes are drawn narrows
+// consistently because renderTable is the single funnel.
+let fullRows = [];
+// Counts behind the "· X of Y shown (area filter)" clause setCount appends.
+let shapeShown = 0;
+let shapeTotal = 0;
+// Unfiltered FCs most recently pushed through setParcels, so a shape
+// change can re-narrow them without re-searching.
+let lastFullSurveyFc = { type: 'FeatureCollection', features: [] };
+let lastFullAssessFc = { type: 'FeatureCollection', features: [] };
+// Count messages WITHOUT the area-filter clause, so a shape change can
+// re-render each line without the caller handing the base text back.
+// Declared up here rather than beside setCount/setSalesCount because
+// wireSalesTab() calls setSalesCount during module evaluation — a `let`
+// further down the file is still in its temporal dead zone at that point.
+let lastCountBase = '';
+let lastSalesCountBase = '';
+let lastSalesCountError = false;
 
 // Map of row key -> feature for the table-row → map-fly handler. The key
 // is the same string we put on data-row-key (e.g. "a:13052686500"); the
@@ -148,11 +185,11 @@ let currentRows = [];
 const rowFeatureMap = new Map();
 
 // Zoning overlay state. `zoningMode` cycles 'off' -> 'shading' -> 'labels' ->
-// 'off' via the Zoning button; `lastParcelFc` is the most recent parcel FC
-// drawn on the map, kept so the toggle can fetch zones for the current results
-// without re-running the search.
+// 'off' via the Zoning button. Deferred sales-mode zoning enrichment reads
+// `lastFullAssessFc` (the unfiltered parcel FC most recently pushed through
+// setParcels) so it can fetch zones for the current results without
+// re-running the search.
 let zoningMode = 'off';
-let lastParcelFc = null;
 let lastSurveyFc = { type: 'FeatureCollection', features: [] };
 let trafficEnabled = false;
 let trafficLoaded = false;
@@ -630,7 +667,10 @@ for (const th of document.querySelectorAll('#results th[data-col]')) {
       currentSort = { col, dir: 'asc' };
     }
     updateSortIndicators();
-    if (currentRows.length > 0) renderTable(currentRows);
+    // Re-render from the UNFILTERED set: renderTable re-applies any
+    // drawn-shape filter itself, and handing it currentRows (already
+    // narrowed) would bake the narrowing in permanently.
+    if (fullRows.length > 0) renderTable(fullRows);
     queueUrlWrite();
   });
 }
@@ -641,6 +681,11 @@ for (const th of document.querySelectorAll('#results th[data-col]')) {
 // the URL on the user's next edit.
 
 async function runSearch() {
+  // A stale include shape from a previous area would filter the new
+  // results down to nothing, so every fresh Search erases the drawn
+  // shapes. Silent: this run repopulates the table itself, and an emit
+  // here would re-filter the outgoing result set on the way out.
+  resetShapesSilently();
   // Property Search flips the body out of sales mode + restores the
   // property-mode column-visibility set (Quick lookup default or
   // whatever the user has persisted for property mode).
@@ -704,11 +749,16 @@ async function runSearch() {
  * the zoning toggle refresh without re-running the search. Triggers a
  * zoning refresh if the layer is currently enabled.
  */
-function setParcels(surveyFc, assessFc = EMPTY_FC) {
-  lastParcelFc = {
-    type: 'FeatureCollection',
-    features: [...surveyFc.features, ...assessFc.features],
-  };
+function setParcels(surveyFc, assessFc = EMPTY_FC, { fit = true } = {}) {
+  // Remember what was handed in BEFORE the area filter narrows it, so
+  // erasing a shape can restore the full set without a re-search.
+  lastFullSurveyFc = surveyFc;
+  lastFullAssessFc = assessFc;
+  const shapes = getMapShapes();
+  if (shapes.length > 0) {
+    surveyFc = filterFcByShapes(surveyFc, shapes);
+    assessFc = filterFcByShapes(assessFc, shapes);
+  }
   // Stash the survey FC separately so the dimensions overlay can tie
   // its edge labels to the legal-lot polygons only — assessment-parcel
   // edges describe building footprints, which aren't useful as "lot
@@ -723,11 +773,61 @@ function setParcels(surveyFc, assessFc = EMPTY_FC) {
   // (so the polygon is drawn once) while the TABLE keeps every row.
   const mapAssessFc = dedupeByGeometryHash(assessFc);
   mapReady.then(() => {
-    showResults(map, surveyFc, mapAssessFc);
+    showResults(map, surveyFc, mapAssessFc, { fit });
     refreshZoning();
     refreshDimensions();
   });
 }
+
+// ---------- Drawn-shape area filter ----------
+//
+// Radius / rectangle / polygon shapes drawn on the map (drawShapes.js)
+// narrow the rendered result set: table, map highlight, count line and
+// CSV export together. Shapes never re-query — they filter what the
+// search already returned — so erasing one restores the full set with
+// no network round-trip.
+//
+// Membership is tested on the parcel CENTROID (see lib/shapeFilter.js);
+// a row with no placeable centroid fails once any shape exists rather
+// than leaking into an area-narrowed comp set.
+
+function filterFcByShapes(fc, shapes) {
+  return {
+    ...fc,
+    features: (fc?.features || []).filter(
+      (f) => passesShapeFilter(shapeFeatureCentroid(f), shapes)
+    ),
+  };
+}
+
+/** " · 12 of 340 shown (area filter)" — appended by setCount /
+ *  setSalesCount so a filter the user can forget they drew, on a map
+ *  they may have panned away from, can never silently empty the grid. */
+function shapeFilterSuffix() {
+  if (getMapShapes().length === 0) return '';
+  return ` · ${shapeShown} of ${shapeTotal} parcels shown (area filter)`;
+}
+
+/**
+ * Re-run the area filter after a shape is committed, flipped
+ * include↔exclude, or erased. Re-renders from the remembered full sets,
+ * so no search re-runs.
+ *
+ * Deliberately does NOT re-fit the map (a divergence from the Manitoba
+ * app): the shape was just drawn in the current viewport, so the
+ * narrowed set is by definition already on screen, and moving the map
+ * out from under someone mid-draw — especially while they are about to
+ * cut an exclude hole — is worse than leaving it put. That also gives
+ * the zero-result case the right behaviour for free: the viewport keeps
+ * its geographic anchor while the count line reads "0 of N".
+ */
+function refilterByShapes() {
+  renderTable(fullRows);
+  setParcels(lastFullSurveyFc, lastFullAssessFc, { fit: false });
+  refreshCount();
+}
+
+onShapesChanged(refilterByShapes);
 
 /**
  * Toggle the survey-blue or assessment-red highlights on the map.
@@ -788,14 +888,18 @@ async function toggleZoning() {
     // load). When the user turns Zoning on, enrich the current sales FC +
     // re-render so the % / Zoning 2 columns fill in.
     if (document.body.classList.contains('sales-mode')
-        && lastParcelFc && lastParcelFc.features?.length
+        && lastFullAssessFc?.features?.length
         && salesData) {
       try {
-        const enriched = await enrichAssessmentZoning(lastParcelFc);
+        // Enrich the UNFILTERED sales FC. Reading lastParcelFc here
+        // would pick up an active area filter's narrowed set, and
+        // erasing the shape afterwards would come back short.
+        const enriched = await enrichAssessmentZoning(lastFullAssessFc);
         if (enriched?.features) {
-          lastParcelFc = enriched;
           const rows = enriched.features.map((f) => ({ assess: f, survey: null }));
           renderTable(rows);
+          setParcels(EMPTY_FC, enriched, { fit: false });
+          refreshCount();
         }
       } catch (zErr) {
         console.warn('Sales zoning enrichment failed (non-fatal):', zErr);
@@ -2118,6 +2222,12 @@ function historicalIsStale() {
 // ---------- UI helpers ----------
 
 function setCount(text) {
+  lastCountBase = text;
+  renderCount();
+}
+
+function renderCount() {
+  const text = lastCountBase ? lastCountBase + shapeFilterSuffix() : lastCountBase;
   $count.textContent = text;
   // Phase 5: mirror the same message into the prominent status bar
   // above the results table. Hidden when text is empty so a fresh
@@ -2132,6 +2242,12 @@ function setCount(text) {
       status.textContent = text;
     }
   }
+}
+
+/** Re-render both count lines against the current shape state. */
+function refreshCount() {
+  renderCount();
+  renderSalesCount();
 }
 
 function parcelCountMsg(n, fc) {
@@ -2176,23 +2292,41 @@ function clearAll() {
 function clearTable() {
   $tbody.innerHTML = '';
   currentRows = [];
+  fullRows = [];
+  shapeShown = 0;
+  shapeTotal = 0;
   setExportEnabled(false);
   showEmptyState(true);
   if ($parcelSummary) $parcelSummary.hidden = true;
 }
 
+/**
+ * Render `rows` into the results table. This is the single funnel for
+ * the drawn-shape area filter: the argument is always the FULL set for
+ * the current search, and any active shapes narrow it here. That way a
+ * late enrichment re-render (address back-fill, partial-lot detection)
+ * landing while shapes are drawn stays narrowed, and erasing a shape
+ * restores the full set from `fullRows` with no re-search.
+ */
 function renderTable(rows) {
+  fullRows = rows;
+  const shapes = getMapShapes();
+  const shown = shapes.length > 0
+    ? rows.filter((r) => passesShapeFilter(shapeRowCentroid(r), shapes))
+    : rows;
+  shapeShown = shown.length;
+  shapeTotal = rows.length;
   $tbody.innerHTML = '';
-  currentRows = rows;
+  currentRows = shown;
   rowFeatureMap.clear();
-  showEmptyState(rows.length === 0);
-  const sorted = sortRows(rows);
+  showEmptyState(shown.length === 0);
+  const sorted = sortRows(shown);
   // Stamp the dominant assessment year onto the column header so it
   // reads "Assess-2026" (or whatever year the source data carries).
   // Falls back to plain "Assessment" when the data lacks the field.
   const valueHeader = document.getElementById('value-header');
   if (valueHeader) {
-    const years = rows
+    const years = shown
       .map((r) => r.assess?.properties?.current_assessment_year)
       .filter(Boolean);
     if (years.length) {
@@ -2268,7 +2402,7 @@ function renderTable(rows) {
     frag.appendChild(tr);
   }
   $tbody.appendChild(frag);
-  setExportEnabled(rows.length > 0);
+  setExportEnabled(shown.length > 0);
   // Phase 5: reapply column visibility so newly-built rows pick up
   // the user's hidden-column choices.
   applyColumnVisibility();
@@ -2868,6 +3002,12 @@ async function loadSalesCsv(file) {
     // codes).
     salesPucsFilter = null;
     rebuildPucsFilter();
+    // Same reasoning for drawn area shapes: a stale include shape over
+    // the previous CSV's neighbourhood would filter the new sale set to
+    // nothing. Silent because runSalesAnalysis repopulates the table.
+    // NB: only on UPLOAD — the sentinel/PUCS/date filters re-run
+    // runSalesAnalysis constantly and must not cost the user their shape.
+    resetShapesSilently();
     await runSalesAnalysis();
   } catch (err) {
     console.warn('Sales CSV load failed:', err);
@@ -2900,10 +3040,21 @@ function parseSalesCsv(text) {
 }
 
 function setSalesCount(text, isError = false) {
+  lastSalesCountBase = text || '';
+  lastSalesCountError = !!isError;
+  renderSalesCount();
+}
+
+function renderSalesCount() {
   const el = document.getElementById('sales-count');
   if (!el) return;
-  el.textContent = text || '';
-  el.classList.toggle('results-status-error', !!isError && !!text);
+  // The area-filter clause rides on the sales count too — a drawn shape
+  // narrows a sales comp set exactly as it narrows a property search.
+  const text = lastSalesCountBase
+    ? lastSalesCountBase + shapeFilterSuffix()
+    : '';
+  el.textContent = text;
+  el.classList.toggle('results-status-error', lastSalesCountError && !!text);
 }
 
 /**
@@ -3051,9 +3202,9 @@ async function runSalesAnalysis() {
 
   // Zoning is deferred: even with the Zoning overlay toggle ON,
   // we don't auto-fetch zoning for every sale row. The toggle
-  // handler picks up the current parcel FC and runs
-  // enrichAssessmentZoning then re-renders. See toggleZoning.
-  lastParcelFc = saleFc;
+  // handler picks up the current parcel FC (lastFullAssessFc, set by
+  // the setParcels call below) and runs enrichAssessmentZoning then
+  // re-renders. See toggleZoning.
   lastSurveyFc = EMPTY_FC;
 
   const rows = saleFc.features.map((f) => ({ assess: f, survey: null }));

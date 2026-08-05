@@ -17,6 +17,12 @@ import turfArea from '@turf/area';
 import turfLength from '@turf/length';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+import {
+  addShapeLayers,
+  initShapeDraw,
+  shapeClickHandled,
+  isShapeDrawing,
+} from './drawShapes.js';
 
 // mapbox-gl-draw was written against the Mapbox GL `mapboxgl-*` DOM
 // class names; MapLibre uses `maplibregl-*`. Patch the lookup table
@@ -359,6 +365,14 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
   });
   map.addControl(measureDraw);
   map.addControl(new MeasureControl(measureDraw), 'top-right');
+
+  // Area-selection draw tools. Deliberately NOT sharing the MapboxDraw
+  // instance above — the measure tool owns its modes/styles/deleteAll
+  // lifecycle and has already broken once on a neighbouring control's
+  // change. Wired here, before setupLayers registers the layer popup
+  // handlers, so drawShapes' general click handler runs first and can
+  // mark an event consumed (see shapeClickHandled).
+  initShapeDraw(map);
 
   const ready = new Promise((resolve) => {
     // MapLibre 4.x's 'load' event is unreliable — the Manitoba sister app
@@ -1294,6 +1308,12 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       });
       map.on('mousemove', (e) => {
         if (!map.isStyleLoaded()) return;
+        // Stand down while an area-selection tool is armed: the hover
+        // popup would sit on top of the exact point being aimed at.
+        if (isShapeDrawing()) {
+          popup.remove();
+          return;
+        }
         const dwellingHits = DWELLING_LAYER_IDS
           .filter((id) => map.getLayer(id))
           .flatMap((id) => map.queryRenderedFeatures(e.point, { layers: [id] }));
@@ -1341,6 +1361,9 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // blue lot or the red building outline lands on the row.
       if (onFeatureClick) {
         const handle = (e) => {
+          // A click that placed shape geometry, or flipped a drawn
+          // shape's Include/Exclude, is not a parcel click.
+          if (shapeClickHandled(map, e)) return;
           const key = e.features?.[0]?.properties?._rowKey;
           if (key != null) onFeatureClick(key);
         };
@@ -1357,6 +1380,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // already handle the interaction.
       const citywideClickPopup = new maplibregl.Popup({ closeButton: true });
       map.on('click', 'citywide-parcels-fill', (e) => {
+        if (shapeClickHandled(map, e)) return;
         if (map.getLayoutProperty('citywide-parcels-fill', 'visibility') !== 'visible') return;
         // Search-result layer takes precedence.
         const overSearchResult =
@@ -1384,6 +1408,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
 
       const dwellingClickPopup = new maplibregl.Popup({ closeButton: true });
       const handleDwellingClick = (e) => {
+        if (shapeClickHandled(map, e)) return;
         const feature = e.features?.[0];
         if (!feature) return;
         dwellingClickPopup
@@ -1400,6 +1425,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // Manitoba registry page for that site.
       const contamPopup = new maplibregl.Popup({ closeButton: true });
       map.on('click', 'contam-circle', (e) => {
+        if (shapeClickHandled(map, e)) return;
         const p = e.features?.[0]?.properties;
         if (!p) return;
         contamPopup
@@ -1421,6 +1447,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // through to whatever's underneath, including parcel-fill above it).
       const zoningPopup = new maplibregl.Popup({ closeButton: true });
       map.on('click', 'zoning-fill', (e) => {
+        if (shapeClickHandled(map, e)) return;
         // Don't intercept the click if a parcel was also under it — let the
         // parcel handler win since that's the user's primary interest.
         const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
@@ -1446,6 +1473,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // and an overlay still scrolls the table to the parcel's row.
       const policyPopup = new maplibregl.Popup({ closeButton: true });
       const policyClick = (htmlBuilder) => (e) => {
+        if (shapeClickHandled(map, e)) return;
         const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
         if (parcelHit.length > 0) return;
         const p = e.features?.[0]?.properties;
@@ -1483,6 +1511,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
 
       const transitPopup = new maplibregl.Popup({ closeButton: true });
       map.on('click', 'transit-stops-circle', (e) => {
+        if (shapeClickHandled(map, e)) return;
         const p = e.features?.[0]?.properties;
         if (!p) return;
         const code = p.stop_code ? escapeHtml(p.stop_code) : '';
@@ -1501,6 +1530,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         transitPopup.setLngLat(e.lngLat).setHTML(html).addTo(map);
       });
       map.on('click', 'transit-routes-line', (e) => {
+        if (shapeClickHandled(map, e)) return;
         const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
         if (parcelHit.length > 0) return;
         const p = e.features?.[0]?.properties;
@@ -1552,6 +1582,10 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         className: 'hood-hover-popup',
       });
       const hoodHoverHandler = (labelKey) => (e) => {
+        if (isShapeDrawing()) {
+          hoodHoverPopup.remove();
+          return;
+        }
         const layerId = e.features?.[0]?.layer?.id;
         if (!layerId || map.getLayoutProperty(layerId, 'visibility') !== 'visible') {
           hoodHoverPopup.remove();
@@ -1582,6 +1616,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
 
       const trafficPopup = new maplibregl.Popup({ closeButton: true });
       const trafficClick = (e) => {
+        if (shapeClickHandled(map, e)) return;
         const p = e.features?.[0]?.properties;
         if (!p) return;
         trafficPopup.setLngLat(e.lngLat).setHTML(trafficPopupHtml(p)).addTo(map);
@@ -1676,6 +1711,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       const histClickPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
       const wireHist = (layerId, htmlFn, deferTo = []) => {
         map.on('click', layerId, (e) => {
+          if (shapeClickHandled(map, e)) return;
           if (map.getLayoutProperty(layerId, 'visibility') !== 'visible') return;
           for (const other of deferTo) {
             if (map.getLayer(other)
@@ -1723,6 +1759,12 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       for (const id of NEIGHBOURHOOD_TOP_LAYERS) {
         if (map.getLayer(id)) map.moveLayer(id);
       }
+
+      // Area-selection shapes go in LAST — after every overlay and
+      // after the moveLayer reordering above — so a shape the user
+      // just drew can never hide beneath a parcel or basemap-reference
+      // layer.
+      addShapeLayers(map);
     }
   });
 
@@ -1740,9 +1782,19 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
  * be empty (e.g. a survey-by-plan search where nothing assessment-side
  * matched), in which case only the populated layer drives the bbox.
  */
-export function showResults(map, surveyFc, assessFc = { type: 'FeatureCollection', features: [] }) {
+export function showResults(
+  map,
+  surveyFc,
+  assessFc = { type: 'FeatureCollection', features: [] },
+  { fit = true } = {},
+) {
   map.getSource('parcel-results').setData(surveyFc);
   map.getSource('assess-context').setData(assessFc);
+  // `fit: false` is for re-renders driven by a drawn-shape area filter:
+  // the shape was placed in the current viewport, so the narrowed set is
+  // already on screen and re-framing (or, at zero results, snapping back
+  // to the whole city) would only throw away the user's anchor.
+  if (!fit) return;
   const allFeatures = [...surveyFc.features, ...assessFc.features];
   if (allFeatures.length === 0) {
     map.flyTo({ center: WINNIPEG_CENTER, zoom: 11 });

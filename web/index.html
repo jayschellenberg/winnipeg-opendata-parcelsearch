@@ -47,6 +47,16 @@
           </svg>
           <span class="map-expand-label">Expand map</span>
         </button>
+        <!-- Area-selection draw tools. Shapes narrow whatever the
+             results table currently holds (table + map + count line +
+             export together). Icon-only to keep the topbar compact;
+             each title spells out the gesture. Wired by drawShapes.js. -->
+        <span id="shape-tools" class="shape-tools" role="group" aria-label="Area selection tools">
+          <button type="button" id="shape-tool-circle" class="shape-tool-btn" title="Draw radius — click the centre on the map, then click again to set the radius. Click a finished shape to flip Include/Exclude; Esc cancels.">◯</button>
+          <button type="button" id="shape-tool-rectangle" class="shape-tool-btn" title="Draw rectangle — click one corner on the map, then the opposite corner. Click a finished shape to flip Include/Exclude; Esc cancels.">▭</button>
+          <button type="button" id="shape-tool-polygon" class="shape-tool-btn" title="Draw polygon — click vertices on the map; double-click or click the first vertex to close. Click a finished shape to flip Include/Exclude; Esc cancels.">⬠</button>
+          <button type="button" id="shape-tool-clear" class="shape-tool-btn" title="Clear all drawn shapes">⌫</button>
+        </span>
         <a
           class="topbar-link"
           href="https://manitoba-opendata-parcelsearch.vercel.app/"
