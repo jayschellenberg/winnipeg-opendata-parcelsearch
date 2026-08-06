@@ -271,6 +271,13 @@ const BASEMAP_STYLE = {
 // the year here keeping the list newest-first (prepend a newer year, append an
 // older one; same R2 host, so no vercel.json CSP change needed).
 // Empty ⇒ the control stays a 2-state streets<->satellite toggle (ships inert).
+//
+// This list and the bucket are checked against each other quarterly by
+// r/refresh_assets.ps1 (see r/lib_ortho.ps1), which emails if a year listed
+// here has no archive — that year renders a BLANK basemap, silently — or if an
+// archive exists that nobody listed. So forgetting either half of the two-step
+// is noticed, but it is still two steps: don't rely on the check as the
+// reminder.
 const ORTHO_R2_BASE = 'https://pub-f351b204f73e4b2287acad946d79681c.r2.dev';
 export const ORTHO_YEARS = [2026, 2024, 2021, 2018, 2016];
 export const ORTHO_YEAR = ORTHO_YEARS[0]; // newest; kept for single-year references

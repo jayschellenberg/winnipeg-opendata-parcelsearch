@@ -80,6 +80,10 @@ emails for itself but a job that never starts cannot:
 - The deployed app itself warns in the browser console when the tile sidecar
   is over 90 days old — the only signal that survives the scheduler machine
   being off entirely.
+- The quarterly job also cross-checks the aerial-ortho years the app offers
+  (`ORTHO_YEARS` in `web/src/map.js`) against the archives actually on R2, in
+  both directions: a listed year with no archive renders a blank basemap with
+  no error, and an archive nobody listed is 14–18 GB that no one can see.
 - The tile rebuild emails when the City publishes a residential property-use
   code nobody has classified. Every `CN*`/`RES*` code must appear in either
   the counted set or `DWELLING_REVIEWED_EXCLUSIONS` in

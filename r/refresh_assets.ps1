@@ -199,6 +199,57 @@ try {
   Log "release liveness check errored (non-fatal): $($_.Exception.Message)"
 }
 
+# --- Aerial-ortho year consistency (alert on DRIFT in either direction) ----
+# ORTHO_YEARS in web/src/map.js is hand-maintained and nothing connects it to
+# the archives actually on R2, so both directions can drift silently: a listed
+# year with no archive renders a BLANK basemap with no error, and an archive
+# nobody listed is 14-18 GB paid for and invisible. Old imagery never expires,
+# so neither has a natural signal.
+#
+# Probes the header of each candidate year (128 bytes each, not the archive),
+# so the whole check moves a couple of KB. Non-fatal to the asset refresh.
+try {
+  . (Join-Path $PSScriptRoot 'lib_ortho.ps1')
+  $orthoBase = 'https://pub-f351b204f73e4b2287acad946d79681c.r2.dev'
+  $mapJs     = Join-Path $repo 'web\src\map.js'
+  $parsed    = Get-OrthoYearsFromSource $mapJs
+
+  if (-not $parsed.Found) {
+    $why = "ortho check: could not find ORTHO_YEARS in $mapJs. Either the file moved or the declaration changed shape - the aerial-year check is now blind."
+    Log "WARNING: $why"; Mail-Fail $why
+  } else {
+    $listed = @($parsed.Years)
+    Log ("ortho check: map.js offers " + $(if ($listed.Count) { $listed -join ', ' } else { '(none)' }))
+    # Candidate window: a couple of years either side of what is listed, up to
+    # next year, so a newly built archive is discovered without probing a
+    # pointless span.
+    $lo = if ($listed.Count) { ([int]($listed | Measure-Object -Minimum).Minimum) - 2 } else { (Get-Date).Year - 12 }
+    $hi = (Get-Date).Year + 1
+    $infos = @()
+    foreach ($y in $lo..$hi) { $infos += Get-OrthoArchiveInfo $orthoBase $y 20 }
+    $found = @(@($infos) | Where-Object { $_.Present } | ForEach-Object { $_.Year })
+    Log ("ortho check: R2 has " + $(if ($found.Count) { $found -join ', ' } else { '(none)' }))
+
+    $cmp = Compare-OrthoYears $listed $infos
+    if (@($cmp.Unreached).Count) { Log ("ortho check: not reached (state unknown, no alarm): " + ($cmp.Unreached -join ', ')) }
+
+    if ($cmp.Healthy) {
+      Log 'ortho check: OK - every listed year has a valid archive, and every archive is listed'
+    } else {
+      $parts = @()
+      if (@($cmp.Missing).Count)      { $parts += "LISTED BUT MISSING on R2: $($cmp.Missing -join ', ') - those years render a BLANK aerial basemap. Either rebuild/upload them (r\build_ortho_tiles.ps1) or remove them from ORTHO_YEARS in web/src/map.js." }
+      if (@($cmp.Unlisted).Count)     { $parts += "ON R2 BUT NOT OFFERED: $($cmp.Unlisted -join ', ') - the archive exists and nobody can see it. Add the year to ORTHO_YEARS in web/src/map.js, keeping the list newest-first." }
+      if (@($cmp.ZoomMismatch).Count) { $parts += "ZOOM RANGE MISMATCH: $($cmp.ZoomMismatch -join '; ') - map.js declares 12..20, so the layer will blank outside the archive's real range." }
+      $why = "ortho check: " + ($parts -join '  ')
+      Log "WARNING: $why"; Mail-Fail $why
+      @("$(Get-Date -Format 's')  ortho year check tripped", "Reason: $why") |
+        Set-Content -Path (Join-Path $archiveRoot ("STALE-ortho-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))
+    }
+  }
+} catch {
+  Log "ortho check errored (non-fatal): $($_.Exception.Message)"
+}
+
 Log 'npm run refresh:transit'
 & npm --prefix (Join-Path $repo 'web') run refresh:transit *>> $log 2>&1
 $t = $LASTEXITCODE
