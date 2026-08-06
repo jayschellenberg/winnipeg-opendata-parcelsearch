@@ -19,6 +19,10 @@
 $ErrorActionPreference = 'Continue'
 $repo        = 'D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch'
 $archiveRoot = 'D:\Dropbox\Appraisal\Web\WpgSnapshots'
+# Quoted in alarm emails. Built from $repo so it cannot drift, and ABSOLUTE
+# because a relative path pasted out of an alert only works if the shell
+# happens to be sitting in the repo root.
+$rebuildCmd = "powershell -ExecutionPolicy Bypass -File $(Join-Path $repo 'r\rebuild_tiles.ps1')"
 $logDir = Join-Path $archiveRoot '_download_logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir ("refresh_assets_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
@@ -78,7 +82,7 @@ try {
     Log ("snapshot heartbeat: newest {0} ({1} days old); must be on/after the {2} capture" -f
       $newest.ToString('yyyy-MM-dd'), $ageDays, $expected.ToString('yyyy-MM-dd'))
     if ($newest -lt $expected) {
-      $why = "snapshot heartbeat: newest AssessmentParcels snapshot is $($newest.ToString('yyyy-MM-dd')) ($ageDays days old), but the $($expected.ToString('yyyy-MM-dd')) capture should already be archived. The semi-annual download likely never fired - run r\scheduled_download.ps1 manually and check the WpgOpenDataSemiAnnualDownload task."
+      $why = "snapshot heartbeat: newest AssessmentParcels snapshot is $($newest.ToString('yyyy-MM-dd')) ($ageDays days old), but the $($expected.ToString('yyyy-MM-dd')) capture should already be archived. The semi-annual download likely never fired - run it manually and check the WpgOpenDataSemiAnnualDownload task:  powershell -ExecutionPolicy Bypass -File $(Join-Path $repo 'r\scheduled_download.ps1')"
       Log "WARNING: $why"; Mail-Fail $why
       @("$(Get-Date -Format 's')  snapshot heartbeat tripped", "Reason: $why") |
         Set-Content -Path (Join-Path $archiveRoot ("STALE-snapshots-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))
@@ -113,7 +117,7 @@ try {
     $tileAge = [int]((Get-Date) - $builtDate).TotalDays
     Log "tile heartbeat: parcels.pmtiles built $built ($tileAge days old; limit $maxTileAgeDays)"
     if ($tileAge -gt $maxTileAgeDays) {
-      $why = "tile heartbeat: the citywide parcel tiles are $tileAge days old (> $maxTileAgeDays). The bi-monthly rebuild likely never fired - run r\rebuild_tiles.ps1 manually and check the WpgParcelTilesBiMonthly task."
+      $why = "tile heartbeat: the citywide parcel tiles are $tileAge days old (> $maxTileAgeDays). The bi-monthly rebuild likely never fired - run it manually and check the WpgParcelTilesBiMonthly task:  $rebuildCmd"
       Log "WARNING: $why"; Mail-Fail $why
       @("$(Get-Date -Format 's')  tile heartbeat tripped", "Reason: $why") |
         Set-Content -Path (Join-Path $archiveRoot ("STALE-tiles-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))
@@ -172,18 +176,18 @@ try {
     if (-not $rel) {
       Log 'release liveness: the release could not be read - NOT evaluated (no alarm raised on an unknown).'
     } elseif (-not $asset) {
-      $why = "release liveness: the GitHub release has NO asset named $assetName. Every Vercel deploy from now on ships with the parcel overlay DISABLED. Re-publish with r\rebuild_tiles.ps1."
+      $why = "release liveness: the GitHub release has NO asset named $assetName. Every Vercel deploy from now on ships with the parcel overlay DISABLED. Re-publish with:  $rebuildCmd"
       Log "WARNING: $why"; Mail-Fail $why
       @("$(Get-Date -Format 's')  release liveness tripped", "Reason: $why") |
         Set-Content -Path (Join-Path $archiveRoot ("STALE-tiles-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))
     } elseif ($asset.state -ne 'uploaded') {
-      $why = "release liveness: asset $assetName is in state '$($asset.state)', not 'uploaded' - it is not downloadable. Re-publish with r\rebuild_tiles.ps1."
+      $why = "release liveness: asset $assetName is in state '$($asset.state)', not 'uploaded' - it is not downloadable. Re-publish with:  $rebuildCmd"
       Log "WARNING: $why"; Mail-Fail $why
     } elseif ($committed -and $dig -and $dig -ne $committed) {
       # Short() rather than .Substring(0,12): a truncated or empty checksum
       # file would throw here, and the outer catch would swallow the ALARM -
       # the one path that must never fail silently.
-      $why = "release liveness: the published asset ($(Short $dig)) does not match the checksum on origin/main ($(Short $committed)). fetch-pmtiles.mjs rejects that, so the overlay is disabled on every deploy. Re-publish with r\rebuild_tiles.ps1."
+      $why = "release liveness: the published asset ($(Short $dig)) does not match the checksum on origin/main ($(Short $committed)). fetch-pmtiles.mjs rejects that, so the overlay is disabled on every deploy. Re-publish with:  $rebuildCmd"
       Log "WARNING: $why"; Mail-Fail $why
       @("$(Get-Date -Format 's')  release liveness tripped", "Reason: $why") |
         Set-Content -Path (Join-Path $archiveRoot ("STALE-release-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))

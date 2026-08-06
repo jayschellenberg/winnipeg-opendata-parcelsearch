@@ -17,7 +17,7 @@ web/dist/
 # Citywide-parcels tile archive: too big for git (96 MB, and a rebuild used
 # to add ~80 MB of history every time). The deployed copy is fetched from
 # the `parcels-pmtiles` GitHub release in vercel.json's buildCommand; keep
-# a local copy here for dev. Publish a rebuild with:
+# a local copy here for dev. Publish a rebuild with (from the repo root):
 #   powershell -ExecutionPolicy Bypass -File r\rebuild_tiles.ps1
 # Do NOT publish with `gh release upload --clobber`: it deletes the live
 # asset before uploading, so a failed upload leaves the release empty and

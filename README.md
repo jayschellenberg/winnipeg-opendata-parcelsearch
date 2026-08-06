@@ -87,7 +87,9 @@ emails for itself but a job that never starts cannot:
   reported, because an unclassified code drops its parcels from dwelling-unit
   totals with no visible symptom.
 
-To rebuild and publish tiles by hand:
+To rebuild and publish tiles by hand, **from the repository root** (the path
+is relative; the script itself is working-directory independent, so a full
+path works from anywhere):
 
 ```bash
 powershell -ExecutionPolicy Bypass -File r\rebuild_tiles.ps1

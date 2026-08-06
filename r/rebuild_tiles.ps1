@@ -16,8 +16,11 @@
 # *** This job AUTO-DEPLOYS to production. *** To disable entirely:
 #   schtasks /Delete /TN WpgParcelTilesBiMonthly /F
 #
-# Run manually any time:
-#   powershell -ExecutionPolicy Bypass -File r\rebuild_tiles.ps1
+# Run manually any time. Use the FULL path: the script is working-directory
+# independent, but `-File r\rebuild_tiles.ps1` only resolves if the shell
+# happens to be sitting in the repo root, and a scheduled task starts in
+# C:\WINDOWS\system32.
+#   powershell -ExecutionPolicy Bypass -File D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch\r\rebuild_tiles.ps1
 #
 # ---------------------------------------------------------------------------
 # WHY THE PUBLISH STEP LOOKS LIKE THIS (the 2026-08-05 incident)
@@ -89,6 +92,12 @@ $logDir = Join-Path $archiveRoot '_download_logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir ("rebuild_tiles_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
 function Log($m) { ('{0}  {1}' -f (Get-Date -Format 's'), $m) | Tee-Object -FilePath $log -Append | Out-Null; Write-Output $m }
+
+# The re-run command, built from $repo so it can never drift from where this
+# script actually lives. Emails quote this: a relative path pasted out of an
+# alert at 03:00 fails with "the argument does not exist", which is a
+# needless obstacle in front of someone already dealing with an outage.
+$selfCmd = "powershell -ExecutionPolicy Bypass -File $(Join-Path $repo 'r\rebuild_tiles.ps1')"
 
 . (Join-Path $PSScriptRoot 'lib_mail.ps1')
 # Publish primitives (Invoke-Gh, Read-Release, Publish-ReleaseAsset, ...).
@@ -218,7 +227,7 @@ function Fail($why) {
     '',
     'REPAIR (only if the verdict above says the overlay is down):',
     "  1. Confirm:  gh release view $releaseTag --repo $ghRepo --json assets",
-    "  2. Re-run:   powershell -ExecutionPolicy Bypass -File r\rebuild_tiles.ps1",
+    "  2. Re-run:   $selfCmd",
     '     (a re-run is safe: it never deletes the live asset before its replacement is verified)',
     "  3. If an asset named parcels-previous-*.pmtiles holds the last good archive, rename it back:",
     "     gh api --method PATCH <that asset's apiUrl> -f name=parcels.pmtiles"
@@ -427,7 +436,8 @@ try {
       "Decide each one in r/lib_dwelling_units.R:",
       "  - counts as housing  -> add to DWELLING_RESIDENTIAL_PUCS or DWELLING_CONDO_PUCS",
       "  - does not           -> add to DWELLING_REVIEWED_EXCLUSIONS with a reason",
-      "Then re-run r\rebuild_tiles.ps1. This stops as soon as the list is empty.",
+      "Then re-run:  $selfCmd",
+      "This stops as soon as the list is empty.",
       "",
       "Log: $log"
     ) -join "`n"
