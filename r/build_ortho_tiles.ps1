@@ -18,9 +18,9 @@
 #
 # PREREQUISITES:
 #   - OSGeo4W GDAL with the ECW plugin (gdal_ECW_JP2ECW.dll under
-#     apps\gdal\lib\gdalplugins) — usually ALREADY present with OSGeo4W. This
+#     apps\gdal\lib\gdalplugins) - usually ALREADY present with OSGeo4W. This
 #     script sources C:\OSGeo4W\bin\o4w_env.bat itself (sets GDAL_DATA / PROJ_LIB
-#     / the plugin path), so a plain PowerShell run works — no OSGeo4W shell
+#     / the plugin path), so a plain PowerShell run works - no OSGeo4W shell
 #     needed. If the ECW check below still fails, add the plugin once:
 #       C:\OSGeo4W\bin\osgeo4w-setup.exe -q -k -P gdal-ecw
 #   - go-pmtiles binary (already fetched to ..\..\tools\pmtiles.exe).
@@ -37,7 +37,7 @@ param(
   [string] $SourceSrs   = '',                                   # assign source SRS when the ECW lacks one (2021: EPSG:26914 = UTM 14N)
   [double] $TargetResM  = 0.149,                                # 3857 m/px: 0.149 ~= z20, 0.075 ~= z21, 0.3 ~= z19
   [int]    $JpegQuality = 82,
-  [string] $WorkDir     = 'D:\WpgOrtho',                        # scratch: OUTSIDE Dropbox + the git repo (build churns ~35 GB of transient files — don't sync them)
+  [string] $WorkDir     = 'D:\WpgOrtho',                        # scratch: OUTSIDE Dropbox + the git repo (build churns ~35 GB of transient files - don't sync them)
   [string] $GdalBin     = 'C:\OSGeo4W\bin',
   [string] $PmtilesExe  = 'D:\Dropbox\ClaudeCode\WpgOpenData\tools\pmtiles.exe',
   [switch] $Force
@@ -55,7 +55,7 @@ foreach ($exe in @($gdalinfo, $gdalwarp, $gdaladdo, $gdalbuildvrt, $gdalsrsinfo,
 }
 
 # --- Load the OSGeo4W environment ------------------------------------------
-# The OSGeo4W GDAL exes need GDAL_DATA / PROJ_LIB and — crucially — the
+# The OSGeo4W GDAL exes need GDAL_DATA / PROJ_LIB and - crucially - the
 # gdal-plugins path on GDAL_DRIVER_PATH, or the ECW driver silently doesn't
 # load (and you get "GDAL_DATA is not defined" warnings). o4w_env.bat sets all
 # of it; import its vars into this session so a plain PowerShell run works.
@@ -67,7 +67,7 @@ if (Test-Path $o4w) {
     }
   }
 } else {
-  Write-Warning "OSGeo4W env script not found at $o4w — GDAL may miss its data / the ECW plugin."
+  Write-Warning "OSGeo4W env script not found at $o4w - GDAL may miss its data / the ECW plugin."
 }
 
 # --- ECW plugin present? (the whole thing needs it) ------------------------
@@ -188,7 +188,7 @@ if ($LASTEXITCODE -ne 0) { throw "pmtiles convert failed ($LASTEXITCODE)" }
 Write-Host "  PMTiles: $([math]::Round((Get-Item $pm).Length/1GB,2)) GB  -> $pm"
 & $PmtilesExe show $pm 2>&1 | Select-String -Pattern 'tile type|min zoom|max zoom|bounds' | ForEach-Object { "    $_" }
 
-# --- 5. upload to Cloudflare R2 (you run this — keeps R2 creds out of here) -
+# --- 5. upload to Cloudflare R2 (you run this - keeps R2 creds out of here) -
 Step "Next: upload to Cloudflare R2"
 @"
 The tileset is built: $pm

@@ -197,6 +197,45 @@ Check 'canonical carries A again after the second swap' ((Get-AssetDigest (Get-A
 $prevs = @(@($rel.assets) | Where-Object { $_.name -like "$previousP-*" })
 Check 'the two same-day previous assets have distinct names' ($prevs.Count -eq 2) "names: $(@($prevs).name -join ', ')"
 
+Write-Output '--- THE COMPENSATOR: recover from a genuine half-completed swap ---'
+# Build the exact state a crash between P5 and P6 leaves behind - the canonical
+# name unoccupied, the previous generation parked under its aside-name - and
+# make the real compensator recover it. This is the branch that otherwise only
+# ever runs during an outage.
+$relPre  = Read-Release $releaseTag $ghRepo 2 $logCb
+$canonA  = Get-Asset $relPre $canonical
+Check 'starting from a live canonical asset' ($null -ne $canonA)
+$asideName = 'selftest-previous-midswap.pmtiles'
+$aside = Invoke-Gh @('api', '--method', 'PATCH', $canonA.apiUrl, '-f', "name=$asideName") 90000
+Check 'renamed the live asset aside (simulating P5)' ($aside.ExitCode -eq 0) (FirstLine $aside.StdErr)
+
+# Confirm we really are in the dangerous state before compensating, otherwise
+# the test would pass without the hazard ever existing.
+$midState = Get-CanonicalState $releaseTag $ghRepo $canonical $shaB $shaA $null
+Check "mid-swap state is 'absent' - the canonical name is genuinely unoccupied" ($midState -eq 'absent') "got '$midState'"
+
+$relMid  = Read-Release $releaseTag $ghRepo 2 $logCb
+$asideAsset = Get-Asset $relMid $asideName
+$asideSha   = Get-AssetDigest $asideAsset
+$comp = Restore-CanonicalAsset -Tag $releaseTag -Repo $ghRepo -CanonicalName $canonical `
+          -PrevApiUrl $asideAsset.apiUrl -PrevName $asideName -NewSha ('cc' * 32) -PrevSha $asideSha `
+          -ObservedState $midState -LogAction $logCb -RetrySeconds 2
+
+Check 'the compensator reports success'        ($comp.State -eq 'previous') "state=$($comp.State) msg=$($comp.Message)"
+Check 'it does not claim the new archive live' ($comp.NewIsLive -eq $false)
+Check 'its message is the OK message'          ($comp.Message -match 'live again') $comp.Message
+$relPost = Read-Release $releaseTag $ghRepo 2 $logCb
+Check 'the canonical name is occupied again'   ($null -ne (Get-Asset $relPost $canonical))
+Check 'and it carries the pre-swap archive'    ((Get-AssetDigest (Get-Asset $relPost $canonical)) -eq $asideSha)
+Check 'the aside name is gone (it was renamed, not copied)' ($null -eq (Get-Asset $relPost $asideName))
+
+Write-Output '--- compensator with nothing to restore ---'
+$none = Restore-CanonicalAsset -Tag $releaseTag -Repo $ghRepo -CanonicalName $canonical `
+          -PrevApiUrl '' -PrevName 'x' -NewSha ('cc' * 32) -PrevSha ('dd' * 32) `
+          -ObservedState 'absent' -LogAction $logCb
+Check 'no previous asset is reported, not asserted away' ($none.Message -match 'no previous asset') $none.Message
+Check 'and it does not claim the new archive live'       ($none.NewIsLive -eq $false)
+
 Write-Output '--- no staging leftovers ---'
 $rel = Read-Release $releaseTag $ghRepo 2 $logCb
 # Assert the read worked first: every check below is vacuously true against a

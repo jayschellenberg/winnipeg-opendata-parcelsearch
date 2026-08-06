@@ -143,6 +143,64 @@ function Get-Backoff($Backoffs, $attempt) {
   return $Backoffs[$i]
 }
 
+# Put the previously-published asset back under the canonical name after a
+# half-completed swap.
+#
+# This is the compensator for the ONE window in which the canonical name can be
+# unoccupied: between the rename-aside (P5) and the promote (P6), two
+# consecutive metadata calls. It moves ZERO bytes, so it cannot fail for the
+# reason a 96 MB upload would - which is the whole argument for preferring it
+# over re-uploading a local rollback copy.
+#
+# Split out of Publish-ReleaseAsset so r/test_gh_publish.ps1 can drive it from a
+# genuine mid-swap state (canonical absent, previous present) instead of it
+# being the one branch that only ever executes during a real outage. Adding a
+# test-only failure hook to the publish path would have been the alternative,
+# and a switch that exists only to break things is worse than a seam.
+#
+# Returns { Message; NewIsLive; State } where State is the MEASURED canonical
+# state afterwards - never asserted. The code this replaced reported "canonical
+# asset name is EMPTY" without ever establishing that it was.
+function Restore-CanonicalAsset {
+  param(
+    [Parameter(Mandatory)][string]$Tag,
+    [Parameter(Mandatory)][string]$Repo,
+    [Parameter(Mandatory)][string]$CanonicalName,
+    [string]$PrevApiUrl,
+    [string]$PrevName,
+    [string]$NewSha,
+    [string]$PrevSha,
+    [string]$ObservedState = '',
+    [int]$MetaTimeoutMs = 90000,
+    [int]$Attempts = 3,
+    [int]$RetrySeconds = 20,
+    $LogAction = $null
+  )
+  if (-not $PrevApiUrl) {
+    return [PSCustomObject]@{
+      Message   = "canonical name is '$ObservedState' and there is no previous asset to restore"
+      NewIsLive = $false
+      State     = $ObservedState
+    }
+  }
+  if ($LogAction) { & $LogAction "  compensate: restoring $PrevName to $CanonicalName (canonical is '$ObservedState')" }
+  for ($c = 1; $c -le $Attempts; $c++) {
+    $back = Invoke-Gh @('api', '--method', 'PATCH', $PrevApiUrl, '-f', "name=$CanonicalName") $MetaTimeoutMs
+    if ($back.ExitCode -eq 0) { break }
+    if ($c -lt $Attempts) { Start-Sleep -Seconds $RetrySeconds }
+  }
+  $after = Get-CanonicalState $Tag $Repo $CanonicalName $NewSha $PrevSha $LogAction
+  $newIsLive = $false
+  switch ($after) {
+    'previous' { $msg = 'compensate: OK - the previously published archive is live again' }
+    'new'      { $msg = 'compensate: the NEW archive ended up live after all'; $newIsLive = $true }
+    'unknown'  { $msg = 'compensate: could not confirm - the release was unreadable' }
+    default    { $msg = "compensate: FAILED - the canonical asset name is '$after'" }
+  }
+  if ($LogAction) { & $LogAction "  $msg" }
+  [PSCustomObject]@{ Message = $msg; NewIsLive = $newIsLive; State = $after }
+}
+
 # Publish $FilePath as the release asset named $CanonicalName, without ever
 # destroying the live asset before the replacement is verified.
 #
@@ -360,27 +418,12 @@ function Publish-ReleaseAsset {
       }
 
       # 'absent', 'notready' or 'other': the canonical name is not serving the
-      # old archive, so restore it. One metadata PATCH - zero bytes, so it
-      # cannot fail for the reason a 96 MB upload would.
-      $compensated = "canonical name is '$st' and there is no previous asset to restore"
-      if ($prevApiUrl) {
-        _log "  compensate: restoring $previousName to $CanonicalName (canonical is '$st')"
-        for ($c = 1; $c -le 3; $c++) {
-          $back = Invoke-Gh @('api', '--method', 'PATCH', $prevApiUrl, '-f', "name=$CanonicalName") $MetaTimeoutMs
-          if ($back.ExitCode -eq 0) { break }
-          Start-Sleep -Seconds 20
-        }
-        # Again: measured, not asserted. The previous code reported "canonical
-        # asset name is EMPTY" without ever establishing that it was.
-        $after = Get-CanonicalState $Tag $Repo $CanonicalName $Sha256 $prevDigest $LogAction
-        switch ($after) {
-          'previous' { $compensated = 'compensate: OK - the previously published archive is live again' }
-          'new'      { $compensated = 'compensate: the NEW archive ended up live after all'; $newIsLive = $true }
-          'unknown'  { $compensated = 'compensate: could not confirm - the release was unreadable' }
-          default    { $compensated = "compensate: FAILED - the canonical asset name is '$after'" }
-        }
-        _log "  $compensated"
-      }
+      # old archive, so restore it. See Restore-CanonicalAsset.
+      $comp = Restore-CanonicalAsset -Tag $Tag -Repo $Repo -CanonicalName $CanonicalName `
+                -PrevApiUrl $prevApiUrl -PrevName $previousName -NewSha $Sha256 -PrevSha $prevDigest `
+                -ObservedState $st -MetaTimeoutMs $MetaTimeoutMs -LogAction $LogAction
+      $compensated = $comp.Message
+      if ($comp.NewIsLive) { $newIsLive = $true }
       if ($newIsLive) {
         return [PSCustomObject]@{ Status = 'published'; NewIsLive = $true; Degraded = $degraded; Message = "published ($compensated)"; PreviousName = $previousName }
       }
