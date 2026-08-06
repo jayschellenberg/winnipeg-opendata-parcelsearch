@@ -31,9 +31,10 @@
  *   - lon / lat (centroid; MapLibre derives one for symbol layers)
  * --------------------------------------------------------------- */
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeStable } from './stableWrite.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_WEB = path.resolve(SCRIPT_DIR, '..');
@@ -138,14 +139,15 @@ async function processClusters() {
 async function main() {
   const [hoods, clusters] = await Promise.all([processHoods(), processClusters()]);
   await mkdir(PUBLIC_DIR, { recursive: true });
-  await writeFile(OUT_HOODS,    JSON.stringify(hoods));
-  await writeFile(OUT_CLUSTERS, JSON.stringify(clusters));
+  // writeStable, not writeFile: an unchanged rebuild must not rewrite the file
+  // just because generated_at moved. See scripts/stableWrite.mjs.
+  const hoodRes = await writeStable(OUT_HOODS, hoods);
+  const clusterRes = await writeStable(OUT_CLUSTERS, clusters);
   const hoodSize = (await readFile(OUT_HOODS)).length;
   const clusterSize = (await readFile(OUT_CLUSTERS)).length;
   console.log('');
-  console.log('Wrote:');
-  console.log(`  ${OUT_HOODS}    (${(hoodSize / 1024).toFixed(0)} KB, ${hoods.features.length} neighbourhoods)`);
-  console.log(`  ${OUT_CLUSTERS} (${(clusterSize / 1024).toFixed(0)} KB, ${clusters.features.length} clusters)`);
+  console.log(`  ${OUT_HOODS}    (${(hoodSize / 1024).toFixed(0)} KB, ${hoods.features.length} neighbourhoods) ${hoodRes.reason}`);
+  console.log(`  ${OUT_CLUSTERS} (${(clusterSize / 1024).toFixed(0)} KB, ${clusters.features.length} clusters) ${clusterRes.reason}`);
 }
 
 main().catch((err) => {

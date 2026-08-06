@@ -35,6 +35,7 @@
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
+import { writeStable } from './stableWrite.mjs';
 import { createInterface } from 'node:readline';
 import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
@@ -382,14 +383,15 @@ async function main() {
     await extract(zipPath, tmp);
     const { routes, stops } = await buildRoutesAndStops(tmp);
     await mkdir(PUBLIC_DIR, { recursive: true });
-    await writeFile(OUT_ROUTES, JSON.stringify(routes));
-    await writeFile(OUT_STOPS, JSON.stringify(stops));
+    // writeStable, not writeFile: an unchanged rebuild must not rewrite the
+    // file just because generated_at moved. See scripts/stableWrite.mjs.
+    const routesRes = await writeStable(OUT_ROUTES, routes);
+    const stopsRes = await writeStable(OUT_STOPS, stops);
     const routesBytes = (await readFile(OUT_ROUTES)).length;
     const stopsBytes = (await readFile(OUT_STOPS)).length;
     console.log('');
-    console.log('Wrote:');
-    console.log(`  ${OUT_ROUTES}  (${(routesBytes / 1024).toFixed(0)} KB, ${routes.features.length} routes)`);
-    console.log(`  ${OUT_STOPS}   (${(stopsBytes / 1024).toFixed(0)} KB, ${stops.features.length} stops)`);
+    console.log(`  ${OUT_ROUTES}  (${(routesBytes / 1024).toFixed(0)} KB, ${routes.features.length} routes) ${routesRes.reason}`);
+    console.log(`  ${OUT_STOPS}   (${(stopsBytes / 1024).toFixed(0)} KB, ${stops.features.length} stops) ${stopsRes.reason}`);
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
