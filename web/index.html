@@ -232,13 +232,20 @@
               role="combobox" aria-expanded="false" aria-autocomplete="list"
               aria-controls="address-street-suggest"
             />
-            <!-- Predictive street-name list. Filled on first focus from
-                 the assessment roll's own street_name vocabulary, so
-                 every suggestion is a street the search can return —
-                 see lib/streetSuggest.js for why not Civic Addresses. -->
-            <div id="address-street-suggest" class="street-suggest" role="listbox" aria-label="Street name suggestions" hidden></div>
             <span class="tip">Substring match against street_name. e.g. "HARGRAVE", "MAIN", "ROUGE BAY". The street type (ST / AVE / DR) lives in a separate column and isn't matched here — but type two letters and pick from the list to search one street exactly, including the ones whose name ENDS in a type word (ELM PARK, PARK EAST, MIDDLE GATE).</span>
           </span>
+          <!-- Predictive street-name list. Filled on first focus from the
+               assessment roll's own street_name vocabulary, so every
+               suggestion is a street the search can return — see
+               lib/streetSuggest.js for why not Civic Addresses.
+
+               A sibling of the three fields rather than a child of the
+               Street Name one, because it has to span the WHOLE row. The
+               field is 120px in a 292px row and the list inherited that:
+               measured on the deployed page, "ELM" needed 27px of the 17
+               it was given, so the street NAMES were ellipsising, never
+               mind the counts. -->
+          <div id="address-street-suggest" class="street-suggest" role="listbox" aria-label="Street name suggestions" hidden></div>
         </div>
         <!-- Phase 5: Roll # becomes a chip input. The hidden #roll
              input still holds the canonical comma-separated string,

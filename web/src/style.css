@@ -357,6 +357,9 @@ body {
   display: flex;
   gap: 6px;
   align-items: stretch;
+  /* Anchor for the street-name typeahead below, which spans the whole
+     row rather than the one field it belongs to. */
+  position: relative;
 }
 
 .sidebar .address-row .address-from-field,
@@ -379,12 +382,13 @@ body {
   min-width: 0;
 }
 
-/* Street-name typeahead (lib/streetSuggest.js). Anchored to the
-   .field wrapper, which is already position:relative for the .tip
-   tooltip — and which is why the open list has to hide that tooltip:
-   both drop into the same spot below the input, and two stacked
-   panels read as a rendering bug rather than two features. */
-.sidebar .address-street-field .street-suggest {
+/* Street-name typeahead (lib/streetSuggest.js). Anchored to the whole
+   .address-row, not to the Street Name field: that field is 120px of a
+   292px row, and a list that width clipped the street names themselves
+   — "ELM" got 17px of the 27 it needed. It still has to hide the
+   field's .tip tooltip, which drops into the same spot on hover; two
+   stacked panels read as a rendering bug rather than two features. */
+.sidebar .address-row > .street-suggest {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -399,7 +403,7 @@ body {
   box-shadow: var(--ui-shadow-popover, 0 18px 42px rgba(18, 22, 19, 0.18));
 }
 
-.sidebar .address-street-field .street-suggest[hidden] { display: none; }
+.sidebar .address-row > .street-suggest[hidden] { display: none; }
 
 .controls .field.street-suggest-open > .tip { display: none; }
 
@@ -424,6 +428,10 @@ body {
 }
 
 .street-suggest-name {
+  /* Shrinks last. Whatever else goes, the thing being picked stays
+     readable — see the hint's flex-shrink below. */
+  flex: 0 1 auto;
+  min-width: 0;
   font-weight: 600;
   color: var(--ui-ink, #151916);
   white-space: nowrap;
@@ -431,10 +439,13 @@ body {
   text-overflow: ellipsis;
 }
 
-/* The type(s) and parcel count. Allowed to shrink and ellipsise before
-   the name does — the name is what gets picked. */
+/* The type(s) and parcel count. flex-shrink 100 against the name's 1, so
+   a squeezed row eats into the count long before it touches the street
+   name. ASSINIBOINE is the worst case in the roll — three types plus
+   449 parcels — and loses the tail of the count at 292px, which is the
+   right thing to lose. */
 .street-suggest-hint {
-  flex: 0 1 auto;
+  flex: 0 100 auto;
   min-width: 0;
   font-size: 11px;
   color: var(--ui-muted, #6d7771);
