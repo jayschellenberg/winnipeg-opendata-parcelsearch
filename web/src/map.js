@@ -2484,6 +2484,22 @@ function citywideParcelHtml(p) {
   const lines = [];
   if (roll) lines.push(`<strong>Roll #</strong> ${escapeHtml(roll)}`);
   if (address) lines.push(escapeHtml(address));
+  // Property Use Code, then zoning directly beneath it — the same pair,
+  // in the same order, as the hover popup above. Actual use on top,
+  // legally permitted use under it, so a non-conforming parcel (RESSD on
+  // a C2 lot) reads as a mismatch between adjacent lines. The full
+  // published string, not stripZoningCode: that exists to fit a badge in
+  // a table cell and the popup has the room.
+  //
+  // Both come from the tile, so both can be absent and both drop their
+  // line rather than render an empty one. property_use_code has been in
+  // the archive all along and simply was not shown here. zoning was added
+  // to r/build_parcel_tiles.R on 2026-08-20 and reaches users at the next
+  // scheduled rebuild (WpgParcelTilesBiMonthly, 2026-10-02) — until then
+  // this line is silently absent, which is why it is written to degrade
+  // rather than to assume.
+  if (p.property_use_code) lines.push(`<em>${escapeHtml(p.property_use_code)}</em>`);
+  if (p.zoning) lines.push(`<em>${escapeHtml(p.zoning)}</em>`);
   if (p.dwelling_unit_count != null && p.dwelling_unit_count !== '') {
     lines.push(`<strong>Total dwelling units</strong> ${escapeHtml(formatDwellingCount(p.dwelling_unit_count))}`);
   }

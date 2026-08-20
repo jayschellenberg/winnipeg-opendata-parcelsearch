@@ -93,15 +93,32 @@ url       <- "https://data.winnipeg.ca/resource/d4mq-wa44.geojson"
 # citywide overlay would just bloat the archive.
 #
 # Dropped on purpose:
-#   - zoning: the popup uses property_use_code instead; the table's
-#     Zoning column comes from the live search-result query, not
-#     from this tile.
-#   - total_assessed_value: the citywide tooltip doesn't show
-#     assessed value; the table's Assessment column comes from the
-#     live search-result query.
-# Both drops save ~9-11 MB in the .pmtiles, keeping us under
-# GitHub's 100 MB hard cap with breathing room.
-select_cols <- "roll_number,full_address,property_use_code,dwelling_units,assessed_land_area,geometry"
+#   - total_assessed_value: the citywide popup doesn't show assessed
+#     value; the table's Assessment column comes from the live
+#     search-result query. This is the EXPENSIVE one of the two fields
+#     that used to be dropped together: 6,202 distinct values against
+#     zoning's 53, so it is the half that earned the "~9-11 MB" figure
+#     the old comment attributed to both.
+#
+# zoning was in that list and should not have been. Two reasons it is
+# back, both measured 2026-08-20:
+#
+#   1. It is nearly free. 53 distinct values across 217,483 of 245,252
+#      parcels. Sampled at 5,000 parcels, adding the column grows the
+#      gzipped GeoJSON by 4,971 bytes -- about 0.22 MB scaled to the
+#      217,071 features that survive dedup, against a 95.87 MB archive.
+#      A quarter of one percent.
+#   2. The cap it was dropped to stay under does not apply. 100 MB is
+#      GitHub's limit for files committed to a REPOSITORY, and this
+#      archive is deliberately not in git -- web/scripts/fetch-pmtiles.mjs
+#      pulls it from a rolling release at Vercel build time. Release
+#      assets cap at 2 GB.
+#
+# The click popup (map.js citywideParcelHtml) reads it, and reads it the
+# way the hover popup does: actual use on top, legally permitted use
+# directly beneath, so a non-conforming parcel is a mismatch between two
+# adjacent lines rather than a separate lookup.
+select_cols <- "roll_number,full_address,property_use_code,zoning,dwelling_units,assessed_land_area,geometry"
 
 # Optional Socrata app token — raises the anonymous rate limit for the ~50
 # paged calls this build fires. Same env vars as r/download_parcels.R
