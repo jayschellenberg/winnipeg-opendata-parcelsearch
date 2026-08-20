@@ -41,6 +41,7 @@ import { readMapLegends, layoutMapLegends, paintMapLegends } from './lib/mapLege
 import {
   buildPermitIndex, findNearestPermit, demoVerdict, describeDemoPermit,
   buildVerdict, describeBuildPermit,
+  rollBuildVerdict, describeRollBuilt,
 } from './lib/permitEvidence.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
@@ -4028,12 +4029,48 @@ async function runSalesAnalysis() {
       if (buildJudgement) {
         p._buildDate = buildHit.date;
         p._buildVerdict = buildJudgement;
+        p._buildEvidence = 'permit';
         p._buildTitle = describeBuildPermit(buildHit, buildJudgement);
       }
     }
     permitsOk = true;
   } catch (err) {
     console.warn('Permit lookup failed (Demo / Built columns stay blank):', err);
+  }
+
+  // Second instrument, and OUTSIDE the try above on purpose: the roll's
+  // own year_built needs no network call, so a Socrata outage that costs
+  // us the permits must not also cost us this.
+  //
+  // Consulted only where the permit pass said nothing. A permit is dated
+  // evidence about the transaction; this is a later snapshot read
+  // backwards, and where they disagree the dated one wins — including
+  // 'land-then-built', which is a permit positively saying the lot was
+  // bare, and must not be overturned by a roll that only knows the
+  // parcel as it stands today.
+  //
+  // Catches 37 sales the permit window structurally cannot: houses built
+  // 2014-2024 and sold up to twelve years later, and pre-war houses that
+  // predate it4w-cpf4's 2016 start. lib/permitEvidence.js carries the
+  // measurement.
+  for (const f of saleFc.features) {
+    const p = f.properties;
+    if (p._buildVerdict) continue;
+    const rollJudgement = rollBuildVerdict({
+      saleIsVacant: isVacantUseCode(saleUseCodeOf(f)),
+      hasLiveRecord: !p._noLiveMatch,
+      yearBuilt: p.year_built,
+      livingArea: p.total_living_area,
+      saleDate: p._saleDate,
+    });
+    if (!rollJudgement) continue;
+    p._buildVerdict = rollJudgement;
+    p._buildEvidence = 'roll';
+    p._buildTitle = describeRollBuilt({
+      yearBuilt: p.year_built,
+      livingArea: p.total_living_area,
+      saleDate: p._saleDate,
+    });
   }
 
   // Appraisal category, stamped AFTER the permit pass because the permit
@@ -4170,6 +4207,13 @@ async function runSalesAnalysis() {
 
   const teardownCount = finalFeatures.filter((f) => f.properties._demoVerdict === 'teardown').length;
   const alreadyBuiltCount = finalFeatures.filter((f) => f.properties._buildVerdict === 'already-built').length;
+  // Split out because the two are not equally strong. A permit is dated
+  // evidence about the transaction; the roll is a snapshot read
+  // backwards, and an appraiser weighing one of these rows is entitled
+  // to know which one they have without opening the tooltip.
+  const rollBuiltCount = finalFeatures.filter((f) => (
+    f.properties._buildVerdict === 'already-built' && f.properties._buildEvidence === 'roll'
+  )).length;
   const rows = finalFeatures.map((f) => ({ assess: f, survey: null }));
   const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
   // Counted off the SHOWN rows rather than liveByRoll, which spans the
@@ -4197,7 +4241,11 @@ async function runSalesAnalysis() {
     // shrink the comp set.
     // Loudest clause in the line, because it invalidates the column an
     // appraiser is about to build a land comp set from.
-    (permitsOk ? '' : ' · ⚠ PERMIT CHECK FAILED — Category is raw roll coding, so already-built houses are still counted as Land') +
+    // Still said, and still says the same thing in substance: the roll
+    // fallback needs no network and survives this, but it accounts for
+    // 37 of 6,275 already-built findings. Losing the permits loses
+    // essentially all of them.
+    (permitsOk ? '' : " · ⚠ PERMIT CHECK FAILED — only the roll's own year built is judging, which catches a small fraction, so already-built houses are still counted as Land") +
     (categoryHidden ? ` · ${categoryHidden} hidden by the category filter` : '') +
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
@@ -4214,6 +4262,9 @@ async function runSalesAnalysis() {
     // sales that already had a finished house standing on them.
     (alreadyBuiltCount
       ? ` · ⚠ ${alreadyBuiltCount} vacant-coded sale${alreadyBuiltCount === 1 ? '' : 's'} already built on`
+        + (rollBuiltCount
+          ? ` (${rollBuiltCount} from the roll's year built, not a permit — confirm before using)`
+          : '')
       : '')
   );
 

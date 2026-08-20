@@ -1,5 +1,10 @@
 /*
- * Demolition-permit evidence for a sale.
+ * Evidence that a sale's assessment use code is stale.
+ *
+ * Two instruments, not one. Permits are the primary and everything
+ * below the BUILT_BEFORE_DAYS block is about them; rollBuildVerdict at
+ * the foot of the file is the second, and it exists because permits
+ * structurally cannot answer for some sales. See its own note.
  *
  * THE POINT: two questions the assessment use code answers wrongly,
  * both settled by a building permit at the same address.
@@ -215,4 +220,78 @@ export function describeBuildPermit(hit, verdict) {
       + `bare land — a genuine land comp.`;
   }
   return lead;
+}
+
+/*
+ * The SECOND instrument: the assessment roll's own year_built.
+ *
+ * A permit answers "was a building going up around the time of this
+ * sale". For a large class of sales it cannot answer at all, and the
+ * gap is structural rather than a tuning problem. Replayed over the
+ * whole archive on 2026-08-20, 812 vacant-coded sales came back with no
+ * construct-new permit either side and sat in Land unjudged. Asking the
+ * roll instead:
+ *
+ *    641  no building on the roll at all        correctly Land
+ *     55  roll year_built >= the sale year      land then built, correctly Land
+ *     37  roll shows a building OLDER than the sale
+ *     79  no live roll record                   the roll cannot answer either
+ *
+ * So 86% of that "blind spot" was never blind. The 37 are, and no
+ * window would have caught them. They are two populations: houses built
+ * 2014-2024 and sold seven to twelve years later at full price (28
+ * WATERSTONE DRIVE, $1,525,000, 2,871 sf, built 2014), and pre-war
+ * houses that predate it4w-cpf4 entirely, which starts in 2016 (570
+ * BALMORAL, $52,500, built 1891). The first group is far outside the
+ * three-year window; the second has no permit row in existence.
+ *
+ * They price like buildings, not dirt: median $56.27 per lot square
+ * foot against the Land set's $29.98, p75 $130.21 against $37.71, and
+ * 9 of the 35 rated rows sit above the Land set's p95. Removing them
+ * barely moves the aggregate -- the Land median goes $29.98 to $29.94
+ * across 6,673 sales -- which is the point. This is not a median
+ * problem. It is 37 individual rows an appraiser could lift into a
+ * report as land comps, one at a time.
+ *
+ * REQUIRES A LIVING AREA, not just a year. The roll zeroes living area
+ * once a building comes down but keeps the year (185 BANNERMAN reads 0
+ * today after selling six suites in 2022), so year_built alone would
+ * read a demolished house as standing and call a genuine bare-lot sale
+ * improved -- the exact error this is meant to remove, in reverse.
+ *
+ * REQUIRES A LIVE RECORD. No record is not evidence of bareness; those
+ * 79 stay unjudged, which is the honest outcome.
+ *
+ * A PERMIT ALWAYS WINS. main.js only consults this when the permit pass
+ * returned nothing. A permit is dated evidence about the transaction;
+ * the roll is a snapshot read backwards, and where they disagree the
+ * dated one is worth more.
+ *
+ * @returns {'already-built'|null}
+ */
+export function rollBuildVerdict({
+  saleIsVacant, hasLiveRecord, yearBuilt, livingArea, saleDate,
+}) {
+  if (!saleIsVacant || !hasLiveRecord) return null;
+  const built = Number(yearBuilt);
+  if (!Number.isFinite(built) || built <= 1800) return null;
+  const area = Number(livingArea);
+  if (!Number.isFinite(area) || area <= 0) return null;
+  const saleYear = Number(String(saleDate ?? '').slice(0, 4));
+  if (!Number.isFinite(saleYear) || saleYear <= 1800) return null;
+  return built < saleYear ? 'already-built' : null;
+}
+
+/** Plain-language reading of a ROLL-derived verdict. Says which
+ *  instrument spoke, because a permit is dated evidence about this
+ *  transaction and this is an inference from a later snapshot — an
+ *  appraiser weighing the row is entitled to know which one they have. */
+export function describeRollBuilt({ yearBuilt, livingArea, saleDate }) {
+  const saleYear = String(saleDate ?? '').slice(0, 4);
+  const area = Math.round(Number(livingArea) || 0).toLocaleString('en-CA');
+  return `No construction permit within three years either way, but the assessment roll `
+    + `records a ${yearBuilt} building of ${area} sf on this parcel — older than the ${saleYear} `
+    + `sale, and still standing today. Despite the vacant use code something was on the lot `
+    + `when it changed hands, so this is NOT a land comp. From the roll, not a permit: the `
+    + `roll describes the parcel now, so confirm before leaning on the row.`;
 }

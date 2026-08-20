@@ -7,6 +7,7 @@ import {
   DEMO_WINDOW_DAYS, permitAddressKey, buildPermitIndex, findNearestPermit,
   demoVerdict, describeDemoPermit,
   BUILT_BEFORE_DAYS, buildVerdict, describeBuildPermit,
+  rollBuildVerdict, describeRollBuilt,
 } from '../src/lib/permitEvidence.js';
 
 let passed = 0;
@@ -146,6 +147,78 @@ test('buildVerdict — improved-coded sales are not judged; every house has a pe
   const hit = findNearestPermit({ streetNumber: '345', streetName: 'AMHERST', saleDate: '2020-02-19' }, idx, 3 * 365);
   assert.equal(buildVerdict(hit, false), null);
   assert.equal(buildVerdict(null, true), null);
+});
+
+// ---- rollBuildVerdict: the second instrument -------------------------------
+// Permits cannot answer for 37 sales in the archive -- houses built 2014-2024
+// and sold years later, and pre-war houses that predate it4w-cpf4's 2016
+// start. The roll's own year_built can. These pin the guards that stop it
+// answering when it should not.
+
+const ROLL = {
+  saleIsVacant: true, hasLiveRecord: true,
+  yearBuilt: 2014, livingArea: 2871, saleDate: '2024-06-01',
+};
+
+test('rollBuildVerdict — a building older than the sale, still standing', () => {
+  // 28 WATERSTONE DRIVE: $1,525,000, 2,871 sf, built 2014, sold 2024.
+  // Ten years past any permit window and coded vacant.
+  assert.equal(rollBuildVerdict(ROLL), 'already-built');
+  // 570 BALMORAL: built 1891, sold 2020. No permit row exists at all.
+  assert.equal(rollBuildVerdict({ ...ROLL, yearBuilt: 1891, livingArea: 1636, saleDate: '2020-03-11' }), 'already-built');
+});
+
+test('rollBuildVerdict — built AT or AFTER the sale is land-then-built, not this', () => {
+  // 55 of the 812 unjudged look like this. The lot sold bare and was built
+  // on after; calling them improved would be the error in reverse.
+  assert.equal(rollBuildVerdict({ ...ROLL, yearBuilt: 2024, saleDate: '2024-06-01' }), null);
+  assert.equal(rollBuildVerdict({ ...ROLL, yearBuilt: 2025, saleDate: '2024-06-01' }), null);
+});
+
+test('rollBuildVerdict — a year with NO living area is a demolished building', () => {
+  // The roll zeroes living area when a building comes down but keeps the
+  // year. 185 BANNERMAN sold six suites in 2022 and reads 0 today. Judging
+  // on the year alone would call a genuine bare-lot sale improved.
+  assert.equal(rollBuildVerdict({ ...ROLL, livingArea: 0 }), null);
+  assert.equal(rollBuildVerdict({ ...ROLL, livingArea: null }), null);
+  assert.equal(rollBuildVerdict({ ...ROLL, livingArea: undefined }), null);
+});
+
+test('rollBuildVerdict — no live record is not evidence of anything', () => {
+  // 79 of the 812. Absence of a roll row says nothing about the parcel, so
+  // they stay unjudged rather than being read as bare OR as built.
+  assert.equal(rollBuildVerdict({ ...ROLL, hasLiveRecord: false }), null);
+});
+
+test('rollBuildVerdict — only asked of vacant-coded sales', () => {
+  // Same reason buildVerdict is: every improved sale has an older building,
+  // so flagging those would bury the finding in noise.
+  assert.equal(rollBuildVerdict({ ...ROLL, saleIsVacant: false }), null);
+});
+
+test('rollBuildVerdict — junk years and junk dates decide nothing', () => {
+  for (const yearBuilt of [null, undefined, 0, '', 'n/a', 1800, -1]) {
+    assert.equal(rollBuildVerdict({ ...ROLL, yearBuilt }), null, `yearBuilt ${yearBuilt}`);
+  }
+  for (const saleDate of [null, undefined, '', 'not-a-date']) {
+    assert.equal(rollBuildVerdict({ ...ROLL, saleDate }), null, `saleDate ${saleDate}`);
+  }
+});
+
+test('rollBuildVerdict — string inputs from the roll are coerced, not rejected', () => {
+  // d4mq-wa44 hands numbers back as strings over SoDA.
+  assert.equal(rollBuildVerdict({ ...ROLL, yearBuilt: '2014', livingArea: '2871' }), 'already-built');
+});
+
+test('describeRollBuilt — names the instrument and does not claim a permit', () => {
+  const text = describeRollBuilt({ yearBuilt: 2014, livingArea: 2871, saleDate: '2024-06-01' });
+  assert.match(text, /2014/);
+  assert.match(text, /2,871 sf/);
+  assert.match(text, /2024/);
+  assert.match(text, /NOT a land comp/);
+  // The whole point of a separate description: a reader must not come away
+  // thinking a permit was found.
+  assert.match(text, /not a permit/i);
 });
 
 console.log('');
