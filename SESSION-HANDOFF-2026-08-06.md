@@ -1,5 +1,18 @@
 # Session handoff — 2026-08-06
 
+> **Update 2026-08-19.** A later session ported the Manitoba site's Aug-2026
+> Sales Analysis work: the SABRE sales database (folder-connected, IndexedDB),
+> the N1 ID column + Matched/Unmatched filter, the Data Status dialog and
+> staleness banner, and the visual refresh (green Search, dark-red Clear,
+> emoji, Additional-filters disclosure, date-preset pills, Commercial Sales /
+> Land Sales presets). Against the MB-parity gap list below: **date presets
+> are now done** (3/6/12/24/36/48/60/72 mo, with the Jan-1 snap at 24+). Still
+> open: `sale-asmt-max`, `vacant-improved` + `vacant-threshold`,
+> `legend-toggle`, `far-flung-km` + `far-flung-exclude`. The charts surface
+> was deliberately skipped and remains the largest MB feature absent here.
+> The "do not re-add $/Lot SF" instruction below still stands.
+
+
 Resume point for a fresh thread on the **Winnipeg Parcel Search** repo
 (`D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch`). Live at
 https://winnipeg-opendata-parcelsearch.vercel.app/ ; every push to `main`

@@ -10,8 +10,9 @@ civic address, zoning, and dwelling-unit count; see survey lots and assessment
 parcels together on a MapLibre map (street, satellite, or 7.5 cm City aerial basemaps); toggle ~15 reference overlays (citywide
 zoning, traffic volumes, transit, OurWinnipeg policy areas, contaminated
 sites, neighbourhoods, parcel dimensions); browse **historical as-of-date
-parcels** with inferred lineage and size-change highlighting; upload a sales
-CSV for comparable-sales analysis; export results to CSV.
+parcels** with inferred lineage and size-change highlighting; analyse
+comparable sales from SABRE exports (drop a file, paste a block, or connect a
+folder as a local sales database); export results to CSV.
 
 There is no server, database, or login. The browser queries the
 [City of Winnipeg Open Data](https://data.winnipeg.ca) Socrata API live on
@@ -44,7 +45,54 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 | `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels + aerial-ortho PMTiles builds |
 | `extras/` | Early experiments kept for reference |
 
+## Sales Analysis
+
+Winnipeg publishes no sales dataset, so sales always arrive from the user: a
+SABRE **SoldPropertyListing** export dropped on the sales tab, a block pasted
+out of SABRE or a spreadsheet, or the **SABRE sales database** — a folder of
+exports connected once and cached locally.
+
+That data is a paid subscription product, so it is never hosted or uploaded.
+The database lives in IndexedDB (`wpg-parcel-sales`) behind a File System
+Access directory handle, which is what lets a new export dropped into the
+folder be noticed on the next visit rather than re-imported by hand. Chrome
+and Edge support the handle; Firefox and Safari fall back to a manual folder
+pick, which works without the auto-refresh. Its coverage is shown only in the
+sales panel's own Coverage dialog — never in Data Status, which is public.
+
+Two things about the merge are load-bearing:
+
+- Exports are manual pulls capped near 500 records, so their date windows
+  overlap and the same sale row arrives in several files. Duplicate rows are
+  dropped across files by an exact full-row match, because
+  `dedupAndGroupSales` SUMS living area per (roll, instrument) — the same
+  physical row imported twice would report a 1,200 sf building as 2,400.
+  Distinct component rows sharing that key are genuine (SABRE enumerates a
+  multi-unit parcel one row per unit) and must survive, and only an
+  exact-cell match tells the two cases apart.
+- Files are recognised by their **header**, not their filename, so a renamed
+  export still imports and a stray CSV in the folder is ignored and counted.
+
+**N1 cross-reference.** Sales carry an optional `N1 ID` column, stamped by an
+offline crosswalk rather than matched in the browser (the same division of
+labour the Manitoba app uses). The grid shows it and the sales tab filters
+Any / Matched / Unmatched, shareable as `?n1=`. Blank is the useful state:
+unmatched rows are the queue of sales still to be entered into N1. The filter
+is row-level, so a multi-parcel sale matched on only some of its rolls shows
+exactly the rows that still need doing. A CSV with no N1 ID column reads as
+entirely unmatched, which is the truth.
+
 ## Data freshness
+
+The **Data Status** dialog in the top bar is the in-app view of everything
+below: published artifact vintages, the historical archive and its pinned
+CDN revision, the aerial-ortho years, and each Socrata dataset's own
+last-update stamp (fetched when the dialog opens, filled in per service so
+one dead endpoint reads "unavailable" rather than blocking the rest). A
+banner appears under the top bar when the citywide parcel tiles pass 90 days
+— two missed bi-monthly rebuilds — and turns red past a year. It is the one
+alarm that fires from the deployed app rather than the scheduler machine, so
+it still works when the machine that runs the jobs is off.
 
 Search results are always live — every search queries the Socrata API
 directly. The build-time artifacts below are the parts that can age, so each
