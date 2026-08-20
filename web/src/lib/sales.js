@@ -190,6 +190,10 @@ export function dedupAndGroupSales(rows) {
  * @param {Map<string, SaleRecord[]>} groups instrument → group members
  * @returns {Feature[]} one feature per sale, in visibleSales order
  */
+/** Square feet in an acre. The City publishes land area in sf only, so
+ *  every acreage figure in the app is derived through this. */
+const SQFT_PER_ACRE = 43560;
+
 export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
   const features = [];
   for (const sale of visibleSales) {
@@ -253,6 +257,17 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
       landSf = group.reduce((sum, g) => sum + (g.landSf || 0), 0);
     }
     if (p._salePrice && landSf > 0) p._pricePerSf = p._salePrice / landSf;
+    // Land metrics for the land-sales charts and the Land Sales preset.
+    // Acres is derived rather than sourced: the City publishes land area
+    // in square feet only, and an appraiser reasons about larger parcels
+    // in acres. Same group-total denominator as $/Lot SF, so an assembly
+    // is rated as one deal.
+    if (landSf > 0) p._saleAcres = landSf / SQFT_PER_ACRE;
+    if (p._salePrice && p._saleAcres > 0) p._pricePerAcre = p._salePrice / p._saleAcres;
+    // Price per LOT: the consideration split across the parcels in the
+    // transaction. On a multi-lot land deal this is the figure that
+    // actually prices a building lot, which a per-SF rate obscures.
+    if (p._salePrice && group.length > 0) p._pricePerLot = p._salePrice / group.length;
     let asmt = Number(p.total_assessed_value) || 0;
     if (isMulti) {
       asmt = group.reduce((sum, g) => {

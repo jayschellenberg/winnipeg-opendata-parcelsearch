@@ -19,7 +19,6 @@ import {
   saleAddressText, normalizeStreetQuery, passesStreetFilter,
   salePriceOf, passesRange, passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
-  saleAsmtRatio, passesSaleAsmtMax,
   saleUseCodeOf, isVacantUseCode, groupVacancy, passesVacantFilter,
   groupSpreadKm, isFarFlung,
 } from '../src/lib/salesFilters.js';
@@ -276,32 +275,6 @@ test('passesZoningFilter — a sale with no zoning fails an active filter', () =
   assert.equal(passesZoningFilter(zoned({}), new Set(['R2']), strip), false);
 });
 
-// ---- Sale/Asmt cap --------------------------------------------------------
-// buildSaleFeatures stamps _saleToAsmt as a PERCENTAGE; the cap is a ratio.
-const asmt = (pct, extra = {}) => ({ properties: { _saleToAsmt: pct, ...extra } });
-
-test('saleAsmtRatio converts the stamped percentage back to a ratio', () => {
-  assert.equal(saleAsmtRatio(asmt(150)), 1.5);
-  assert.equal(saleAsmtRatio(asmt(100)), 1);
-  assert.equal(saleAsmtRatio(asmt(0)), null);
-  assert.equal(saleAsmtRatio(asmt(undefined)), null);
-  assert.equal(saleAsmtRatio({}), null);
-});
-
-test('passesSaleAsmtMax — null cap is off; the bound is inclusive', () => {
-  assert.equal(passesSaleAsmtMax(asmt(500), null), true, 'no cap passes everything');
-  assert.equal(passesSaleAsmtMax(asmt(150), 1.5), true, 'exactly at the cap is kept');
-  assert.equal(passesSaleAsmtMax(asmt(151), 1.5), false);
-  assert.equal(passesSaleAsmtMax(asmt(75), 1.5), true);
-});
-
-test('passesSaleAsmtMax — an unmeasurable ratio fails an active cap', () => {
-  assert.equal(passesSaleAsmtMax(asmt(undefined), 1.5), false);
-  assert.equal(passesSaleAsmtMax({ properties: { _noLiveMatch: true } }, 1.5), false);
-  // ...but is untouched when no cap is set.
-  assert.equal(passesSaleAsmtMax(asmt(undefined), null), true);
-});
-
 // ---- Vacant / improved ----------------------------------------------------
 const useCode = (code, inst = 'I1', live = null) => ({
   properties: { _saleUseCode: code, property_use_code: live, _saleInstrument: inst },
@@ -314,11 +287,16 @@ test('saleUseCodeOf prefers the CSV code and strips the live description', () =>
   assert.equal(saleUseCodeOf({ properties: {} }), '');
 });
 
-test('isVacantUseCode knows the assessor’s vacant codes', () => {
+test('isVacantUseCode — any V-prefixed code, plus CNVAC', () => {
   for (const c of ['VRES1', 'VRES2', 'VCOMM', 'VINDU', 'VAGRI', 'VAPRK', 'CNVAC']) {
     assert.equal(isVacantUseCode(c), true, c);
   }
+  // Prefix rule, not a fixed list: a vacant code the City adds later
+  // is picked up without a code change.
+  assert.equal(isVacantUseCode('VXYZ9'), true, 'unknown V-code still reads vacant');
+  assert.equal(isVacantUseCode('vcomm'), true, 'case-insensitive');
   assert.equal(isVacantUseCode('RESMC'), false);
+  assert.equal(isVacantUseCode('CNRES'), false, 'other condo codes are not vacant');
   assert.equal(isVacantUseCode(''), false);
   assert.equal(isVacantUseCode(null), false);
 });

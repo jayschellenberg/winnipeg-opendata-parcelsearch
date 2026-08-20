@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Land Sales Charts — Winnipeg Parcel Search</title>
+    <link rel="stylesheet" href="./src/charts/charts.css" />
+  </head>
+  <body>
+    <header class="charts-header">
+      <h1>Land Sales Charts</h1>
+      <p class="charts-sub" id="charts-sub">Waiting for the Sales Analysis tab…</p>
+    </header>
+
+    <div class="charts-bar">
+      <label class="charts-opt" title="Restrict to vacant-land sales — any Property Use Code starting with V (VRES1, VCOMM, VINDU, VAGRI, VAPRK, VRES2) plus CNVAC. Untick to chart every sale currently shown in the grid.">
+        <input type="checkbox" id="land-only" checked />
+        <span>Land sales only</span>
+      </label>
+      <label class="charts-opt" title="Leave out sales flagged Far-Flung in the grid — scattered portfolio deals whose blended rate is not a local comparable.">
+        <input type="checkbox" id="drop-far-flung" checked />
+        <span>Exclude far-flung</span>
+      </label>
+      <label class="charts-opt" title="Stop accepting updates from the Sales Analysis tab, so the charts hold still while you read or capture them.">
+        <input type="checkbox" id="freeze" />
+        <span>Freeze</span>
+      </label>
+      <span class="charts-status" id="charts-status"></span>
+    </div>
+
+    <main class="charts-grid" id="charts-grid"></main>
+
+    <p class="charts-foot">
+      Each point is one SALE, not one parcel — a multi-parcel assembly is a
+      single transaction, and counting it once per lot would weight it
+      several times over in every trendline. Rates use the group's total
+      land. This is a research aid, not an authoritative record.
+    </p>
+
+    <script type="module" src="./src/charts/main.js"></script>
+  </body>
+</html>

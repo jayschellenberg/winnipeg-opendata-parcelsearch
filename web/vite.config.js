@@ -1,5 +1,9 @@
 import { defineConfig } from 'vite';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   // Tailwind v4's Vite integration scans source files for utility
@@ -15,6 +19,14 @@ export default defineConfig({
     // cache.
     chunkSizeWarningLimit: 900,
     rollupOptions: {
+      // Two pages: the app, and the land-sales charts it opens in a
+      // second tab. Without naming both here Vite would build index.html
+      // alone and charts.html would 404 in production while working
+      // fine in dev.
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        charts: resolve(__dirname, 'charts.html'),
+      },
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;

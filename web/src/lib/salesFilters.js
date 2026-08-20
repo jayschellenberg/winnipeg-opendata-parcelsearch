@@ -225,37 +225,6 @@ export function passesStreetFilter(sale, query) {
  * control removes comps rather than narrowing to them.
  * ------------------------------------------------------------------ */
 
-/**
- * Sale ÷ Assessed Total as a plain ratio, or null when the sale has no
- * measurable ratio.
- *
- * buildSaleFeatures stamps `_saleToAsmt` as a PERCENTAGE (price/asmt ×
- * 100) because that is what the grid column shows; the cap the user
- * picks is a ratio (≤ 1.5), so the conversion happens here, once,
- * rather than at each call site.
- */
-export function saleAsmtRatio(feature) {
-  const pct = Number(feature?.properties?._saleToAsmt);
-  if (!Number.isFinite(pct) || pct <= 0) return null;
-  return pct / 100;
-}
-
-/**
- * Keep sales whose Sale/Asmt ratio is at or below `cap`. Null cap is
- * off. Inclusive at the bound, matching the "≤ 1.5" option labels.
- *
- * A sale with no ratio (no assessment on the live record, or no live
- * match at all) fails an active cap: the cap exists to catch sales the
- * assessment hasn't caught up to, and an unmeasured sale is exactly the
- * case that must not be waved through unchecked.
- */
-export function passesSaleAsmtMax(feature, cap) {
-  if (cap == null) return true;
-  const ratio = saleAsmtRatio(feature);
-  if (ratio == null) return false;
-  return ratio <= cap;
-}
-
 /*
  * Vacant-land use codes. Winnipeg's assessor classifies vacancy
  * directly in the Property Use Code, so this is the assessor's own
@@ -263,19 +232,17 @@ export function passesSaleAsmtMax(feature, cap) {
  * threshold proxy — which is why this port carries no equivalent of
  * MB's `vacant-threshold` input: there is no number to tune.
  *
- * Matched on the 5-character code prefix, since the live record spells
- * it "VCOMM - VACANT COMMERCIAL" while a SABRE export carries the bare
- * "VCOMM".
+ * The rule is the V PREFIX (VRES1, VRES2, VCOMM, VINDU, VAGRI, VAPRK
+ * …), not a fixed list, so a vacant code the City adds later is picked
+ * up without a code change. CNVAC — condo vacant — is the one genuine
+ * vacant code that doesn't start with V, so it is named explicitly
+ * rather than silently dropping out of land comps.
+ *
+ * Codes are matched on the bare 5-character form: the live record
+ * spells it "VCOMM - VACANT COMMERCIAL" while a SABRE export carries
+ * just "VCOMM".
  */
-const VACANT_CODES = new Set([
-  'VRES1',   // vacant residential 1
-  'VRES2',   // vacant residential 2
-  'VCOMM',   // vacant commercial
-  'VINDU',   // vacant industrial
-  'VAGRI',   // vacant agricultural
-  'VAPRK',   // vacant park
-  'CNVAC',   // condo vacant
-]);
+const VACANT_EXTRA_CODES = new Set(['CNVAC']);
 
 /** The bare 5-char use code for a joined sale feature, preferring the
  *  CSV's own Par Use Code and falling back to the live record. '' when
@@ -288,7 +255,9 @@ export function saleUseCodeOf(feature) {
 
 /** True when the code is one the assessor marks vacant. */
 export function isVacantUseCode(code) {
-  return VACANT_CODES.has(String(code ?? '').trim().toUpperCase());
+  const c = String(code ?? '').trim().toUpperCase();
+  if (!c) return false;
+  return c.startsWith('V') || VACANT_EXTRA_CODES.has(c);
 }
 
 /**

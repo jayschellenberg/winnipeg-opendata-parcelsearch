@@ -104,7 +104,8 @@ const COMMERCIAL_SALES = [
 // building columns are noise on a land sale.
 const LAND_SALES = [
   'roll', 'address', 'cluster', 'saleDate', 'salePrice', 'swornValue',
-  'area', 'pricePerSf', 'saleZoning', 'zoning', 'water',
+  'area', 'saleAcres', 'pricePerSf', 'pricePerAcre', 'pricePerLot',
+  'saleZoning', 'zoning', 'water',
   'saleToAsmt', 'dist', 'value', 'n1Id',
 ];
 

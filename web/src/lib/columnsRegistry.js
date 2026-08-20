@@ -14,7 +14,7 @@
 // DOM-coupling lives in lib/cells.js — its functions only touch `document`
 // inside their bodies, so this file remains importable in plain Node.
 
-import { formatSqFt } from './format.js';
+import { formatSqFt, formatAcres } from './format.js';
 import { assessmentUrl, walkscoreUrl, floodToolUrl } from './links.js';
 import {
   td, badgeTd, truncatedTd, linkTd, assessmentTd,
@@ -235,6 +235,21 @@ export const COLUMNS = [
     // would otherwise lift straight into a comp set.
     render: (a) => farFlungTd(a),
     csv: { header: '$/Lot SF', extract: (a) => a._pricePerSf } },
+
+  { key: 'saleAcres',    header: 'Acres',         mode: 'sales',  sortable: true,
+    theadTitle: 'Land area in acres, derived from Land Actual sqft (÷ 43,560). For multi-parcel sales, the group total.',
+    render: (a) => td(formatAcres(a._saleAcres), 'num'),
+    csv: { header: 'Acres', extract: (a) => a._saleAcres } },
+
+  { key: 'pricePerAcre', header: '$/Acre',        mode: 'sales',  sortable: true,
+    theadTitle: 'Sale price ÷ acres. For multi-parcel sales, divides by the group total land.',
+    render: (a) => td(formatDollars(a._pricePerAcre), 'num'),
+    csv: { header: '$/Acre', extract: (a) => a._pricePerAcre } },
+
+  { key: 'pricePerLot',  header: '$/Lot',         mode: 'sales',  sortable: true,
+    theadTitle: 'Sale price ÷ number of parcels in the transaction — what one lot fetched in a multi-lot deal. Equals the sale price on a single-parcel sale.',
+    render: (a) => td(formatDollars(a._pricePerLot), 'num'),
+    csv: { header: '$/Lot', extract: (a) => a._pricePerLot } },
 
   { key: 'saleToAsmt',   header: 'Sale/Asmt',     mode: 'sales',  sortable: true,
     theadTitle: 'Sale price ÷ total assessed value (latest year)',

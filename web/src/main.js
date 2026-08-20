@@ -106,7 +106,7 @@ import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
   passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
-  passesSaleAsmtMax, groupVacancy, passesVacantFilter,
+  groupVacancy, passesVacantFilter,
   groupSpreadKm, isFarFlung,
 } from './lib/salesFilters.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
@@ -300,6 +300,9 @@ const SORT_KEYS = {
   numUnits:     (r) => finiteOrNeg(r.assess?.properties?._saleNumUnits),
   saleZoning:   (r) => strKey(r.assess?.properties?._saleZoning),
   n1Id:         (r) => numOrStr(r.assess?.properties?._n1Id),
+  saleAcres:    (r) => finiteOrNeg(r.assess?.properties?._saleAcres),
+  pricePerAcre: (r) => finiteOrNeg(r.assess?.properties?._pricePerAcre),
+  pricePerLot:  (r) => finiteOrNeg(r.assess?.properties?._pricePerLot),
 };
 
 // Numeric-smart string key: if the value looks like a number, compare it
@@ -2873,6 +2876,62 @@ function updateFarFlungCount(sales, thresholdKm, excluding) {
     : `Sales whose own parcels lie more than ${thresholdKm} km apart are marked with a ⚠ on $/Lot SF. Nothing is removed unless you tick Exclude under Additional filters.`;
 }
 
+/*
+ * Live link to the land-sales charts tab (charts.html).
+ *
+ * The charts page holds no data: it asks for the current set on open
+ * and we re-publish on every sales render, so the scatter tracks the
+ * sidebar filters. Only the fields the charts actually read are sent —
+ * a projection, not the whole feature — because the full joined
+ * features carry geometry and would be an order of magnitude larger to
+ * structured-clone on every keystroke of a filter.
+ */
+const CHARTS_CHANNEL = 'wps-sales-charts';
+let chartsChannel = null;
+let lastChartRows = [];
+
+function chartsBus() {
+  if (chartsChannel || typeof BroadcastChannel === 'undefined') return chartsChannel;
+  chartsChannel = new BroadcastChannel(CHARTS_CHANNEL);
+  // A tab opened after the grid was populated has no broadcast coming,
+  // so it asks; answer with whatever we last rendered.
+  chartsChannel.addEventListener('message', (e) => {
+    if (e.data?.type === 'request') {
+      chartsChannel.postMessage({ type: 'sales', rows: lastChartRows });
+    }
+  });
+  return chartsChannel;
+}
+
+function publishSalesToCharts(rows) {
+  lastChartRows = (rows || []).map((r) => {
+    const p = r.assess?.properties || {};
+    return {
+      assess: {
+        properties: {
+          roll_number: p.roll_number,
+          full_address: p.full_address,
+          _saleInstrument: p._saleInstrument,
+          _saleDate: p._saleDate,
+          _salePrice: p._salePrice,
+          _saleAcres: p._saleAcres,
+          _pricePerSf: p._pricePerSf,
+          _pricePerAcre: p._pricePerAcre,
+          _pricePerLot: p._pricePerLot,
+          _saleUseCode: p._saleUseCode,
+          property_use_code: p.property_use_code,
+          _saleZoning: p._saleZoning,
+          zoning: p.zoning,
+          _saleGroupSize: p._saleGroupSize,
+          _dist: p._dist,
+          _farFlung: p._farFlung,
+        },
+      },
+    };
+  });
+  try { chartsBus()?.postMessage({ type: 'sales', rows: lastChartRows }); } catch { /* no receiver */ }
+}
+
 /**
  * Show the "Include legend in map image" tick only once a legend is
  * actually on screen. Watching the map pane for hidden/style flips
@@ -3200,7 +3259,7 @@ function wireSalesTab() {
   // Sale/Asmt cap, vacant/improved, and the far-flung pair. All re-run
   // the analysis; the far-flung km field listens on 'input' too so the
   // tally tracks as you type rather than only on blur.
-  for (const id of ['sale-asmt-max', 'vacant-improved', 'far-flung-exclude', 'far-flung-km']) {
+  for (const id of ['vacant-improved', 'far-flung-exclude', 'far-flung-km']) {
     const el = document.getElementById(id);
     if (!el) continue;
     el.addEventListener('change', () => { if (salesData) runSalesAnalysis(); });
@@ -3208,6 +3267,13 @@ function wireSalesTab() {
       el.addEventListener('input', () => { if (salesData) runSalesAnalysis(); });
     }
   }
+
+  // Charts. A named window target so repeated clicks reuse the one
+  // tab rather than littering a dozen identical ones.
+  document.getElementById('charts-open')?.addEventListener('click', () => {
+    chartsBus();   // ensure we're listening before the tab asks
+    window.open('charts.html', 'wps-sales-charts');
+  });
 
   // N1 crosswalk filter (Additional filters). Shareable via ?n1=.
   const $n1Filter = document.getElementById('sales-n1-filter');
@@ -3419,8 +3485,6 @@ async function handleSalesUpload({ name, text }, remember = true) {
     // previous comp set, not a standing preference. Far-flung is left
     // alone — its threshold is a judgement about what counts as
     // scattered, which does carry across uploads.
-    const $asmtCap = document.getElementById('sale-asmt-max');
-    if ($asmtCap) $asmtCap.value = '';
     const $vacant = document.getElementById('vacant-improved');
     if ($vacant) $vacant.value = 'all';
     rebuildPucsFilter();
@@ -3772,24 +3836,15 @@ async function runSalesAnalysis() {
     : afterClass.filter((f) => passesZoningFilter(f, zoningSelected, stripZoningCode));
   const zoningHidden = afterClass.length - visibleFeatures.length;
 
-  // Sale/Asmt cap. Post-join by necessity: the ratio needs the live
-  // assessed total, so it does not exist until the roll lookup resolves.
-  const asmtCapRaw = parseFloat(document.getElementById('sale-asmt-max')?.value ?? '');
-  const asmtCap = Number.isFinite(asmtCapRaw) && asmtCapRaw > 0 ? asmtCapRaw : null;
-  const afterAsmt = asmtCap == null
-    ? visibleFeatures
-    : visibleFeatures.filter((f) => passesSaleAsmtMax(f, asmtCap));
-  const asmtHidden = visibleFeatures.length - afterAsmt.length;
-
   // Vacant / improved, from the assessor's use code. Judged per SALE so
   // every parcel of a multi-parcel transaction passes or fails together
   // — one improved parcel makes the whole thing an improved sale.
   const vacantMode = document.getElementById('vacant-improved')?.value || 'all';
-  const vacancyByGroup = groupVacancy(afterAsmt);
+  const vacancyByGroup = groupVacancy(visibleFeatures);
   const afterVacant = vacantMode === 'all'
-    ? afterAsmt
-    : afterAsmt.filter((f) => passesVacantFilter(f, vacantMode, vacancyByGroup));
-  const vacantHidden = afterAsmt.length - afterVacant.length;
+    ? visibleFeatures
+    : visibleFeatures.filter((f) => passesVacantFilter(f, vacantMode, vacancyByGroup));
+  const vacantHidden = visibleFeatures.length - afterVacant.length;
 
   // Far-flung. The threshold MARKS; only the Exclude tick removes. The
   // span is a group property, so a flagged sale drops whole — never
@@ -3842,7 +3897,6 @@ async function runSalesAnalysis() {
     // shrink the comp set.
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
-    (asmtHidden ? ` · ${asmtHidden} over the Sale/Asmt cap` : '') +
     (vacantHidden ? ` · ${vacantHidden} hidden by the ${vacantMode} filter` : '') +
     (farFlungHidden ? ` · ${farFlungHidden} far-flung excluded` : '')
   );
@@ -3856,6 +3910,7 @@ async function runSalesAnalysis() {
   setParcels(EMPTY_FC, mappable);
 
   renderTable(rows);
+  publishSalesToCharts(rows);
 }
 
 // Neighbourhood-cluster index, built once from the committed

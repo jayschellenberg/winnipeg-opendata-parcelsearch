@@ -4093,18 +4093,12 @@ button.topbar-link {
   font-weight: 600;
 }
 
-.sale-asmt-row,
 .far-flung-controls-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   margin-top: 6px;
-}
-.sale-asmt-row select {
-  flex: 1 1 auto;
-  font-size: 12px;
-  padding: 3px 4px;
 }
 .far-flung-field {
   display: flex;

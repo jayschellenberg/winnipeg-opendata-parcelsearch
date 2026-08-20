@@ -558,6 +558,15 @@
                 <option value="improved">Improved Only</option>
               </select>
             </label>
+            <!-- Opens the land-sales charts in a second tab. The tab
+                 tracks these filters live over a BroadcastChannel, so
+                 narrowing the grid narrows the scatter. -->
+            <button
+              type="button"
+              id="charts-open"
+              class="secondary"
+              title="Open scatter charts of the filtered sales in a new tab — $/Lot SF and $/Acre over time, and $/Lot against lot size. Defaults to vacant-land sales; the tab tracks these filters live."
+            >📈 Charts</button>
             <!-- The Far-Flung CONTROLS live under Additional filters; this
                  read-out stays here, outside the collapsible, and speaks up
                  only when the filter is actually marking or removing sales.
@@ -627,29 +636,6 @@
                 aria-label="Filter sales by street name"
                 title="Keep only sales whose address contains this text. Case-insensitive substring, so BANNER finds BANNERMAN. Empty = no filter."
               />
-            </div>
-
-            <!-- Sale/Asmt cap. Sale price over the assessed total, as a
-                 ratio: a sale well above 1 is often one the assessment
-                 hadn't caught up to (a new building on an old assessment).
-                 Unlike the Manitoba app this is NOT gated behind Vacant
-                 Only — the cap is useful on any comp set, and hiding a
-                 live control behind an unrelated dropdown reads as a bug. -->
-            <div class="sale-asmt-row">
-              <span class="sales-range-label">Sale/Asmt:</span>
-              <select id="sale-asmt-max" aria-label="Maximum Sale/Assessment ratio" title="Drop sales whose Sale ÷ Assessed Total exceeds the cap — usually a sale the assessment hadn't caught up to. Inclusive, so a ratio exactly at the cap is kept. A sale with no assessed value can't be measured and is dropped while a cap is set. Leave on No cap for no filter.">
-                <option value="" selected>No cap</option>
-                <option value="0.5">&#8804; 0.5</option>
-                <option value="0.75">&#8804; 0.75</option>
-                <option value="1">&#8804; 1</option>
-                <option value="1.25">&#8804; 1.25</option>
-                <option value="1.5">&#8804; 1.5</option>
-                <option value="1.75">&#8804; 1.75</option>
-                <option value="2">&#8804; 2</option>
-                <option value="3">&#8804; 3</option>
-                <option value="4">&#8804; 4</option>
-                <option value="5">&#8804; 5</option>
-              </select>
             </div>
 
             <!-- Far-Flung. Marks multi-parcel sales whose own parcels lie
