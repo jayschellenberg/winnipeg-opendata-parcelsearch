@@ -26,6 +26,26 @@ import {
 } from './water.js';
 
 /**
+ * Demolition-permit verdict.
+ *
+ * A teardown is the finding worth interrupting for — an improved-coded
+ * sale that was really a land deal — so it gets the emphasis and the
+ * "before"/"after" detail. The confirms-vacant case is real evidence
+ * too, but it only agrees with what the use code already said, so it
+ * stays quiet and does not compete for attention.
+ */
+function demoTd(a) {
+  const verdict = a._demoVerdict;
+  if (!verdict) return td(null);
+  const side = a._demoSide === 'before' ? 'before' : 'after';
+  const cell = verdict === 'teardown'
+    ? td(`⚠ Teardown (${side})`, 'demo-teardown')
+    : td(`confirms vacant (${side})`, 'demo-confirms');
+  if (a._demoTitle) cell.title = a._demoTitle;
+  return cell;
+}
+
+/**
  * $/Lot SF, with a ⚠ span appended when the sale is far-flung — its own
  * parcels lie farther apart than the threshold, so the blended rate is
  * not a local comparable. The badge only appears while the Far-Flung
@@ -216,6 +236,18 @@ export const COLUMNS = [
     theadTitle: 'Number of units on the parcel (max of Number of Unit across the sale’s component rows)',
     render: (a) => td(a._saleNumUnits != null ? String(a._saleNumUnits) : null, 'num'),
     csv: { header: 'Units', extract: (a) => a._saleNumUnits } },
+
+  { key: 'demo',         header: 'Demo',          mode: 'sales',  sortable: true,
+    theadTitle: 'Demolition permit within two years either side of the sale (City Building Permits, matched by address). '
+      + 'TEARDOWN means the use code says there was a building — the price bought the lot and a demolition bill, so treat it as a LAND sale, not an improved comp. '
+      + 'Confirms on an already-vacant sale is only corroboration. Blank means no permit found, which is not proof there was none.',
+    render: (a) => demoTd(a),
+    csv: { header: 'Demo', extract: (a) => (a._demoVerdict === 'teardown' ? 'TEARDOWN' : a._demoVerdict === 'confirms-vacant' ? 'confirms vacant' : '') } },
+
+  { key: 'demoDate',     header: 'Demo Date',     mode: 'sales',  sortable: true,
+    theadTitle: 'Issue date of the demolition permit nearest this sale, within two years either side.',
+    render: (a) => td(a._demoDate || null, 'num'),
+    csv: { header: 'Demo Date', extract: (a) => a._demoDate } },
 
   { key: 'cluster',      header: 'Cluster',       mode: 'sales',  sortable: true,
     theadTitle: 'City neighbourhood cluster containing the parcel centroid (23 clusters over 235 neighbourhoods). Derived geometrically, not from the truncated neighbourhood_area field.',

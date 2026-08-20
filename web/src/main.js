@@ -38,6 +38,9 @@ import { encodeState, decodeState } from './lib/urlState.js';
 import { initSidebarTabs, setActiveTab, onTabChange } from './lib/tabs.js';
 import { presetRange } from './lib/datePresets.js';
 import { readMapLegends, layoutMapLegends, paintMapLegends } from './lib/mapLegend.js';
+import {
+  buildDemoIndex, findDemoPermit, demoVerdict, describeDemoPermit,
+} from './lib/demoPermits.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
 import bbox from '@turf/bbox';
@@ -47,6 +50,7 @@ import {
   joinSurveyWithAssessment,
   searchAssessmentParcels,
   searchAssessmentParcelsByRolls,
+  fetchDemoPermits,
   searchAssessmentParcelsExpanded,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
@@ -106,7 +110,7 @@ import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
   passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
-  groupVacancy, passesVacantFilter,
+  groupVacancy, passesVacantFilter, isVacantUseCode, saleUseCodeOf,
   groupSpreadKm, isFarFlung,
 } from './lib/salesFilters.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
@@ -302,6 +306,13 @@ const SORT_KEYS = {
   n1Id:         (r) => numOrStr(r.assess?.properties?._n1Id),
   saleAcres:    (r) => finiteOrNeg(r.assess?.properties?._saleAcres),
   pricePerBldgSf: (r) => finiteOrNeg(r.assess?.properties?._pricePerBldgSf),
+  // Rank, not text: teardown first, then confirms-vacant, then the
+  // unflagged majority — so one click on Demo brings the finding up.
+  demo:         (r) => {
+    const v = r.assess?.properties?._demoVerdict;
+    return v === 'teardown' ? '0' : v === 'confirms-vacant' ? '1' : '2';
+  },
+  demoDate:     (r) => strKey(r.assess?.properties?._demoDate),
   pricePerAcre: (r) => finiteOrNeg(r.assess?.properties?._pricePerAcre),
   pricePerLot:  (r) => finiteOrNeg(r.assess?.properties?._pricePerLot),
 };
@@ -3786,6 +3797,32 @@ async function runSalesAnalysis() {
     }
   }
 
+  // Demolition-permit evidence. Non-fatal like the cluster lookup: if
+  // the permit table can't be fetched the columns stay blank rather
+  // than taking the analysis down. Matched on the CSV's own street
+  // number + name, so it works whether or not the roll found a live
+  // record — the permit table has no roll number to join on anyway.
+  try {
+    const permits = await fetchDemoPermits();
+    const demoIndex = buildDemoIndex(permits);
+    for (const f of saleFc.features) {
+      const p = f.properties;
+      const hit = findDemoPermit({
+        streetNumber: p._saleStreetNumber,
+        streetName: p._saleStreetName,
+        saleDate: p._saleDate,
+      }, demoIndex);
+      if (!hit) continue;
+      const verdict = demoVerdict(hit, isVacantUseCode(saleUseCodeOf(f)));
+      p._demoDate = hit.date;
+      p._demoSide = hit.side;
+      p._demoVerdict = verdict;
+      p._demoTitle = describeDemoPermit(hit, verdict);
+    }
+  } catch (err) {
+    console.warn('Demolition-permit lookup failed (Demo columns stay blank):', err);
+  }
+
   // Neighbourhood cluster, from the parcel centroid. Non-fatal: if the
   // geojson can't be fetched the column just stays blank rather than
   // taking the whole analysis down with it.
@@ -3871,6 +3908,7 @@ async function runSalesAnalysis() {
   const farFlungHidden = afterVacant.length - finalFeatures.length;
   updateFarFlungCount(flaggedSales, farFlungKm, farFlungExclude);
 
+  const teardownCount = finalFeatures.filter((f) => f.properties._demoVerdict === 'teardown').length;
   const rows = finalFeatures.map((f) => ({ assess: f, survey: null }));
   const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
   // Counted off the SHOWN rows rather than liveByRoll, which spans the
@@ -3899,7 +3937,14 @@ async function runSalesAnalysis() {
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
     (vacantHidden ? ` · ${vacantHidden} hidden by the ${vacantMode} filter` : '') +
-    (farFlungHidden ? ` · ${farFlungHidden} far-flung excluded` : '')
+    (farFlungHidden ? ` · ${farFlungHidden} far-flung excluded` : '') +
+    // Named explicitly because this is the finding the columns exist to
+    // surface, and it is invisible unless the Demo column happens to be
+    // on screen: an improved-coded sale with a demolition permit beside
+    // it is a land sale in disguise.
+    (teardownCount
+      ? ` · ⚠ ${teardownCount} teardown${teardownCount === 1 ? '' : 's'} (improved code + demo permit)`
+      : '')
   );
 
   // Draw matched parcels on the map. Repeat sales share one polygon;

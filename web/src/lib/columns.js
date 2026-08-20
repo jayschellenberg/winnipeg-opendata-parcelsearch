@@ -45,7 +45,7 @@ const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
  * ADOPTED_KEY); untick it after that and it stays unticked.
  */
 const ADOPTED_KEY = 'wps_table_columns_adopted_v1';
-const ADOPT_ONCE_SALES = ['n1Id'];
+const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate'];
 
 /*
  * Columns this module does not govern. `seq` (the map badge "#") is gated
@@ -99,6 +99,9 @@ const COMMERCIAL_SALES = [
   'roll', 'address', 'cluster', 'saleDate', 'salePrice', 'swornValue',
   'useCode', 'propertyType', 'buildingType', 'yearBuilt', 'livingArea',
   'pricePerBldgSf',
+  // A teardown hiding in an improved comp set is exactly what this
+  // preset must not let through unnoticed.
+  'demo', 'demoDate',
   'numUnits', 'area', 'saleZoning', 'value', 'n1Id', 'instrument',
 ];
 // Bare-land comp set: the lot, its rate, water influence and zoning;

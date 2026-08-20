@@ -337,6 +337,44 @@ export async function listFiles() {
     });
 }
 
+/*
+ * Which source a file came from, inferred from its name.
+ *
+ * SABRE exports are "SoldPropertyListing*". MLS exports are coming as a
+ * periodic dump and will land in the same folder, so the store keeps the
+ * two apart from the start: freshness is per SOURCE, and a stale SABRE
+ * pull sitting beside a current MLS one must not read as "everything is
+ * current". Anything unrecognised is reported under its own label
+ * rather than being silently folded into SABRE.
+ */
+export function sourceOf(fileName) {
+  const n = String(fileName || '').toLowerCase();
+  if (n.includes('soldpropertylisting')) return 'SABRE';
+  if (n.includes('mls')) return 'MLS';
+  return 'Other';
+}
+
+/**
+ * Newest sale date per source, for the staleness read-out.
+ * @returns {Array<{source: string, files: number, rows: number, newest: string|null, oldest: string|null}>}
+ */
+export async function freshnessBySource() {
+  const files = await listFiles();
+  const bySource = new Map();
+  for (const f of files) {
+    const src = sourceOf(f.name);
+    if (!bySource.has(src)) {
+      bySource.set(src, { source: src, files: 0, rows: 0, newest: null, oldest: null });
+    }
+    const e = bySource.get(src);
+    e.files += 1;
+    e.rows += f.meta.rows || 0;
+    if (f.meta.maxSaleDate && (e.newest == null || f.meta.maxSaleDate > e.newest)) e.newest = f.meta.maxSaleDate;
+    if (f.meta.minSaleDate && (e.oldest == null || f.meta.minSaleDate < e.oldest)) e.oldest = f.meta.minSaleDate;
+  }
+  return [...bySource.values()].sort((a, b) => a.source.localeCompare(b.source));
+}
+
 /** One-line description of what's imported, without reading any CSV. */
 export async function describeImport() {
   const keys = await listFileKeys().catch(() => []);

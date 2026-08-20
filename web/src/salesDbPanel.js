@@ -23,7 +23,7 @@ import {
   salesDbAvailable, requestPersistence, fsAccessSupported,
   pickSalesDirectory, getSavedDirectory, directoryPermission,
   importFromDirectory, importFromFileList, checkForUpdates,
-  clearSales, listFiles, buildMergedCsv, describeImport,
+  clearSales, listFiles, buildMergedCsv, describeImport, freshnessBySource,
 } from './lib/salesStore.js';
 import { dateLabel } from './lib/dataStatus.js';
 
@@ -71,6 +71,42 @@ export function initSalesDbPanel({ onLoad, setStatus, getDateWindow } = {}) {
     $update.hidden = !msg;
   }
 
+  /**
+   * How current each source is, as of today.
+   *
+   * Reported PER SOURCE rather than as one archive figure: SABRE and the
+   * MLS export refresh on their own cadences, and a current MLS dump
+   * sitting beside a SABRE pull three months stale must not read as
+   * "everything is up to date". Days-behind is spelled out because a
+   * date alone makes the reader do the arithmetic.
+   */
+  async function renderFreshness() {
+    const el = document.getElementById('sales-db-freshness');
+    if (!el) return;
+    const sources = await freshnessBySource().catch(() => []);
+    if (!sources.length) { el.textContent = ''; el.hidden = true; return; }
+    const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
+    el.textContent = '';
+    for (const s of sources) {
+      const row = document.createElement('span');
+      row.className = 'sales-db-fresh-item';
+      if (!s.newest) {
+        row.textContent = `${s.source}: no dated sales`;
+        row.classList.add('is-stale');
+      } else {
+        const days = Math.round((todayMs - Date.parse(s.newest)) / 86_400_000);
+        row.textContent = `${s.source}: latest sale ${dateLabel(s.newest)} (${days}d ago)`;
+        // 45 days is about the point where the next pull is overdue
+        // rather than merely pending, given SABRE's own recording lag.
+        if (days > 45) row.classList.add('is-stale');
+        row.title = `${s.files} file${s.files === 1 ? '' : 's'}, ${fmtN(s.rows)} rows, `
+          + `covering ${s.oldest ? dateLabel(s.oldest) : '—'} to ${dateLabel(s.newest)}.`;
+      }
+      el.appendChild(row);
+    }
+    el.hidden = false;
+  }
+
   async function render() {
     const info = await describeImport().catch(() => ({ present: false }));
     const connected = info.present;
@@ -86,6 +122,7 @@ export function initSalesDbPanel({ onLoad, setStatus, getDateWindow } = {}) {
       $daterangeHint.hidden = !!(win.from || win.to);
     }
     steerOpen(connected);
+    renderFreshness();
     return info;
   }
 

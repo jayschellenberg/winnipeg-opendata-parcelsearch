@@ -365,6 +365,11 @@
                 <button type="button" id="sales-db-forget" class="secondary danger" title="Disconnect the sales database from this browser. The folder on disk is untouched.">🔌 Disconnect</button>
                 <button type="button" id="sales-db-coverage" class="secondary" title="Per-file row counts and sale-date ranges — spot gaps in the backfill">📅 Coverage</button>
               </div>
+              <!-- How current each source is. Per source, because SABRE
+                   and the coming MLS export refresh on their own
+                   cadences and one being current says nothing about the
+                   other. -->
+              <p class="sales-db-freshness" id="sales-db-freshness" hidden></p>
               <p class="sales-db-update" id="sales-db-update" hidden></p>
             </div>
           </details>

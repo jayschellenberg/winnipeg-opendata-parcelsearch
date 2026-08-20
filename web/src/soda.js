@@ -870,6 +870,58 @@ export async function fetchCityZoning() {
 // labels, the class for styling, and the line geometry. ~0.8 MB gzipped for the
 // whole city. Streets change rarely, so it's IndexedDB-cached for a week like
 // the zoning layer, and the in-flight promise is memoised module-side.
+/*
+ * Demolition permits, for the Sales Analysis "Demo" evidence columns.
+ *
+ * Building Permits (it4w-cpf4) filtered to demolition work, matching the
+ * definition in the Permits project's WpgDemoPermits.qmd so the site and
+ * that report can never disagree about what counts: work_type Demolish or
+ * Demolition / Construct, minus Accessory Structures (sheds, garages,
+ * fences) but KEEPING rows with no permit_type, which are otherwise real
+ * demolitions dropped on a technicality.
+ *
+ * The whole set since 2018 is ~2,600 rows — one request, cached for a
+ * week, indexed in memory. Fetched only when a sales set is loaded.
+ */
+const DEMO_PERMITS_URL = 'https://data.winnipeg.ca/resource/it4w-cpf4.json';
+const DEMO_PERMITS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DEMO_PERMITS_CACHE_KEY = 'wpgDemoPermits';
+// 2018 rather than 2020: the flag looks two years EITHER side of a sale,
+// so the earliest sales in an archive starting 2020-01 need permits back
+// to 2018-01 to be judged on the same footing as later ones.
+const DEMO_PERMITS_SINCE = '2018-01-01T00:00:00.000';
+let _demoPermitsPromise = null;
+
+/** Raw demolition-permit rows. lib/demoPermits.js turns them into an index. */
+export async function fetchDemoPermits() {
+  if (_demoPermitsPromise) return _demoPermitsPromise;
+  _demoPermitsPromise = (async () => {
+    try {
+      const cached = await idbReadCache(DEMO_PERMITS_CACHE_KEY, DEMO_PERMITS_TTL_MS);
+      if (cached) return cached;
+    } catch (err) {
+      console.warn('IndexedDB read failed for demo permits; refetching', err);
+    }
+    const where = "(work_type='Demolish' OR work_type='Demolition / Construct')"
+      + " AND ((permit_type!='Accessory Structures') OR permit_type IS NULL)"
+      + ` AND issue_date >= '${DEMO_PERMITS_SINCE}'`;
+    const params = new URLSearchParams({
+      $select: 'issue_date,permit_number,work_type,permit_type,sub_type,street_number,street_name,street_type',
+      $where: where,
+      $limit: '50000',
+    });
+    const rows = await fetchSoda(`${DEMO_PERMITS_URL}?${params}`);
+    if (Array.isArray(rows) && rows.length) {
+      idbWriteCache(DEMO_PERMITS_CACHE_KEY, rows).catch((err) =>
+        console.warn('IndexedDB write failed for demo permits', err)
+      );
+    }
+    return rows || [];
+  })();
+  _demoPermitsPromise.catch(() => { _demoPermitsPromise = null; });
+  return _demoPermitsPromise;
+}
+
 const WPG_STREETS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const WPG_STREETS_CACHE_KEY = 'wpgStreets';
 let _wpgStreetsPromise = null;

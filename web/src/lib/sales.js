@@ -224,6 +224,12 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     p._saleYearBuilt = sale.yearBuilt;
     p._saleZoning = sale.zoning || null;
     p._saleNumUnits = sale.numUnits ?? null;
+    // The CSV's own street parts. Kept on the feature because the
+    // demolition-permit join is by ADDRESS — the permit table has no
+    // roll number — and must work for a sale whose roll never matched a
+    // live record.
+    p._saleStreetNumber = sale.streetNumber || null;
+    p._saleStreetName = sale.streetName || null;
     p._n1Id = sale.n1Id || null;
     // Shown whenever the CSV carries one.
     //
