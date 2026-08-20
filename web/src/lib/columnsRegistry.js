@@ -26,6 +26,25 @@ import {
 } from './water.js';
 
 /**
+ * New-construction verdict on a vacant-coded sale.
+ *
+ * "Already built" is the finding — a sale the roll calls land that in
+ * fact carried a finished house — so it takes the alarm styling. The
+ * land-then-built case agrees with the use code and stays quiet, but is
+ * still shown, because knowing a lot WAS verified as bare at sale is
+ * worth as much to a land comp set as knowing it wasn't.
+ */
+function builtTd(a) {
+  const verdict = a._buildVerdict;
+  if (!verdict) return td(null);
+  const cell = verdict === 'already-built'
+    ? td('⚠ Already built', 'demo-teardown')
+    : td('land → built', 'demo-confirms');
+  if (a._buildTitle) cell.title = a._buildTitle;
+  return cell;
+}
+
+/**
  * Demolition-permit verdict.
  *
  * A teardown is the finding worth interrupting for — an improved-coded
@@ -248,6 +267,18 @@ export const COLUMNS = [
     theadTitle: 'Issue date of the demolition permit nearest this sale, within two years either side.',
     render: (a) => td(a._demoDate || null, 'num'),
     csv: { header: 'Demo Date', extract: (a) => a._demoDate } },
+
+  { key: 'built',        header: 'Built',         mode: 'sales',  sortable: true,
+    theadTitle: 'New-construction permit against a VACANT-coded sale (City Building Permits, matched by address). '
+      + 'ALREADY BUILT means the permit predates the sale by six months or more, so the house was finished when the lot changed hands — the sale is an IMPROVED sale the roll had not caught up with, and its rate is not a land rate. '
+      + 'Land → built means construction started at or after the sale, which confirms the sale itself bought bare land. Improved-coded sales are not judged here: every house has a build permit.',
+    render: (a) => builtTd(a),
+    csv: { header: 'Built', extract: (a) => (a._buildVerdict === 'already-built' ? 'ALREADY BUILT' : a._buildVerdict === 'land-then-built' ? 'land then built' : '') } },
+
+  { key: 'builtDate',    header: 'Built Date',    mode: 'sales',  sortable: true,
+    theadTitle: 'Issue date of the new-construction permit nearest this sale.',
+    render: (a) => td(a._buildDate || null, 'num'),
+    csv: { header: 'Built Date', extract: (a) => a._buildDate } },
 
   { key: 'cluster',      header: 'Cluster',       mode: 'sales',  sortable: true,
     theadTitle: 'City neighbourhood cluster containing the parcel centroid (23 clusters over 235 neighbourhoods). Derived geometrically, not from the truncated neighbourhood_area field.',

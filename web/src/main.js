@@ -39,8 +39,9 @@ import { initSidebarTabs, setActiveTab, onTabChange } from './lib/tabs.js';
 import { presetRange } from './lib/datePresets.js';
 import { readMapLegends, layoutMapLegends, paintMapLegends } from './lib/mapLegend.js';
 import {
-  buildDemoIndex, findDemoPermit, demoVerdict, describeDemoPermit,
-} from './lib/demoPermits.js';
+  buildPermitIndex, findNearestPermit, demoVerdict, describeDemoPermit,
+  buildVerdict, describeBuildPermit,
+} from './lib/permitEvidence.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
 import bbox from '@turf/bbox';
@@ -51,6 +52,7 @@ import {
   searchAssessmentParcels,
   searchAssessmentParcelsByRolls,
   fetchDemoPermits,
+  fetchBuildPermits,
   searchAssessmentParcelsExpanded,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
@@ -313,6 +315,11 @@ const SORT_KEYS = {
     return v === 'teardown' ? '0' : v === 'confirms-vacant' ? '1' : '2';
   },
   demoDate:     (r) => strKey(r.assess?.properties?._demoDate),
+  built:        (r) => {
+    const v = r.assess?.properties?._buildVerdict;
+    return v === 'already-built' ? '0' : v === 'land-then-built' ? '1' : '2';
+  },
+  builtDate:    (r) => strKey(r.assess?.properties?._buildDate),
   pricePerAcre: (r) => finiteOrNeg(r.assess?.properties?._pricePerAcre),
   pricePerLot:  (r) => finiteOrNeg(r.assess?.properties?._pricePerLot),
 };
@@ -3803,24 +3810,44 @@ async function runSalesAnalysis() {
   // number + name, so it works whether or not the roll found a live
   // record — the permit table has no roll number to join on anyway.
   try {
-    const permits = await fetchDemoPermits();
-    const demoIndex = buildDemoIndex(permits);
+    // Both permit sets in parallel — they answer opposite halves of one
+    // question (did this sale include a building?), and neither is worth
+    // a round trip on its own.
+    const [demoRows, buildRows] = await Promise.all([fetchDemoPermits(), fetchBuildPermits()]);
+    const demoIndex = buildPermitIndex(demoRows);
+    const buildIndex = buildPermitIndex(buildRows);
     for (const f of saleFc.features) {
       const p = f.properties;
-      const hit = findDemoPermit({
+      const at = {
         streetNumber: p._saleStreetNumber,
         streetName: p._saleStreetName,
         saleDate: p._saleDate,
-      }, demoIndex);
-      if (!hit) continue;
-      const verdict = demoVerdict(hit, isVacantUseCode(saleUseCodeOf(f)));
-      p._demoDate = hit.date;
-      p._demoSide = hit.side;
-      p._demoVerdict = verdict;
-      p._demoTitle = describeDemoPermit(hit, verdict);
+      };
+      const vacant = isVacantUseCode(saleUseCodeOf(f));
+
+      const demoHit = findNearestPermit(at, demoIndex);
+      if (demoHit) {
+        const verdict = demoVerdict(demoHit, vacant);
+        p._demoDate = demoHit.date;
+        p._demoSide = demoHit.side;
+        p._demoVerdict = verdict;
+        p._demoTitle = describeDemoPermit(demoHit, verdict);
+      }
+
+      // Three years either side, wider than the demolition window: a
+      // permit 18+ months before a sale still reads as a finished house
+      // (median $424k in Jason's archive), so a two-year window would
+      // miss the oldest of exactly the rows this is meant to catch.
+      const buildHit = findNearestPermit(at, buildIndex, 3 * 365);
+      const buildJudgement = buildVerdict(buildHit, vacant);
+      if (buildJudgement) {
+        p._buildDate = buildHit.date;
+        p._buildVerdict = buildJudgement;
+        p._buildTitle = describeBuildPermit(buildHit, buildJudgement);
+      }
     }
   } catch (err) {
-    console.warn('Demolition-permit lookup failed (Demo columns stay blank):', err);
+    console.warn('Permit lookup failed (Demo / Built columns stay blank):', err);
   }
 
   // Neighbourhood cluster, from the parcel centroid. Non-fatal: if the
@@ -3909,6 +3936,7 @@ async function runSalesAnalysis() {
   updateFarFlungCount(flaggedSales, farFlungKm, farFlungExclude);
 
   const teardownCount = finalFeatures.filter((f) => f.properties._demoVerdict === 'teardown').length;
+  const alreadyBuiltCount = finalFeatures.filter((f) => f.properties._buildVerdict === 'already-built').length;
   const rows = finalFeatures.map((f) => ({ assess: f, survey: null }));
   const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
   // Counted off the SHOWN rows rather than liveByRoll, which spans the
@@ -3944,6 +3972,11 @@ async function runSalesAnalysis() {
     // it is a land sale in disguise.
     (teardownCount
       ? ` · ⚠ ${teardownCount} teardown${teardownCount === 1 ? '' : 's'} (improved code + demo permit)`
+      : '') +
+    // The mirror finding, and the bigger one in practice: vacant-coded
+    // sales that already had a finished house standing on them.
+    (alreadyBuiltCount
+      ? ` · ⚠ ${alreadyBuiltCount} vacant-coded sale${alreadyBuiltCount === 1 ? '' : 's'} already built on`
       : '')
   );
 

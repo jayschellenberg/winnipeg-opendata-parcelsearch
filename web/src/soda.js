@@ -922,6 +922,52 @@ export async function fetchDemoPermits() {
   return _demoPermitsPromise;
 }
 
+/*
+ * New-construction permits, for the "already built" evidence column.
+ *
+ * Construct New, minus Accessory Structures — a shed or a detached
+ * garage is not the building that turns a vacant-coded sale into an
+ * improved one, and they are half the Construct New rows.
+ *
+ * Reaches back to 2016, two years earlier than the demolition set: this
+ * column asks whether a house was FINISHED before the sale, so a permit
+ * well before the archive's own 2020 start is still the answer for an
+ * early sale. ~23,000 rows, one request, cached for a week.
+ */
+const BUILD_PERMITS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const BUILD_PERMITS_CACHE_KEY = 'wpgBuildPermits';
+const BUILD_PERMITS_SINCE = '2016-01-01T00:00:00.000';
+let _buildPermitsPromise = null;
+
+/** Raw new-construction permit rows. lib/permitEvidence.js indexes them. */
+export async function fetchBuildPermits() {
+  if (_buildPermitsPromise) return _buildPermitsPromise;
+  _buildPermitsPromise = (async () => {
+    try {
+      const cached = await idbReadCache(BUILD_PERMITS_CACHE_KEY, BUILD_PERMITS_TTL_MS);
+      if (cached) return cached;
+    } catch (err) {
+      console.warn('IndexedDB read failed for build permits; refetching', err);
+    }
+    const where = "work_type='Construct New' AND (permit_type!='Accessory Structures')"
+      + ` AND issue_date >= '${BUILD_PERMITS_SINCE}'`;
+    const params = new URLSearchParams({
+      $select: 'issue_date,permit_number,work_type,permit_type,sub_type,street_number,street_name',
+      $where: where,
+      $limit: '60000',
+    });
+    const rows = await fetchSoda(`${DEMO_PERMITS_URL}?${params}`);
+    if (Array.isArray(rows) && rows.length) {
+      idbWriteCache(BUILD_PERMITS_CACHE_KEY, rows).catch((err) =>
+        console.warn('IndexedDB write failed for build permits', err)
+      );
+    }
+    return rows || [];
+  })();
+  _buildPermitsPromise.catch(() => { _buildPermitsPromise = null; });
+  return _buildPermitsPromise;
+}
+
 const WPG_STREETS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const WPG_STREETS_CACHE_KEY = 'wpgStreets';
 let _wpgStreetsPromise = null;

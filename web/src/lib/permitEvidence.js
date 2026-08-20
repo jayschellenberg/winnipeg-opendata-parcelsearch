@@ -1,20 +1,26 @@
 /*
  * Demolition-permit evidence for a sale.
  *
- * THE POINT: finding sales that looked like improved properties but
- * were really teardowns.
+ * THE POINT: two questions the assessment use code answers wrongly,
+ * both settled by a building permit at the same address.
  *
- * A sale whose use code says "house" is normally an improved comp. But
- * if a demolition permit sits within a couple of years of the sale
- * date, the building was worthless to the buyer — the price bought the
- * lot and a demolition bill. Left unflagged, that sale walks into an
- * improved-comp set carrying building value nobody paid for, dragging
- * the whole set's $/Bldg SF down for reasons the assessment roll cannot
- * show. Those are the rows this module exists to surface.
+ *   1. TEARDOWN — a sale coded improved, with a DEMOLITION permit
+ *      beside it. The building was worthless to the buyer; the price
+ *      bought the lot and a demolition bill.
+ *   2. ALREADY BUILT — a sale coded VACANT, with a NEW-CONSTRUCTION
+ *      permit issued well before it. The house was finished when the
+ *      lot changed hands; the assessment simply had not caught up.
  *
- * The same permit against an already-vacant sale is only confirmatory,
- * so the two cases are labelled differently rather than lumped together
- * — see demoVerdict.
+ * Both are the same failure in opposite directions: the roll describes
+ * the parcel as it was last assessed, not as it stood on the day it
+ * sold, and a comp set built on the code alone inherits that error.
+ *
+ * Left unflagged, a teardown drags an improved set's $/Bldg SF down
+ * for a reason the roll cannot show, and an already-built sale inflates
+ * a LAND set: measured against Jason's archive, vacant-coded sales with
+ * a construction permit 6+ months earlier run about $105 per lot square
+ * foot against roughly $28 for genuine land — a different population,
+ * not a wide spread.
  *
  * JOINING. The City's Building Permits table (it4w-cpf4) carries no
  * roll number — only street_number / street_name / street_type — so the
@@ -42,7 +48,7 @@ export const DEMO_WINDOW_DAYS = Math.round(2 * 365.25);
 
 /** Address key for either side of the join: number + street name, with
  *  the street type and any directional folded by normalizeAddressKey. */
-export function demoAddressKey(streetNumber, streetName) {
+export function permitAddressKey(streetNumber, streetName) {
   const num = String(streetNumber ?? '').trim();
   const name = String(streetName ?? '').trim();
   if (!num || !name) return '';
@@ -55,10 +61,10 @@ export function demoAddressKey(streetNumber, streetName) {
  * @param {Array} permits rows from it4w-cpf4
  * @returns {Map<string, Array<{date: string, ms: number, permitNumber, workType, subType}>>}
  */
-export function buildDemoIndex(permits) {
+export function buildPermitIndex(permits) {
   const index = new Map();
   for (const p of permits || []) {
-    const key = demoAddressKey(p.street_number, p.street_name);
+    const key = permitAddressKey(p.street_number, p.street_name);
     if (!key) continue;
     const date = String(p.issue_date ?? '').slice(0, 10);
     const ms = Date.parse(`${date}T00:00:00Z`);
@@ -69,6 +75,7 @@ export function buildDemoIndex(permits) {
       ms,
       permitNumber: p.permit_number || '',
       workType: p.work_type || '',
+      permitType: p.permit_type || '',
       subType: p.sub_type || '',
     });
   }
@@ -85,14 +92,14 @@ export function buildDemoIndex(permits) {
  * closest in time is the one that speaks to this transaction.
  *
  * @param {{streetNumber, streetName, saleDate}} sale
- * @param {Map} index from buildDemoIndex
+ * @param {Map} index from buildPermitIndex
  * @param {number} [windowDays]
  * @returns {{date, permitNumber, workType, subType, offsetDays, side}|null}
  *          side is 'before' or 'after', from the SALE's point of view.
  */
-export function findDemoPermit(sale, index, windowDays = DEMO_WINDOW_DAYS) {
+export function findNearestPermit(sale, index, windowDays = DEMO_WINDOW_DAYS) {
   if (!index || !index.size) return null;
-  const key = demoAddressKey(sale?.streetNumber, sale?.streetName);
+  const key = permitAddressKey(sale?.streetNumber, sale?.streetName);
   if (!key) return null;
   const list = index.get(key);
   if (!list) return null;
@@ -112,6 +119,7 @@ export function findDemoPermit(sale, index, windowDays = DEMO_WINDOW_DAYS) {
     date: best.date,
     permitNumber: best.permitNumber,
     workType: best.workType,
+    permitType: best.permitType,
     subType: best.subType,
     offsetDays,
     // A permit issued the same day as the sale reads as 'after': it did
@@ -130,7 +138,7 @@ export function findDemoPermit(sale, index, windowDays = DEMO_WINDOW_DAYS) {
  * demolition bill. On an already-vacant sale the same permit is merely
  * confirmatory, which is why the two are not treated alike.
  *
- * @param {object|null} hit      from findDemoPermit
+ * @param {object|null} hit      from findNearestPermit
  * @param {boolean} saleIsVacant use code says vacant land
  * @returns {'teardown'|'confirms-vacant'|null}
  */
@@ -156,6 +164,55 @@ export function describeDemoPermit(hit, verdict = null) {
   }
   if (verdict === 'confirms-vacant') {
     return `${lead} The sale is already coded vacant, so this only confirms it.`;
+  }
+  return lead;
+}
+
+/*
+ * How long before a sale a new-construction permit must sit for the
+ * building to have been FINISHED when the lot changed hands.
+ *
+ * Six months, and the number is measured rather than assumed. Splitting
+ * Jason's 14,018 vacant-coded sales by permit timing puts a wall
+ * exactly here: 6+ months before the sale, the median is $427k and
+ * about $105 per lot square foot; anywhere from 5 months before to
+ * after the sale, $133k-$175k and $26-$30. A 3x step, not a gradient —
+ * a house takes roughly that long to build, so a permit older than this
+ * means the buyer bought a completed home whatever the roll says.
+ */
+export const BUILT_BEFORE_DAYS = Math.round(6 * 30.44);
+
+/**
+ * Did this sale actually include a building the use code doesn't know
+ * about?
+ *
+ * Only asked of VACANT-coded sales: a construction permit against an
+ * already-improved sale is unremarkable — every house has one — and
+ * flagging those would bury the finding in noise.
+ *
+ * @param {object|null} hit from findNearestPermit against construction permits
+ * @param {boolean} saleIsVacant use code says vacant land
+ * @returns {'already-built'|'land-then-built'|null}
+ */
+export function buildVerdict(hit, saleIsVacant) {
+  if (!hit || !saleIsVacant) return null;
+  return hit.offsetDays <= -BUILT_BEFORE_DAYS ? 'already-built' : 'land-then-built';
+}
+
+/** Plain-language reading of a construction-permit verdict. */
+export function describeBuildPermit(hit, verdict) {
+  if (!hit) return '';
+  const months = Math.round(Math.abs(hit.offsetDays) / 30.44);
+  const what = [hit.permitType, hit.subType].filter(Boolean).join(' / ');
+  const lead = `New-construction permit ${hit.permitNumber || ''} (${what}) issued ${hit.date} — `
+    + `${months} month${months === 1 ? '' : 's'} ${hit.side} the sale.`;
+  if (verdict === 'already-built') {
+    return `${lead} The building was finished before the lot changed hands, so despite the `
+      + `vacant use code this is an IMPROVED sale — do not read its rate as a land rate.`;
+  }
+  if (verdict === 'land-then-built') {
+    return `${lead} Construction started at or after the sale, so the sale itself bought `
+      + `bare land — a genuine land comp.`;
   }
   return lead;
 }

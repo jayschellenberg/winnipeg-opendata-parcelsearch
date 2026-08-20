@@ -45,7 +45,7 @@ const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
  * ADOPTED_KEY); untick it after that and it stays unticked.
  */
 const ADOPTED_KEY = 'wps_table_columns_adopted_v1';
-const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate'];
+const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate'];
 
 /*
  * Columns this module does not govern. `seq` (the map badge "#") is gated
@@ -109,6 +109,8 @@ const COMMERCIAL_SALES = [
 const LAND_SALES = [
   'roll', 'address', 'cluster', 'saleDate', 'salePrice', 'swornValue',
   'area', 'saleAcres', 'pricePerSf', 'pricePerAcre', 'pricePerLot',
+  // The column that keeps finished houses out of a land comp set.
+  'built', 'builtDate',
   'saleZoning', 'zoning', 'water',
   'saleToAsmt', 'dist', 'value', 'n1Id',
 ];
