@@ -73,6 +73,24 @@ Two things about the merge are load-bearing:
 - Files are recognised by their **header**, not their filename, so a renamed
   export still imports and a stray CSV in the folder is ignored and counted.
 
+**Land metrics and charts.** Acres is derived from Land Actual sqft
+(÷ 43,560) — the City publishes area in square feet only — and joins
+`$/Acre` and `$/Lot` (the consideration split across the parcels in the
+transaction, which is what prices a building lot in a multi-lot deal).
+All use the same group-total denominator as `$/Lot SF`, so an assembly is
+rated as one deal.
+
+The **Charts** button opens [charts.html](web/charts.html) in a second
+tab: `$/Lot SF` over time, `$/Acre` over time, and `$/Lot` against lot
+size. It holds no data of its own — the app broadcasts the filtered set
+over a `BroadcastChannel` and the page redraws, so the charts track the
+sidebar filters live (hence Freeze). It defaults to vacant-land sales,
+where "vacant" is any Property Use Code starting with V plus `CNVAC`.
+A chart point is a SALE, not a grid row: a three-parcel assembly is one
+transaction, and three points would triple its weight in every
+trendline. The renderer is hand-rolled SVG because the CSP is
+`script-src 'self'` — no CDN chart library can load.
+
 **N1 cross-reference.** Sales carry an optional `N1 ID` column, stamped by an
 offline crosswalk rather than matched in the browser (the same division of
 labour the Manitoba app uses). The grid shows it and the sales tab filters
