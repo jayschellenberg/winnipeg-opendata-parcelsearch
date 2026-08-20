@@ -17,7 +17,10 @@
  *  with isVacantUseCode in lib/salesFilters.js — duplicated rather than
  *  imported so this module stays dependency-free. */
 export function isLandUseCode(code) {
-  const c = String(code ?? '').trim().toUpperCase();
+  // Strip the " - NAME" the live roll publishes ("CNVAC - CONDO VACANT")
+  // before comparing. The V-prefix half survived that form by accident;
+  // the CNVAC equality test did not.
+  const c = String(code ?? '').trim().toUpperCase().split(/[\s-]/)[0];
   if (!c) return false;
   return c.startsWith('V') || c === 'CNVAC';
 }
@@ -57,7 +60,14 @@ export function saleRecordsFromRows(rows, { parseDate } = {}) {
       zoning: p._saleZoning || p.zoning || '',
       lots: Number(p._saleGroupSize) || 1,
       dist: Number.isFinite(Number(p._dist)) ? Number(p._dist) : null,
-      isLand: isLandUseCode(p._saleUseCode || p.property_use_code || ''),
+      // Prefer the grid's permit-corrected category, so the charts and the
+      // table cannot disagree about what "land" is. It carries two things
+      // the raw code cannot: an already-built sale is no longer Land, and a
+      // TEARDOWN — an improved-coded sale that in fact bought a lot — now
+      // is. Falls back to the use code for a payload sent by an older tab.
+      isLand: p._saleCategory
+        ? p._saleCategory === 'Land'
+        : isLandUseCode(p._saleUseCode || p.property_use_code || ''),
       farFlung: !!p._farFlung,
       // The permit record contradicts a vacant use code: a new-build
       // permit closed 6+ months before the sale, so a finished house

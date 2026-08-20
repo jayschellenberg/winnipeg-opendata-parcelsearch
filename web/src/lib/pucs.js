@@ -26,6 +26,16 @@
  */
 
 /**
+ * Where a use code this table has never seen ends up.
+ *
+ * Named, listed and tickable — never blank. A blank would be worse than
+ * useless: those sales would quietly fail every category filter and drop
+ * out of comp searches with nothing on screen to say why. Exported so the
+ * filter, the column and the CSV all spell it the same way.
+ */
+export const UNCLASSIFIED_CATEGORY = '(unclassified)';
+
+/**
  * The categories, in the order they should appear in a filter. Land
  * first because that is what most of this app is for.
  */

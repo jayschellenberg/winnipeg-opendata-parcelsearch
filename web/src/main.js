@@ -118,12 +118,9 @@ import {
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
-import { saleCategory, pucsName, PUCS_CATEGORY_ORDER } from './lib/pucs.js';
-
-/** Where a use code lib/pucs.js has never seen ends up. Named, listed and
- *  tickable — never blank — so such a sale cannot silently fall out of
- *  every comp search. */
-const UNCLASSIFIED_CATEGORY = '(unclassified)';
+import {
+  saleCategory, pucsName, PUCS_CATEGORY_ORDER, UNCLASSIFIED_CATEGORY,
+} from './lib/pucs.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
 import { COLUMNS, csvSchemaForMode, buildThead, columnCellClasses } from './lib/columnsRegistry.js';
 import { assignParcelSeq, clearParcelSeq } from './lib/parcelNumbering.js';
@@ -2990,6 +2987,13 @@ function publishSalesToCharts(rows) {
           _dist: p._dist,
           _farFlung: p._farFlung,
           _buildVerdict: p._buildVerdict,
+          _demoVerdict: p._demoVerdict,
+          // The permit-corrected category, so the charts and the grid
+          // cannot disagree about what "land" is. Without it the charts
+          // re-derive land from the raw use code and a teardown — an
+          // improved-coded sale that in fact bought a lot — can never
+          // appear on a land chart.
+          _saleCategory: p._saleCategory,
         },
       },
     };
@@ -3957,6 +3961,16 @@ async function runSalesAnalysis() {
   // than taking the analysis down. Matched on the CSV's own street
   // number + name, so it works whether or not the roll found a live
   // record — the permit table has no roll number to join on anyway.
+  // Whether the permit evidence actually arrived. The category below is
+  // only as good as this: with no verdicts, saleCategory falls through to
+  // the roll's raw opinion and every finished house sold on a vacant-coded
+  // lot stays in Land. The Demo and Built columns going blank is honest —
+  // an empty cell claims nothing — but Category would go on ASSERTING
+  // "Land", which is a positive statement that is false. Measured, the
+  // difference is 6,736 Land rows against 12,889, and $30.11/lot SF
+  // against $40.58. So it has to be said out loud, not warned to a console
+  // nobody has open.
+  let permitsOk = false;
   try {
     // Both permit sets in parallel — they answer opposite halves of one
     // question (did this sale include a building?), and neither is worth
@@ -3996,6 +4010,7 @@ async function runSalesAnalysis() {
         p._buildTitle = describeBuildPermit(buildHit, buildJudgement);
       }
     }
+    permitsOk = true;
   } catch (err) {
     console.warn('Permit lookup failed (Demo / Built columns stay blank):', err);
   }
@@ -4055,8 +4070,12 @@ async function runSalesAnalysis() {
   // above has resolved. Options are tallied from the full joined set
   // (before narrowing) so unticking a class never removes it from the
   // list the user needs in order to tick it back on.
-  // Category first: it is the coarsest cut and the one that narrows most,
-  // so every picker below it offers a shorter, more relevant list.
+  // Category first: it is the coarsest cut and the one that narrows most.
+  // Note the pickers BELOW it are still built from the full joined set,
+  // not from what Category left — that is deliberate and must stay:
+  // tallying a picker from its own filtered output shrinks its option list
+  // on every change, and the user could never tick back what they
+  // unticked.
   rebuildCategoryFilter(saleFc.features);
   const categorySelected = categoryFilter.getSelected();
   const afterCategory = categorySelected == null
@@ -4084,8 +4103,17 @@ async function runSalesAnalysis() {
   // Vacant / improved, from the assessor's use code. Judged per SALE so
   // every parcel of a multi-parcel transaction passes or fails together
   // — one improved parcel makes the whole thing an improved sale.
+  //
+  // Judged over saleFc.features, NOT over what the pickers above left
+  // standing. A group property has to be measured on the whole
+  // transaction: the Category filter can remove the one improved parcel
+  // of a land assembly, and reading vacancy off the survivors would then
+  // flip that sale from improved to vacant — reporting a land-and-house
+  // assembly as a clean vacant sale while its rows still carry a $/Lot SF
+  // computed over all three parcels and the whole price. Class and zoning
+  // could do the same in principle; they just never split on this axis.
   const vacantMode = document.getElementById('vacant-improved')?.value || 'all';
-  const vacancyByGroup = groupVacancy(visibleFeatures);
+  const vacancyByGroup = groupVacancy(saleFc.features);
   const afterVacant = vacantMode === 'all'
     ? visibleFeatures
     : visibleFeatures.filter((f) => passesVacantFilter(f, vacantMode, vacancyByGroup));
@@ -4097,7 +4125,11 @@ async function runSalesAnalysis() {
   const farFlungRaw = parseFloat(document.getElementById('far-flung-km')?.value ?? '');
   const farFlungKm = Number.isFinite(farFlungRaw) && farFlungRaw > 0 ? farFlungRaw : null;
   const farFlungExclude = !!document.getElementById('far-flung-exclude')?.checked;
-  const spanByGroup = groupSpreadKm(afterVacant, featureCentroid, haversineKm);
+  // Same reason as vacancy: measured over the whole transaction. Drop the
+  // far member of a scattered assembly with a Category tick and the span
+  // collapses, clearing the very flag this exists to raise — and _farFlung
+  // rides to the charts page, where "Drop far-flung" is on by default.
+  const spanByGroup = groupSpreadKm(saleFc.features, featureCentroid, haversineKm);
   for (const f of afterVacant) {
     const span = spanByGroup.get(String(f.properties._saleInstrument ?? ''));
     f.properties._saleGroupSpanKm = span;
@@ -4142,6 +4174,9 @@ async function runSalesAnalysis() {
     // Name the class narrowing for the same reason the area filter is
     // named: a filter the user can forget they set must never silently
     // shrink the comp set.
+    // Loudest clause in the line, because it invalidates the column an
+    // appraiser is about to build a land comp set from.
+    (permitsOk ? '' : ' · ⚠ PERMIT CHECK FAILED — Category is raw roll coding, so already-built houses are still counted as Land') +
     (categoryHidden ? ` · ${categoryHidden} hidden by the category filter` : '') +
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +

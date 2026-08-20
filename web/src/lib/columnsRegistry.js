@@ -24,7 +24,7 @@ import {
 import {
   waterOf, waterLoaded, waterColor, waterCellText, waterTooltip, waterCsvCells,
 } from './water.js';
-import { pucsName } from './pucs.js';
+import { pucsName, UNCLASSIFIED_CATEGORY } from './pucs.js';
 
 /**
  * New-construction verdict on a vacant-coded sale.
@@ -225,8 +225,12 @@ export const COLUMNS = [
       + 'and an improved sale with a demolition permit beside it becomes Land. '
       + 'Surface parking counts as Land; condos group by underlying use rather than by tenure. '
       + '“(unclassified)” means a use code this app has not been taught — not that the sale is unusable.',
-    render: (a) => badgeTd(a._saleCategory || null, 'badge-category'),
-    csv: { header: 'Category', extract: (a) => a._saleCategory } },
+    // Coalesced the same way the filter does, or the column would render
+    // blank for exactly the rows the picker lists as "(unclassified)" —
+    // and a blank cell reads as "no data" rather than "a code we have not
+    // been taught", which is the distinction the bucket exists to make.
+    render: (a) => badgeTd(a._saleCategory || UNCLASSIFIED_CATEGORY, 'badge-category'),
+    csv: { header: 'Category', extract: (a) => a._saleCategory || UNCLASSIFIED_CATEGORY } },
 
   // Living Area and Year Built are dual-source: the sales CSV value when
   // there is one, otherwise the live assessment record. That makes them

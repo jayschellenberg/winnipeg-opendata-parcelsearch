@@ -38,6 +38,36 @@ function row(p) {
   return { assess: { properties: { _saleInstrument: 'I1', _salePrice: 100000, _saleDate: '2026-01-15', ...p } } };
 }
 
+test('isLandUseCode — the live roll publishes "CODE - NAME", and that must still match', () => {
+  // The V-prefix test survived the suffixed form by accident; the CNVAC
+  // equality test did not, so a condo-vacant sale carrying the live
+  // roll's own string silently dropped off the land charts.
+  assert.equal(isLandUseCode('CNVAC - CONDO VACANT'), true);
+  assert.equal(isLandUseCode('VRES1 - VACANT RESIDENTIAL 1'), true);
+  assert.equal(isLandUseCode('RESSD - DETACHED SINGLE DWELLING'), false);
+});
+
+test('saleRecordsFromRows — isLand follows the permit-corrected category', () => {
+  // The charts and the grid must not disagree about what land is. The
+  // category carries two things the raw code cannot: an already-built
+  // sale is no longer Land, and a teardown — an improved-coded sale that
+  // in fact bought a lot — now is.
+  const [built] = saleRecordsFromRows([row({
+    _saleInstrument: 'B', _saleUseCode: 'VRES1', _saleCategory: 'Residential',
+  })]);
+  assert.equal(built.isLand, false, 'a vacant code re-categorised out of Land is not land');
+
+  const [teardown] = saleRecordsFromRows([row({
+    _saleInstrument: 'T', _saleUseCode: 'RESSD', _saleCategory: 'Land',
+  })]);
+  assert.equal(teardown.isLand, true, 'a teardown IS a land sale whatever the use code says');
+
+  // A payload from a tab opened before the category shipped has no
+  // _saleCategory at all; it must still classify rather than go blank.
+  const [legacy] = saleRecordsFromRows([row({ _saleInstrument: 'L', _saleUseCode: 'VCOMM' })]);
+  assert.equal(legacy.isLand, true, 'falls back to the use code');
+});
+
 test('saleRecordsFromRows — one point per SALE, not per parcel', () => {
   // A three-parcel assembly is one transaction; charting it three times
   // would triple its weight in every trendline.

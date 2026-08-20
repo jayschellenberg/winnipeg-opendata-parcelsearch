@@ -52,7 +52,9 @@ const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'sou
   'unitLabel',
   // Category is the grouping the comp search now runs on, so it has to
   // reach existing users rather than waiting for them to find the gear.
-  'category'];
+  // useCodeName rides with it: a code column whose meaning is only
+  // available on a tooltip is not much of an answer to "what is RESMC".
+  'category', 'useCodeName'];
 
 /*
  * Columns this module does not govern. `seq` (the map badge "#") is gated
@@ -85,7 +87,10 @@ const ZONING_DETAIL = [
   'zoning', 'zoningPct', 'zoning2', 'area',
 ];
 const SALES_DEFAULT = [
-  'roll', 'address', 'cluster', 'water', 'saleDate', 'useCode',
+  // Category leads the classification columns because it is what the
+  // sidebar's Category picker filters on — a default preset that hides it
+  // would leave the grid being narrowed by a value the grid never shows.
+  'roll', 'address', 'cluster', 'water', 'saleDate', 'category', 'useCode', 'useCodeName',
   'livingArea', 'yearBuilt', 'area',
   'propertyType', 'groupSize',
   // Sworn is on by default: it only renders when it DIFFERS from the

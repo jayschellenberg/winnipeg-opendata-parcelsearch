@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import {
   PUCS_CATEGORY_ORDER, PUCS_NAMES, PUCS_CATEGORIES,
   pucsCode, pucsName, pucsCategory, saleCategory,
+  UNCLASSIFIED_CATEGORY,
 } from '../src/lib/pucs.js';
 
 let passed = 0;
@@ -299,5 +300,17 @@ test('saleCategory — an unknown sale code is still null, and no args does not 
 });
 
 console.log('');
+test('UNCLASSIFIED_CATEGORY — one spelling, shared by the filter, the column and the CSV', () => {
+  // The filter, the badge and the export each used to coalesce a missing
+  // category on their own. When they drift, the picker lists a bucket the
+  // column renders blank, and a blank reads as "no data" rather than "a
+  // code we have not been taught".
+  assert.equal(typeof UNCLASSIFIED_CATEGORY, 'string');
+  assert.ok(UNCLASSIFIED_CATEGORY.length > 0);
+  // It must NOT collide with a real category, or unknown codes would be
+  // silently folded into a real bucket.
+  assert.ok(!PUCS_CATEGORY_ORDER.includes(UNCLASSIFIED_CATEGORY));
+});
+
 console.log(`${passed}/${passed + failed} passed`);
 if (failed > 0) process.exit(1);
