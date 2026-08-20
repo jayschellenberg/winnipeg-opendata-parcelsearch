@@ -71,7 +71,8 @@ async function processHoods() {
     type: 'FeatureCollection',
     features,
     _meta: {
-      source: SRC_HOODS,
+      // Filename only — this ships on the public site, so no local paths.
+      source: path.basename(SRC_HOODS),
       generated_at: new Date().toISOString(),
       neighbourhood_count: features.length,
     },
@@ -129,7 +130,8 @@ async function processClusters() {
     type: 'FeatureCollection',
     features,
     _meta: {
-      source: SRC_CLUSTERS,
+      // Filename only — this ships on the public site, so no local paths.
+      source: path.basename(SRC_CLUSTERS),
       generated_at: new Date().toISOString(),
       cluster_count: features.length,
     },
