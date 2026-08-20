@@ -491,6 +491,60 @@ test('buildSaleFeatures — _n1Id stamped from the record; null when absent', ()
   assert.equal(g.properties._n1Id, null);
 });
 
+// ---------- the land denominator ----------
+// 41 records carry a "Land Actual sqft" under 100, most of them literally
+// 1. They are not tiny parcels — their prices are ordinary, between the
+// 53rd and 88th percentile — so the AREA is junk, and dividing by it
+// printed rates up to $615,000/sf that destroyed every trend the charts
+// fit. SABRE's figure still leads (it is the sale-time fact); the
+// assessment record is the fallback.
+
+test('buildSaleFeatures — a placeholder land area falls back to the assessment record', () => {
+  const { sales, groups } = dedupAndGroupSales([row({ 'Land Actual sqft': '1', 'Sold Price': '615000' })]);
+  const live = liveFeature('06070731000', { assessed_land_area: '8217' });
+  const [f] = buildSaleFeatures(sales, liveMap(live), groups);
+  const p = f.properties;
+  assert.ok(Math.abs(p._pricePerSf - 615000 / 8217) < 0.01, '$74.84/sf, not $615,000/sf');
+  assert.equal(p._landDisagree, true, 'the substitution is flagged, never silent');
+  assert.match(p._landTitle, /placeholder/);
+  assert.ok(Math.abs(p._saleAcres - 8217 / 43560) < 1e-9, 'acres follow the same denominator');
+});
+
+test('buildSaleFeatures — no usable land area anywhere withholds the RATE, not the row', () => {
+  // Pricing on a known placeholder is worse than declining to price: a
+  // blank claims nothing, "$323,150/sf" is a confident fiction.
+  const { sales, groups } = dedupAndGroupSales([row({ 'Land Actual sqft': '1', 'Sold Price': '323150' })]);
+  const [f] = buildSaleFeatures(sales, liveMap(liveFeature('06070731000', {})), groups);
+  const p = f.properties;
+  assert.equal(p._pricePerSf, undefined, 'no per-SF rate at all');
+  assert.equal(p._saleAcres, undefined);
+  assert.equal(p._pricePerAcre, undefined);
+  assert.equal(p._pricePerLot, 323150, '$/Lot survives — it divides by the parcel COUNT, not by area');
+  assert.equal(p._landDisagree, true);
+  assert.match(p._landTitle, /No usable land area/);
+});
+
+test("buildSaleFeatures — a >10% disagreement keeps SABRE's area and flags it", () => {
+  // SABRE is the area at the time of sale; the roll describes the parcel
+  // today. A parcel subdivided since would otherwise be priced on
+  // geometry that did not exist when it changed hands.
+  const { sales, groups } = dedupAndGroupSales([row({ 'Land Actual sqft': '10725', 'Sold Price': '500000' })]);
+  const live = liveFeature('06070731000', { assessed_land_area: '5435' });
+  const [f] = buildSaleFeatures(sales, liveMap(live), groups);
+  const p = f.properties;
+  assert.ok(Math.abs(p._pricePerSf - 500000 / 10725) < 0.01, "SABRE's figure is the one used");
+  assert.equal(p._landDisagree, true);
+  assert.match(p._landTitle, /disagree/);
+});
+
+test('buildSaleFeatures — an ordinary sale is untouched and carries no flag', () => {
+  const { sales, groups } = dedupAndGroupSales([row({ 'Land Actual sqft': '5000', 'Sold Price': '250000' })]);
+  const live = liveFeature('06070731000', { assessed_land_area: '5040' });   // within 10%
+  const [f] = buildSaleFeatures(sales, liveMap(live), groups);
+  assert.equal(f.properties._pricePerSf, 50);
+  assert.equal(f.properties._landDisagree, undefined, 'no ⚠ on a rate that needs no caveat');
+});
+
 test('buildSaleFeatures — land metrics: acres, $/acre, $/lot', () => {
   // 43,560 sf is exactly one acre, which makes the arithmetic checkable
   // by eye rather than by repeating the formula in the assertion.

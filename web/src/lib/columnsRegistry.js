@@ -73,6 +73,19 @@ function demoTd(a) {
  */
 function farFlungTd(a) {
   const cell = td(formatDollars(a._pricePerSf), 'num');
+  // Land-area caveat rides on the same cell as far-flung, because both
+  // say the same kind of thing: this rate is real arithmetic on a
+  // denominator you should look at before quoting it. Either SABRE's
+  // land area was a placeholder and the assessment record's was used
+  // instead, or the two disagree by more than 10%.
+  if (a._landDisagree) {
+    const mark = document.createElement('span');
+    mark.className = 'far-flung-badge';
+    mark.textContent = ' ⚠ sf';
+    mark.title = a._landTitle || 'The land area behind this rate is uncertain.';
+    cell.appendChild(mark);
+    cell.classList.remove('empty');
+  }
   if (!a._farFlung) return cell;
   const span = Number(a._saleGroupSpanKm);
   const badge = document.createElement('span');

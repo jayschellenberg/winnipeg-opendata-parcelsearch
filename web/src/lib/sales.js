@@ -471,6 +471,68 @@ export function dedupAndGroupSales(rows) {
  *  every acreage figure in the app is derived through this. */
 const SQFT_PER_ACRE = 43560;
 
+/**
+ * Below this, a SABRE land area is a placeholder rather than a
+ * measurement.
+ *
+ * 41 records in the archive carry a "Land Actual sqft" under 100, most of
+ * them literally 1. They are not tiny parcels: their PRICES are ordinary
+ * — median $151,216 against $280,000 for the whole set, sitting between
+ * the 53rd and 88th percentile — so the sale is fine and the area is
+ * junk. Divided by 1 they price at $323,000 to $615,000 per square foot,
+ * which leaves the median alone but destroys every mean and every OLS
+ * trend the charts fit (the land chart printed R² 0.000 because of them).
+ */
+const MIN_PLAUSIBLE_LAND_SF = 100;
+
+/**
+ * How far the two land areas may differ before the rate is flagged.
+ *
+ * Where both exist they agree within 2% on 98.5% of 15,234 records, and
+ * the gap between the 2% and 10% thresholds is only 40 records — so the
+ * near-misses are rounding and re-measurement, and the real disagreements
+ * are large. 10% flags 159 records (1.0%): a parcel subdivided or
+ * consolidated since the sale, or one of the two figures simply being
+ * wrong. Either way it is worth an appraiser's eye before the rate is
+ * lifted into a report.
+ */
+const LAND_DISAGREE_FRACTION = 0.10;
+
+/** The live assessment record's land area for a roll, or 0. */
+function liveLandSf(liveByRoll, roll) {
+  const n = Number(liveByRoll?.get(roll)?.properties?.assessed_land_area);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * The land area to price ONE parcel on, and where it came from.
+ *
+ * SABRE's own figure leads, because it is the SALE-TIME fact: the live
+ * record describes the parcel as it stands today, and a parcel
+ * subdivided after the sale would otherwise be priced on geometry that
+ * did not exist when it changed hands — the same trap the unit counts
+ * fell into. The live assessed area is the FALLBACK, which is what
+ * rescues the placeholder rows: 36 of the 40 tiny-lot sales have a real
+ * area on the roll, turning $615,000/sf back into $74.84/sf.
+ *
+ * @returns {{sf: number, fellBack: boolean, sabre: number, live: number}}
+ */
+function parcelLandSf(g, liveByRoll) {
+  const sabre = Number(g?.landSf) > 0 ? Number(g.landSf) : 0;
+  const live = liveLandSf(liveByRoll, g?.roll);
+  if (sabre >= MIN_PLAUSIBLE_LAND_SF) return { sf: sabre, fellBack: false, sabre, live };
+  if (live >= MIN_PLAUSIBLE_LAND_SF) return { sf: live, fellBack: true, sabre, live };
+  // Neither source is usable. Return 0, which leaves every per-area rate
+  // NULL — the honest outcome, and the whole point of the threshold.
+  // Pricing on a known placeholder is worse than declining to price: a
+  // blank cell claims nothing, while "$323,150/sf" is a confident,
+  // fictional number an appraiser could lift into a report. $/Lot is
+  // unaffected, since it divides by the parcel COUNT rather than by area,
+  // so the row still carries a usable figure. `unusable` marks it so the
+  // caller can say WHY the rate is missing instead of leaving a bare gap.
+  return { sf: 0, fellBack: false, unusable: sabre > 0 || live > 0, sabre, live };
+}
+
 export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
   const features = [];
   for (const sale of visibleSales) {
@@ -550,9 +612,26 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     // queryRenderedFeatures, so an array would arrive as "[object
     // Object]" — a string we control round-trips predictably.
     p._saleGroupRollIds = JSON.stringify(group.map((g) => g.roll));
-    let landSf = sale.landSf;
-    if (isMulti) {
-      landSf = group.reduce((sum, g) => sum + (g.landSf || 0), 0);
+    // Land, per parcel then summed, so an assembly is priced as one deal.
+    // Each parcel takes SABRE's own area where that is plausible and the
+    // assessment record's where it is not — see parcelLandSf.
+    const landParts = group.map((g) => parcelLandSf(g, liveByRoll));
+    const landSf = landParts.reduce((sum, x) => sum + x.sf, 0);
+    // Flagged, not silently substituted. A rate computed on a different
+    // area than the one on the row is exactly the kind of quiet
+    // discrepancy this app exists to surface, so the grid marks the rate
+    // cell and says which figure it used.
+    const fellBack = landParts.filter((x) => x.fellBack);
+    const unusable = landParts.filter((x) => x.unusable);
+    const disagreed = landParts.filter((x) => !x.fellBack && x.sabre > 0 && x.live > 0
+      && Math.abs(x.sabre - x.live) / x.live > LAND_DISAGREE_FRACTION);
+    if (fellBack.length || disagreed.length || unusable.length) {
+      p._landDisagree = true;
+      p._landTitle = unusable.length
+        ? `No usable land area for this sale — SABRE reports ${unusable.map((x) => Math.round(x.sabre).toLocaleString('en-CA')).join(', ')} sf and the assessment record has none either. Every per-area rate is withheld rather than computed on a placeholder; $/Lot still divides by the parcel count.`
+        : fellBack.length
+        ? `SABRE reports ${fellBack.map((x) => Math.round(x.sabre).toLocaleString('en-CA')).join(', ')} sf of land here, which is a placeholder rather than a measurement. Every rate on this row is computed on the assessment record's ${fellBack.map((x) => Math.round(x.live).toLocaleString('en-CA')).join(', ')} sf instead.`
+        : `SABRE's land area and the assessment record disagree by more than ${Math.round(LAND_DISAGREE_FRACTION * 100)}% (${disagreed.map((x) => `${Math.round(x.sabre).toLocaleString('en-CA')} sf vs ${Math.round(x.live).toLocaleString('en-CA')} sf`).join('; ')}). The rates use SABRE's figure, which is the area at the time of sale — the parcel may have been subdivided or consolidated since.`;
     }
     if (p._salePrice && landSf > 0) p._pricePerSf = p._salePrice / landSf;
     // Land metrics for the land-sales charts and the Land Sales preset.
