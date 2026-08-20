@@ -1,170 +1,237 @@
-# Session handoff — 2026-08-20 (second session)
+# Session handoff — 2026-08-20 (third session)
 
 Resume point for a fresh thread on the **Winnipeg Parcel Search** repo
 (`D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch`). Live at
 https://winnipeg-opendata-parcelsearch.vercel.app/ ; every push to `main`
-deploys. Replaces the earlier 2026-08-20 handoff (`af8c838`), whose
+deploys. Replaces the earlier 2026-08-20 handoff (`3d03510`), whose
 still-live constraints are carried forward below.
 
-Six commits landed and deployed this session, `484ab67` → `f5d48dc`.
-Every one of them changes a number an appraiser would put in a report, so
-read "What the numbers do now" before trusting any figure you remember
-from the previous handoff.
+Four commits landed and deployed this session, `ee34869` → `c79a65c`,
+clearing three of the four items that handoff left queued.
 
 ---
 
 ## ⏸ THE ACTIVE RESUME POINT
 
-Nothing is in flight and the tree is clean. Jason's remaining queue, in
-the order he gave it:
+Nothing is in flight and the tree is clean. Of the four queued items:
 
-1. **Street-name autocomplete on the Property Search tab**, predictive,
-   off the City's street-name open data. Not started.
-2. **Zoning on the CLICK popup.** The hover popup already shows it
-   (`f5d48dc` era, `src/map.js` `popupHtml`). The click popup is a
-   DIFFERENT function — `citywideParcelHtml`, fed from the offline
-   `parcels.pmtiles` snapshot, which carries no zoning field and no PUCS
-   line for zoning to sit under. Getting it there means rebuilding the
-   `r/` tile pipeline to include zoning. That is a data decision, not a
-   map.js edit — do not "just add a line".
-3. **The N1 cross-reference review.** Still blocked on a real crosswalk:
-   no sales CSV in the archive carries an `N1 ID` yet. **Check the
-   leading-zero padding first** — Jason reported that N1 tax IDs
-   sometimes drop a leading zero (`6070731000` for `06070731000`). The
-   app already pads on import (`normalizeRoll`), so the gap is in his
-   OFFLINE crosswalk, which is what stamps the column. An unpadded
-   compare reads as Unmatched, which looks like "still to be entered"
-   rather than "we failed to match" — invisible either way.
-4. **The 792 unjudged vacant sales** — see Known gaps.
+1. **Street-name autocomplete** — done (`ee34869`, `cb0653b`).
+2. **Zoning on the CLICK popup** — done (`25aa926`), with a delayed
+   half. The use-code line is live now. The ZONE line is written but
+   silently absent until the tiles carry the field, which happens by
+   itself at the next scheduled rebuild — `WpgParcelTilesBiMonthly`,
+   **2026-10-02**, which auto-deploys. **Confirm it after that date**;
+   until then its absence is expected, not a bug.
+3. **The N1 cross-reference** — NOT blocked after all, and the previous
+   handoff was wrong to call it that. Scoped at the end of this session
+   and ready to build; see "The Winnipeg N1 crosswalk" below. Still true
+   that no sales CSV carries an `N1 ID` yet — 0 of 18,490 — because the
+   offline crosswalk that would stamp it does not exist for Winnipeg.
+   What was missing was not data but the knowledge that the MB
+   implementation deliberately skips Winnipeg.
+4. **The 792 unjudged vacant sales** — done (`c79a65c`), and mostly
+   dissolved rather than fixed. See below.
+
+Nothing new is queued. Candidates, none of them asked for:
+
+- The **79** vacant sales with no live roll record — the residue of item
+  4, and the only part still genuinely unjudged.
+- The **pre-war teardown question** (`c79a65c`'s KNOWN TRADEOFF). A
+  $52,500 sale with an 1891 house may be a genuine land sale. Jason
+  chose the conservative Land set over my recommendation to flag rather
+  than reclassify. Worth revisiting with his eye, deliberately.
+- Taxonomy still arguable: REFRL / PERP / STATU in Infrastructure,
+  RESOT, INWSC, CMPST, RESAM vs RESMU.
 
 ---
 
 ## What the numbers do now
 
-Measured against the City's own parcel file
-(`AssessmentParcels/data/assessment-parcels-2026-03-10.parquet`), not
-estimated. Reproduce with the method in "Verifying offline".
-
 | | before this session | now |
 |---|---:|---:|
-| Land category | 12,889 sales (80.0%) | **6,736 (41.8%)** |
-| Residential category | 0 | **6,033 (37.5%)** |
-| median $/lot SF (Land) | $40.58 | **$30.11** |
-| max $/lot SF (any) | $615,000 | **$2,601** |
-| land chart trend | +1.43%/yr, R² **0.000** | **+12.30%/yr, R² 0.024** |
-| sales with doubled living area | 609 | **0** |
-| largest reported "unit count" | 4,201 | **36** |
+| searching "PARK EAST" | 2,686 parcels, 47 streets | **237, one street** |
+| searching "ELM PARK" | 1,260 across 17 | **105, one street** |
+| vacant sales with no permit verdict | 812, all suspect | **79 unanswerable** |
+| Land category | 6,673 | **6,636** |
+| median $/Lot SF (Land) | $29.98 | **$29.94** |
 
-The land-rate move is not a shaved median — it deletes a second
-distribution that was hiding inside the land set. Quantiles before:
-p25 $28 / p50 $41 / **p75 $118** / p95 $178 (visibly bimodal). After:
-p25 $25 / p50 $30 / **p75 $38** / p95 $128.
+**Do not compare the Land row against the previous handoff's 6,736.**
+That figure came off the live roll and a smaller archive; 6,673 is the
+same code replayed today against the March parquet with the Aug 20 CSVs
+included. The 37-row delta is the comparable number, not the totals.
 
 ---
 
 ## What shipped
 
-**PUCS names and categories** (`src/lib/pucs.js`, new). 135 codes → a
-plain name and one of 12 appraisal categories. Names are the CITY's own
-labels: `d4mq-wa44` publishes `property_use_code` as `"CODE - NAME"`, so
-they were read off the live dataset, not transcribed. The 2002 MAAP fax
-(`D:\Dropbox\Appraisal\GeneralData\MAAP\MAAP Property use codes.pdf`)
-filled in codes the live roll no longer carries. Every one of the 57
-codes in the sales archive classifies; none left over.
+**Street-name typeahead** (`src/lib/streetSuggest.js`, new). Two
+characters open a ranked list of up to 8 streets with their type(s) and
+parcel count; Enter takes the highlighted one and searches in one
+keystroke. Vocabulary is one grouped query against d4mq-wa44 — 4,374
+rows for 4,238 distinct names, 258 KB in 380 ms — fetched on first focus
+and cached in localStorage for a month.
 
-`saleCategory()` lets the PERMIT RECORD overrule the roll — the part the
-use code cannot do on its own. Stamped after the permit pass for exactly
-that reason.
+**A truncation defect it exposed.** 50 street names END in a word
+`normalizeStreetQuery` read as a type or direction, and it was cutting
+them. See the decisions list.
 
-**Category column + picker** (sales tab). Applied ahead of Class, full
-width, Land first. Plus a `Use` column (the code in words) and the name
-on the PUCS badge's tooltip.
+**Use code + zone on the citywide click popup** (`map.js`
+`citywideParcelHtml`). Same pair, same order as the hover popup.
 
-**Three import corrections**, each a real defect with a measured size:
-living area, unit counts, and the land denominator. See "Decisions that
-will silently regress".
-
-**Sales-tab usability**: the one-off CSV import is collapsed by default,
-the run reports each phase in the bar above the grid (it looked frozen
-because a full-archive run fetches thousands of records before the first
-row appears), and the table draws at most 2,000 rows.
-
-**Land charts** exclude already-built sales by default, and their
-"land" now means the grid's permit-corrected category rather than a
-re-derivation off the raw use code.
+**The roll as a second instrument** (`permitEvidence.js`
+`rollBuildVerdict`). Where no permit can answer, the roll's own
+`year_built` can.
 
 ---
 
 ## Decisions that will silently regress if you don't know them
 
-Carrying forward the 08-06 and earlier 08-20 lists — never
-`gh release upload --clobber`; revert the checksum only if the archive is
-not live; decide from a re-read not an exit code; "unknown" is a third
-outcome; every `CN*`/`RES*` code must be classified; `generated_at` means
-when the DATA changed; `.ps1` files stay 7-bit ASCII; the two sources
-date the same sale differently; `rowSignature` must normalize the date
-cell; the $/Bldg SF live fallback is withheld on vacant-coded sales;
-far-flung fails OPEN; **the Sale/Asmt cap is gone and must not come
-back**; the `$/Lot SF` RANGE filter stays removed; vacancy is the V
-prefix plus `CNVAC`; `mergeSalesFiles` must not throw on a bad header;
-subscriber data never leaves the browser. All still true. New:
+Carrying forward every earlier list — never `gh release upload
+--clobber`; revert the checksum only if the archive is not live; decide
+from a re-read not an exit code; "unknown" is a third outcome; every
+`CN*`/`RES*` code must be classified; `generated_at` means when the DATA
+changed; `.ps1` files stay 7-bit ASCII; the two sources date the same
+sale differently; `rowSignature` must normalize the date cell; the
+$/Bldg SF live fallback is withheld on vacant-coded sales; far-flung
+fails OPEN; **the Sale/Asmt cap is gone and must not come back**; the
+`$/Lot SF` RANGE filter stays removed; vacancy is the V prefix plus
+`CNVAC`; `mergeSalesFiles` must not throw on a bad header; subscriber
+data never leaves the browser; living area sums the DISTINCT areas; unit
+counts COUNT the labels; SABRE's land area leads and the assessment
+record is the fallback, and NOT SABRE's `Land Assessed sqft`; group
+properties are measured over the WHOLE transaction; a permit-fetch
+failure must be SAID; `UNCLASSIFIED_CATEGORY` is never blank; the
+category judgement calls are Jason's; the draw cap caps DRAWING only;
+`createMultiSelectFilter` takes an optional `order`. All still true. New:
 
-1. **Living area: sum the DISTINCT areas, never every row.** SABRE
-   repeats the whole building's area per row far more often than it
-   splits it — 397 HORACE writes 1,950 sf three times, once per suite,
-   and the City says the building is 1,950 sf. Against
-   `total_living_area` on the 168 checkable multi-row sales, summing
-   every row matched **0**; summing the distinct areas matched **156**.
-   But 355 of 889 multi-row sales DO carry genuinely different areas and
-   those are real sections that must still add up, so neither "always
-   sum" nor "always take one" is right.
-2. **Units: COUNT the labels, do not max them.** `Number of Unit` is a
-   SUITE IDENTIFIER. 583 of 889 values exceed 12 and 34 are not numbers
-   at all (`504B`, `G-H`, `F`). Maxing them was right on 0.3% of sales;
-   counting the distinct labels is right on 80%, and most of the
-   remainder are rolls the City now reports as 0 because the building was
-   demolished — 185 BANNERMAN sold six suites in 2022 and reads 0 today.
-   **That is why the count comes from the SALE, not the roll.**
-3. **Land area: SABRE's actual leads, the ASSESSMENT RECORD is the
-   fallback.** SABRE is the sale-time fact; the roll describes the parcel
-   today, and a parcel subdivided since would be priced on geometry that
-   did not exist at the sale. Fallback only where SABRE's is missing or
-   under 100 sf. Where neither is usable the rate is **withheld**, never
-   computed on a placeholder.
-4. **NOT SABRE's own `Land Assessed sqft` column.** It is present on
-   3,599 of 16,103 sales against actual's 15,455, is NEVER present when
-   actual is missing, and is 0 on all 40 tiny-lot sales. Switching to it
-   loses 77% of the land rates and fixes none of the outliers. This was
-   asked for explicitly and measured down; do not "restore" it.
-5. **Group properties are measured over the WHOLE transaction.**
-   `groupVacancy` and `groupSpreadKm` take `saleFc.features`, not the
-   post-filter survivors. The Category filter can remove the one improved
-   parcel of a land assembly; reading vacancy off what is left flips that
-   sale from improved to vacant while its rows still carry a $/Lot SF
-   computed over all three parcels and the whole price.
-6. **A permit-fetch failure must be SAID.** `permitsOk` gates a loud
-   count-line clause. With no verdicts, `saleCategory` falls back to the
-   roll's raw opinion and Category asserts "Land" for finished houses —
-   the difference between 6,736 and 12,889 Land rows. Blank Demo/Built
-   columns are honest; a confident wrong Category is not.
-7. **`UNCLASSIFIED_CATEGORY` is never blank**, and lives in
-   `lib/pucs.js` so the filter, the column and the CSV spell it
-   identically. A blank reads as "no data" rather than "a code we have
-   not been taught", and those sales would fail every category filter
-   silently.
-8. **The category judgement calls are Jason's**, recorded beside the
-   table: surface parking (CMPSP) is **Land** and the parking STRUCTURE
-   is not; condos group by underlying USE, not tenure (CNCOM →
-   Retail-Commercial, CNIND → Industrial, CNOFF → Office); VAGRI is
-   **Land**, not Agricultural; RESGC is Special Purpose.
-9. **The draw cap caps DRAWING only.** `currentRows`, the CSV export, the
-   charts broadcast and every count still cover the whole set, and the
-   count line says so. A capped table that stayed quiet would read as a
-   smaller market.
-10. **`createMultiSelectFilter` takes an optional `order`.**
-    Alphabetical is right for codes nobody has a mental order for; the
-    categories are a fixed vocabulary and sorting them buries Land
-    between Infrastructure and Mixed-Use.
+1. **`normalizeStreetQuery`'s known-name guard NARROWS, and every other
+   rule in that function widens.** 50 street names end in a type or
+   direction word — ELM PARK, GOLDEN GATE, MIDDLE GATE, NORTH POINT,
+   LINDEN TERRACE, PARK EAST, WILDWOOD E. The guard keeps the trailing
+   token when the whole string is a name the roll carries. Measured over
+   all 4,238 names, exactly 50 queries change and **ZERO single-word
+   queries do** — typing "Elm" still means `like '%ELM%'`, still returns
+   1,260 parcels across 17 streets, ELM PARK's 105 among them. Only
+   typing both words narrows it. The guard defaults to whatever
+   `fetchStreetNames` has loaded, so before the list arrives — and in
+   node — behaviour is the old, wider one. Fails open.
+2. **The suggestion list comes from the ASSESSMENT roll, not Civic
+   Addresses.** cam2-ii3u carries MORE names, 4,331 against 4,238, but
+   115 of the extras (ADMIRAL, BEHNKE, GYPSUM, COMMERCE, MAHATMA
+   GANDHI) have civic addresses with no assessment parcel under them.
+   Spot-checked with `within_circle(geometry,...)`: the nearest parcel
+   to those points is on a DIFFERENT street, so the cam2 cross-reference
+   path finds nothing either. Sourcing there offers 115 dead streets.
+3. **The suggestion key folds hyphens; the CLAUSE does not.** Five names
+   carry hyphens (EAU-CLAIRE, JEAN-BAPTISTE LAVOIE, PHIL-CHRIS,
+   TARA-LEE, TU-PELO). Widening only the suggestion side is safe —
+   accepting one inserts the roll's own spelling.
+4. **`#address-street` is NOT in main.js's generic Enter-runs-the-search
+   loop.** The typeahead owns Enter, because accepting has to finish
+   before the search reads the field. Two listeners on one element fire
+   in registration order and would search the half-typed text.
+5. **The suggestion listbox is a SIBLING of the three address fields,
+   not a child of the Street Name one.** That field is 120px of a 292px
+   row and the list inherited it: "ELM" got 17px of the 27 it needs, so
+   the street NAMES ellipsised. The hint carries `flex-shrink: 100`
+   against the name's `1` so a squeezed row eats the parcel count first.
+6. **`zoning` is back in the tile `select_cols`; `total_assessed_value`
+   stays out.** They are not comparable costs: 53 distinct values against
+   6,202. Zoning adds ~0.22 MB scaled (up to ~1.3 MB across six zoom
+   levels) on a 95.87 MB archive.
+7. **The 100 MB cap does not apply to `parcels.pmtiles`.** That is
+   GitHub's limit for files committed to a REPOSITORY. This archive is
+   deliberately not in git — `fetch-pmtiles.mjs` says so and pulls it
+   from a rolling RELEASE asset, and those cap at 2 GB. The old comment
+   in `build_parcel_tiles.R` was wrong and is corrected in place.
+8. **`rollBuildVerdict` requires a LIVING AREA, not just a year.** The
+   roll zeroes living area when a building comes down but keeps the year
+   — 185 BANNERMAN sold six suites in 2022 and reads 0 today. Judging on
+   the year alone calls a genuine bare-lot sale improved.
+9. **It also requires a LIVE RECORD.** Absence of a roll row is not
+   evidence of bareness. Those 79 stay unjudged.
+10. **A permit ALWAYS wins over the roll**, including `land-then-built`
+    — that is a permit positively stating the lot was bare. A permit is
+    dated evidence about the transaction; the roll is a later snapshot
+    read backwards.
+11. **The roll pass sits OUTSIDE the permit try/catch.** It needs no
+    network, so a Socrata outage that costs the permits must not also
+    cost this. The PERMIT CHECK FAILED warning is reworded, not dropped:
+    the roll accounts for 37 of 6,275 already-built findings.
+12. **The count line and the tooltip name the INSTRUMENT.** "37 from the
+    roll's year built, not a permit — confirm before using". A reader
+    must not come away thinking a permit was found.
+
+---
+
+## The Winnipeg N1 crosswalk (scoped 2026-08-20, not built)
+
+**The model is unchanged: the web app never matches.** It consumes an
+`N1 ID` column pre-stamped into the sales CSVs by an OFFLINE crosswalk,
+and shows an Any/Matched/Unmatched filter (`?n1=`). Blank = "needs
+entering into N1".
+
+**The Manitoba one lives in `D:\Dropbox\ClaudeCode\MBOpenData\mao-scrape`**
+and is initiated by double-clicking `n1-refresh.bat` (or `Rscript
+scripts/n1_refresh.R [--no-export] [--no-open]`). One run ingests any
+review decisions, matches every chunk-year in the newest `n1/` export,
+refreshes the web export, and opens the review page if a human is still
+needed. `DESIGN-N1-CROSSWALK.md` is its 756-line design record.
+
+**It skips Winnipeg on purpose.** `config/n1_muni_aliases.csv` maps
+`Winnipeg (City)` to `unresolved`, and `scripts/n1_county_fix.R:169`
+gives the reason: MAO does not assess the City, so a Winnipeg N1 record
+has no MAO sale to bind to. The design doc counts them among the
+"correctly out of scope" 1,482. They pass through the export untouched,
+which is exactly what makes them available here.
+
+**Measured against the current export**
+(`mao-scrape/n1/2020-202608-20260818.xlsx`, first sheet, 1,842 columns)
+and the SABRE archive, 2026-08-20:
+
+| | |
+|---|---:|
+| Winnipeg-flagged N1 records | **1,592** |
+| carrying a `Tax ID` | 1,518 |
+| carrying a price / a date | 1,585 / 1,592 |
+| packed multi-roll `Tax ID`s | 69 |
+| **bind to a SABRE roll (zero-padded)** | **1,089 (68.4%)** |
+| of those: same roll + exact price + date within 90d | **916 (84%)** |
+| bind ONLY because of zero-padding | **24** |
+
+Median date gap on same-price pairs is **0 days**; 770 of 978 are within
+a week. That auto-link rate is in the same band as the MB crosswalk's
+85.8%.
+
+**Winnipeg is the EASY case, not the hard one.** MB needed fuzzy
+address/legal matching, county aliasing and price/date windows because
+MAO rolls did not line up. Here it is a roll join: N1 `Tax ID` → SABRE
+`Parcel ID` → d4mq-wa44 `roll_number`. The MB matcher's hard half is not
+needed; what IS worth lifting from `scripts/n1_lib.R` is the field
+mapping (`ID`, `Address`, `City`, `County`, `Legal Description`, `Tax
+ID`, `Price`, `Date`, `Recording Date` — note **`Price`, not `Actual
+Price`**, which is populated on only 17 of the 1,592), the Tax ID
+splitter (N1 packs with `& ; , /`), and `n1_as_date`.
+
+Traps, each already paid for once:
+
+- **Dates come out of the xlsx as EXCEL SERIALS** (`43847`), not ISO.
+  Epoch 1899-12-30. A naive `fromisoformat` silently corroborates
+  nothing and reads as "no sale matches on date".
+- **Zero-pad both sides to 11 digits.** 24 records bind only because of
+  it, and an unpadded compare reports them Unmatched — which reads as
+  "still to be entered into N1" rather than "we failed to match". The
+  failure is invisible either way; the queue just looks longer.
+- **The 503 that do not bind are mostly not errors.** The SABRE archive
+  is non-residential/land only (single-family and residential condos are
+  deliberately excluded) and starts Jan 2020, so an N1 comp outside that
+  scope has nothing to bind to. 74 have no Tax ID at all.
+- **N1 sunsets 2027-09-01** and has no API. Exports cap near 1,500
+  records per pull, so the archive under `mao-scrape/n1/` is the only
+  thing making any of this date-independent.
+- The MB side also found an **import bleed** (N1 IDs 19095–19323, each
+  record's Tax ID carrying the NEXT record's rolls) and **176 duplicate
+  groups**. Both are N1-side data defects, both would land here too.
 
 ---
 
@@ -172,68 +239,82 @@ subscriber data never leaves the browser. All still true. New:
 
 Unchanged: no `vacant-threshold`; the Sale/Asmt cap is gone entirely;
 far-flung ships with **no default threshold**; the charts are
-Winnipeg-specific LAND charts. New: the appraisal-category layer
-(`lib/pucs.js`) has no MB counterpart — MB classifies differently and
-this table is Winnipeg PUCS only.
+Winnipeg-specific LAND charts; the appraisal-category layer
+(`lib/pucs.js`) has no MB counterpart. New: the street-name typeahead
+and the `rollBuildVerdict` fallback are Winnipeg-only.
 
 ---
 
 ## Known gaps
 
-- **792 vacant-coded sales carry no construct-new permit within three
-  years either way.** Judged neither built nor bare, so they stay in
-  Land. If any were in fact built on — permit outside the window, address
-  spelled differently, permit never pulled — the corrected Land set still
-  contains them. This is the biggest remaining blind spot.
-- **1,562 of the 6,238 already-built rows (a quarter) took the code's
-  FALLBACK**, not a live-roll lookup, because the roll was missing or
-  still reads vacant. They defaulted to Residential (or
-  Retail-Commercial / Industrial for VCOMM / VINDU).
-- **296 sale rows have no usable street number + name**, so they can
-  never join a permit — 292 of them vacant-coded and sitting in Land
-  unjudged. The permit join is by ADDRESS because the permit table has no
-  roll number.
-- **Three definitions of "land" are only PARTLY reconciled.** The charts
-  now key `isLand` off `_saleCategory`, but `buildVerdict` still gates on
-  `isVacantUseCode` (a V-prefix rule), so a CMPSP surface-parking sale
-  can never receive an already-built verdict even though the category
-  calls it Land. 17 sales.
-- **Taxonomy still arguable** and worth Jason's eye: REFRL / PERP /
-  STATU sitting in Infrastructure (the module's own docstring warns
-  against parking unclassified things there), RESOT, INWSC, CMPST,
-  RESAM vs RESMU.
-- Carried forward: 142 Winnipeg commercial MLS sales with no usable LINC;
-  ~135 same-roll near-date MLS/SABRE pairs with different prices left
-  unfused by design; August 2026 is partial (SABRE recording lag);
-  historical shards still pin `eca2c00`; the Generate-Map-PNG legend and
-  the `showDirectoryPicker` folder-connect path still need Jason's real
+- **79 vacant-coded sales have no live roll record**, so neither a
+  permit nor the roll can judge them. The only genuinely unjudged
+  residue, down from the 792 the last handoff named. The other 733
+  resolved: 641 confirmed bare, 55 land-then-built, 37 reclassified.
+- **The 37 reclassified rows are two populations wearing one label.**
+  Recent builds sold at full price (28 WATERSTONE DR, $1,525,000, 2,871
+  sf, built 2014) and pre-war houses sold cheap (570 BALMORAL, $52,500,
+  built 1891). The second group may be genuine teardown land sales. See
+  the resume point.
+- **The zone line on the click popup is inert until 2026-10-02.**
+- **1,562 of the already-built rows took the code's FALLBACK**, not a
+  live-roll lookup, because the roll was missing or still reads vacant.
+- **296 sale rows have no usable street number + name.** Less damaging
+  than feared: of the 292 that are vacant-coded, 228 read bare on the
+  roll, 15 are land-then-built, 49 have no record, and **zero** are
+  contradicted.
+- **Three definitions of "land" are only PARTLY reconciled.**
+  `buildVerdict` still gates on `isVacantUseCode`, so a CMPSP
+  surface-parking sale can never receive an already-built verdict even
+  though the category calls it Land. 17 sales.
+- Carried forward: 142 Winnipeg commercial MLS sales with no usable
+  LINC; ~135 same-roll near-date MLS/SABRE pairs left unfused by design;
+  August 2026 is partial (SABRE recording lag); historical shards still
+  pin `eca2c00`; the Generate-Map-PNG legend and the
+  `showDirectoryPicker` folder-connect path still need Jason's real
   browser.
 
 ---
 
 ## Verifying offline (this is how every number above was produced)
 
-The app's `lib/` modules are pure and import straight into plain node, so
-the whole pipeline can be replayed against the real archive without a
-browser. On Windows node an absolute path needs a `file:///` URL.
+The `lib/` modules are pure and import straight into plain node. On
+Windows node an absolute path needs a `file:///` URL.
+
+**The full sales replay**, which the last handoff described but did not
+spell out. The missing piece was `liveByRoll`:
 
 ```
-parseSalesText (salesImport.js)
-  → dedupAndGroupSales (sales.js)
-  → buildSaleFeatures (sales.js, needs a liveByRoll Map)
-  → buildPermitIndex / findNearestPermit / buildVerdict (permitEvidence.js)
-  → saleCategory (pucs.js)
-  → median / fitLinear / annualTrendPct (salesCharts.js)
+SABRE CSVs  ->  D:\Dropbox\ClaudeCode\WpgOpenData\SABRE\*.csv  (53 files)
+  mergeSalesFiles([{name, csv}])        salesDbMerge.js  -> { text }
+  parseSalesText(text)                  salesImport.js   -> { rows }
+  dedupAndGroupSales(rows)              sales.js         -> { sales, groups }
+  sales.filter(s => s.salePrice > 1)    the app's DEFAULT (hide-sentinels)
+  buildSaleFeatures(visible, liveByRoll, groups)
+  buildPermitIndex / findNearestPermit / buildVerdict / rollBuildVerdict
+  saleCategory                          pucs.js
 ```
 
-Ground truth for living area, land area, dwelling units, year built and
-the live use code is the local parquet at
-`AssessmentParcels/data/assessment-parcels-2026-03-10.parquet`
-(245,136 rolls; read it with python + pyarrow). Permits come from
-`it4w-cpf4` — copy the exact `$select`/`$where` out of `src/soda.js`, or
-the numbers are not comparable. Remember the app's default filters when
-comparing: `sales-hide-sentinels` is CHECKED, which drops 1,854 records
-before anything else.
+`liveByRoll` is a `Map<roll11, Feature>`. Build it from the local parquet
+(`../AssessmentParcels/data/assessment-parcels-2026-03-10.parquet`,
+245,136 rolls) with python + pyarrow, keyed on the roll ZERO-PADDED TO
+11 DIGITS, each value `{type:'Feature', geometry:null, properties:{...}}`.
+`year_built` and `total_living_area` on the sale feature are the LIVE
+roll's, untouched by the SABRE living-area correction — that goes into a
+local `bldgSf` and out as `_pricePerBldgSf`.
+
+Expected shape today: 20,342 rows kept → 18,490 sales → 16,635 after the
+sentinel filter → 12,894 vacant-coded.
+
+Permits come from `it4w-cpf4` — copy the exact `$select`/`$where` out of
+`src/soda.js`, including the 3-year window for construction against the
+2-year default for demolition.
+
+**Reading the pmtiles' own field list** (PMTiles v3, little-endian):
+metadata offset at byte 24, length at 32, internal compression at 97,
+min/max zoom at 100/101. Gunzip and read `vector_layers[].fields`. That
+is how "the tiles already carry `property_use_code`" was established
+rather than inferred from the build script.
 
 ---
 
@@ -242,41 +323,52 @@ before anything else.
 Carried forward and still true: the in-app Browser pane cannot render
 this map (use Claude in Chrome); Bash here is Git Bash, so PowerShell
 here-strings fail — use a heredoc and `git commit -F -`; run `.ps1` by
-ABSOLUTE path; `r2.dev` does not answer HEAD usefully; `index.html` is
-**CRLF** while `src/**` is LF, so a patch script must normalize, edit and
-restore or every multi-line anchor misses; building JS through a heredoc
-mangles escapes. New:
+ABSOLUTE path; `r2.dev` does not answer HEAD usefully; building JS
+through a heredoc mangles escapes; a large heredoc silently breaks, so
+use the Write tool for anything substantial; the MAAP PUCS PDF is a
+scanned fax with no text layer.
 
-- **A large heredoc silently breaks.** Writing a ~160-line patch script
-  through `<<'EOF'` failed with a shell quoting error. Use the Write tool
-  for anything substantial.
-- **Port 5173 collides with the Manitoba sibling app**, which runs from
-  an adjacent repo under another session and answers with a page titled
-  "Manitoba Parcel Search". `vite.config.js` now honours `PORT`, and
-  `.claude/launch.json` declares 5174 — but `.claude/` is GITIGNORED, so
-  that half does not travel. The preview harness also caches the launch
-  config, so changing it mid-session may not take effect.
-- **The MAAP PUCS PDF is a scanned fax with no text layer.** `pdftotext`
-  returns nothing. Extract the page images with `pypdf`, convert with
-  PIL, and read the PNGs directly. Page 4 is a bonus: MUNICIPAL CODES,
-  which decode the roll number's first two digits into a district
-  (`01` Charleswood … `06` St Boniface … `12`–`14` Winnipeg Wards 1–3).
-  Not used by the app yet.
+**Corrected:** `index.html` is **LF throughout** now, not CRLF. The old
+"normalize, edit and restore or every multi-line anchor misses" warning
+no longer applies — the Edit tool matches it directly. New:
+
+- **The preview harness caches its launch config at session start.** It
+  never re-read `.claude/launch.json` no matter what was written there,
+  and kept insisting on port 5173. **There was no local dev server this
+  whole session.** Port 5173 is the Manitoba sibling; 5174 is a third
+  project. Everything visual was verified against the DEPLOYED site
+  instead, which works but only after a push — and it is how the 120px
+  dropdown bug was found, so it is not a bad fallback.
+- **Polling a Vercel deploy: grep the BUNDLE HASH, not a code string.**
+  Grepping for `property_use_code` reported "deployed" against the OLD
+  bundle, because the hover popup had always contained it. `ls
+  web/dist/assets/main-*.js` after a local build gives the hash to wait
+  for; it can only appear once Vercel builds that commit. Deploys took
+  15-30s all session.
+- **The Dropbox lock hits `npm run build`**, not just git. It fails in
+  `prepareOutDir` and succeeds on an immediate retry. Same class as the
+  fetch/push flakiness.
+- **The Bash tool's working directory resets between calls.** `cd` into
+  the repo at the start of every command or `git` reports "not a git
+  repository" and relative paths miss.
 
 ---
 
 ## Working style (Jason)
 
-Direct/technical, no preamble. Commit when he says; **push is a separate
-instruction** and push = deploy. Concrete numbers over hand-waving;
-verify by execution against real data, not fixtures. He will interrupt
-mid-task to redirect and queue several items at once — finish the
-in-flight piece, then take them in the order he gave. He is an appraiser:
-when a result is ambiguous the question he wants answered is "what should
-I do with this row", not "what does this field contain".
+Direct/technical, no preamble. **Commit when he says; push is a separate
+instruction** and push = deploy. He gives one instruction at a time —
+"commit this", then "push it" — so do not batch them or assume the next.
+Concrete numbers over hand-waving; verify by execution against real
+data, not fixtures. He is an appraiser: when a result is ambiguous the
+question he wants answered is "what should I do with this row", not
+"what does this field contain".
 
-**He will tell you to do something the data says is wrong.** Twice this
-session — "add the total living area" and "rely on assessed land sf" —
-the literal instruction would have produced worse numbers, and both times
-the right move was to measure it, show him the table, and recommend. He
-took the recommendation both times. Measure first, then say so plainly.
+**He will tell you to do something the data says is wrong.** The right
+move is to measure it, show him the table, and recommend — then do what
+he says. This session he was offered four treatments for the 37
+roll-contradicted sales and took the one I argued against, reclassifying
+all of them rather than flagging. That is a legitimate methodology
+choice (a land comp set should hold only sales you are confident bought
+bare dirt) and it is recorded as a deliberate tradeoff in `c79a65c`, not
+as a bug. Measure, say so plainly once, then build what he asked for.
