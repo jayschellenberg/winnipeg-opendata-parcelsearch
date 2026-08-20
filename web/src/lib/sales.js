@@ -9,6 +9,7 @@
 // SoQL clause — drift here meant a just-padded roll wouldn't join to its
 // own live record.
 import { normalizeRoll } from '../soda.js';
+import { isVacantUseCode } from './salesFilters.js';
 export { normalizeRoll };
 
 /**
@@ -268,6 +269,30 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     // transaction. On a multi-lot land deal this is the figure that
     // actually prices a building lot, which a per-SF rate obscures.
     if (p._salePrice && group.length > 0) p._pricePerLot = p._salePrice / group.length;
+    // Price per BUILDING square foot — the rate an improved commercial
+    // comp is actually quoted at, where $/Lot SF prices the dirt.
+    //
+    // Denominator is the CSV's Living Area summed across the group, with
+    // the live record's total_living_area as a fallback when the export
+    // carries none. Same group-total treatment as the land and
+    // assessment figures, so every rate on the row divides by the same
+    // transaction.
+    //
+    // The fallback is withheld on a VACANT-coded sale, and that is the
+    // whole point of it being conditional: the live record describes the
+    // parcel TODAY, so a lot that sold as bare land and has since been
+    // built on would otherwise be handed the new building's area and
+    // report a confident, entirely fictional $/Bldg SF. A vacant sale
+    // has no building to rate, and no rate is the honest answer.
+    let bldgSf = group.reduce((sum, g) => sum + (g.livingArea || 0), 0);
+    const groupIsVacant = group.every((g) => isVacantUseCode(g.useCode));
+    if (!(bldgSf > 0) && !groupIsVacant) {
+      bldgSf = group.reduce((sum, g) => {
+        const groupLive = liveByRoll.get(g.roll);
+        return sum + (Number(groupLive?.properties?.total_living_area) || 0);
+      }, 0);
+    }
+    if (p._salePrice && bldgSf > 0) p._pricePerBldgSf = p._salePrice / bldgSf;
     let asmt = Number(p.total_assessed_value) || 0;
     if (isMulti) {
       asmt = group.reduce((sum, g) => {

@@ -236,6 +236,11 @@ export const COLUMNS = [
     render: (a) => farFlungTd(a),
     csv: { header: '$/Lot SF', extract: (a) => a._pricePerSf } },
 
+  { key: 'pricePerBldgSf', header: '$/Bldg SF',   mode: 'sales',  sortable: true,
+    theadTitle: 'Sale price ÷ building area (Living Area from the export, else the live record). For multi-parcel sales, divides by the group total. Blank on vacant land, which has no building to rate.',
+    render: (a) => td(formatDollars(a._pricePerBldgSf), 'num'),
+    csv: { header: '$/Bldg SF', extract: (a) => a._pricePerBldgSf } },
+
   { key: 'saleAcres',    header: 'Acres',         mode: 'sales',  sortable: true,
     theadTitle: 'Land area in acres, derived from Land Actual sqft (÷ 43,560). For multi-parcel sales, the group total.',
     render: (a) => td(formatAcres(a._saleAcres), 'num'),

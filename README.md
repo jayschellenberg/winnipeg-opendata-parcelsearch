@@ -73,16 +73,20 @@ Two things about the merge are load-bearing:
 - Files are recognised by their **header**, not their filename, so a renamed
   export still imports and a stray CSV in the folder is ignored and counted.
 
-**Land metrics and charts.** Acres is derived from Land Actual sqft
-(÷ 43,560) — the City publishes area in square feet only — and joins
-`$/Acre` and `$/Lot` (the consideration split across the parcels in the
-transaction, which is what prices a building lot in a multi-lot deal).
-All use the same group-total denominator as `$/Lot SF`, so an assembly is
-rated as one deal.
+**Rates.** `$/Lot SF` prices the dirt; `$/Bldg SF` prices the improvement
+(Living Area from the export, else the live record — withheld on a
+vacant-coded sale, since the live record describes the parcel today and
+a lot that sold bare then got built on would otherwise report a
+confident, fictional building rate). Acres is derived from Land Actual
+sqft (÷ 43,560), the City publishing area in square feet only, and joins
+`$/Acre` and `$/Lot` — the latter being the consideration split across
+the parcels in the transaction, which is what prices a building lot in a
+multi-lot deal. Every rate uses the same group-total denominator, so an
+assembly is rated as one deal.
 
 The **Charts** button opens [charts.html](web/charts.html) in a second
-tab: `$/Lot SF` over time, `$/Acre` over time, and `$/Lot` against lot
-size. It holds no data of its own — the app broadcasts the filtered set
+tab: `$/Lot SF` over time, `$/Acre` against lot size (the
+size-adjustment curve), and `$/Lot` against lot size. It holds no data of its own — the app broadcasts the filtered set
 over a `BroadcastChannel` and the page redraws, so the charts track the
 sidebar filters live (hence Freeze). It defaults to vacant-land sales,
 where "vacant" is any Property Use Code starting with V plus `CNVAC`.

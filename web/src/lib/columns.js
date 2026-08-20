@@ -98,6 +98,7 @@ const SALES_DEFAULT = [
 const COMMERCIAL_SALES = [
   'roll', 'address', 'cluster', 'saleDate', 'salePrice', 'swornValue',
   'useCode', 'propertyType', 'buildingType', 'yearBuilt', 'livingArea',
+  'pricePerBldgSf',
   'numUnits', 'area', 'saleZoning', 'value', 'n1Id', 'instrument',
 ];
 // Bare-land comp set: the lot, its rate, water influence and zoning;

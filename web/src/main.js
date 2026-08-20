@@ -301,6 +301,7 @@ const SORT_KEYS = {
   saleZoning:   (r) => strKey(r.assess?.properties?._saleZoning),
   n1Id:         (r) => numOrStr(r.assess?.properties?._n1Id),
   saleAcres:    (r) => finiteOrNeg(r.assess?.properties?._saleAcres),
+  pricePerBldgSf: (r) => finiteOrNeg(r.assess?.properties?._pricePerBldgSf),
   pricePerAcre: (r) => finiteOrNeg(r.assess?.properties?._pricePerAcre),
   pricePerLot:  (r) => finiteOrNeg(r.assess?.properties?._pricePerLot),
 };

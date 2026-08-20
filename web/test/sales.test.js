@@ -317,6 +317,72 @@ test('buildSaleFeatures — _n1Id stamped from the record; null when absent', ()
   assert.equal(g.properties._n1Id, null);
 });
 
+test('buildSaleFeatures — land metrics: acres, $/acre, $/lot', () => {
+  // 43,560 sf is exactly one acre, which makes the arithmetic checkable
+  // by eye rather than by repeating the formula in the assertion.
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Land Actual sqft': '43560', 'Sold Price': '1200000' }),
+  ]);
+  const [f] = buildSaleFeatures(sales, liveMap(), groups);
+  assert.equal(f.properties._saleAcres, 1);
+  assert.equal(f.properties._pricePerAcre, 1200000);
+  assert.equal(f.properties._pricePerLot, 1200000, 'a single-parcel sale prices one lot');
+});
+
+test('buildSaleFeatures — a multi-parcel sale divides by the GROUP total', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Parcel ID': '1111111111', 'Instrument Number': 'M1', 'Sold Price': '900000', 'Land Actual sqft': '21780' }),
+    row({ 'Parcel ID': '2222222222', 'Instrument Number': 'M1', 'Sold Price': '900000', 'Land Actual sqft': '21780' }),
+  ]);
+  const [f] = buildSaleFeatures(sales, liveMap(), groups);
+  assert.equal(f.properties._saleAcres, 1, 'two half-acre parcels are one acre of deal');
+  assert.equal(f.properties._pricePerAcre, 900000);
+  assert.equal(f.properties._pricePerLot, 450000, 'the consideration splits across the two lots');
+});
+
+test('buildSaleFeatures — $/Bldg SF uses the CSV living area, group-summed', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Sold Price': '500000', 'Living Area': '2000' }),
+  ]);
+  const [f] = buildSaleFeatures(sales, liveMap(), groups);
+  assert.equal(f.properties._pricePerBldgSf, 250);
+});
+
+test('buildSaleFeatures — $/Bldg SF falls back to the live record', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Sold Price': '500000', 'Living Area': '' }),
+  ]);
+  const live = liveFeature('06070731000', { total_living_area: '2500' });
+  const [f] = buildSaleFeatures(sales, liveMap(live), groups);
+  assert.equal(f.properties._pricePerBldgSf, 200);
+});
+
+test('buildSaleFeatures — vacant land gets no building rate, not a zero', () => {
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Sold Price': '120000', 'Living Area': '0', 'Par Use Code': 'VRES1' }),
+  ]);
+  const [f] = buildSaleFeatures(sales, liveMap(), groups);
+  assert.equal(f.properties._pricePerBldgSf, undefined);
+});
+
+test('buildSaleFeatures — a vacant sale never inherits the live building area', () => {
+  // The lot sold bare and has since been built on. The live record
+  // describes it TODAY, so falling back to it would invent a confident
+  // $/Bldg SF for a transaction that had no building in it.
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Sold Price': '120000', 'Living Area': '', 'Par Use Code': 'VCOMM' }),
+  ]);
+  const live = liveFeature('06070731000', { total_living_area: '3000' });
+  const [f] = buildSaleFeatures(sales, liveMap(live), groups);
+  assert.equal(f.properties._pricePerBldgSf, undefined);
+  // ...while the same sale under an improved code does take the fallback.
+  const improved = dedupAndGroupSales([
+    row({ 'Sold Price': '120000', 'Living Area': '', 'Par Use Code': 'RESMC' }),
+  ]);
+  const [g] = buildSaleFeatures(improved.sales, liveMap(live), improved.groups);
+  assert.equal(g.properties._pricePerBldgSf, 40);
+});
+
 console.log('');
 console.log(`${passed}/${passed + failed} passed`);
 if (failed > 0) process.exit(1);

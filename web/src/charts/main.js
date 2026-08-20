@@ -8,10 +8,15 @@
  * with it — which is why "Freeze" exists for when you want them to sit
  * still while reading or screenshotting.
  *
- * Three charts, chosen for land work:
+ * Three charts, chosen for land work and deliberately non-overlapping:
  *   - $/Lot SF over time   — the market-conditions view
- *   - $/Acre over time     — the same trend at the unit larger parcels
- *                            are actually quoted in
+ *   - $/Acre vs lot size   — the size-adjustment curve, at the unit
+ *                            larger parcels are actually quoted in.
+ *                            (An $/Acre-over-TIME chart was tried and
+ *                            dropped: $/acre is $/sf × 43,560, so it
+ *                            plots the identical trend and R² as the
+ *                            first chart — a third of the page saying
+ *                            nothing new.)
  *   - $/Lot vs lot size    — what one lot fetched against how big it is
  */
 
@@ -169,15 +174,14 @@ function render() {
     overTime: true,
   }));
   $grid.appendChild(scatterCard({
-    title: '$/Acre over time',
-    rows: dated,
-    xOf: (r) => r.date,
+    title: '$/Acre vs lot size',
+    rows: filtered,
+    xOf: (r) => r.acres,
     yOf: (r) => r.pricePerAcre,
-    xFormat: fmtAxisDate,
+    xFormat: (v) => (v >= 1 ? v.toFixed(v >= 10 ? 0 : 1) : v.toFixed(2)),
     yFormat: fmtAxisMoney,
-    xLabel: 'Sale date',
+    xLabel: 'Lot size (acres, group total)',
     yLabel: '$ per acre',
-    overTime: true,
   }));
   $grid.appendChild(scatterCard({
     title: '$/Lot vs lot size',
