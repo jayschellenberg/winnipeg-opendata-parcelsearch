@@ -243,7 +243,12 @@ export function mergeSalesFiles(files) {
       rows = parsed.rows;
       for (const k of Object.keys(skipped)) skipped[k] += parsed.skipped[k] || 0;
     } else {
-      rows = parseSalesText(file.csv).rows.map((r) => ({ ...r, Source: 'SABRE' }));
+      // `|| 'SABRE'`, not a blanket assignment: a file in the SABRE schema
+      // can legitimately carry its own Source. The Winnipeg N1 crosswalk
+      // emits the sales SABRE never had in exactly this shape, marked
+      // Source=N1, and overwriting that made them indistinguishable from
+      // records the City actually published.
+      rows = parseSalesText(file.csv).rows.map((r) => ({ ...r, Source: r.Source || 'SABRE' }));
     }
     if (!rows.length) unreadable.push(file.name);
     for (const row of rows) {

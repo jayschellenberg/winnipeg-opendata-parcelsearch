@@ -238,6 +238,34 @@ test('collapseCrossSource — a single-source set is returned untouched', () => 
   assert.equal(rows.length, 1);
 });
 
+// ---- Source is not clobbered ----------------------------------------------
+
+test('mergeSalesFiles — a SABRE-schema file keeps its OWN Source', () => {
+  // The Winnipeg N1 crosswalk emits the sales SABRE never had in the SABRE
+  // schema, marked Source=N1 — 433 of them, median price over $1.1M, that
+  // exist nowhere else because SABRE missed them. A blanket
+  // `Source: 'SABRE'` made them indistinguishable from records the City
+  // actually published, which is the one thing that column is for.
+  const csv = [
+    'Parcel ID,Instrument Number,Sale Dates,Sold Price,N1 ID,Source',
+    '01002467700,N1-10023,2023-10-24,29900,10023,N1',
+  ].join('\n');
+  const { text } = mergeSalesFiles([{ name: 'n1.csv', csv }]);
+  const { rows } = parseSalesText(text);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].Source, 'N1');
+  assert.equal(rows[0]['N1 ID'], '10023');
+});
+
+test('mergeSalesFiles — a file with no Source column still defaults to SABRE', () => {
+  const csv = [
+    'Parcel ID,Instrument Number,Sale Dates,Sold Price',
+    '01002467700,5149983,2023-10-24,29900',
+  ].join('\n');
+  const { rows } = parseSalesText(mergeSalesFiles([{ name: 's.csv', csv }]).text);
+  assert.equal(rows[0].Source, 'SABRE');
+});
+
 console.log('');
 console.log(`${passed}/${passed + failed} passed`);
 if (failed > 0) process.exit(1);
