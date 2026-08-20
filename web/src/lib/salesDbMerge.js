@@ -32,12 +32,30 @@ function headerKeyOf(cells) {
   return cells.map((c) => String(c ?? '').trim().toLowerCase()).join(SEP);
 }
 
-/** Full-row signature for the cross-file dedupe. Cells are trimmed so
- *  trailing-whitespace variance between exports doesn't defeat it; the
- *  SEP separator (see above) keeps cell boundaries in the key, so ("ab","c")
- *  and ("a","bc") cannot collide. */
-export function rowSignature(cells) {
-  return cells.map((c) => String(c ?? '').trim()).join(SEP);
+/**
+ * Full-row signature for the cross-file dedupe.
+ *
+ * Cells are trimmed so trailing-whitespace variance between exports
+ * doesn't defeat it, and the SEP separator keeps cell boundaries in the
+ * key, so ("ab","c") and ("a","bc") cannot collide.
+ *
+ * The Sale Dates cell is NORMALIZED before hashing, which is not
+ * cosmetic: SABRE exports the same sale as "2022-07-11" in one pull and
+ * "07-11-2022" in another, and a raw comparison therefore called 217
+ * genuinely duplicate July-2022 rows distinct — inflating that month to
+ * 434 sales against a ~220 baseline and doubling living area on every
+ * one of them. Pass `dateCol` (from mapSalesHeaders) to enable it.
+ *
+ * @param {string[]} cells
+ * @param {number} [dateCol] index of the Sale Dates column, -1/undefined if absent
+ */
+export function rowSignature(cells, dateCol = -1) {
+  return cells
+    .map((c, i) => {
+      const v = String(c ?? '').trim();
+      return i === dateCol ? normalizeSaleDate(v) : v;
+    })
+    .join(SEP);
 }
 
 /** Quote a CSV cell only when it needs it. */
@@ -116,6 +134,7 @@ export function mergeSalesFiles(files) {
   }
   let header = null;
   let headerKey = null;
+  let dateCol = -1;
   const out = [];
   const seen = new Set();
   let total = 0;
@@ -127,6 +146,7 @@ export function mergeSalesFiles(files) {
     if (header == null) {
       header = cells;
       headerKey = key;
+      dateCol = mapSalesHeaders(cells).canonicalByIndex.indexOf('Sale Dates');
       out.push(header);
     } else if (key !== headerKey) {
       throw new Error(
@@ -139,7 +159,7 @@ export function mergeSalesFiles(files) {
       const row = rows[i];
       if (!row || row.every((c) => String(c ?? '').trim() === '')) continue;
       total++;
-      const sig = rowSignature(row);
+      const sig = rowSignature(row, dateCol);
       if (seen.has(sig)) { duplicates++; continue; }
       seen.add(sig);
       out.push(row);

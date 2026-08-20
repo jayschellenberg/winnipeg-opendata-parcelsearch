@@ -109,6 +109,33 @@ test('mergeSalesFiles — distinct component rows on one sale both survive', () 
   assert.equal(sales[0].livingArea, 2000);
 });
 
+test('mergeSalesFiles — the SAME sale in two date formats is one sale', () => {
+  // Real folder case: SABRE exported July 2022 twice, once ISO and once
+  // MM-DD-YYYY. Raw-cell comparison called all 217 rows distinct, which
+  // doubled that month and doubled living area on every sale in it.
+  const merged = mergeSalesFiles([
+    { name: 'iso.csv', csv: `${HEADER}
+6070731000,INST-1,2022-07-11,350000,1200` },
+    { name: 'sabre.csv', csv: `${HEADER}
+6070731000,INST-1,07-11-2022,350000,1200` },
+  ]);
+  assert.equal(merged.total, 2);
+  assert.equal(merged.duplicates, 1);
+  assert.equal(merged.kept, 1);
+  const { sales } = dedupAndGroupSales(parseSalesText(merged.text).rows);
+  assert.equal(sales.length, 1);
+  assert.equal(sales[0].livingArea, 1200, 'living area must not double');
+});
+
+test('rowSignature — normalizes only the date column it is told about', () => {
+  // Without the index it is a raw comparison, which is what the merge
+  // relied on before and why the duplicates slipped through.
+  assert.notEqual(rowSignature(['a', '07-11-2022']), rowSignature(['a', '2022-07-11']));
+  assert.equal(rowSignature(['a', '07-11-2022'], 1), rowSignature(['a', '2022-07-11'], 1));
+  // A non-date cell at that index is left alone rather than mangled.
+  assert.equal(rowSignature(['a', 'pending'], 1), rowSignature(['a', 'pending'], 1));
+});
+
 test('mergeSalesFiles — header drift only in case/space still merges', () => {
   const merged = mergeSalesFiles([
     { name: 'a.csv', csv: 'Parcel ID,Sold Price\n1,100' },
