@@ -268,6 +268,51 @@ export const COLUMNS = [
     render: (a) => td(a._demoDate || null, 'num'),
     csv: { header: 'Demo Date', extract: (a) => a._demoDate } },
 
+  { key: 'source',       header: 'Source',        mode: 'sales',  sortable: true,
+    theadTitle: 'Which export this sale came from. SABRE+MLS means both reported it and the merge fused them into one row — SABRE’s registration date, plus everything MLS knows that SABRE has no column for.',
+    render: (a) => td(a._source || null),
+    csv: { header: 'Source', extract: (a) => a._source } },
+
+  { key: 'mlsDate',      header: 'MLS Date',      mode: 'sales',  sortable: true,
+    theadTitle: 'MLS DateSold — the firm/accepted-offer date. Deliberately kept beside the Sale Date rather than replacing it: SABRE records REGISTRATION, and across this archive the offer runs three to eight weeks earlier. The offer date is the market signal; the registration date is the transaction.',
+    render: (a) => td(a._mlsDate || null, 'num'),
+    csv: { header: 'MLS Date', extract: (a) => a._mlsDate } },
+
+  { key: 'mlsNumber',    header: 'MLS #',         mode: 'sales',  sortable: true,
+    theadTitle: 'MLS listing number',
+    render: (a) => td(a._mlsNumber || null, 'num'),
+    csv: { header: 'MLS #', extract: (a) => a._mlsNumber } },
+
+  { key: 'listPrice',    header: 'List Price',    mode: 'sales',  sortable: true,
+    theadTitle: 'Asking price at the time of sale (MLS PriceList). Against the sold price this is the negotiation room.',
+    render: (a) => td(formatDollars(a._listPrice), 'num'),
+    csv: { header: 'List Price', extract: (a) => a._listPrice } },
+
+  { key: 'origPrice',    header: 'Orig Price',    mode: 'sales',  sortable: true,
+    theadTitle: 'Original asking price when first listed (MLS PriceOrig). Where it exceeds List Price the property was reduced before it sold.',
+    render: (a) => td(formatDollars(a._origPrice), 'num'),
+    csv: { header: 'Orig Price', extract: (a) => a._origPrice } },
+
+  { key: 'dom',          header: 'DOM',           mode: 'sales',  sortable: true,
+    theadTitle: 'Days on market (MLS). Direct evidence of exposure period, which an appraisal report normally has to state.',
+    render: (a) => td(a._dom != null ? String(a._dom) : null, 'num'),
+    csv: { header: 'DOM', extract: (a) => a._dom } },
+
+  { key: 'bldgType',     header: 'Bldg Type',     mode: 'sales',  sortable: true,
+    theadTitle: 'Building type as described on the listing (MLS BldgType)',
+    render: (a) => truncatedTd(a._bldgType, 20),
+    csv: { header: 'Bldg Type', extract: (a) => a._bldgType } },
+
+  { key: 'style',        header: 'Style',         mode: 'sales',  sortable: true,
+    theadTitle: 'Building style as described on the listing (MLS Style)',
+    render: (a) => truncatedTd(a._style, 16),
+    csv: { header: 'Style', extract: (a) => a._style } },
+
+  { key: 'siteInfl',     header: 'Site Infl.',    mode: 'sales',  sortable: true,
+    theadTitle: 'Site influences from the listing — corner, high traffic, street exposure and so on. Qualitative comparability factors SABRE does not record.',
+    render: (a) => truncatedTd(a._siteInfl, 24),
+    csv: { header: 'Site Influences', extract: (a) => a._siteInfl } },
+
   { key: 'built',        header: 'Built',         mode: 'sales',  sortable: true,
     theadTitle: 'New-construction permit against a VACANT-coded sale (City Building Permits, matched by address). '
       + 'ALREADY BUILT means the permit predates the sale by six months or more, so the house was finished when the lot changed hands — the sale is an IMPROVED sale the roll had not caught up with, and its rate is not a land rate. '

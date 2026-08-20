@@ -45,7 +45,7 @@ const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
  * ADOPTED_KEY); untick it after that and it stays unticked.
  */
 const ADOPTED_KEY = 'wps_table_columns_adopted_v1';
-const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate'];
+const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'source'];
 
 /*
  * Columns this module does not govern. `seq` (the map badge "#") is gated
@@ -115,6 +115,17 @@ const LAND_SALES = [
   'saleToAsmt', 'dist', 'value', 'n1Id',
 ];
 
+// Commercial comps with the MLS half attached: what it listed for, how
+// long it took, and how the building was described — the questions a
+// commercial report has to answer and SABRE alone cannot.
+const MLS_SALES = [
+  'roll', 'address', 'cluster', 'source', 'saleDate', 'mlsDate',
+  'salePrice', 'listPrice', 'origPrice', 'dom',
+  'useCode', 'propertyType', 'bldgType', 'style', 'siteInfl',
+  'yearBuilt', 'livingArea', 'pricePerBldgSf', 'numUnits',
+  'area', 'saleZoning', 'demo', 'built', 'n1Id', 'mlsNumber',
+];
+
 export const DEFAULT_VISIBLE = new Set(QUICK_LOOKUP);
 
 export const PRESETS = {
@@ -124,6 +135,7 @@ export const PRESETS = {
   'Full detail':     null,
   'Sales analysis':  new Set(SALES_DEFAULT),
   'Commercial Sales': new Set(COMMERCIAL_SALES),
+  'MLS Sales':        new Set(MLS_SALES),
   'Land Sales':       new Set(LAND_SALES),
 };
 

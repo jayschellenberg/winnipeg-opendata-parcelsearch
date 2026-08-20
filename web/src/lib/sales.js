@@ -119,6 +119,18 @@ export function dedupAndGroupSales(rows) {
         // N1 comp-database ID from the offline crosswalk; null (not '')
         // so the N1 filter's truthiness test reads clean.
         n1Id: String(r['N1 ID'] ?? '').trim() || null,
+        // MLS-side fields. Present only on rows that came from an MLS
+        // export, or on a SABRE row the merge fused one onto — see
+        // collapseCrossSource in salesDbMerge.js.
+        source: String(r.Source ?? '').trim() || null,
+        mlsNumber: String(r['MLS #'] ?? '').trim() || null,
+        mlsDate: String(r['MLS Date'] ?? '').trim() || null,
+        listPrice: numOrZero(r['List Price']),
+        origPrice: numOrZero(r['Orig Price']),
+        dom: parseNumeric(r.DOM),
+        bldgType: String(r['Bldg Type'] ?? '').trim() || null,
+        style: String(r.Style ?? '').trim() || null,
+        siteInfl: String(r['Site Influences'] ?? '').trim() || null,
       });
     } else {
       // Merge: same Parcel ID + same Instrument Number = multiple
@@ -138,6 +150,16 @@ export function dedupAndGroupSales(rows) {
       // merge, the surviving record must not lose the ID just because an
       // un-stamped copy happened to come first.
       if (!existing.n1Id && r['N1 ID']) existing.n1Id = String(r['N1 ID']).trim();
+      // Same first-non-blank rule for the MLS fields: only one component
+      // row of a fused sale carries them.
+      for (const [k, col] of [['mlsNumber', 'MLS #'], ['mlsDate', 'MLS Date'],
+        ['bldgType', 'Bldg Type'], ['style', 'Style'], ['siteInfl', 'Site Influences'],
+        ['source', 'Source']]) {
+        if (!existing[k] && r[col]) existing[k] = String(r[col]).trim();
+      }
+      if (!existing.listPrice && r['List Price']) existing.listPrice = numOrZero(r['List Price']);
+      if (!existing.origPrice && r['Orig Price']) existing.origPrice = numOrZero(r['Orig Price']);
+      if (existing.dom == null && r.DOM) existing.dom = parseNumeric(r.DOM);
       // SABRE enumerates a multi-unit parcel one row per unit, with
       // Number of Unit running 1..N (six rows for 185 BANNERMAN). The
       // first row's value is 1, so keeping it would report a six-unit
@@ -228,6 +250,15 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     // demolition-permit join is by ADDRESS — the permit table has no
     // roll number — and must work for a sale whose roll never matched a
     // live record.
+    p._source = sale.source || null;
+    p._mlsNumber = sale.mlsNumber || null;
+    p._mlsDate = sale.mlsDate || null;
+    p._listPrice = sale.listPrice > 0 ? sale.listPrice : null;
+    p._origPrice = sale.origPrice > 0 ? sale.origPrice : null;
+    p._dom = Number.isFinite(sale.dom) ? sale.dom : null;
+    p._bldgType = sale.bldgType || null;
+    p._style = sale.style || null;
+    p._siteInfl = sale.siteInfl || null;
     p._saleStreetNumber = sale.streetNumber || null;
     p._saleStreetName = sale.streetName || null;
     p._n1Id = sale.n1Id || null;

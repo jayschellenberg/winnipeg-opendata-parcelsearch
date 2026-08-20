@@ -36,6 +36,7 @@
 
 import { analyzeSalesCsv, mergeSalesFiles } from './salesDbMerge.js';
 import { SALES_REQUIRED_COLS } from './salesImport.js';
+import { isMlsHeader } from './mlsImport.js';
 
 const DB_NAME = 'wpg-parcel-sales';
 const DB_VERSION = 1;
@@ -170,7 +171,15 @@ const CSV_FILE_RE = /\.csv$/i;
 // import instead of carrying a stale meta until their mtime changes.
 const ANALYZE_VERSION = 1;
 
-function isSabreHeader(analysis) {
+/**
+ * Is this CSV a sales export we can read — SABRE or MLS?
+ *
+ * Decided by the HEADER, not the filename: Jason renames pulls, and a
+ * name-gate would silently ignore them. A stray CSV that is neither is
+ * counted and skipped rather than imported as junk.
+ */
+function isSalesHeader(analysis) {
+  if (isMlsHeader(analysis.headerCells)) return true;
   const have = new Set(analysis.headerCells.map((h) => h.toLowerCase()));
   return SALES_REQUIRED_COLS.every((c) => have.has(c.toLowerCase()));
 }
@@ -241,7 +250,7 @@ export async function importFromDirectory(dirHandle, { onProgress, force = false
 
     const csv = await file.text();
     const analysis = analyzeSalesCsv(csv);
-    if (!isSabreHeader(analysis)) { ignored++; continue; }
+    if (!isSalesHeader(analysis)) { ignored++; continue; }
     await putFileRec({ name, csv, meta: metaFor(analysis, file) });
     mtimes[name] = file.lastModified;
     imported++;
@@ -304,7 +313,7 @@ export async function importFromFileList(fileList, { onProgress } = {}) {
     onProgress?.({ done: i, total: files.length, label: name });
     const csv = await f.text();
     const analysis = analyzeSalesCsv(csv);
-    if (!isSabreHeader(analysis)) { ignored++; continue; }
+    if (!isSalesHeader(analysis)) { ignored++; continue; }
     await putFileRec({ name, csv, meta: metaFor(analysis, f) });
     kept.add(name);
     mtimes[name] = f.lastModified;

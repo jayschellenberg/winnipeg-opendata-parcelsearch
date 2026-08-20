@@ -320,6 +320,15 @@ const SORT_KEYS = {
     return v === 'already-built' ? '0' : v === 'land-then-built' ? '1' : '2';
   },
   builtDate:    (r) => strKey(r.assess?.properties?._buildDate),
+  source:       (r) => strKey(r.assess?.properties?._source),
+  mlsDate:      (r) => strKey(r.assess?.properties?._mlsDate),
+  mlsNumber:    (r) => numOrStr(r.assess?.properties?._mlsNumber),
+  listPrice:    (r) => finiteOrNeg(r.assess?.properties?._listPrice),
+  origPrice:    (r) => finiteOrNeg(r.assess?.properties?._origPrice),
+  dom:          (r) => finiteOrNeg(r.assess?.properties?._dom),
+  bldgType:     (r) => strKey(r.assess?.properties?._bldgType),
+  style:        (r) => strKey(r.assess?.properties?._style),
+  siteInfl:     (r) => strKey(r.assess?.properties?._siteInfl),
   pricePerAcre: (r) => finiteOrNeg(r.assess?.properties?._pricePerAcre),
   pricePerLot:  (r) => finiteOrNeg(r.assess?.properties?._pricePerLot),
 };
