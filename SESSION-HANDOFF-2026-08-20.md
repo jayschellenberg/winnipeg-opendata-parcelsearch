@@ -37,9 +37,15 @@ Nothing is in flight and the tree is clean. Of the four queued items:
 One thing is genuinely waiting on Jason:
 
 - **The 160-record Winnipeg N1 review queue.** Run
-  `n1-refresh-wpg.bat`, then point `tools/n1_review.html` at
-  `mao-scrape/results/sales_search/n1_review_wpg/`. The loop is proven
-  end to end on one record.
+  `n1-refresh-wpg.bat`; it ends by SERVING the review page and opening
+  it, then blocks until Ctrl+C. Click "Open review folder…" (or
+  "Resume review") and choose `n1_review_wpg/`; decisions autosave, so
+  there is nothing to move. Ctrl+C and re-run the bat to fold them in.
+  The loop is proven end to end on one record.
+
+  It has to be SERVED: Chrome will not give the folder picker to a
+  double-clicked `file://` page, which silently costs you folder mode —
+  one year at a time instead of all of them, and a DOWNLOAD per save.
 
 Beyond that nothing is queued. Candidates, none of them asked for:
 
