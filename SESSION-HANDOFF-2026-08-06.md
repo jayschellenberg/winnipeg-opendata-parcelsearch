@@ -7,22 +7,30 @@
 > emoji, Additional-filters disclosure, date-preset pills, Commercial Sales /
 > Land Sales presets), then closed the rest of the MB-parity gap list below.
 >
-> **The gap table below is now fully closed.** Date presets
-> (3/6/12/24/36/48/60/72 mo, Jan-1 snap at 24+), `sale-asmt-max`,
+> **The gap table below is now fully closed**, though not all of it by
+> copying MB. Date presets (3/6/12/24/36/48/60/72 mo, Jan-1 snap at 24+),
 > `vacant-improved`, `legend-toggle`, and `far-flung-km` +
-> `far-flung-exclude` all ship. Two deliberate departures from MB:
-> `vacant-threshold` was NOT ported — Winnipeg's assessor classifies
-> vacancy directly in the Property Use Code (VRES1, VCOMM, VINDU, VAGRI,
-> VAPRK, VRES2, CNVAC), so there is no buildings-value number to tune — and
-> the Sale/Asmt cap is not gated behind Vacant Only the way MB gates it.
-> Far-flung ships with no default threshold, since MB's calibrated 30 km
-> came off rural portfolio sales and would never fire inside a city roughly
-> that wide.
+> `far-flung-exclude` ship. `sale-asmt-max` shipped and was then REMOVED
+> at Jason's direction (see below) — do not re-add it. Deliberate
+> departures from MB: `vacant-threshold` was never ported, because
+> Winnipeg's assessor classifies vacancy directly in the Property Use
+> Code — the rule here is any code starting with **V**, plus `CNVAC`, so
+> a code the City adds later needs no code change. Far-flung ships with
+> no default threshold, since MB's calibrated 30 km came off rural
+> portfolio sales and would never fire inside a city roughly that wide.
 >
-> The charts surface was deliberately skipped and is now the largest MB
-> feature absent here. The "do not re-add $/Lot SF" instruction below still
-> stands — the far-flung ⚠ rides on that COLUMN, which is not the same
-> thing as the removed range filter.
+> A later pass the same day added a **land-sales charts page**
+> (charts.html — $/Lot SF over time, $/Acre over time, $/Lot vs lot size,
+> tracking the grid live over a BroadcastChannel), derived **acres /
+> $/Acre / $/Lot** columns, widened the vacant rule to **any V-prefixed
+> use code plus CNVAC**, and **removed the Sale/Asmt cap** at Jason's
+> direction: a sale at 115% of assessment is an ordinary market sale, so
+> a cap whose options ran down to 0.5 was a foot-gun. The Sale/Asmt
+> COLUMN stays; only the filter is gone.
+>
+> The "do not re-add $/Lot SF" instruction below still stands — the
+> far-flung warning rides on that COLUMN, which is not the same thing as
+> the removed range filter.
 
 
 Resume point for a fresh thread on the **Winnipeg Parcel Search** repo
