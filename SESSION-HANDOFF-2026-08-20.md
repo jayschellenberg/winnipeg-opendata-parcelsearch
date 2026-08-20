@@ -6,8 +6,11 @@ https://winnipeg-opendata-parcelsearch.vercel.app/ ; every push to `main`
 deploys. Replaces the earlier 2026-08-20 handoff (`3d03510`), whose
 still-live constraints are carried forward below.
 
-Four commits landed and deployed this session, `ee34869` → `c79a65c`,
-clearing three of the four items that handoff left queued.
+Seven commits landed and deployed here, `ee34869` → `f05769a`, clearing
+**all four** items that handoff left queued. The last of them, the N1
+cross-reference, was cleared mostly in the SIBLING repo
+`MBOpenData/mao-scrape` (four commits there, `3734c3e` → `b4fec87`) —
+only one line of that work is in this repo.
 
 ---
 
@@ -22,17 +25,23 @@ Nothing is in flight and the tree is clean. Of the four queued items:
    itself at the next scheduled rebuild — `WpgParcelTilesBiMonthly`,
    **2026-10-02**, which auto-deploys. **Confirm it after that date**;
    until then its absence is expected, not a bug.
-3. **The N1 cross-reference** — NOT blocked after all, and the previous
-   handoff was wrong to call it that. Scoped at the end of this session
-   and ready to build; see "The Winnipeg N1 crosswalk" below. Still true
-   that no sales CSV carries an `N1 ID` yet — 0 of 18,490 — because the
-   offline crosswalk that would stamp it does not exist for Winnipeg.
-   What was missing was not data but the knowledge that the MB
-   implementation deliberately skips Winnipeg.
+3. **The N1 cross-reference** — **BUILT AND RUNNING**, and the two
+   previous handoffs were wrong to call it blocked. It lives in the
+   OTHER repo, `D:\Dropbox\ClaudeCode\MBOpenData\mao-scrape`, because
+   that is where the N1 exports and the review page already are. Run
+   `n1-refresh-wpg.bat`. See "The Winnipeg N1 crosswalk" below and
+   `DESIGN-N1-WPG.md` over there.
 4. **The 792 unjudged vacant sales** — done (`c79a65c`), and mostly
    dissolved rather than fixed. See below.
 
-Nothing new is queued. Candidates, none of them asked for:
+One thing is genuinely waiting on Jason:
+
+- **The 160-record Winnipeg N1 review queue.** Run
+  `n1-refresh-wpg.bat`, then point `tools/n1_review.html` at
+  `mao-scrape/results/sales_search/n1_review_wpg/`. The loop is proven
+  end to end on one record.
+
+Beyond that nothing is queued. Candidates, none of them asked for:
 
 - The **79** vacant sales with no live roll record — the residue of item
   4, and the only part still genuinely unjudged.
@@ -54,6 +63,8 @@ Nothing new is queued. Candidates, none of them asked for:
 | vacant sales with no permit verdict | 812, all suspect | **79 unanswerable** |
 | Land category | 6,673 | **6,636** |
 | median $/Lot SF (Land) | $29.98 | **$29.94** |
+| sales carrying an `N1 ID` | 0 of 18,490 | **1,333 of 18,923** |
+| Winnipeg comps SABRE never had | invisible | **433 in the grid** |
 
 **Do not compare the Land row against the previous handoff's 6,736.**
 That figure came off the live roll and a smaller archive; 6,673 is the
@@ -81,6 +92,14 @@ them. See the decisions list.
 **The roll as a second instrument** (`permitEvidence.js`
 `rollBuildVerdict`). Where no permit can answer, the roll's own
 `year_built` can.
+
+**A Source that survives import** (`salesDbMerge.js`, `f05769a`). The
+merge blanket-assigned `Source: 'SABRE'` to every row of every non-MLS
+file. Right for the City's exports, which carry no Source column; wrong
+for the 433 N1-sourced sales that arrive in the same schema marked
+`Source=N1`. Now `r.Source || 'SABRE'`. **This is the only change in
+THIS repo that the N1 work required** — everything else lives in
+mao-scrape.
 
 ---
 
@@ -161,77 +180,130 @@ category judgement calls are Jason's; the draw cap caps DRAWING only;
 12. **The count line and the tooltip name the INSTRUMENT.** "37 from the
     roll's year built, not a permit — confirm before using". A reader
     must not come away thinking a permit was found.
+13. **`mergeSalesFiles` must NOT overwrite a Source it was given.**
+    `r.Source || 'SABRE'`, never a blanket assignment. A file can arrive
+    in the SABRE schema and not be from SABRE — 433 of them do, the
+    Winnipeg comps the City's export missed. Overwriting the marker made
+    a record the City never published read as one it did, which is the
+    single thing that column exists to prevent.
+14. **A sparse row is safe in the sale aggregates, and it is safe BY
+    CONSTRUCTION.** `distinctLivingArea` only counts areas `> 0` and
+    `unitLabelsOf` only counts non-empty labels. That is what lets an
+    N1-sourced sale carry nothing but roll, instrument, date and price
+    without polluting a group's living area or unit count. Do not
+    "tidy" either function into counting blanks.
+15. **An N1-sourced sale carries a BLANK use code, deliberately.** N1's
+    Property Type is not the City's use code. Mapping one to the other
+    would put a fabricated code into the field that drives the Land set;
+    blank lands the sale in "(unclassified)", which is visible and
+    filterable. Same principle as `UNCLASSIFIED_CATEGORY` never being
+    blank: say "we were not told", never guess.
 
 ---
 
-## The Winnipeg N1 crosswalk (scoped 2026-08-20, not built)
+## The Winnipeg N1 crosswalk — BUILT 2026-08-20
+
+**It lives in the OTHER repo**, `D:\Dropbox\ClaudeCode\MBOpenData\mao-scrape`,
+because that is where the N1 exports, the review page and the MB crosswalk
+already are. Nothing about it is in THIS repo except one line in
+`salesDbMerge.js`. Its own design record is `DESIGN-N1-WPG.md` over there;
+this section is the pointer plus what a Winnipeg reader needs.
+
+**Run it:** `n1-refresh-wpg.bat` (double-click), or
+`Rscript scripts/n1_refresh_wpg.R [--no-sabre] [--no-open]`. One run
+re-exports SABRE, ingests any review decisions, re-matches, writes the
+stamped sales file, and says what is left.
+
+**Then point the app at
+`mao-scrape/results/sales_search/wpg_stamped/` — THAT FOLDER ONLY.**
+Connecting it beside the raw SABRE folder imports every sale twice,
+because the stamped file already contains all of them.
 
 **The model is unchanged: the web app never matches.** It consumes an
-`N1 ID` column pre-stamped into the sales CSVs by an OFFLINE crosswalk,
-and shows an Any/Matched/Unmatched filter (`?n1=`). Blank = "needs
-entering into N1".
+`N1 ID` column and shows an Any/Matched/Unmatched filter (`?n1=`).
+Blank = "needs entering into N1".
 
-**The Manitoba one lives in `D:\Dropbox\ClaudeCode\MBOpenData\mao-scrape`**
-and is initiated by double-clicking `n1-refresh.bat` (or `Rscript
-scripts/n1_refresh.R [--no-export] [--no-open]`). One run ingests any
-review decisions, matches every chunk-year in the newest `n1/` export,
-refreshes the web export, and opens the review page if a human is still
-needed. `DESIGN-N1-CROSSWALK.md` is its 756-line design record.
-
-**It skips Winnipeg on purpose.** `config/n1_muni_aliases.csv` maps
-`Winnipeg (City)` to `unresolved`, and `scripts/n1_county_fix.R:169`
-gives the reason: MAO does not assess the City, so a Winnipeg N1 record
-has no MAO sale to bind to. The design doc counts them among the
-"correctly out of scope" 1,482. They pass through the export untouched,
-which is exactly what makes them available here.
-
-**Measured against the current export**
-(`mao-scrape/n1/2020-202608-20260818.xlsx`, first sheet, 1,842 columns)
-and the SABRE archive, 2026-08-20:
+### Where it stands
 
 | | |
 |---|---:|
-| Winnipeg-flagged N1 records | **1,592** |
-| carrying a `Tax ID` | 1,518 |
-| carrying a price / a date | 1,585 / 1,592 |
-| packed multi-roll `Tax ID`s | 69 |
-| **bind to a SABRE roll (zero-padded)** | **1,089 (68.4%)** |
-| of those: same roll + exact price + date within 90d | **916 (84%)** |
-| bind ONLY because of zero-padding | **24** |
+| Winnipeg N1 records | 1,572 |
+| auto-linked | **874** → 899 crosswalk rows |
+| accepted through the review page | 1 |
+| still queued for review | **160** (2020–2024) |
+| unmatched | 538 |
+| **sales the app now sees** | **18,923** |
+| of those, carrying an `N1 ID` | **1,333** |
+| of those, N1 sales SABRE never had | **433** |
 
-Median date gap on same-price pairs is **0 days**; 770 of 978 are within
-a week. That auto-link rate is in the same band as the MB crosswalk's
-85.8%.
+84.5% of the records with any candidate auto-link — the same band as the
+MB crosswalk's 85.8%, by a much simpler route.
 
-**Winnipeg is the EASY case, not the hard one.** MB needed fuzzy
-address/legal matching, county aliasing and price/date windows because
-MAO rolls did not line up. Here it is a roll join: N1 `Tax ID` → SABRE
-`Parcel ID` → d4mq-wa44 `roll_number`. The MB matcher's hard half is not
-needed; what IS worth lifting from `scripts/n1_lib.R` is the field
-mapping (`ID`, `Address`, `City`, `County`, `Legal Description`, `Tax
-ID`, `Price`, `Date`, `Recording Date` — note **`Price`, not `Actual
-Price`**, which is populated on only 17 of the 1,592), the Tax ID
-splitter (N1 packs with `& ; , /`), and `n1_as_date`.
+### Winnipeg is the EASY case
 
-Traps, each already paid for once:
+MB needs fuzzy address/legal matching and county aliasing because MAO's
+rolls do not line up with N1's. Here both sides speak the same
+identifier: N1 `Tax ID` → SABRE `Parcel ID` → d4mq-wa44 `roll_number`.
+The matcher is a roll join with corroboration; none of MB's fuzzy half
+was ported.
 
-- **Dates come out of the xlsx as EXCEL SERIALS** (`43847`), not ISO.
-  Epoch 1899-12-30. A naive `fromisoformat` silently corroborates
-  nothing and reads as "no sale matches on date".
-- **Zero-pad both sides to 11 digits.** 24 records bind only because of
-  it, and an unpadded compare reports them Unmatched — which reads as
-  "still to be entered into N1" rather than "we failed to match". The
-  failure is invisible either way; the queue just looks longer.
-- **The 503 that do not bind are mostly not errors.** The SABRE archive
-  is non-residential/land only (single-family and residential condos are
-  deliberately excluded) and starts Jan 2020, so an N1 comp outside that
-  scope has nothing to bind to. 74 have no Tax ID at all.
+MB skips Winnipeg deliberately — `config/n1_muni_aliases.csv` maps
+`Winnipeg (City)` to `unresolved` because MAO does not assess the City —
+which is exactly what leaves those records available here.
+
+### The two things a Winnipeg reader must know
+
+**1. Not every N1 record is a sale.** 1,420 Closed Sale, **141 Listing**,
+8 Pending Contract, 3 Un-Executed. A Listing is an asking price; Jason
+converts it to a sale later by adding closing details from MLS/SABRE,
+editing the record IN PLACE under the same `n1_id`. So only a Closed Sale
+may auto-link, and a binding RE-OPENS when the record's type or price
+moves. Without that, a binding made from an asking price would stand
+forever.
+
+**2. SABRE has been missing sales for five years.** 410 N1 records carry
+a roll the SABRE archive has never held, and they are not noise: median
+price **$1,122,500**, spread evenly over 2020–2024, led by Multi-Family
+(60), Commercial (32), Industrial (26), Office (26), Warehouse (17).
+Only ~60 look like the residential SABRE deliberately excludes. They
+cannot be stamped — there is no row to stamp — so 433 of them are
+EMITTED as sales, with a synthetic `N1-<id>` instrument, `Source=N1`,
+and a **blank use code** (guessing one would put a fabricated value into
+the field that drives the Land set; blank lands them in
+"(unclassified)", which is visible).
+
+### Traps, each paid for once
+
+- **Zero-pad both sides to 11 digits, and do it correctly.** 23 records
+  bind ONLY because of the padding. The first implementation used
+  `formatC(width = 11, flag = "0")`, which pads CHARACTER input with
+  **spaces** — both sides padded identically so most of the join still
+  worked, and only the records the padding existed for quietly failed
+  and reported as Unmatched, which reads as "still to be entered into
+  N1". `nzchar(NA)` is also TRUE, so an NA roll padded its way to the
+  literal string `"000000000NA"`.
+- **N1 dates come out of the xlsx as EXCEL SERIALS** (`43847`), not ISO.
+  Epoch 1899-12-30. A naive `fromisoformat` corroborates nothing and
+  reads as a clean "no date match".
+- **Use `Price`, not `Actual Price`** — the latter is populated on 17 of
+  1,592.
+- **Exclude WINNIPEG BEACH**: a different municipality MAO *does*
+  assess. 20 records; a bare substring test claims all of them.
+- **`I()` around single-element arrays in the review JSON.**
+  `tools/n1_review.html` calls `.join()` on `n1.rolls` and reads
+  `.length` for its badge; `auto_unbox` collapses a length-1 vector to a
+  bare string and the record throws on render instead of appearing.
+- **One stamped file, not 53 stamped exports.** `mergeSalesFiles` dedupes
+  on the parsed row's KEY SET, and `objectsFromRows` only creates a key
+  for a column present in that file's header — so a folder mixing
+  stamped and unstamped files stops deduping overlapping pulls entirely.
 - **N1 sunsets 2027-09-01** and has no API. Exports cap near 1,500
   records per pull, so the archive under `mao-scrape/n1/` is the only
   thing making any of this date-independent.
 - The MB side also found an **import bleed** (N1 IDs 19095–19323, each
   record's Tax ID carrying the NEXT record's rolls) and **176 duplicate
-  groups**. Both are N1-side data defects, both would land here too.
+  groups**. Both are N1-side data defects; both land here too and
+  neither is corrected on this side.
 
 ---
 
@@ -241,7 +313,10 @@ Unchanged: no `vacant-threshold`; the Sale/Asmt cap is gone entirely;
 far-flung ships with **no default threshold**; the charts are
 Winnipeg-specific LAND charts; the appraisal-category layer
 (`lib/pucs.js`) has no MB counterpart. New: the street-name typeahead
-and the `rollBuildVerdict` fallback are Winnipeg-only.
+and the `rollBuildVerdict` fallback are Winnipeg-only, and the N1
+crosswalk binds to SABRE rather than MAO — a roll join instead of MB's
+fuzzy address/legal match, because City rolls line up on both sides and
+MAO's do not.
 
 ---
 
@@ -257,6 +332,25 @@ and the `rollBuildVerdict` fallback are Winnipeg-only.
   built 1891). The second group may be genuine teardown land sales. See
   the resume point.
 - **The zone line on the click popup is inert until 2026-10-02.**
+- **The stamped sales file is DERIVED and nothing keeps it fresh.** A
+  new SABRE download does not update
+  `mao-scrape/results/sales_search/wpg_stamped/wpg-sales-with-n1.csv`;
+  only `n1-refresh-wpg.bat` does. If the app is pointed at that folder
+  and the refresh is not re-run, the comp set silently ages. This is the
+  failure that bites in six months rather than today.
+- **An N1-sourced sale will not FUSE with a SABRE row for the same
+  sale.** `collapseCrossSource` picks its two buckets by name
+  (`r.Source === 'MLS' ? mls : sabre`), so an `N1` row falls in with
+  SABRE and is never fused. By construction it cannot collide at emit
+  time — only records with no SABRE roll match are written — and the
+  next crosswalk run drops them once SABRE has them. The exposure is one
+  run, between a SABRE download and the next refresh. Generalising
+  `collapseCrossSource` to any non-SABRE source would close it.
+- **160 Winnipeg N1 records await review**, and 538 are unmatched: 410
+  whose roll the SABRE archive never held, 73 with no Tax ID, 55 whose
+  roll matched but with no sale within 400 days. The 410 are mostly NOT
+  errors, but ~350 of them are real comps now carried as N1-sourced
+  sales.
 - **1,562 of the already-built rows took the code's FALLBACK**, not a
   live-roll lookup, because the roll was missing or still reads vacant.
 - **296 sale rows have no usable street number + name.** Less damaging
@@ -357,6 +451,16 @@ no longer applies — the Edit tool matches it directly. New:
 - **The Dropbox lock hits `npm run build`**, not just git. It fails in
   `prepareOutDir` and succeeds on an immediate retry. Same class as the
   fetch/push flakiness.
+- **A local HTML tool needs a SERVER, not `file://`.** Chrome will not
+  grant `showDirectoryPicker` outside a secure context, the in-app
+  Browser pane renders a `file://` page as a static snapshot with scripts
+  off, and `navigate` mangles a `file:///D:/...` URL into
+  `https://file///D:/...`. The way that worked: add an entry to the
+  project-root `launch.json` running a ~20-line static server, start it
+  with `preview_start`, and load `http://localhost:<port>/...` in Claude
+  in Chrome. `isSecureContext` true, folder picker available, the page's
+  own file input drivable with `file_upload`. That is how the mao-scrape
+  N1 review page was proven.
 - **The Bash tool's working directory resets between calls.** `cd` into
   the repo at the start of every command or `git` reports "not a git
   repository" and relative paths miss.
