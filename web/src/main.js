@@ -54,6 +54,7 @@ import {
   fetchDemoPermits,
   fetchBuildPermits,
   searchAssessmentParcelsExpanded,
+  fetchStreetNames,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
   fetchCityZoning,
@@ -108,6 +109,7 @@ import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
 import { buildClusterIndex, clusterForFeature } from './lib/clusters.js';
 import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
+import { createStreetSuggest, buildStreetIndex } from './lib/streetSuggest.js';
 import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
   passesPriceFilter,
@@ -457,11 +459,30 @@ $addressTo.addEventListener('focus', () => {
 // own Enter (commit chip) and forwards Enter-on-empty to runSearch
 // via the onEnterEmpty callback below. Every other input still binds
 // keydown directly so a stray Enter runs the search.
-for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $addressStreet, $zoning, $duMin]) {
+//
+// $addressStreet is NOT in this list: its typeahead owns Enter, because
+// Enter there has to mean "take the highlighted street AND search" and
+// the accept must land before the search reads the field. Two listeners
+// on one element would have fired in registration order and searched the
+// half-typed text. createStreetSuggest calls runSearch itself, below.
+for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $zoning, $duMin]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
   });
 }
+
+// Predictive street-name list on the Street Name field. The vocabulary
+// is the assessment roll's own street_name column (soda.fetchStreetNames),
+// fetched once on the first focus and cached in localStorage for a month
+// — so the first keystroke of a session pays ~258 KB and nothing after
+// that pays anything. Loading it also teaches normalizeStreetQuery which
+// names are real, which is what stops "ELM PARK" searching as "ELM".
+createStreetSuggest({
+  inputId: 'address-street',
+  listId: 'address-street-suggest',
+  loadIndex: () => fetchStreetNames().then(buildStreetIndex),
+  onSearch: () => runSearch(),
+});
 
 // Phase 7: sidebar tabs (Property Search + Sales Analysis). The
 // tab strip + panels live in index.html; tabs.js wires arrow-key

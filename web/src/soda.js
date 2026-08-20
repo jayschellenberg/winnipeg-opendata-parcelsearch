@@ -2750,6 +2750,27 @@ const STREET_QUERY_DIRECTIONS = new Set([
 ]);
 
 /**
+ * Case- and punctuation-folded form of a street name, matching exactly
+ * what streetNameClause strips off the COLUMN — apostrophes and periods,
+ * nothing else. Both sides of the comparison have to fold identically or
+ * "ST MARY'S" and "ST MARYS" stop being the same street. Exported so the
+ * typeahead (lib/streetSuggest.js) keys its list the same way.
+ */
+export function streetKey(raw) {
+  return String(raw ?? '')
+    .toUpperCase()
+    .replace(/[.'’]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Every street_name the assessment roll actually carries, in streetKey
+// form. Populated as a side effect of fetchStreetNames(); null until then
+// and null forever in node, where normalizeStreetQuery keeps its original
+// behaviour. See the note in normalizeStreetQuery for what it is FOR.
+let KNOWN_STREET_NAMES = null;
+
+/**
  * Normalize a street-name query to the form the datasets store. The raw
  * input zeroed out for the most natural spellings — verified live:
  * "St. Mary's Rd", "St Marys", "Saint Marys Road", "Portage Ave", and
@@ -2761,17 +2782,34 @@ const STREET_QUERY_DIRECTIONS = new Set([
  *  - drops a leading French generic and a trailing direction/type token
  *  - expands leading SAINT → ST (dataset convention)
  *
- * Every rule only ever widens the substring match, so normalization can
- * add results but never hide one.
+ * Those rules only ever WIDEN the substring match — normalization can add
+ * results but never hide one — with one deliberate exception, `known`.
+ *
+ * 56 street names on the roll END in a word this function reads as a
+ * street type or a direction: ELM PARK, GOLDEN GATE, MIDDLE GATE, NORTH
+ * POINT, LINDEN TERRACE, PARK EAST, WILDWOOD E. Truncating those turned
+ * "PARK EAST" (237 parcels) into "PARK" and returned 2,686 parcels across
+ * 47 different streets — a 17x over-return that reads as a successful
+ * search. When `known` says the untruncated string is itself a street the
+ * roll carries, the token stays. That narrows the result, but only ever
+ * to the street the user actually named: nothing on PARK EAST is lost,
+ * only the 46 other PARK-something streets that were never asked for.
+ *
+ * `known` defaults to whatever fetchStreetNames() has loaded, so a search
+ * that runs before the list arrives — or in node, where nothing loads it
+ * — behaves exactly as it always did, i.e. wider. Failing open is the
+ * right direction for the same reason it is everywhere else here.
  */
-export function normalizeStreetQuery(raw) {
-  let s = String(raw ?? '').toUpperCase().replace(/[.'’]/g, '');
-  s = s.replace(/\s+/g, ' ').trim();
+export function normalizeStreetQuery(raw, known = KNOWN_STREET_NAMES) {
+  const s = streetKey(raw);
   if (!s) return '';
   const tokens = s.split(' ');
   if (tokens.length > 1 && STREET_QUERY_FRENCH_PREFIXES.has(tokens[0])) tokens.shift();
   if (tokens[0] === 'SAINT') tokens[0] = 'ST';
+  const isKnown = () => known != null && known.has(tokens.join(' '));
+  if (isKnown()) return tokens.join(' ');
   if (tokens.length > 1 && STREET_QUERY_DIRECTIONS.has(tokens[tokens.length - 1])) tokens.pop();
+  if (isKnown()) return tokens.join(' ');
   if (tokens.length > 1 && STREET_QUERY_TYPE_TOKENS.has(tokens[tokens.length - 1])) tokens.pop();
   return tokens.join(' ');
 }
@@ -2787,6 +2825,94 @@ function streetNameClause(value) {
   const normalized = normalizeStreetQuery(value);
   if (!normalized) return null;
   return `upper(replace(replace(street_name,'''',''),'.','')) like '%${escapeSoql(normalized)}%'`;
+}
+
+// Row endpoint for the assessment dataset. ASSESS_URL is the .geojson
+// one, which would ship 245K polygons for a query that wants three text
+// columns.
+const ASSESS_ROWS_URL = 'https://data.winnipeg.ca/resource/d4mq-wa44.json';
+const STREET_NAMES_CACHE_KEY = 'wpg-street-names-v1';
+// Street names are a near-static vocabulary — a new subdivision adds a
+// handful a year. A month between refetches keeps the typeahead instant
+// on a cold tab without letting the list drift out of date for long.
+const STREET_NAMES_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+let streetNamesPromise = null;
+
+/**
+ * Every street_name on the assessment roll, with its street type(s) and
+ * parcel count — the vocabulary behind the Street Name typeahead.
+ *
+ * One grouped query, not a scan: `$group=street_name,street_type` returns
+ * 4,374 rows (4,238 distinct names) for ~258 KB, against 245K parcels if
+ * you asked for the rows. Sourced from the ASSESSMENT roll rather than
+ * Civic Addresses on purpose — lib/streetSuggest.js's header has the
+ * measurement, but short version: cam2-ii3u carries 115 street names with
+ * no assessment parcel under them, and offering those would suggest
+ * streets the search returns nothing for.
+ *
+ * Side effect: populates KNOWN_STREET_NAMES, which is what stops
+ * normalizeStreetQuery truncating ELM PARK to ELM. That is deliberate
+ * coupling — the list and the rule that consumes it should not be able to
+ * load separately and disagree.
+ *
+ * Cached in localStorage for a month. A cache read that throws or parses
+ * to junk just falls through to the network; a write that throws (quota,
+ * private mode) is ignored, since the in-memory promise already covers
+ * the session.
+ */
+export async function fetchStreetNames() {
+  if (streetNamesPromise) return streetNamesPromise;
+  streetNamesPromise = (async () => {
+    const cached = readCachedStreetNames();
+    if (cached) {
+      rememberStreetNames(cached);
+      return cached;
+    }
+    const params = new URLSearchParams({
+      $select: 'street_name,street_type,count(*) AS n',
+      $group: 'street_name,street_type',
+      $limit: '8000',
+    });
+    const rows = await fetchSoda(`${ASSESS_ROWS_URL}?${params}`);
+    const clean = (Array.isArray(rows) ? rows : [])
+      .filter((r) => String(r?.street_name ?? '').trim())
+      .map((r) => ({
+        street_name: String(r.street_name).trim(),
+        street_type: String(r.street_type ?? '').trim(),
+        n: Number(r.n) || 0,
+      }));
+    rememberStreetNames(clean);
+    writeCachedStreetNames(clean);
+    return clean;
+  })().catch((err) => {
+    // Let the next caller try again rather than pinning the failure for
+    // the rest of the session.
+    streetNamesPromise = null;
+    throw err;
+  });
+  return streetNamesPromise;
+}
+
+function rememberStreetNames(rows) {
+  KNOWN_STREET_NAMES = new Set(rows.map((r) => streetKey(r.street_name)));
+}
+
+function readCachedStreetNames() {
+  try {
+    const raw = localStorage.getItem(STREET_NAMES_CACHE_KEY);
+    if (!raw) return null;
+    const { ts, rows } = JSON.parse(raw);
+    if (!Array.isArray(rows) || !rows.length) return null;
+    if (!(Date.now() - ts < STREET_NAMES_TTL_MS)) return null;
+    return rows;
+  } catch { return null; }
+}
+
+function writeCachedStreetNames(rows) {
+  try {
+    localStorage.setItem(STREET_NAMES_CACHE_KEY, JSON.stringify({ ts: Date.now(), rows }));
+  } catch { /* quota or private mode — the session cache is enough */ }
 }
 
 /** Parse a From/To bound to a positive integer; null on empty/garbage.

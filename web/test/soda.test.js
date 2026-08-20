@@ -317,6 +317,51 @@ test('normalizeStreetQuery — single-token inputs are never stripped to nothing
   assert.equal(normalizeStreetQuery('  '), '');
 });
 
+// ---------- normalizeStreetQuery: the known-name guard ----------
+// 56 street names on the roll END in a word the rules above read as a
+// street type or a direction. Measured against d4mq-wa44 on 2026-08-20:
+// truncating "PARK EAST" (237 parcels) to "PARK" returned 2,686 parcels
+// across 47 streets, "ELM PARK" (105) returned 1,260 across 17. The guard
+// is the ONLY rule here that narrows rather than widens, so it fires only
+// when the untruncated string is a name the roll actually carries — and
+// only ever removes streets the user did not name.
+const KNOWN = new Set(['PARK EAST', 'ELM PARK', 'MIDDLE GATE', 'WILDWOOD E', 'PARK', 'ELM', 'MAIN']);
+
+test('normalizeStreetQuery — a known name keeps its trailing type word', () => {
+  assert.equal(normalizeStreetQuery('Park East', KNOWN), 'PARK EAST');
+  assert.equal(normalizeStreetQuery('Elm Park', KNOWN), 'ELM PARK');
+  assert.equal(normalizeStreetQuery('Middle Gate', KNOWN), 'MIDDLE GATE');
+  assert.equal(normalizeStreetQuery('Wildwood E', KNOWN), 'WILDWOOD E');
+});
+
+test('normalizeStreetQuery — an UNknown trailing type is still dropped', () => {
+  // The widening rules are untouched for everything that is not a real
+  // street name, which is the overwhelming majority of what gets typed.
+  assert.equal(normalizeStreetQuery('Main St', KNOWN), 'MAIN');
+  assert.equal(normalizeStreetQuery('Portage Ave', KNOWN), 'PORTAGE');
+  assert.equal(normalizeStreetQuery('Elm Street', KNOWN), 'ELM');
+});
+
+test('normalizeStreetQuery — the guard checks again after the direction drop', () => {
+  // "ELM PARK DRIVE" is not itself a name, so DRIVE goes; what is left
+  // IS one, and must not lose PARK as well.
+  assert.equal(normalizeStreetQuery('Elm Park Drive', KNOWN), 'ELM PARK');
+  assert.equal(normalizeStreetQuery('Park East Drive', KNOWN), 'PARK EAST');
+});
+
+test('normalizeStreetQuery — no known-name list means the old, wider behaviour', () => {
+  // The list loads lazily from the network. A search that runs before it
+  // arrives has to behave exactly as it always did rather than half-way.
+  assert.equal(normalizeStreetQuery('Park East'), 'PARK');
+  assert.equal(normalizeStreetQuery('Park East', null), 'PARK');
+  assert.equal(normalizeStreetQuery('Elm Park', new Set()), 'ELM');
+});
+
+test('normalizeStreetQuery — the guard folds punctuation the same way the set does', () => {
+  const known = new Set(["ST MARYS"]);
+  assert.equal(normalizeStreetQuery("St. Mary's", known), 'ST MARYS');
+});
+
 // ---------- zoningClause ----------
 
 test('zoningClause — hyphen-insensitive on both sides of the LIKE', () => {
