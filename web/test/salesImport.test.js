@@ -262,7 +262,9 @@ const SABRE = [
   const bannerman = sales.find((s) => s.instrument === '5835797');
   assert.equal(bannerman.roll, '14060118000');
   assert.equal(bannerman.numUnits, 6,
-    'Number of Unit runs 1..6 across the component rows — the count is the MAX, not the first');
+    'six rows labelled 1..6 is a six-unit sale — the count is HOW MANY labels there are');
+  assert.equal(bannerman.unitLabel, '1, 2, 3, 4, 5, 6',
+    'the labels themselves are kept: they say which units sold');
   assert.equal(bannerman.salePrice, 1290000);
   assert.equal(bannerman.landSf, 5757);
   assert.equal(bannerman.zoning, 'R2');

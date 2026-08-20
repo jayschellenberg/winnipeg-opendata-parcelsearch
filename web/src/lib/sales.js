@@ -210,6 +210,46 @@ const YEAR_BUILT_MAX = 2200;
  * what stood in 2020 — an addition, a re-measure — which no row rule
  * can fix.
  */
+/**
+ * SABRE's "Number of Unit" is the SUITE IDENTIFIER, not a unit count.
+ *
+ * The merge used to take the MAX of it across a sale's rows and render
+ * that as the parcel's unit count. Measured against dwelling_units in
+ * the City's own parcel file, that was right on 58 of 17,755 sales —
+ * 0.3%. Roll 04007260310 is unit 103 of 255 PEGUIS and was reported as
+ * a 103-unit property; the City says 1. The largest "count" the column
+ * produced was 4,201. 583 of the 889 rows that carry a value are above
+ * 12, and 34 are not numbers at all ("504B", "G-H", "F") — which is the
+ * clearest tell: a count cannot be "G-H".
+ *
+ * The count is not the max of the labels — it is HOW MANY of them there
+ * are. SABRE writes one row per suite, so 185 BANNERMAN's rows labelled
+ * 1..6 are six units, and 255 PEGUIS's single row labelled 103 is one.
+ * Measured against dwelling_units in the City's parcel file, on the 713
+ * sales that carry a label: the old max rule matched 60 (8.4%), counting
+ * the distinct labels matches 571 (80.1%) — and 134 of the remaining
+ * disagreements are rolls the City NOW reports as 0 dwelling units
+ * because the building has since been demolished or reclassified, where
+ * SABRE's historical count is the right one and today's roll is the
+ * stale one. 185 BANNERMAN is exactly that case: six suites sold in
+ * 2022, and the roll reads 0 today.
+ *
+ * That is also why the count is taken from SABRE rather than simply read
+ * off the live record: the sale is a historical fact and the roll is
+ * not.
+ *
+ * Distinct values in first-seen order, so a three-suite sale reads
+ * "1, 2, 3" rather than repeating whichever row came first.
+ */
+function unitLabelsOf(componentRows) {
+  const seen = [];
+  for (const r of componentRows) {
+    const v = String(r['Number of Unit'] ?? '').trim();
+    if (v && !seen.includes(v)) seen.push(v);
+  }
+  return seen;
+}
+
 function distinctLivingArea(componentRows) {
   const areas = new Set();
   for (const r of componentRows) {
@@ -286,12 +326,14 @@ export function dedupAndGroupSales(rows) {
     // Computed over the whole sale, like the years, so it is final on the
     // record's first row and the merge branch never accumulates.
     const saleLivingArea = distinctLivingArea(components);
+    const saleUnitLabels = unitLabelsOf(components);
     for (const r of components) {
       const existing = merged.get(key);
-      // Unit counts are whole numbers, and 0 is "not stated" rather than a
-      // count — keeping it would report a blank cell as a zero-unit parcel.
-      const numUnitsRaw = parseNumeric(r['Number of Unit']);
-      const numUnits = numUnitsRaw != null && numUnitsRaw > 0 ? Math.trunc(numUnitsRaw) : null;
+      // 'Number of Unit' is a suite identifier, not a count — see
+      // unitLabelsOf. Kept verbatim as a label, and counted by how many
+      // distinct labels the sale carries.
+      const unitLabel = saleUnitLabels.length ? saleUnitLabels.join(', ') : null;
+      const numUnits = saleUnitLabels.length || null;
       if (!existing) {
         merged.set(key, {
           roll,
@@ -324,7 +366,8 @@ export function dedupAndGroupSales(rows) {
           streetNumber: r['Street Number'] || null,
           streetDirection: r['Street Direction'] || null,
           streetName: r['Street Name'] || null,
-          numUnits,
+          unitLabel,
+        numUnits,
           // N1 comp-database ID from the offline crosswalk; null (not '')
           // so the N1 filter's truthiness test reads clean.
           n1Id: String(r['N1 ID'] ?? '').trim() || null,
@@ -375,13 +418,8 @@ export function dedupAndGroupSales(rows) {
         if (!existing.listPrice && r['List Price']) existing.listPrice = numOrZero(r['List Price']);
         if (!existing.origPrice && r['Orig Price']) existing.origPrice = numOrZero(r['Orig Price']);
         if (existing.dom == null && r.DOM) existing.dom = parseNumeric(r.DOM);
-        // SABRE enumerates a multi-unit parcel one row per unit, with
-        // Number of Unit running 1..N (six rows for 185 BANNERMAN). The
-        // first row's value is 1, so keeping it would report a six-unit
-        // property as one unit — the MAX is the count.
-        if (numUnits != null && (existing.numUnits == null || numUnits > existing.numUnits)) {
-          existing.numUnits = numUnits;
-        }
+        // Unit label is read over the whole sale before this loop, like
+        // the years and the living area, so there is nothing to merge.
         // Sworn value is a sale-level figure repeated on every component
         // row; keep the largest in case a component row leaves it blank.
         const sworn = numOrZero(r['Sworn Value']);
@@ -466,6 +504,7 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     p._saleYearBuilt = sale.yearBuilt;
     p._saleYearBuiltNumeric = sale.yearBuiltNumeric ?? null;
     p._saleZoning = sale.zoning || null;
+    p._saleUnitLabel = sale.unitLabel ?? null;
     p._saleNumUnits = sale.numUnits ?? null;
     // The CSV's own street parts. Kept on the feature because the
     // demolition-permit join is by ADDRESS — the permit table has no

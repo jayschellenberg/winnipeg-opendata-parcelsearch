@@ -251,10 +251,29 @@ export const COLUMNS = [
     render: (a) => td(formatDollars(a._saleSwornValue), swornCellClass(a)),
     csv: { header: 'Sworn Value', extract: (a) => a._saleSwornValue } },
 
+  // Units. HOW MANY suite labels the sale carries, not the largest one.
+  // Reading the largest as a total reported unit 103 of 255 PEGUIS as a
+  // 103-unit property and topped out at 4,201; counting them is right on
+  // 80% against the City's own dwelling_units, and right again on most of
+  // the rest, where the roll has since been demolished to 0 and SABRE
+  // holds the historical answer. See unitLabelsOf in lib/sales.js.
   { key: 'numUnits',     header: 'Units',         mode: 'sales',  sortable: true,
-    theadTitle: 'Number of units on the parcel (max of Number of Unit across the sale’s component rows)',
-    render: (a) => td(a._saleNumUnits != null ? String(a._saleNumUnits) : null, 'num'),
+    theadTitle: 'How many units the sale covers — counted from the distinct "Number of Unit" labels on its component rows, '
+      + 'so six rows labelled 1..6 is a six-unit sale and a single row labelled 103 is one unit. '
+      + 'From the SALE, not the roll, so it still reads correctly on a building since demolished. '
+      + 'Blank where SABRE labelled no unit; see DU for what the assessment record says the parcel holds today.',
+    render: (a) => {
+      const cell = td(a._saleNumUnits != null ? String(a._saleNumUnits) : null, 'num');
+      if (a._saleUnitLabel) cell.title = `SABRE labels the unit(s) sold: ${a._saleUnitLabel}`;
+      return cell;
+    },
     csv: { header: 'Units', extract: (a) => a._saleNumUnits } },
+
+  { key: 'unitLabel',    header: 'Unit #',        mode: 'sales',  sortable: true,
+    theadTitle: 'The unit that sold, as SABRE labels it — "504B", "G-H", "103". A suite identifier, not a count; '
+      + 'see Units for how many dwelling units are on the parcel. Blank on a sale SABRE did not label.',
+    render: (a) => td(a._saleUnitLabel || null),
+    csv: { header: 'Unit #', extract: (a) => a._saleUnitLabel } },
 
   { key: 'demo',         header: 'Demo',          mode: 'sales',  sortable: true,
     theadTitle: 'Demolition permit within two years either side of the sale (City Building Permits, matched by address). '

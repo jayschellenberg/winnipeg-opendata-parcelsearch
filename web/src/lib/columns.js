@@ -45,7 +45,11 @@ const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
  * ADOPTED_KEY); untick it after that and it stays unticked.
  */
 const ADOPTED_KEY = 'wps_table_columns_adopted_v1';
-const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'source'];
+const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'source',
+  // Split out of Units, which used to render SABRE's suite identifier as
+  // if it were a unit count. Existing users carry a stored set that
+  // predates it, so without this the label they lost never comes back.
+  'unitLabel'];
 
 /*
  * Columns this module does not govern. `seq` (the map badge "#") is gated
@@ -102,7 +106,7 @@ const COMMERCIAL_SALES = [
   // A teardown hiding in an improved comp set is exactly what this
   // preset must not let through unnoticed.
   'demo', 'demoDate',
-  'numUnits', 'area', 'saleZoning', 'value', 'n1Id', 'instrument',
+  'numUnits', 'unitLabel', 'area', 'saleZoning', 'value', 'n1Id', 'instrument',
 ];
 // Bare-land comp set: the lot, its rate, water influence and zoning;
 // building columns are noise on a land sale.
@@ -122,7 +126,7 @@ const MLS_SALES = [
   'roll', 'address', 'cluster', 'source', 'saleDate', 'mlsDate',
   'salePrice', 'listPrice', 'origPrice', 'dom',
   'useCode', 'propertyType', 'bldgType', 'style', 'siteInfl',
-  'yearBuilt', 'livingArea', 'pricePerBldgSf', 'numUnits',
+  'yearBuilt', 'livingArea', 'pricePerBldgSf', 'numUnits', 'unitLabel',
   'area', 'saleZoning', 'demo', 'built', 'n1Id', 'mlsNumber',
 ];
 

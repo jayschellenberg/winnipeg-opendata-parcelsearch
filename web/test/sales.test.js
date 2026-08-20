@@ -70,6 +70,45 @@ test('dedupAndGroupSales — multi-building rows sum living area and list every 
   assert.equal(out.sales[0].yearBuiltNumeric, 2008, 'the oldest, as a number, for sorting');
 });
 
+test('dedupAndGroupSales — Number of Unit is a suite LABEL, and the count is how many', () => {
+  // The old rule took the MAX of the cell and called it a unit count.
+  // Roll 04007260310 is unit 103 of 255 PEGUIS; that reported a 103-unit
+  // property, and the largest "count" the column ever produced was
+  // 4,201. Against the City's own dwelling_units the max rule was right
+  // on 60 of 713 labelled sales (8.4%); counting the distinct labels is
+  // right on 571 (80.1%).
+  const one = dedupAndGroupSales([
+    row({ 'Parcel ID': '04007260310', 'Number of Unit': '103' }),
+  ]);
+  assert.equal(one.sales[0].numUnits, 1, 'one row labelled 103 is ONE unit, not 103');
+  assert.equal(one.sales[0].unitLabel, '103', 'the label itself is kept');
+
+  // 185 BANNERMAN: six rows, one per suite. Six units.
+  const six = dedupAndGroupSales(
+    ['1', '2', '3', '4', '5', '6'].map((u) => row({ 'Number of Unit': u, 'Living Area': String(1000 + Number(u)) })),
+  );
+  assert.equal(six.sales[0].numUnits, 6);
+  assert.equal(six.sales[0].unitLabel, '1, 2, 3, 4, 5, 6');
+});
+
+test('dedupAndGroupSales — a non-numeric unit label survives verbatim', () => {
+  // 34 rows in the archive carry labels that are not numbers at all —
+  // "504B", "G-H", "F". They are the clearest proof the cell was never a
+  // count, and parseNumeric used to turn "504B" into 504.
+  const out = dedupAndGroupSales([
+    row({ 'Number of Unit': '504B', 'Living Area': '1219' }),
+    row({ 'Number of Unit': 'G-H', 'Living Area': '1300' }),
+  ]);
+  assert.equal(out.sales[0].unitLabel, '504B, G-H');
+  assert.equal(out.sales[0].numUnits, 2, 'two labelled units, not 504');
+});
+
+test('dedupAndGroupSales — no unit label leaves both fields null', () => {
+  const out = dedupAndGroupSales([row({ 'Number of Unit': '' })]);
+  assert.equal(out.sales[0].unitLabel, null);
+  assert.equal(out.sales[0].numUnits, null, 'blank is "not stated", not zero units');
+});
+
 test('dedupAndGroupSales — use code falls back to the first non-empty value', () => {
   const out = dedupAndGroupSales([
     row({ 'Par Use Code': '' }),

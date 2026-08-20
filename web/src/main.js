@@ -308,6 +308,7 @@ const SORT_KEYS = {
   cluster:      (r) => strKey(r.assess?.properties?._cluster),
   swornValue:   (r) => finiteOrNeg(r.assess?.properties?._saleSwornValue),
   numUnits:     (r) => finiteOrNeg(r.assess?.properties?._saleNumUnits),
+  unitLabel:    (r) => strKey(r.assess?.properties?._saleUnitLabel),
   saleZoning:   (r) => strKey(r.assess?.properties?._saleZoning),
   n1Id:         (r) => numOrStr(r.assess?.properties?._n1Id),
   saleAcres:    (r) => finiteOrNeg(r.assess?.properties?._saleAcres),
