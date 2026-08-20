@@ -29,7 +29,8 @@ export function isLandUseCode(code) {
  * @param {object} opts
  * @param {(iso: string) => number|null} opts.parseDate ISO date -> ms
  * @returns {Array<{instrument, date, price, landSf, acres, pricePerSf,
- *   pricePerAcre, pricePerLot, useCode, zoning, lots, isLand, roll, address}>}
+ *   pricePerAcre, pricePerLot, useCode, zoning, lots, isLand, roll, address,
+ *   alreadyBuilt}>}
  */
 export function saleRecordsFromRows(rows, { parseDate } = {}) {
   const byInstrument = new Map();
@@ -58,6 +59,11 @@ export function saleRecordsFromRows(rows, { parseDate } = {}) {
       dist: Number.isFinite(Number(p._dist)) ? Number(p._dist) : null,
       isLand: isLandUseCode(p._saleUseCode || p.property_use_code || ''),
       farFlung: !!p._farFlung,
+      // The permit record contradicts a vacant use code: a new-build
+      // permit closed 6+ months before the sale, so a finished house
+      // changed hands with the lot. Its rate is a house price wearing a
+      // land label — src/charts/main.js drops these by default.
+      alreadyBuilt: p._buildVerdict === 'already-built',
     });
   }
   return [...byInstrument.values()];

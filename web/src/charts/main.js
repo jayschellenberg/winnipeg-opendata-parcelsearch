@@ -18,6 +18,14 @@
  *                            first chart — a third of the page saying
  *                            nothing new.)
  *   - $/Lot vs lot size    — what one lot fetched against how big it is
+ *
+ * "Exclude already-built" defaults ON and is the most consequential
+ * thing on the page. Roughly half the vacant-coded sales in the archive
+ * are new-subdivision HOUSES sold while the roll still read vacant, and
+ * they clear about 3x a genuine lot per square foot — a step, not a
+ * gradient. Charting them drags every land trendline upward, so the
+ * default is to leave them out and say in the header how many went.
+ * Unticking puts them back for anyone who wants to see the contrast.
  */
 
 import {
@@ -36,13 +44,14 @@ const $sub = document.getElementById('charts-sub');
 const $status = document.getElementById('charts-status');
 const $landOnly = document.getElementById('land-only');
 const $dropFarFlung = document.getElementById('drop-far-flung');
+const $dropBuilt = document.getElementById('drop-built');
 const $freeze = document.getElementById('freeze');
 
 let records = [];
 let received = false;
 
 // --- options persistence ----------------------------------------------------
-// The two filters are ways of working and persist. `freeze` deliberately
+// The three filters are ways of working and persist. `freeze` deliberately
 // does NOT: a page that silently reopens frozen would look broken, and
 // the user would blame the live link rather than a checkbox they set
 // days ago.
@@ -51,6 +60,10 @@ function readOpts() {
     const raw = JSON.parse(localStorage.getItem(OPTS_KEY) || '{}');
     if (typeof raw.landOnly === 'boolean') $landOnly.checked = raw.landOnly;
     if (typeof raw.dropFarFlung === 'boolean') $dropFarFlung.checked = raw.dropFarFlung;
+    // Absent from an options blob written before this filter existed,
+    // which leaves the markup's checked default in place — the safe way
+    // round, since the old charts were quietly INCLUDING these.
+    if (typeof raw.dropBuilt === 'boolean') $dropBuilt.checked = raw.dropBuilt;
   } catch { /* defaults already in the markup */ }
 }
 function writeOpts() {
@@ -58,6 +71,7 @@ function writeOpts() {
     localStorage.setItem(OPTS_KEY, JSON.stringify({
       landOnly: $landOnly.checked,
       dropFarFlung: $dropFarFlung.checked,
+      dropBuilt: $dropBuilt.checked,
     }));
   } catch { /* storage disabled — options just don't persist */ }
 }
@@ -134,9 +148,17 @@ function scatterCard({ title, rows, xOf, yOf, xFormat, yFormat, xLabel, yLabel, 
 }
 
 function render() {
+  // Counted, not just dropped. A chart that silently sheds half its
+  // sales reads as a thin market rather than a cleaned one, and the
+  // header has to be able to say which happened.
+  let builtSeen = 0;
   const filtered = records.filter((r) => {
     if ($landOnly.checked && !r.isLand) return false;
     if ($dropFarFlung.checked && r.farFlung) return false;
+    if (r.alreadyBuilt) {
+      builtSeen += 1;
+      if ($dropBuilt.checked) return false;
+    }
     return true;
   });
 
@@ -147,16 +169,25 @@ function render() {
   }
   const noun = filtered.length === 1 ? 'sale' : 'sales';
   const scope = $landOnly.checked ? `land ${noun}` : noun;
+  const builtNoun = `already-built sale${builtSeen === 1 ? '' : 's'}`;
+  // Said either way round: excluded is a number the reader needs to
+  // judge the sample, and included is a warning that the land rates on
+  // screen are partly house prices.
+  const builtNote = builtSeen === 0 ? ''
+    : $dropBuilt.checked ? ` ${builtSeen} ${builtNoun} excluded.`
+    : ` ⚠ Includes ${builtSeen} ${builtNoun} — these are house prices, not land prices.`;
   $sub.textContent = filtered.length
-    ? `${filtered.length} ${scope} from the current grid filter.`
-    : `No ${$landOnly.checked ? 'land sales' : 'sales'} in the current grid filter.`;
+    ? `${filtered.length} ${scope} from the current grid filter.${builtNote}`
+    : `No ${$landOnly.checked ? 'land sales' : 'sales'} in the current grid filter.${builtNote}`;
 
   if (!filtered.length) {
     $grid.appendChild(emptyCard(
       'Nothing to chart',
-      $landOnly.checked
-        ? 'No vacant-land sales are in the current filter. Untick "Land sales only" to chart every sale shown in the grid.'
-        : 'The grid filter is currently showing no sales.',
+      builtSeen && $dropBuilt.checked
+        ? `Every sale in the current filter was flagged already-built — a finished house sold while the roll still read vacant. Untick "Exclude already-built" to chart them anyway, but read the result as improved sales, not land.`
+        : $landOnly.checked
+          ? 'No vacant-land sales are in the current filter. Untick "Land sales only" to chart every sale shown in the grid.'
+          : 'The grid filter is currently showing no sales.',
     ));
     return;
   }
@@ -213,7 +244,7 @@ channel.addEventListener('message', (e) => {
 // the grid was already populated, in which case no broadcast is coming.
 channel.postMessage({ type: 'request' });
 
-for (const el of [$landOnly, $dropFarFlung]) {
+for (const el of [$landOnly, $dropFarFlung, $dropBuilt]) {
   el.addEventListener('change', () => { writeOpts(); render(); });
 }
 $freeze.addEventListener('change', () => {

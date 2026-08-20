@@ -4169,3 +4169,54 @@ button.topbar-link {
   color: #92400e;
   font-weight: 600;
 }
+
+/* One-off CSV import, folded away (index.html). Wears the same
+   disclosure styling as Additional filters rather than inventing a
+   second look for the same gesture — one collapsed-section idiom in
+   the sidebar, not two. */
+.sidebar details.sales-import-collapse {
+  margin-top: 2px;
+  padding-top: 2px;
+}
+.sidebar details.sales-import-collapse > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  margin: 6px 0 2px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  background: var(--ui-panel-muted);
+  color: var(--ui-ink-soft);
+  font-size: 12px;
+  list-style: none;
+  cursor: pointer;
+}
+.sidebar details.sales-import-collapse > summary::-webkit-details-marker {
+  display: none;
+}
+.sidebar details.sales-import-collapse > summary::before {
+  content: ">";
+  color: var(--ui-muted);
+  font-size: 11px;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+.sidebar details.sales-import-collapse[open] > summary::before {
+  transform: rotate(90deg);
+}
+.sidebar details.sales-import-collapse > summary:hover {
+  color: var(--ui-ink);
+  border-color: var(--ui-line-strong);
+  background: #fff;
+}
+
+/* Working state for the status bar above the table. Deliberately
+   quiet — this fires several times during one run, and a bar that
+   flashed a strong colour on each step would read as errors rather
+   than progress. */
+.results-status.results-status-busy {
+  color: #1e40af;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}

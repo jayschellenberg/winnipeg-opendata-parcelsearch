@@ -374,56 +374,68 @@
             </div>
           </details>
 
-          <div
-            id="sales-dropzone"
-            class="sales-dropzone"
-            role="button"
-            tabindex="0"
-            aria-label="Upload sales CSV — drop a file here or click to browse"
-          >
-            <svg class="sales-dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 4l4 4h-3v6h-2V8H8l4-4zm-7 14h14v2H5v-2z" fill="currentColor"/>
-            </svg>
-            <p class="sales-dropzone-label">Drop a sales CSV here, or click to browse</p>
-            <p class="sales-dropzone-hint">Columns: Parcel ID, Sale Dates, Sold Price, Land Actual sqft …</p>
-            <input
-              type="file"
-              id="sales-file-input"
-              accept=".csv,text/csv"
-              hidden
-            />
-          </div>
+          <!-- One-off import, folded away. The SABRE database above is
+               the everyday path now; the dropzone, the paste modal and the
+               recent-uploads replay are for a one-off file, which is a
+               minority of sessions. Collapsed by default so the panel leads
+               with the controls a comp search actually starts from — the
+               same reasoning as Additional filters, and the same pattern the
+               Manitoba sibling app uses. A native <details> keeps it
+               keyboard-accessible with no JS, and closed content stays in
+               the DOM so main.js still binds every element at init. -->
+          <details class="sales-import-collapse" id="sales-import-collapse">
+            <summary class="sales-import-summary">Import a CSV or paste data</summary>
+            <div
+              id="sales-dropzone"
+              class="sales-dropzone"
+              role="button"
+              tabindex="0"
+              aria-label="Upload sales CSV — drop a file here or click to browse"
+            >
+              <svg class="sales-dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 4l4 4h-3v6h-2V8H8l4-4zm-7 14h14v2H5v-2z" fill="currentColor"/>
+              </svg>
+              <p class="sales-dropzone-label">Drop a sales CSV here, or click to browse</p>
+              <p class="sales-dropzone-hint">Columns: Parcel ID, Sale Dates, Sold Price, Land Actual sqft …</p>
+              <input
+                type="file"
+                id="sales-file-input"
+                accept=".csv,text/csv"
+                hidden
+              />
+            </div>
 
-          <!-- Paste alternative. Opens the sales-import modal (paste a
-               block copied straight out of SABRE or a spreadsheet, or
-               pick a CSV/TSV). The modal loads immediately with no
-               mapping step — the sales schema is fixed and
-               lib/salesImport.js auto-detects the header aliases. -->
-          <div class="sales-paste-row">
-            <span>or</span>
-            <button
-              type="button"
-              id="sales-import-trigger"
-              class="sales-import-trigger"
-              title="Paste sales rows copied from SABRE or a spreadsheet (tab- or comma-separated). Parcel ID, Instrument Number, Sale Dates and Sold Price are required."
-            >Paste data…</button>
-          </div>
+            <!-- Paste alternative. Opens the sales-import modal (paste a
+                 block copied straight out of SABRE or a spreadsheet, or
+                 pick a CSV/TSV). The modal loads immediately with no
+                 mapping step — the sales schema is fixed and
+                 lib/salesImport.js auto-detects the header aliases. -->
+            <div class="sales-paste-row">
+              <span>or</span>
+              <button
+                type="button"
+                id="sales-import-trigger"
+                class="sales-import-trigger"
+                title="Paste sales rows copied from SABRE or a spreadsheet (tab- or comma-separated). Parcel ID, Instrument Number, Sale Dates and Sold Price are required."
+              >Paste data…</button>
+            </div>
 
-          <!-- Recent uploads (last 5 cached in localStorage). Hidden by
-               populateRecentUploads when no cache exists. -->
-          <div class="recent-uploads" id="recent-uploads-row" hidden>
-            <span class="recent-uploads-label">Recent:</span>
-            <select id="recent-uploads-select" aria-label="Reload a recent sales upload">
-              <option value="">—</option>
-            </select>
-            <button
-              type="button"
-              id="recent-uploads-clear"
-              class="recent-uploads-clear"
-              title="Forget all recent uploads"
-              aria-label="Forget all recent uploads"
-            >×</button>
-          </div>
+            <!-- Recent uploads (last 5 cached in localStorage). Hidden by
+                 populateRecentUploads when no cache exists. -->
+            <div class="recent-uploads" id="recent-uploads-row" hidden>
+              <span class="recent-uploads-label">Recent:</span>
+              <select id="recent-uploads-select" aria-label="Reload a recent sales upload">
+                <option value="">—</option>
+              </select>
+              <button
+                type="button"
+                id="recent-uploads-clear"
+                class="recent-uploads-clear"
+                title="Forget all recent uploads"
+                aria-label="Forget all recent uploads"
+              >×</button>
+            </div>
+          </details>
 
           <span class="field chip-input-field">
             <div class="chip-input" data-target="subject-roll">

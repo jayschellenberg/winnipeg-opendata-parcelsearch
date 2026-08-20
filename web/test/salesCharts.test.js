@@ -77,6 +77,23 @@ test('saleRecordsFromRows — carries the land metrics and the land verdict', ()
   assert.equal(r.landSf, 20000);
 });
 
+test('saleRecordsFromRows — the already-built verdict rides through to the charts', () => {
+  // Land charts drop these by default: a vacant use code with a
+  // new-build permit closed well before the sale is a finished house,
+  // and its $/lot-sf is a house rate that drags the land trend upward.
+  const [built] = saleRecordsFromRows([row({ _saleUseCode: 'VRES1', _buildVerdict: 'already-built' })]);
+  assert.equal(built.alreadyBuilt, true);
+
+  // Construction that STARTED at or after the sale means the sale
+  // itself bought bare land — a genuine comp, which stays.
+  const [after] = saleRecordsFromRows([row({ _saleUseCode: 'VRES1', _buildVerdict: 'land-then-built' })]);
+  assert.equal(after.alreadyBuilt, false);
+
+  // No permit evidence loaded at all must not read as "built".
+  const [none] = saleRecordsFromRows([row({ _saleUseCode: 'VRES1' })]);
+  assert.equal(none.alreadyBuilt, false);
+});
+
 test('saleRecordsFromRows — an unparseable date leaves date null, not NaN', () => {
   const [r] = saleRecordsFromRows([row({ _saleDate: 'pending' })]);
   assert.equal(r.date, null);

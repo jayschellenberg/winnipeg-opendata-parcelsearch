@@ -2563,6 +2563,15 @@ function applyParcelNumbering(fullRows, shownRows) {
  * landing while shapes are drawn stays narrowed, and erasing a shape
  * restores the full set from `fullRows` with no re-search.
  */
+/**
+ * How many rows the table will actually build. See the comment at the
+ * row loop: this caps DRAWING only, never the analysis.
+ */
+const TABLE_DRAW_CAP = 2000;
+
+/** Rows the last render left undrawn, for the count line to own up to. */
+let drawCapped = 0;
+
 function renderTable(rows) {
   fullRows = rows;
   const shapes = getMapShapes();
@@ -2598,6 +2607,16 @@ function renderTable(rows) {
   }
   const frag = document.createDocumentFragment();
   for (let sortedIdx = 0; sortedIdx < sorted.length; sortedIdx++) {
+    // Draw cap. One <tr> per row with no virtualization means a full
+    // archive load is 18,000 rows x ~25 columns — roughly 450,000 DOM
+    // nodes — and the tab locks for seconds. ONLY THE DRAWING IS CAPPED:
+    // currentRows (and therefore the CSV export), the charts broadcast
+    // and every count above are computed over the whole set, so no
+    // figure that could reach a report changes. Jason’s call.
+    // `break`, not slice(), so the group-position lookups below still
+    // index the full sorted array and a capped row’s neighbour is read
+    // correctly.
+    if (sortedIdx >= TABLE_DRAW_CAP) break;
     const row = sorted[sortedIdx];
     // Either side can be null depending on the flow, so optional-chain both.
     const s = row.survey?.properties || {};
@@ -2675,6 +2694,7 @@ function renderTable(rows) {
     frag.appendChild(tr);
   }
   $tbody.appendChild(frag);
+  drawCapped = Math.max(0, sorted.length - TABLE_DRAW_CAP);
   setExportEnabled(shown.length > 0);
   // Phase 5: reapply column visibility so newly-built rows pick up
   // the user's hidden-column choices.
@@ -2953,6 +2973,7 @@ function publishSalesToCharts(rows) {
           _saleGroupSize: p._saleGroupSize,
           _dist: p._dist,
           _farFlung: p._farFlung,
+          _buildVerdict: p._buildVerdict,
         },
       },
     };
@@ -3600,16 +3621,72 @@ function setSalesCount(text, isError = false) {
   renderSalesCount();
 }
 
+/**
+ * Owning up to the draw cap.
+ *
+ * Silence here would be the worst outcome: a table showing 2,000 of
+ * 14,318 sales, with medians and charts computed over all 14,318, reads
+ * as a much smaller market than it is. Say the number, and say what
+ * still covers everything.
+ */
+function drawCapSuffix() {
+  if (!drawCapped) return '';
+  const shown = TABLE_DRAW_CAP.toLocaleString('en-CA');
+  const total = (TABLE_DRAW_CAP + drawCapped).toLocaleString('en-CA');
+  return ` · table showing the first ${shown} of ${total} rows in the current sort — charts, medians and export cover all ${total}`;
+}
+
 function renderSalesCount() {
   const el = document.getElementById('sales-count');
   if (!el) return;
   // The area-filter clause rides on the sales count too — a drawn shape
   // narrows a sales comp set exactly as it narrows a property search.
   const text = lastSalesCountBase
-    ? lastSalesCountBase + shapeFilterSuffix()
+    ? lastSalesCountBase + shapeFilterSuffix() + drawCapSuffix()
     : '';
   el.textContent = text;
   el.classList.toggle('results-status-error', lastSalesCountError && !!text);
+  // Mirror into the status bar between the map and the table, the way
+  // renderCount already does for a property search. Without this the
+  // sales tab reports itself ONLY in the sidebar, so a long run over the
+  // whole archive looks like a frozen page rather than a working one.
+  const bar = document.getElementById('results-status');
+  if (bar && document.body.classList.contains('sales-mode')) {
+    bar.hidden = !text;
+    bar.textContent = text;
+    bar.classList.remove('results-status-busy');
+    bar.classList.toggle('results-status-error', lastSalesCountError && !!text);
+  }
+}
+
+/**
+ * Say what the run is DOING, in the bar above the table.
+ *
+ * A full-archive sales run fetches thousands of assessment records, two
+ * permit tables and a neighbourhood index before a single row appears.
+ * On one thread that reads as a hang: the tab stops responding and
+ * nothing on screen changes. Naming each step costs nothing and turns
+ * "it froze" into "it is fetching 14,318 parcels".
+ *
+ * Pair every call with a yieldToPaint() — assigning textContent inside a
+ * synchronous block paints nothing, because the browser never gets the
+ * thread back to do it.
+ */
+function setResultsProgress(text) {
+  const bar = document.getElementById('results-status');
+  if (!bar) return;
+  bar.hidden = !text;
+  bar.textContent = text || '';
+  bar.classList.remove('results-status-error');
+  bar.classList.toggle('results-status-busy', !!text);
+}
+
+/** Hand the thread back long enough for one frame to paint. */
+function yieldToPaint() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(resolve, 0));
+    else setTimeout(resolve, 0);
+  });
 }
 
 /**
@@ -3742,6 +3819,8 @@ async function runSalesAnalysis() {
     // >500-roll CSV fetches all of them in parallel chunks. The old
     // single-call path silently truncated past 500 and then misreported
     // the truncated rolls as "not in d4mq-wa44".
+    setResultsProgress(`Fetching ${distinctRolls.length.toLocaleString('en-CA')} assessment record${distinctRolls.length === 1 ? '' : 's'}…`);
+    await yieldToPaint();
     assessFc = await searchAssessmentParcelsByRolls(distinctRolls);
   } catch (err) {
     console.warn('Sales live-data fetch failed:', err);
@@ -3822,6 +3901,8 @@ async function runSalesAnalysis() {
     // Both permit sets in parallel — they answer opposite halves of one
     // question (did this sale include a building?), and neither is worth
     // a round trip on its own.
+    setResultsProgress('Checking demolition and new-construction permits…');
+    await yieldToPaint();
     const [demoRows, buildRows] = await Promise.all([fetchDemoPermits(), fetchBuildPermits()]);
     const demoIndex = buildPermitIndex(demoRows);
     const buildIndex = buildPermitIndex(buildRows);
@@ -3863,6 +3944,8 @@ async function runSalesAnalysis() {
   // geojson can't be fetched the column just stays blank rather than
   // taking the whole analysis down with it.
   try {
+    setResultsProgress('Assigning neighbourhoods…');
+    await yieldToPaint();
     const index = await clusterIndex();
     if (index) {
       for (const f of saleFc.features) {
@@ -3997,7 +4080,13 @@ async function runSalesAnalysis() {
   };
   setParcels(EMPTY_FC, mappable);
 
+  setResultsProgress(`Drawing ${rows.length.toLocaleString('en-CA')} row${rows.length === 1 ? '' : 's'}…`);
+  await yieldToPaint();
   renderTable(rows);
+  // renderSalesCount repaints the bar with the finished tally, which
+  // also clears the busy state — the progress line must not outlive the
+  // work it describes.
+  renderSalesCount();
   publishSalesToCharts(rows);
 }
 
