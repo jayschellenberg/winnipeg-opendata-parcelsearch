@@ -5,12 +5,24 @@
 > the N1 ID column + Matched/Unmatched filter, the Data Status dialog and
 > staleness banner, and the visual refresh (green Search, dark-red Clear,
 > emoji, Additional-filters disclosure, date-preset pills, Commercial Sales /
-> Land Sales presets). Against the MB-parity gap list below: **date presets
-> are now done** (3/6/12/24/36/48/60/72 mo, with the Jan-1 snap at 24+). Still
-> open: `sale-asmt-max`, `vacant-improved` + `vacant-threshold`,
-> `legend-toggle`, `far-flung-km` + `far-flung-exclude`. The charts surface
-> was deliberately skipped and remains the largest MB feature absent here.
-> The "do not re-add $/Lot SF" instruction below still stands.
+> Land Sales presets), then closed the rest of the MB-parity gap list below.
+>
+> **The gap table below is now fully closed.** Date presets
+> (3/6/12/24/36/48/60/72 mo, Jan-1 snap at 24+), `sale-asmt-max`,
+> `vacant-improved`, `legend-toggle`, and `far-flung-km` +
+> `far-flung-exclude` all ship. Two deliberate departures from MB:
+> `vacant-threshold` was NOT ported — Winnipeg's assessor classifies
+> vacancy directly in the Property Use Code (VRES1, VCOMM, VINDU, VAGRI,
+> VAPRK, VRES2, CNVAC), so there is no buildings-value number to tune — and
+> the Sale/Asmt cap is not gated behind Vacant Only the way MB gates it.
+> Far-flung ships with no default threshold, since MB's calibrated 30 km
+> came off rural portfolio sales and would never fire inside a city roughly
+> that wide.
+>
+> The charts surface was deliberately skipped and is now the largest MB
+> feature absent here. The "do not re-add $/Lot SF" instruction below still
+> stands — the far-flung ⚠ rides on that COLUMN, which is not the same
+> thing as the removed range filter.
 
 
 Resume point for a fresh thread on the **Winnipeg Parcel Search** repo
