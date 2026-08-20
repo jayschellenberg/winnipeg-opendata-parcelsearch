@@ -2631,6 +2631,22 @@ function popupHtml(p) {
     // DWELLING". More informative for appraisal context than zoning
     // (which is the legally permitted use, often less specific).
     if (p.property_use_code) lines.push(`<em>${escapeHtml(p.property_use_code)}</em>`);
+    // Zoning goes directly under the PUC because those two lines are read
+    // as a pair: actual use on top, legally permitted use beneath it, so a
+    // non-conforming parcel (RESSD sitting on a C2 lot) reads as a mismatch
+    // between adjacent lines instead of a separate lookup.
+    // Same source order as the grid's Zoning column (lib/columnsRegistry.js
+    // renders `zoning_top1 ?? zoning`), so the popup and the table can never
+    // name different zones for one parcel: zoning_top1 is the area-weighted
+    // intersection soda.js stamps once the Zoning overlay has run, `zoning`
+    // the d4mq-wa44 primary code otherwise. Unlike the grid we do NOT run
+    // stripZoningCode — that exists to fit a badge inside a cell, while the
+    // popup has room for the full published string ("R1M - RES - S F -
+    // MEDIUM"), which sits consistently beside the PUC line above.
+    // 27,769 parcels publish no zoning at all; those drop the line entirely
+    // rather than render an empty one, same as every other field here.
+    const zoning = p.zoning_top1 ?? p.zoning;
+    if (zoning) lines.push(`<em>${escapeHtml(zoning)}</em>`);
     // Parcel size: assessed_land_area is in square feet on d4mq-wa44.
     // Show SF (with thousands separator) and acres (SF / 43,560) for
     // appraisal sanity-checking at a glance.

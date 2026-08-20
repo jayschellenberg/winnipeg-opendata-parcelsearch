@@ -189,7 +189,7 @@ const PASTE = [
   const { sales } = dedupAndGroupSales(parseSalesText(multi).rows);
   assert.equal(sales.length, 1);
   assert.equal(sales[0].livingArea, 2000);
-  assert.equal(sales[0].yearBuilt, '2008');
+  assert.equal(sales[0].yearBuilt, '2008, 2012');
 }
 
 // ---- normalizeSaleDate ---------------------------------------------------

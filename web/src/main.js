@@ -292,7 +292,11 @@ const SORT_KEYS = {
   useCode:      (r) => strKey(r.assess?.properties?._saleUseCode),
   livingArea:   (r) => finiteOrNeg(r.assess?.properties?._saleLivingArea
                                    ?? r.assess?.properties?.total_living_area),
-  yearBuilt:    (r) => numOrStr(r.assess?.properties?._saleYearBuilt
+  // Sort on the NUMERIC year, never the display string: a multi-section
+  // sale shows "1911, 1913, 1954", and sorting that as text puts 1911
+  // beside 1913 but "900" after "1911".
+  yearBuilt:    (r) => numOrStr(r.assess?.properties?._saleYearBuiltNumeric
+                                ?? r.assess?.properties?._saleYearBuilt
                                 ?? r.assess?.properties?.year_built),
   buildingType:  (r) => strKey(r.assess?.properties?.building_type),
   rooms:         (r) => finiteOrNeg(r.assess?.properties?.rooms),

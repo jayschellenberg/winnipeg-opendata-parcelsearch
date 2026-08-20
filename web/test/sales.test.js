@@ -55,7 +55,7 @@ test('dedupAndGroupSales — one record per (roll, instrument); rolls are 11-dig
   assert.equal(out.sales[0].saleDate, '2024-03-01');
 });
 
-test('dedupAndGroupSales — multi-building rows sum living area and keep the oldest year built', () => {
+test('dedupAndGroupSales — multi-building rows sum living area and list every section year', () => {
   const out = dedupAndGroupSales([
     row({ 'Living Area': '1200', 'Year Built': '2012' }),
     row({ 'Living Area': '800', 'Year Built': '2008' }),
@@ -63,7 +63,11 @@ test('dedupAndGroupSales — multi-building rows sum living area and keep the ol
   ]);
   assert.equal(out.sales.length, 1);
   assert.equal(out.sales[0].livingArea, 2500);
-  assert.equal(out.sales[0].yearBuilt, '2008');
+  // The HIGGINS rows. They used to report just 2008 — the oldest — which
+  // threw away the fact that two of the three sections went up in 2012.
+  // Distinct, so the repeated 2012 appears once.
+  assert.equal(out.sales[0].yearBuilt, '2008, 2012');
+  assert.equal(out.sales[0].yearBuiltNumeric, 2008, 'the oldest, as a number, for sorting');
 });
 
 test('dedupAndGroupSales — use code falls back to the first non-empty value', () => {
@@ -93,6 +97,137 @@ test('dedupAndGroupSales — groups collect every parcel on one instrument (mult
   assert.equal(out.sales.length, 3);
   assert.equal(out.groups.get('INST-1').length, 2);
   assert.equal(out.groups.get('INST-2').length, 1);
+});
+
+// ---------- SABRE's blank-Zoning twin rows ----------
+// SABRE exports a component row TWICE inside one (Parcel ID, Instrument
+// Number): once zoned, once with the Zoning cell blank and every other
+// cell identical. The merge read that as two buildings and summed the
+// area. 1,022 such rows across 785 sales in the 52-file archive; 609 of
+// those sales reported EXACTLY 2.00x their real living area (16,681,358
+// sf against a true 8,340,679), which halves $/Bldg SF on every one.
+
+test('dedupAndGroupSales — a blank-Zoning twin collapses instead of doubling living area', () => {
+  // 927 DORCHESTER, roll 12030200000 instrument 5145676: a 2,758 sf
+  // house that reported 5,516.
+  const twin = { 'Parcel ID': '12030200000', 'Instrument Number': '5145676', 'Living Area': '2758' };
+  const out = dedupAndGroupSales([
+    row({ ...twin, 'Zoning': 'R2' }),
+    row({ ...twin, 'Zoning': '' }),
+  ]);
+  assert.equal(out.sales.length, 1);
+  assert.equal(out.sales[0].livingArea, 2758, 'the twin is one row, not a second building');
+});
+
+test('dedupAndGroupSales — the zoned twin survives the collapse, in either export order', () => {
+  // Prefer the row that carries a zoning: dropping the wrong copy would
+  // trade the doubled area for a silently emptied Zoning column.
+  const zonedLast = dedupAndGroupSales([row({ 'Zoning': '' }), row({ 'Zoning': 'M2' })]);
+  assert.equal(zonedLast.sales[0].zoning, 'M2');
+  assert.equal(zonedLast.sales[0].livingArea, 1200);
+  const zonedFirst = dedupAndGroupSales([row({ 'Zoning': 'M2' }), row({ 'Zoning': '' })]);
+  assert.equal(zonedFirst.sales[0].zoning, 'M2');
+  assert.equal(zonedFirst.sales[0].livingArea, 1200);
+});
+
+test('dedupAndGroupSales — two zonings on identical rows are not joined into one', () => {
+  // Rolls 08005959000 and 08081223180 each export two otherwise
+  // identical rows carrying different zonings, which reads like a
+  // split-zoned parcel. The City's record says it is not one: roll
+  // 08081223180 (694 ST ANNE'S) carries a single zoning, "RMU - RES -
+  // MIX USE", and RR5 appears nowhere in it. So the second cell is a
+  // stale duplicate, and joining the two would put a district in front
+  // of an appraiser that the assessment roll does not carry. Keep the
+  // zoning of the row we kept; never manufacture "RMU / RR5".
+  const parcel = { 'Parcel ID': '08005959000', 'Living Area': '1400' };
+  const out = dedupAndGroupSales([
+    row({ ...parcel, 'Zoning': 'RR5' }),
+    row({ ...parcel, 'Zoning': 'RMFL' }),
+  ]);
+  assert.equal(out.sales.length, 1);
+  assert.equal(out.sales[0].zoning, 'RR5', 'the surviving row keeps its own zoning');
+  assert.ok(!String(out.sales[0].zoning).includes('/'), 'no invented composite district');
+  assert.equal(out.sales[0].livingArea, 1400, 'one parcel is not two buildings');
+});
+
+test('dedupAndGroupSales — a repeated living area counts ONCE, differing sections still add', () => {
+  // SABRE repeats the whole building's area per row far more often than
+  // it splits it. 397 HORACE writes 1,950 sf three times, once per
+  // suite, and the City says the building is 1,950 sf — so a repeat
+  // counts once. Genuinely different areas are real sections and still
+  // add up. Measured: summing every row matched the City on 0 of 168
+  // checkable sales; summing the DISTINCT areas matched 156.
+  const repeated = dedupAndGroupSales([
+    row({ 'Number of Unit': '1', 'Living Area': '1950' }),
+    row({ 'Number of Unit': '2', 'Living Area': '1950' }),
+    row({ 'Number of Unit': '3', 'Living Area': '1950' }),
+  ]);
+  assert.equal(repeated.sales[0].livingArea, 1950, 'one building written three times is one building');
+
+  const sections = dedupAndGroupSales([
+    row({ 'Living Area': '1764', 'Zoning': 'M2' }),
+    row({ 'Living Area': '378', 'Zoning': 'M2' }),
+    row({ 'Living Area': '1554', 'Zoning': 'M2' }),
+  ]);
+  assert.equal(sections.sales[0].livingArea, 3696, 'three different sections still add up');
+});
+
+test('dedupAndGroupSales — a genuine second section still merges and still sums', () => {
+  // The collapse is field-by-field rather than "drop the blank-Zoning
+  // rows" precisely so this row survives: it has no zoning either, but
+  // it differs on Living Area, so it is a real second building section.
+  const out = dedupAndGroupSales([
+    row({ 'Living Area': '2758', 'Zoning': 'R2' }),
+    row({ 'Living Area': '2758', 'Zoning': '' }),   // the twin
+    row({ 'Living Area': '640', 'Zoning': '' }),    // a real garage/addition
+  ]);
+  assert.equal(out.sales.length, 1);
+  assert.equal(out.sales[0].livingArea, 3398, '2,758 counted once, plus the 640 section');
+  assert.equal(out.sales[0].zoning, 'R2');
+});
+
+// ---------- Year Built across the sections ----------
+
+test('dedupAndGroupSales — Year Built lists every distinct section year, ascending', () => {
+  // Roll 13081715000 instrument 5141959: five sections, and the merge
+  // used to keep 1911 alone and throw 1913 / 1954 / 1958 / 1962 away.
+  const out = dedupAndGroupSales([
+    row({ 'Year Built': '1954', 'Living Area': '900' }),
+    row({ 'Year Built': '1958', 'Living Area': '800' }),
+    row({ 'Year Built': '1962', 'Living Area': '700' }),
+    row({ 'Year Built': '1911', 'Living Area': '600' }),
+    row({ 'Year Built': '1913', 'Living Area': '500' }),
+  ]);
+  assert.equal(out.sales[0].yearBuilt, '1911, 1913, 1954, 1958, 1962');
+  assert.equal(out.sales[0].yearBuiltNumeric, 1911);
+});
+
+test('dedupAndGroupSales — a blank Year Built among the sections adds no empty entry', () => {
+  // 538 rows across 224 sales sit in a multi-row group with a blank Year
+  // Built, so a naive join would print a leading comma on one sale in six.
+  const out = dedupAndGroupSales([
+    row({ 'Year Built': '', 'Living Area': '900' }),
+    row({ 'Year Built': '1954', 'Living Area': '800' }),
+    row({ 'Year Built': 'N/A', 'Living Area': '700' }),
+  ]);
+  assert.equal(out.sales[0].yearBuilt, '1954');
+  assert.equal(out.sales[0].yearBuiltNumeric, 1954);
+  assert.ok(!Number.isNaN(out.sales[0].yearBuiltNumeric), 'never NaN');
+});
+
+test('dedupAndGroupSales — no usable year anywhere leaves both fields null', () => {
+  const out = dedupAndGroupSales([
+    row({ 'Year Built': '', 'Living Area': '900' }),
+    row({ 'Year Built': '   ', 'Living Area': '800' }),
+  ]);
+  assert.equal(out.sales[0].yearBuilt, null, 'absent, not a zero-length year');
+  assert.equal(out.sales[0].yearBuiltNumeric, null);
+});
+
+test('dedupAndGroupSales — a single-section sale still reads plainly', () => {
+  const out = dedupAndGroupSales([row({ 'Year Built': '1912' })]);
+  assert.equal(out.sales[0].yearBuilt, '1912');
+  assert.equal(out.sales[0].yearBuiltNumeric, 1912);
 });
 
 test('normalizeRoll — pads / strips formatting / null on no digits', () => {
@@ -381,6 +516,38 @@ test('buildSaleFeatures — a vacant sale never inherits the live building area'
   ]);
   const [g] = buildSaleFeatures(improved.sales, liveMap(live), improved.groups);
   assert.equal(g.properties._pricePerBldgSf, 40);
+});
+
+test('buildSaleFeatures — _saleYearBuiltNumeric rides alongside the display string', () => {
+  // The grid sorts on the numeric field: by text, "1911, 1958" lands
+  // nowhere near 1911, so a year sort on the string is meaningless.
+  const { sales, groups } = dedupAndGroupSales([
+    row({ 'Year Built': '1958', 'Living Area': '900' }),
+    row({ 'Year Built': '1911', 'Living Area': '600' }),
+  ]);
+  const [f] = buildSaleFeatures(sales, liveMap(), groups);
+  assert.equal(f.properties._saleYearBuilt, '1911, 1958');
+  assert.equal(f.properties._saleYearBuiltNumeric, 1911);
+  assert.equal(typeof f.properties._saleYearBuiltNumeric, 'number');
+  // Null rather than NaN when the export carries no usable year, so the
+  // cell renders blank instead of "NaN".
+  const bare = dedupAndGroupSales([row({ 'Year Built': '' })]);
+  const [g] = buildSaleFeatures(bare.sales, liveMap(), bare.groups);
+  assert.equal(g.properties._saleYearBuilt, null);
+  assert.equal(g.properties._saleYearBuiltNumeric, null);
+});
+
+test('buildSaleFeatures — the twin collapse un-halves $/Bldg SF', () => {
+  // The rate the doubling actually broke, end to end: 927 DORCHESTER
+  // sold for $500,000 with 2,758 sf of house, so $181/sf — not the $91
+  // the summed twin reported.
+  const twin = { 'Sold Price': '500000', 'Living Area': '2758' };
+  const { sales, groups } = dedupAndGroupSales([
+    row({ ...twin, 'Zoning': 'R2' }),
+    row({ ...twin, 'Zoning': '' }),
+  ]);
+  const [f] = buildSaleFeatures(sales, liveMap(), groups);
+  assert.equal(f.properties._pricePerBldgSf, 500000 / 2758);
 });
 
 console.log('');

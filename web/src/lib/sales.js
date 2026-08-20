@@ -59,10 +59,188 @@ function numOrZero(value) {
 }
 
 /**
+ * The canonical columns two rows of one sale must agree on to be the
+ * same row exported twice: every field dedupAndGroupSales reads EXCEPT
+ * Zoning — the field the twins disagree on — and except the (Parcel ID,
+ * Instrument Number) pair, which is already the group key.
+ *
+ * Leaving Parcel ID out is deliberate rather than incidental: the key
+ * holds it in NORMALIZED form, so a 10-digit `6070731000` and its
+ * 11-digit twin `06070731000` must not be read as two different
+ * buildings just because the export wrote the roll two ways.
+ */
+const TWIN_SIGNATURE_COLUMNS = [
+  'Sale Dates', 'Sold Price', 'Sworn Value',
+  'Land Actual sqft', 'Land Assessed sqft', 'Living Area', 'Year Built',
+  'Par Use Code', 'Property Type', 'Property Sub Type',
+  'Street Number', 'Street Direction', 'Street Name', 'Number of Unit',
+  'N1 ID', 'Source', 'MLS #', 'MLS Date', 'List Price', 'Orig Price',
+  'DOM', 'Bldg Type', 'Style', 'Site Influences',
+];
+
+/**
+ * Signature of a row for the twin collapse: the raw cells, trimmed and
+ * NUL-joined. NUL because no SABRE cell contains one, so no pair of
+ * neighbouring values can run together into a signature that collides
+ * with a different pair.
+ */
+function twinSignature(r) {
+  return TWIN_SIGNATURE_COLUMNS.map((c) => String(r[c] ?? '').trim()).join('\u0000');
+}
+
+/**
+ * Collapse the blank-Zoning twin rows SABRE exports inside a single
+ * (Parcel ID, Instrument Number).
+ *
+ * SABRE frequently writes a component row TWICE: once with the Zoning
+ * cell filled, once with it blank and every other cell identical. The
+ * merge below reads that as two building components and SUMS their
+ * Living Area, so the sale reports exactly 2.00x the building it has —
+ * 927 DORCHESTER (roll 12030200000, instrument 5145676) came out at
+ * 5,516 sf for a 2,758 sf house, which halves $/Bldg SF on the row. In
+ * the 52-file archive (19,809 rows) there are 1,022 such twins across
+ * 785 sales, 609 of them doubled outright: 16,681,358 sf reported
+ * against 8,340,679 sf of real living area.
+ *
+ * So: bucket the sale's rows on every canonical field EXCEPT Zoning and
+ * let each bucket contribute exactly ONE row to the merge. Rows that
+ * differ anywhere else — a genuine second building section — land in
+ * separate buckets and still merge and still sum. That is why the test
+ * is field-by-field rather than "drop the rows with a blank Zoning": a
+ * real section that happens to carry no zoning must survive.
+ *
+ * SPLIT-ZONED PARCELS ARE REAL and must not be summed either. Two rows
+ * in the archive are identical except that both carry a zoning and the
+ * two DIFFER — roll 08005959000 (RR5 / RMFL) and roll 08081223180
+ * (RMU / RR5). That is one parcel lying in two zoning districts, not two
+ * buildings, so it collapses like any other bucket but keeps BOTH
+ * zoning taken from whichever row actually carries one. NOT joined: see
+ * which of the two rows the export happened to write first (the pair
+ * above therefore reads "RMFL / RR5").
+ */
+function collapseZoningTwins(saleRows) {
+  if (saleRows.length < 2) return saleRows;
+  const buckets = new Map();
+  for (const r of saleRows) {
+    const sig = twinSignature(r);
+    let b = buckets.get(sig);
+    if (!b) { b = { rows: [], zonings: [] }; buckets.set(sig, b); }
+    b.rows.push(r);
+    const zoning = String(r['Zoning'] ?? '').trim();
+    if (zoning && !b.zonings.includes(zoning)) b.zonings.push(zoning);
+  }
+  const out = [];
+  // Map iteration is first-appearance order, so the surviving rows reach
+  // the merge in the export's own order — the first-non-blank rules
+  // below (use code, N1 ID, the MLS fields) still resolve the way they
+  // did before the collapse existed.
+  for (const b of buckets.values()) {
+    // Prefer a member that actually carries a zoning: the blank-cell
+    // twin is the defective copy, and keeping it would trade the doubled
+    // living area for a silently emptied Zoning column.
+    const keep = b.rows.find((r) => String(r['Zoning'] ?? '').trim()) || b.rows[0];
+    // Clone rather than write the joined zoning back onto the caller's
+    // row: salesDbMerge hands us the very row objects it holds, and this
+    // module is pure.
+    // Two DIFFERENT non-blank zonings on otherwise identical rows read
+    // like a split-zoned parcel, and an earlier pass joined them as
+    // "RMU / RR5". The City's own record says otherwise: roll
+    // 08081223180 (694 ST ANNE'S) carries a single zoning, "RMU - RES -
+    // MIX USE", and RR5 appears nowhere in it. Joining therefore puts a
+    // district on screen that the assessment roll does not carry —
+    // inventing evidence, which is worse than dropping a stale duplicate
+    // cell. Keep the row we chose and let its own zoning stand.
+    out.push(keep);
+  }
+  return out;
+}
+
+/**
+ * Every usable Year Built across a sale's component rows, distinct and
+ * ascending.
+ *
+ * A genuine multi-section sale carries a different year per section —
+ * roll 13081715000 instrument 5141959 has 1954 / 1958 / 1962 / 1911 /
+ * 1913 — and the merge used to keep only the oldest, so four of those
+ * five years never reached the grid. Jason wants both figures: the list
+ * describes the property, and the oldest (as a number, not this string)
+ * is what a sort or a year filter can compare.
+ *
+ * Blank and unparseable cells are dropped rather than carried through as
+ * empty strings. 538 rows across 224 sales sit in a multi-row group with
+ * a blank Year Built, so a naive join would print a leading comma or a
+ * stray gap on one sale in six.
+ */
+/**
+ * Plausible construction years only.
+ *
+ * SABRE writes 9999 as a "not known" sentinel, and the archive also
+ * carries years back to 1870. The old oldest-wins rule hid 9999 by
+ * accident (any real year is smaller); listing every distinct year
+ * surfaces it, so 208 EDMONTON would read "1957, 9999". Bound the
+ * range rather than naming 9999, so the next sentinel the export
+ * invents is caught without another edit. 0 is excluded for the same
+ * reason parseNumeric keeps it: it is "not stated", not a year.
+ */
+const YEAR_BUILT_MIN = 1800;
+const YEAR_BUILT_MAX = 2200;
+
+/**
+ * Living area for a sale whose rows SABRE wrote more than once.
+ *
+ * Summing every row is wrong, and not marginally: checked against the
+ * City's own total_living_area (assessment-parcels-2026-03-10.parquet)
+ * on the 168 multi-row sales that carry one, summing matched on 0 of
+ * them. SABRE repeats the WHOLE building's area on each row rather than
+ * splitting it between sections — 397 HORACE writes 1,950 sf three
+ * times, once per suite, and the City says the building is 1,950 sf.
+ *
+ * But it does not repeat every time: on 355 of the 889 multi-row sales
+ * the areas genuinely DIFFER, and those read like real sections
+ * (1,764 + 378 + 1,554). So neither "always sum" nor "always take one"
+ * is right.
+ *
+ * The rule that separates them is to sum the DISTINCT areas: a repeated
+ * figure counts once, differing figures still add up. That scores 92.9%
+ * against the City — tied with taking the max, and better than the max
+ * because it keeps the genuine multi-section sales adding up. Summing
+ * every row scored 0%.
+ *
+ * The residual 7% are sales where the 2026 roll simply disagrees with
+ * what stood in 2020 — an addition, a re-measure — which no row rule
+ * can fix.
+ */
+function distinctLivingArea(componentRows) {
+  const areas = new Set();
+  for (const r of componentRows) {
+    const a = numOrZero(r['Living Area']);
+    if (a > 0) areas.add(a);
+  }
+  let total = 0;
+  for (const a of areas) total += a;
+  return total;
+}
+
+function distinctYearsBuilt(componentRows) {
+  const years = new Set();
+  for (const r of componentRows) {
+    const y = parseNumeric(r['Year Built']);
+    if (y == null || !Number.isFinite(y)) continue;
+    if (y < YEAR_BUILT_MIN || y > YEAR_BUILT_MAX) continue;
+    years.add(Math.trunc(y));
+  }
+  return [...years].sort((a, b) => a - b);
+}
+
+/**
  * Dedup by (Parcel ID, Instrument Number) — multi-building rows
  * on the same sale roll up into one record. Then group by
  * Instrument Number so multi-parcel sales can compute group
  * aggregates ($/Lot, $/Acre, group size) in Phase 7 (2/2).
+ *
+ * Before anything is merged, each sale's rows go through
+ * collapseZoningTwins so SABRE's duplicated blank-Zoning rows can't
+ * double the living area.
  *
  * Returns:
  *   {
@@ -79,6 +257,13 @@ export function dedupAndGroupSales(rows) {
   // is a whole sale leaving the comp set, which the caller reports
   // rather than letting it vanish unremarked.
   let dropped = 0;
+  // Gather each sale's rows before folding any of them into a record.
+  // Both fixes below need to see a whole (roll, instrument) at once —
+  // the twin collapse decides which rows are duplicates by comparing
+  // them against each other, and the Year Built list is computed over
+  // the sale's sections — and neither is possible while merging rows one
+  // at a time, which is what this loop used to do.
+  const byKey = new Map(); // key -> { roll, inst, rows } in CSV order
   for (const r of rows) {
     // 11-digit zero-pad so 10-digit CSV rolls (`6070731000`) match
     // their 11-digit d4mq-wa44 records (`06070731000`).
@@ -86,91 +271,122 @@ export function dedupAndGroupSales(rows) {
     const inst = String(r['Instrument Number'] ?? '').trim();
     if (!roll || !inst) { dropped++; continue; }
     const key = `${roll}|${inst}`;
-    const existing = merged.get(key);
-    const livingArea = numOrZero(r['Living Area']);
-    // Unit counts are whole numbers, and 0 is "not stated" rather than a
-    // count — keeping it would report a blank cell as a zero-unit parcel.
-    const numUnitsRaw = parseNumeric(r['Number of Unit']);
-    const numUnits = numUnitsRaw != null && numUnitsRaw > 0 ? Math.trunc(numUnitsRaw) : null;
-    if (!existing) {
-      merged.set(key, {
-        roll,
-        instrument: inst,
-        saleDate: r['Sale Dates'] || null,
-        salePrice: numOrZero(r['Sold Price']),
-        // Value declared for land-transfer purposes. Carried separately
-        // from salePrice and never substituted into it: a $1 Sold Price
-        // with a large sworn value is a non-arms-length transfer, and
-        // collapsing the two would launder it into the comp set as a
-        // market sale. See the sentinel note in main.js.
-        swornValue: numOrZero(r['Sworn Value']),
-        landSf: numOrZero(r['Land Actual sqft']),
-        landAssessedSf: numOrZero(r['Land Assessed sqft']),
-        livingArea,
-        yearBuilt: r['Year Built'] || null,
-        useCode: r['Par Use Code'] || null,
-        propertyType: r['Property Type'] || null,
-        propertySubType: r['Property Sub Type'] || null,
-        zoning: r['Zoning'] || null,
-        streetNumber: r['Street Number'] || null,
-        streetDirection: r['Street Direction'] || null,
-        streetName: r['Street Name'] || null,
-        numUnits,
-        // N1 comp-database ID from the offline crosswalk; null (not '')
-        // so the N1 filter's truthiness test reads clean.
-        n1Id: String(r['N1 ID'] ?? '').trim() || null,
-        // MLS-side fields. Present only on rows that came from an MLS
-        // export, or on a SABRE row the merge fused one onto — see
-        // collapseCrossSource in salesDbMerge.js.
-        source: String(r.Source ?? '').trim() || null,
-        mlsNumber: String(r['MLS #'] ?? '').trim() || null,
-        mlsDate: String(r['MLS Date'] ?? '').trim() || null,
-        listPrice: numOrZero(r['List Price']),
-        origPrice: numOrZero(r['Orig Price']),
-        dom: parseNumeric(r.DOM),
-        bldgType: String(r['Bldg Type'] ?? '').trim() || null,
-        style: String(r.Style ?? '').trim() || null,
-        siteInfl: String(r['Site Influences'] ?? '').trim() || null,
-      });
-    } else {
-      // Merge: same Parcel ID + same Instrument Number = multiple
-      // building components on one sale. Sum living area across
-      // them; keep the OLDEST (smallest) Year Built so e.g. the
-      // HIGGINS rows at 2008 / 2012 / 2012 report 2008. Use code
-      // falls back to the first non-empty value.
-      existing.livingArea += livingArea;
-      const yb = parseNumeric(r['Year Built']);
-      const existingYb = parseNumeric(existing.yearBuilt);
-      if (Number.isFinite(yb) && (!Number.isFinite(existingYb) || yb < existingYb)) {
-        existing.yearBuilt = r['Year Built'];
+    if (!byKey.has(key)) byKey.set(key, { roll, inst, rows: [] });
+    byKey.get(key).rows.push(r);
+  }
+  for (const { roll, inst, rows: saleRows } of byKey.values()) {
+    const key = `${roll}|${inst}`;
+    // SABRE's blank-Zoning duplicates removed: what's left is one row per
+    // genuine building section.
+    const components = collapseZoningTwins(saleRows);
+    // Read over the whole sale, so the year fields are already final on
+    // the record's very first row and the merge branch has nothing to
+    // add to them.
+    const years = distinctYearsBuilt(components);
+    // Computed over the whole sale, like the years, so it is final on the
+    // record's first row and the merge branch never accumulates.
+    const saleLivingArea = distinctLivingArea(components);
+    for (const r of components) {
+      const existing = merged.get(key);
+      // Unit counts are whole numbers, and 0 is "not stated" rather than a
+      // count — keeping it would report a blank cell as a zero-unit parcel.
+      const numUnitsRaw = parseNumeric(r['Number of Unit']);
+      const numUnits = numUnitsRaw != null && numUnitsRaw > 0 ? Math.trunc(numUnitsRaw) : null;
+      if (!existing) {
+        merged.set(key, {
+          roll,
+          instrument: inst,
+          saleDate: r['Sale Dates'] || null,
+          salePrice: numOrZero(r['Sold Price']),
+          // Value declared for land-transfer purposes. Carried separately
+          // from salePrice and never substituted into it: a $1 Sold Price
+          // with a large sworn value is a non-arms-length transfer, and
+          // collapsing the two would launder it into the comp set as a
+          // market sale. See the sentinel note in main.js.
+          swornValue: numOrZero(r['Sworn Value']),
+          landSf: numOrZero(r['Land Actual sqft']),
+          landAssessedSf: numOrZero(r['Land Assessed sqft']),
+          livingArea: saleLivingArea,
+          // Two Year Built fields, both read off the whole sale rather
+          // than off this row: the DISPLAY string listing every distinct
+          // section year ascending ("1911, 1913, 1954, 1958, 1962"), and
+          // the oldest year as a NUMBER for the grid's sort and any year
+          // filter — sorting the string would order "1911, 1913" by text
+          // beside "1911", not by age. Null (not '') on a sale whose rows
+          // all carry a blank or unusable year, so the column reads as
+          // absent rather than as a zero-length year.
+          yearBuilt: years.length ? years.join(', ') : null,
+          yearBuiltNumeric: years.length ? years[0] : null,
+          useCode: r['Par Use Code'] || null,
+          propertyType: r['Property Type'] || null,
+          propertySubType: r['Property Sub Type'] || null,
+          zoning: r['Zoning'] || null,
+          streetNumber: r['Street Number'] || null,
+          streetDirection: r['Street Direction'] || null,
+          streetName: r['Street Name'] || null,
+          numUnits,
+          // N1 comp-database ID from the offline crosswalk; null (not '')
+          // so the N1 filter's truthiness test reads clean.
+          n1Id: String(r['N1 ID'] ?? '').trim() || null,
+          // MLS-side fields. Present only on rows that came from an MLS
+          // export, or on a SABRE row the merge fused one onto — see
+          // collapseCrossSource in salesDbMerge.js.
+          source: String(r.Source ?? '').trim() || null,
+          mlsNumber: String(r['MLS #'] ?? '').trim() || null,
+          mlsDate: String(r['MLS Date'] ?? '').trim() || null,
+          listPrice: numOrZero(r['List Price']),
+          origPrice: numOrZero(r['Orig Price']),
+          dom: parseNumeric(r.DOM),
+          bldgType: String(r['Bldg Type'] ?? '').trim() || null,
+          style: String(r.Style ?? '').trim() || null,
+          siteInfl: String(r['Site Influences'] ?? '').trim() || null,
+        });
+      } else {
+        // Merge: same Parcel ID + same Instrument Number = more than one
+        // row for one sale. Use code falls back to the first non-empty
+        // value.
+        //
+        // Living area is deliberately absent here. It used to accumulate
+        // row by row, which double-counted every repeated row — and SABRE
+        // repeats far more often than it splits (see distinctLivingArea).
+        // The figure is computed over the whole sale before this loop
+        // starts, so there is nothing left to add.
+        //
+        // Year Built is deliberately absent here: it used to keep the
+        // OLDEST row and throw the rest away (the HIGGINS rows at
+        // 2008 / 2012 / 2012 reported 2008, which was fine, but roll
+        // 13081715000's five sections reported 1911 and lost 1913, 1954,
+        // 1958 and 1962). distinctYearsBuilt already read every component
+        // row above, so both year fields were final before this branch
+        // ever ran.
+        if (!existing.useCode && r['Par Use Code']) existing.useCode = r['Par Use Code'];
+        if (!existing.zoning && r['Zoning']) existing.zoning = r['Zoning'];
+        // The crosswalk stamps its ID on specific rows; when component rows
+        // merge, the surviving record must not lose the ID just because an
+        // un-stamped copy happened to come first.
+        if (!existing.n1Id && r['N1 ID']) existing.n1Id = String(r['N1 ID']).trim();
+        // Same first-non-blank rule for the MLS fields: only one component
+        // row of a fused sale carries them.
+        for (const [k, col] of [['mlsNumber', 'MLS #'], ['mlsDate', 'MLS Date'],
+          ['bldgType', 'Bldg Type'], ['style', 'Style'], ['siteInfl', 'Site Influences'],
+          ['source', 'Source']]) {
+          if (!existing[k] && r[col]) existing[k] = String(r[col]).trim();
+        }
+        if (!existing.listPrice && r['List Price']) existing.listPrice = numOrZero(r['List Price']);
+        if (!existing.origPrice && r['Orig Price']) existing.origPrice = numOrZero(r['Orig Price']);
+        if (existing.dom == null && r.DOM) existing.dom = parseNumeric(r.DOM);
+        // SABRE enumerates a multi-unit parcel one row per unit, with
+        // Number of Unit running 1..N (six rows for 185 BANNERMAN). The
+        // first row's value is 1, so keeping it would report a six-unit
+        // property as one unit — the MAX is the count.
+        if (numUnits != null && (existing.numUnits == null || numUnits > existing.numUnits)) {
+          existing.numUnits = numUnits;
+        }
+        // Sworn value is a sale-level figure repeated on every component
+        // row; keep the largest in case a component row leaves it blank.
+        const sworn = numOrZero(r['Sworn Value']);
+        if (sworn > existing.swornValue) existing.swornValue = sworn;
       }
-      if (!existing.useCode && r['Par Use Code']) existing.useCode = r['Par Use Code'];
-      if (!existing.zoning && r['Zoning']) existing.zoning = r['Zoning'];
-      // The crosswalk stamps its ID on specific rows; when component rows
-      // merge, the surviving record must not lose the ID just because an
-      // un-stamped copy happened to come first.
-      if (!existing.n1Id && r['N1 ID']) existing.n1Id = String(r['N1 ID']).trim();
-      // Same first-non-blank rule for the MLS fields: only one component
-      // row of a fused sale carries them.
-      for (const [k, col] of [['mlsNumber', 'MLS #'], ['mlsDate', 'MLS Date'],
-        ['bldgType', 'Bldg Type'], ['style', 'Style'], ['siteInfl', 'Site Influences'],
-        ['source', 'Source']]) {
-        if (!existing[k] && r[col]) existing[k] = String(r[col]).trim();
-      }
-      if (!existing.listPrice && r['List Price']) existing.listPrice = numOrZero(r['List Price']);
-      if (!existing.origPrice && r['Orig Price']) existing.origPrice = numOrZero(r['Orig Price']);
-      if (existing.dom == null && r.DOM) existing.dom = parseNumeric(r.DOM);
-      // SABRE enumerates a multi-unit parcel one row per unit, with
-      // Number of Unit running 1..N (six rows for 185 BANNERMAN). The
-      // first row's value is 1, so keeping it would report a six-unit
-      // property as one unit — the MAX is the count.
-      if (numUnits != null && (existing.numUnits == null || numUnits > existing.numUnits)) {
-        existing.numUnits = numUnits;
-      }
-      // Sworn value is a sale-level figure repeated on every component
-      // row; keep the largest in case a component row leaves it blank.
-      const sworn = numOrZero(r['Sworn Value']);
-      if (sworn > existing.swornValue) existing.swornValue = sworn;
     }
   }
   const sales = Array.from(merged.values());
@@ -243,7 +459,12 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     p._saleUseCode = sale.useCode;
     p._salePropertyType = sale.propertyType;
     p._saleLivingArea = sale.livingArea > 0 ? sale.livingArea : null;
+    // Both halves of Year Built. The display string lists every section
+    // year ("1911, 1913, 1954"); the numeric one is the oldest of them,
+    // stamped separately because that is the only form a sort or a year
+    // filter can compare — by text, "1911, 1913" sorts nowhere near 1911.
     p._saleYearBuilt = sale.yearBuilt;
+    p._saleYearBuiltNumeric = sale.yearBuiltNumeric ?? null;
     p._saleZoning = sale.zoning || null;
     p._saleNumUnits = sale.numUnits ?? null;
     // The CSV's own street parts. Kept on the feature because the

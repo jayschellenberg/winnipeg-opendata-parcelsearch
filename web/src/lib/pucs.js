@@ -371,7 +371,9 @@ export const PUCS_CATEGORIES = Object.freeze({
 });
 
 /**
- * Pull the 5-letter code out of whatever form the field arrives in.
+ * Pull the code out of whatever form the field arrives in. Split on the
+ * separator rather than a fixed width: almost every code is five
+ * letters, but PERP (Personal Property) is four.
  *
  * SABRE exports the bare code ("RESSD"); the live d4mq-wa44 record
  * publishes "RESSD - DETACHED SINGLE DWELLING". One extractor so both
@@ -433,11 +435,27 @@ export function pucsCategory(value) {
  * @param {string} [o.demoVerdict]  'teardown' | 'confirms-vacant' | null
  * @returns {string|null} category, or null when the code is unknown
  */
-export function saleCategory({ saleUseCode, liveUseCode, buildVerdict, demoVerdict } = {}) {
+export function saleCategory(input) {
+  // `= {}` would only cover undefined. null is what a missing row
+  // actually looks like coming out of JSON.parse or an IndexedDB
+  // record, and one null row throwing here would abort the grid
+  // render mid-loop and blank the table.
+  const { saleUseCode, liveUseCode, buildVerdict, demoVerdict } = input || {};
   const base = pucsCategory(saleUseCode);
   if (buildVerdict === 'already-built') {
     const live = pucsCategory(liveUseCode);
-    return live && live !== 'Land' ? live : 'Residential';
+    if (live && live !== 'Land') return live;
+    // No usable live record. Fall back by what the VACANT code itself
+    // said was going to be built there: a VRES1/VRES2 lot that got
+    // built on is a house (that is the overwhelming majority), but a
+    // VCOMM or VINDU lot is not, and filing a new warehouse as
+    // Residential would be a worse answer than the one we started
+    // with. Land is the one answer the permit has already ruled out,
+    // so anything else beats leaving it there.
+    const code = pucsCode(saleUseCode);
+    if (code === 'VCOMM') return 'Retail-Commercial';
+    if (code === 'VINDU') return 'Industrial';
+    return 'Residential';
   }
   if (demoVerdict === 'teardown') return 'Land';
   return base;
