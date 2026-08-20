@@ -179,6 +179,9 @@ and swap against scratch asset names on the live release.
 
 ## Documentation
 
+- **[SESSION-HANDOFF-2026-08-20.md](SESSION-HANDOFF-2026-08-20.md)** — the
+  current resume point: what the sales side is, the decisions that will
+  silently regress if you change them, and what is still open.
 - **[REPLICATION_GUIDE.md](REPLICATION_GUIDE.md)** — the deep doc: full
   architecture, every solved bug, SoQL reference, and a checklist for porting
   the tool to another jurisdiction.
