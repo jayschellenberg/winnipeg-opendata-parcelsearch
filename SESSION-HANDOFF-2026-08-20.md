@@ -332,13 +332,22 @@ scanned fax with no text layer.
 "normalize, edit and restore or every multi-line anchor misses" warning
 no longer applies — the Edit tool matches it directly. New:
 
-- **The preview harness caches its launch config at session start.** It
-  never re-read `.claude/launch.json` no matter what was written there,
-  and kept insisting on port 5173. **There was no local dev server this
-  whole session.** Port 5173 is the Manitoba sibling; 5174 is a third
-  project. Everything visual was verified against the DEPLOYED site
-  instead, which works but only after a push — and it is how the 120px
-  dropdown bug was found, so it is not a bad fallback.
+- **The launch config lives at the PROJECT ROOT, not beside the app.**
+  `D:\Dropbox\ClaudeCode\WpgOpenData\.claude\launch.json` — one level
+  above this repo, alongside the other WpgOpenData projects. Its
+  `parcelsearch-web` entry already runs the dev server with
+  `--prefix ParcelSearch/web` on 5173.
+
+  Most of this session was spent believing the harness cached a stale
+  config, because edits to `ParcelSearch/.claude/launch.json` had no
+  effect and it kept insisting on 5173. That file is not read. **There
+  was no local dev server for almost the whole session** as a result,
+  and everything visual was verified against the DEPLOYED site instead —
+  which works, but only after a push, and it is how the 120px dropdown
+  bug was found, so it is not a bad fallback. Port 5173 is also the
+  Manitoba sibling's and 5174 a third project's, so a second entry on a
+  free port is the way to preview anything else; that is verified —
+  `n1-review` on 5199 served the mao-scrape review page fine.
 - **Polling a Vercel deploy: grep the BUNDLE HASH, not a code string.**
   Grepping for `property_use_code` reported "deployed" against the OLD
   bundle, because the hover popup had always contained it. `ls
