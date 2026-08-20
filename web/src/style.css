@@ -4220,3 +4220,24 @@ button.topbar-link {
   background: #eff6ff;
   border-color: #bfdbfe;
 }
+
+/* Category badge. Deliberately a different weight from the PUCS and
+   zoning badges beside it: Category is the derived, permit-corrected
+   grouping a comp search actually runs on, so it should read as the
+   headline of the row's classification rather than as one more code. */
+#results .badge-category {
+  background: var(--color-primary-50, #eef2ff);
+  color: var(--color-primary-700, #3730a3);
+  border: 1px solid var(--color-primary-100, #e0e7ff);
+  font-weight: 600;
+}
+
+/* Category picker sits on its own full-width row above the PUCS/class
+   pair — the names ("Retail-Commercial", "Special Purpose") are longer
+   than a half-width trigger can show without truncating to uselessness. */
+.sales-category-filter {
+  width: 100%;
+}
+.sales-category-filter .sales-pucs-btn {
+  width: 100%;
+}

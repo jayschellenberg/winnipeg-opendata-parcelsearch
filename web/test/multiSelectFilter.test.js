@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
   reconcileSelection,
   selectionLabel,
-  passesSelection,
+  passesSelection, sortOptions,
 } from '../src/lib/multiSelectFilter.js';
 
 // ---- passesSelection ------------------------------------------------------
@@ -77,5 +77,26 @@ assert.equal(selectionLabel('class', new Set(['OTHER']), 3), 'OTHER');
 assert.equal(selectionLabel('class', new Set(['OTHER', 'FARM']), 3), '2 of 3');
 // The deliberate show-nothing state must not read as "Any".
 assert.equal(selectionLabel('PUCS', new Set(), 7), 'None');
+
+// ---- sortOptions ----------------------------------------------------------
+// The appraisal categories have a natural reading order with Land first.
+// Alphabetising them buries Land between Infrastructure and Mixed-Use,
+// which is the wrong first thing to see in an app that is mostly about
+// land — hence the optional explicit order.
+const CATS = ['Land', 'Residential', 'Multi-Family', 'Condominium'];
+assert.deepEqual(
+  sortOptions(['Condominium', 'Multi-Family', 'Land', 'Residential'], CATS),
+  ['Land', 'Residential', 'Multi-Family', 'Condominium'],
+);
+// A value the order has never heard of must still APPEAR — dropping it
+// would silently hide every sale carrying it.
+assert.deepEqual(
+  sortOptions(['Zebra', 'Land', '(unclassified)'], CATS),
+  ['Land', '(unclassified)', 'Zebra'],
+);
+// No order at all keeps the old alphabetical behaviour, so the PUCS and
+// zoning pickers are untouched by this.
+assert.deepEqual(sortOptions(['b', 'a', 'c']), ['a', 'b', 'c']);
+assert.deepEqual(sortOptions(['b', 'a', 'c'], []), ['a', 'b', 'c']);
 
 console.log('multiSelectFilter.test.js: all assertions passed');

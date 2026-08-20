@@ -487,6 +487,36 @@
                filter. PUCS values come from the loaded CSV; classes
                come from the LIVE assessment join, so that list is
                rebuilt from each run's joined results. -->
+          <!-- Category. The coarse grouping a comp search actually starts
+               from — Land, Residential, Multi-Family, Retail-Commercial and
+               so on — derived from the Property Use Code by lib/pucs.js and
+               then CORRECTED by the permit record, so a vacant-coded lot
+               that already had a finished house on it when it sold reads as
+               Residential rather than Land. Full width on its own row
+               because the names are longer than a half-width trigger shows,
+               and first because it is the filter that narrows the most. -->
+          <div class="sales-category-filter sales-pucs-filter">
+            <button
+              type="button"
+              id="category-filter-btn"
+              class="sales-pucs-btn"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="category-filter-popover"
+              title="Filter to one or more appraisal categories. Derived from the Property Use Code, then corrected by the permit record: a vacant-coded sale with a new-build permit closed 6+ months before it takes the category of what actually stood there, and an improved sale with a demolition permit beside it becomes Land. Leave everything ticked for no filter."
+              disabled
+            >
+              <span class="sales-pucs-btn-label">Any category</span>
+              <span class="sales-pucs-btn-caret" aria-hidden="true">▾</span>
+            </button>
+            <div
+              id="category-filter-popover"
+              class="sales-pucs-popover"
+              role="menu"
+              aria-label="Filter by appraisal category"
+            ></div>
+          </div>
+
           <div class="sales-filter-pair">
             <div class="sales-pucs-filter">
               <button

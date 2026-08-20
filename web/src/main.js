@@ -118,6 +118,12 @@ import {
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
+import { saleCategory, pucsName, PUCS_CATEGORY_ORDER } from './lib/pucs.js';
+
+/** Where a use code lib/pucs.js has never seen ends up. Named, listed and
+ *  tickable — never blank — so such a sale cannot silently fall out of
+ *  every comp search. */
+const UNCLASSIFIED_CATEGORY = '(unclassified)';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
 import { COLUMNS, csvSchemaForMode, buildThead, columnCellClasses } from './lib/columnsRegistry.js';
 import { assignParcelSeq, clearParcelSeq } from './lib/parcelNumbering.js';
@@ -307,6 +313,11 @@ const SORT_KEYS = {
   water:        (r) => waterSortRank(waterOf(r.assess?.properties), waterLoaded(r.assess?.properties)),
   cluster:      (r) => strKey(r.assess?.properties?._cluster),
   swornValue:   (r) => finiteOrNeg(r.assess?.properties?._saleSwornValue),
+  category:     (r) => strKey(r.assess?.properties?._saleCategory),
+  // Sorts by the NAME, which is what the column shows — sorting the
+  // plain-language column by its underlying code would move rows into
+  // an order the reader cannot see a reason for.
+  useCodeName:  (r) => strKey(pucsName(r.assess?.properties?._saleUseCode)),
   numUnits:     (r) => finiteOrNeg(r.assess?.properties?._saleNumUnits),
   unitLabel:    (r) => strKey(r.assess?.properties?._saleUnitLabel),
   saleZoning:   (r) => strKey(r.assess?.properties?._saleZoning),
@@ -3405,6 +3416,49 @@ const zoningFilter = createMultiSelectFilter({
   onChange: () => runSalesAnalysis(),
 });
 
+// Category — the grouping a comp search actually starts from. Built after
+// the join and after the permit pass, because the permit record is what
+// moves a vacant-coded sale that already had a house on it out of Land.
+// Explicit order (Land first) rather than alphabetical: this is a fixed
+// vocabulary with a natural reading order, and sorting it would bury Land
+// between Infrastructure and Mixed-Use.
+const categoryFilter = createMultiSelectFilter({
+  btnId: 'category-filter-btn',
+  popoverId: 'category-filter-popover',
+  label: 'category',
+  order: [...PUCS_CATEGORY_ORDER, UNCLASSIFIED_CATEGORY],
+  onChange: () => runSalesAnalysis(),
+});
+
+/**
+ * Rebuild the category options from the joined, permit-corrected set.
+ *
+ * Tallied from the set BEFORE the category filter narrows it, for the
+ * same reason as Class: counting the filtered set would shrink the
+ * option list on every change and the user could never tick back what
+ * they unticked.
+ */
+function rebuildCategoryFilter(features) {
+  const counts = new Map();
+  for (const f of features) {
+    const c = saleCategoryOf(f);
+    counts.set(c, (counts.get(c) || 0) + 1);
+  }
+  categoryFilter.setOptions(counts);
+}
+
+/**
+ * A sale's category, as the filter and the column both read it.
+ *
+ * Falls back to a named bucket rather than blank when lib/pucs.js has
+ * never seen the code: a code the City adds later must be VISIBLE and
+ * tickable, because the alternative is that those sales quietly fail
+ * every category filter and drop out of comp searches unnoticed.
+ */
+function saleCategoryOf(f) {
+  return f?.properties?._saleCategory || UNCLASSIFIED_CATEGORY;
+}
+
 /** Rebuild the PUCS options from the loaded CSV. Counts are per SALE,
  *  not per raw row — dedup has already collapsed component rows. */
 function rebuildPucsFilter() {
@@ -3531,6 +3585,7 @@ async function handleSalesUpload({ name, text }, remember = true) {
     // codes).
     pucsFilter.reset();
     classFilter.reset();
+    categoryFilter.reset();
     // The N1 filter resets too: Matched/Unmatched is a statement about
     // THIS CSV's crosswalk column, not a standing preference.
     const $n1 = document.getElementById('sales-n1-filter');
@@ -3945,6 +4000,25 @@ async function runSalesAnalysis() {
     console.warn('Permit lookup failed (Demo / Built columns stay blank):', err);
   }
 
+  // Appraisal category, stamped AFTER the permit pass because the permit
+  // record is what overrules the roll: a vacant-coded sale whose house was
+  // finished before it changed hands is not a land comp, and an improved
+  // sale with a demolition permit beside it is. lib/pucs.js owns the
+  // mapping and the fallbacks; this only supplies the three inputs.
+  //
+  // The live use code is withheld on a row that matched no live record —
+  // the feature is synthetic there, so property_use_code would be absent
+  // anyway, but passing it explicitly as null keeps the intent readable.
+  for (const f of saleFc.features) {
+    const p = f.properties;
+    p._saleCategory = saleCategory({
+      saleUseCode: saleUseCodeOf(f),
+      liveUseCode: p._noLiveMatch ? null : p.property_use_code,
+      buildVerdict: p._buildVerdict,
+      demoVerdict: p._demoVerdict,
+    });
+  }
+
   // Neighbourhood cluster, from the parcel centroid. Non-fatal: if the
   // geojson can't be fetched the column just stays blank rather than
   // taking the whole analysis down with it.
@@ -3981,12 +4055,21 @@ async function runSalesAnalysis() {
   // above has resolved. Options are tallied from the full joined set
   // (before narrowing) so unticking a class never removes it from the
   // list the user needs in order to tick it back on.
+  // Category first: it is the coarsest cut and the one that narrows most,
+  // so every picker below it offers a shorter, more relevant list.
+  rebuildCategoryFilter(saleFc.features);
+  const categorySelected = categoryFilter.getSelected();
+  const afterCategory = categorySelected == null
+    ? saleFc.features
+    : saleFc.features.filter((f) => categorySelected.has(saleCategoryOf(f)));
+  const categoryHidden = saleFc.features.length - afterCategory.length;
+
   rebuildClassFilter(saleFc.features);
   const classSelected = classFilter.getSelected();
   const afterClass = classSelected == null
-    ? saleFc.features
-    : saleFc.features.filter((f) => classSelected.has(saleClassOf(f)));
-  const classHidden = saleFc.features.length - afterClass.length;
+    ? afterCategory
+    : afterCategory.filter((f) => classSelected.has(saleClassOf(f)));
+  const classHidden = afterCategory.length - afterClass.length;
 
   // Zoning. Options come off the FULL joined set (like Class) so
   // unticking a code never removes it from the list you need in order to
@@ -4059,6 +4142,7 @@ async function runSalesAnalysis() {
     // Name the class narrowing for the same reason the area filter is
     // named: a filter the user can forget they set must never silently
     // shrink the comp set.
+    (categoryHidden ? ` · ${categoryHidden} hidden by the category filter` : '') +
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
     (vacantHidden ? ` · ${vacantHidden} hidden by the ${vacantMode} filter` : '') +

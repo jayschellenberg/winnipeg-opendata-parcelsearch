@@ -75,7 +75,32 @@ export function passesSelection(selected, value) {
  * setOptions rebuilds the list from a value → count map (pass an empty
  * map to disable the control). getSelected returns the tri-state.
  */
-export function createMultiSelectFilter({ btnId, popoverId, label, onChange }) {
+/**
+ * @param {string[]} [order] Explicit option order. Without it options sort
+ *   alphabetically, which is right for codes nobody has a mental order for
+ *   (PUCS, zoning) but wrong for a fixed vocabulary: the appraisal
+ *   categories have a natural order with Land first, and alphabetising
+ *   them buries Land between Infrastructure and Mixed-Use. Values missing
+ *   from `order` fall to the end, alphabetically, so an unforeseen option
+ *   still appears rather than vanishing.
+ */
+/**
+ * Order option values: by the caller's explicit list where it has one,
+ * then everything else alphabetically after it. Exported for the unit
+ * test — a filter whose options quietly reorder is a filter whose
+ * checkboxes move under the cursor.
+ */
+export function sortOptions(values, order) {
+  const rank = new Map((order || []).map((v, i) => [v, i]));
+  return [...values].sort((a, b) => {
+    const ra = rank.has(a) ? rank.get(a) : Infinity;
+    const rb = rank.has(b) ? rank.get(b) : Infinity;
+    if (ra !== rb) return ra - rb;
+    return String(a).localeCompare(String(b));
+  });
+}
+
+export function createMultiSelectFilter({ btnId, popoverId, label, onChange, order }) {
   const $btn = document.getElementById(btnId);
   const $popover = document.getElementById(popoverId);
   let selected = null;      // tri-state, see the header
@@ -174,7 +199,7 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange }) {
 
   return {
     setOptions(counts) {
-      options = [...counts.keys()].sort();
+      options = sortOptions([...counts.keys()], order);
       if (options.length === 0) {
         $btn.disabled = true;
         const el = $label();

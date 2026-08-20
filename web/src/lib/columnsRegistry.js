@@ -24,6 +24,7 @@ import {
 import {
   waterOf, waterLoaded, waterColor, waterCellText, waterTooltip, waterCsvCells,
 } from './water.js';
+import { pucsName } from './pucs.js';
 
 /**
  * New-construction verdict on a vacant-coded sale.
@@ -193,10 +194,39 @@ export const COLUMNS = [
     render: (a) => td(a._saleDate || null),
     csv: { header: 'Sale Date', extract: (a) => a._saleDate } },
 
+  // PUCS. The code is what SABRE gives us and what fits a badge, but
+  // "RESMC" reads as nothing on its own, so the plain name rides on the
+  // tooltip and goes out in its own CSV column. Names come from the
+  // City's own published labels — see lib/pucs.js.
   { key: 'useCode',      header: 'PUCS',          mode: 'sales',  sortable: true,
-    theadTitle: 'Par Use Code — Winnipeg property assessment use code (e.g. RESMC, RESRH, INWWH, CMRRE)',
-    render: (a) => badgeTd(a._saleUseCode || null, pucsBadgeClass(a._salePropertyType)),
+    theadTitle: 'Par Use Code — Winnipeg property assessment use code (e.g. RESMC, RESRH, INWWH, CMRRE). '
+      + 'Hover a cell for the code’s plain name; see Category for the grouping it rolls up into.',
+    render: (a) => {
+      const cell = badgeTd(a._saleUseCode || null, pucsBadgeClass(a._salePropertyType));
+      const name = pucsName(a._saleUseCode);
+      if (name) cell.title = `${String(a._saleUseCode).toUpperCase()} — ${name}`;
+      return cell;
+    },
     csv: { header: 'PUCS', extract: (a) => a._saleUseCode } },
+
+  { key: 'useCodeName',  header: 'Use',           mode: 'sales',  sortable: true,
+    theadTitle: 'What the Par Use Code means, in words — “Detached Single Dwelling”, “Multifamily Conversion”, '
+      + '“Vehicle Service Related”. Taken from the City’s own published label for the code.',
+    render: (a) => td(pucsName(a._saleUseCode) || null),
+    csv: { header: 'Use', extract: (a) => pucsName(a._saleUseCode) } },
+
+  // Category. The grouping a comp search runs on, and the one column here
+  // the roll alone cannot produce: a vacant-coded sale that already had a
+  // finished house on it reads Residential, not Land, because the permit
+  // record says so. See saleCategory in lib/pucs.js.
+  { key: 'category',     header: 'Category',      mode: 'sales',  sortable: true,
+    theadTitle: 'Appraisal category, derived from the Par Use Code and then corrected by the permit record: '
+      + 'a vacant-coded sale whose building was finished 6+ months before it sold takes the category of what actually stood there, '
+      + 'and an improved sale with a demolition permit beside it becomes Land. '
+      + 'Surface parking counts as Land; condos group by underlying use rather than by tenure. '
+      + '“(unclassified)” means a use code this app has not been taught — not that the sale is unusable.',
+    render: (a) => badgeTd(a._saleCategory || null, 'badge-category'),
+    csv: { header: 'Category', extract: (a) => a._saleCategory } },
 
   // Living Area and Year Built are dual-source: the sales CSV value when
   // there is one, otherwise the live assessment record. That makes them

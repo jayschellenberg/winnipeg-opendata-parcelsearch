@@ -45,6 +45,11 @@ export default defineConfig({
   // to the same upstream URL — this keeps the client-side fetch URL
   // identical in dev and prod.
   server: {
+    // Honour PORT so the dev server can be told which port to take. The
+    // Manitoba sibling app lives in an adjacent repo and defaults to the
+    // same 5173; without this, running both at once means one of them
+    // silently answers for the other.
+    port: Number(process.env.PORT) || 5173,
     proxy: {
       '/proxy/contam-sites.csv': {
         target: 'https://manitoba.ca',

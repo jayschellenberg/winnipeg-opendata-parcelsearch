@@ -49,7 +49,10 @@ const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'sou
   // Split out of Units, which used to render SABRE's suite identifier as
   // if it were a unit count. Existing users carry a stored set that
   // predates it, so without this the label they lost never comes back.
-  'unitLabel'];
+  'unitLabel',
+  // Category is the grouping the comp search now runs on, so it has to
+  // reach existing users rather than waiting for them to find the gear.
+  'category'];
 
 /*
  * Columns this module does not govern. `seq` (the map badge "#") is gated
@@ -101,7 +104,7 @@ const SALES_DEFAULT = [
 // land rate (the MB Commercial Sales preset's rationale, kept here).
 const COMMERCIAL_SALES = [
   'roll', 'address', 'cluster', 'saleDate', 'salePrice', 'swornValue',
-  'useCode', 'propertyType', 'buildingType', 'yearBuilt', 'livingArea',
+  'category', 'useCode', 'propertyType', 'buildingType', 'yearBuilt', 'livingArea',
   'pricePerBldgSf',
   // A teardown hiding in an improved comp set is exactly what this
   // preset must not let through unnoticed.
@@ -115,6 +118,7 @@ const LAND_SALES = [
   'area', 'saleAcres', 'pricePerSf', 'pricePerAcre', 'pricePerLot',
   // The column that keeps finished houses out of a land comp set.
   'built', 'builtDate',
+  'category',
   'saleZoning', 'zoning', 'water',
   'saleToAsmt', 'dist', 'value', 'n1Id',
 ];
