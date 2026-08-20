@@ -62,7 +62,11 @@
           href="https://manitoba-opendata-parcelsearch.vercel.app/"
           target="_blank"
           rel="noreferrer"
-        >Manitoba portal</a>
+        ><span aria-hidden="true">🌾</span> Manitoba portal</a>
+        <!-- Data Status. A button wearing the topbar-link look; opens the
+             #data-status-modal dialog (src/dataStatusDialog.js). Emoji is
+             aria-hidden so screen readers get the plain name. -->
+        <button type="button" class="topbar-link" id="data-status-open"><span aria-hidden="true">📅</span> Data Status</button>
         <details class="topbar-details" id="data-sources-details">
           <summary class="topbar-summary">Data sources</summary>
           <div class="topbar-panel" id="data-sources-panel">
@@ -167,6 +171,11 @@
       </nav>
     </header>
 
+    <!-- Data-staleness banner. Hidden while the citywide parcel tiles are
+         fresh; amber once they pass 90 days, red past a year. Text comes
+         from lib/staleness.js via initStalenessBanner(). -->
+    <div id="data-staleness-banner" class="data-staleness-banner" role="status" aria-live="polite" hidden></div>
+
     <div class="app-shell" id="app-shell">
       <aside class="sidebar controls" aria-label="Search and overlay controls">
         <!-- Phase 7 tab strip. Property Search (default) + Sales
@@ -179,7 +188,7 @@
             data-tab="property"
             aria-controls="tab-panel-property"
             aria-selected="true"
-          >Property Search</button>
+          >🏠 Property Search</button>
           <button
             type="button" role="tab"
             id="tab-btn-sales" class="sidebar-tab"
@@ -187,7 +196,7 @@
             aria-controls="tab-panel-sales"
             aria-selected="false"
             tabindex="-1"
-          >Sales Analysis</button>
+          >💲 Sales Analysis</button>
         </div>
 
         <section
@@ -298,8 +307,8 @@
         </details>
 
         <div class="action-row">
-          <button id="search" type="button">Search</button>
-          <button id="clear"  type="button" class="secondary">Clear</button>
+          <button id="search" type="button">🔍 Search</button>
+          <button id="clear"  type="button" class="danger">Clear</button>
           <button id="export" type="button" class="secondary">Export CSV</button>
         </div>
         <span id="count" class="count"></span>
@@ -320,6 +329,46 @@
           aria-labelledby="tab-btn-sales"
           hidden
         >
+          <!-- SABRE sales database. Connect the local folder holding the
+               SoldPropertyListing CSV exports once; the files are cached in
+               IndexedDB (never uploaded — SABRE is subscriber data) and
+               Search merges them all, drops duplicate rows from overlapping
+               pulls, and hands the result to the same pipeline as a file
+               drop. src/salesDbPanel.js owns every element in here. -->
+          <details class="sales-db" id="sales-db">
+            <summary class="sales-db-head">
+              <strong>SABRE Sales Database</strong>
+              <span class="sales-db-status" id="sales-db-status">Not connected</span>
+            </summary>
+            <div class="sales-db-empty" id="sales-db-empty">
+              <p class="sales-db-hint">
+                Connect the folder holding your SoldPropertyListing CSV
+                exports once — the files stay on this device and are never
+                uploaded.
+              </p>
+              <button type="button" id="sales-db-import" class="secondary">Choose export folder…</button>
+              <input id="sales-db-folder-input" type="file" webkitdirectory directory multiple hidden />
+            </div>
+            <div class="sales-db-ready" id="sales-db-ready" hidden>
+              <p class="sales-db-hint">
+                Search merges every export, drops duplicate rows from
+                overlapping pulls, and loads the result through the normal
+                sales pipeline. The Sale date range below filters what loads.
+              </p>
+              <p class="sales-db-daterange-hint" id="sales-db-daterange-hint" hidden>
+                Set a Sale date range below before searching, or the whole
+                archive loads at once.
+              </p>
+              <div class="sales-db-actions">
+                <button type="button" id="sales-db-load">🔍 Search</button>
+                <button type="button" id="sales-db-refresh" class="secondary" title="Re-read changed CSV files from the connected folder">🔄 Reload</button>
+                <button type="button" id="sales-db-forget" class="secondary danger" title="Disconnect the sales database from this browser. The folder on disk is untouched.">🔌 Disconnect</button>
+                <button type="button" id="sales-db-coverage" class="secondary" title="Per-file row counts and sale-date ranges — spot gaps in the backfill">📅 Coverage</button>
+              </div>
+              <p class="sales-db-update" id="sales-db-update" hidden></p>
+            </div>
+          </details>
+
           <div
             id="sales-dropzone"
             class="sales-dropzone"
@@ -385,10 +434,23 @@
             <span class="tip">Subject parcel roll #. Once set, every loaded sale row gets a Dist (km) value (centroid-to-centroid) and a Sale/Asmt ratio relative to the subject's assessment. Press Enter or comma to commit; leave blank to skip distance math.</span>
           </span>
 
-          <label class="sales-filter-row">
-            <input type="checkbox" id="sales-hide-sentinels" checked />
-            <span>Hide $0 / $1 non-arms-length transfers</span>
-          </label>
+          <!-- Date presets. One click fills the From/To inputs below and
+               dispatches 'change' so a loaded CSV re-filters immediately.
+               24 months and up snap From back to Jan 1 of the landing year
+               (lib/datePresets.js) — appraisers reason in vintage years, so
+               "24 mo" means "this year, last year and the one before". -->
+          <div class="date-presets" role="group" aria-label="Sale date range presets">
+            <span class="date-presets-prefix">Date:</span>
+            <button type="button" class="date-preset-btn" data-months="3">3 mo</button>
+            <button type="button" class="date-preset-btn" data-months="6">6 mo</button>
+            <button type="button" class="date-preset-btn" data-months="12">12 mo</button>
+            <button type="button" class="date-preset-btn" data-months="24">24</button>
+            <button type="button" class="date-preset-btn" data-months="36">36</button>
+            <button type="button" class="date-preset-btn" data-months="48">48</button>
+            <button type="button" class="date-preset-btn" data-months="60">60</button>
+            <button type="button" class="date-preset-btn" data-months="72">72</button>
+            <button type="button" class="date-preset-btn date-preset-clear" data-clear="1" title="Clear the date range">×</button>
+          </div>
 
           <!-- Sale date range. Either bound can be left empty for an
                open-ended filter. CSV dates land as ISO YYYY-MM-DD so
@@ -483,68 +545,101 @@
             ></div>
           </div>
 
-          <!-- Sale price range. The whole transaction's consideration,
-               so a multi-parcel sale is tested once as one deal. -->
-          <div class="sales-range-row">
-            <span class="sales-range-label">Sale price:</span>
-            <input
-              type="number" min="0" step="1000"
-              id="sales-price-low" class="sales-range-input"
-              placeholder="Min" aria-label="Minimum sale price"
-              title="Minimum total sale price. Empty = no lower limit. $0 / $1 nominal transfers have no price to test and are excluded while this is set."
-            />
-            <span class="sales-range-sep" aria-hidden="true">–</span>
-            <input
-              type="number" min="0" step="1000"
-              id="sales-price-high" class="sales-range-input"
-              placeholder="Max" aria-label="Maximum sale price"
-              title="Maximum total sale price. Empty = no upper limit."
-            />
-          </div>
+          <!-- The tune-later filters live behind a disclosure so the
+               panel leads with the pickers every comp search starts from
+               (date, use, class, zoning). Same pattern as the property
+               tab's Additional Searches. -->
+          <details class="more-filters sales-filters">
+            <summary>Additional filters</summary>
 
-          <!-- Lot size range, in square feet. Compares against the
-               SALE's total land (the sum across a multi-parcel sale),
-               which is the same denominator $/Lot SF uses — so the
-               filter and the column can't disagree about how big a
-               sale is. Either bound may be left empty. -->
-          <div class="sales-range-row">
-            <span class="sales-range-label">Lot size (sf):</span>
-            <input
-              type="number" min="0" step="1"
-              id="sales-size-low" class="sales-range-input"
-              placeholder="Min" aria-label="Minimum lot size in square feet"
-              title="Minimum total land area for the sale, in square feet. Empty = no lower limit. A sale whose CSV rows are missing Land Actual sqft can't be measured and is excluded while this filter is set."
-            />
-            <span class="sales-range-sep" aria-hidden="true">–</span>
-            <input
-              type="number" min="0" step="1"
-              id="sales-size-high" class="sales-range-input"
-              placeholder="Max" aria-label="Maximum lot size in square feet"
-              title="Maximum total land area for the sale, in square feet. Empty = no upper limit."
-            />
-          </div>
+            <!-- Sale price range. The whole transaction's consideration,
+                 so a multi-parcel sale is tested once as one deal. -->
+            <div class="sales-range-row">
+              <span class="sales-range-label">Sale price:</span>
+              <input
+                type="number" min="0" step="1000"
+                id="sales-price-low" class="sales-range-input"
+                placeholder="Min" aria-label="Minimum sale price"
+                title="Minimum total sale price. Empty = no lower limit. $0 / $1 nominal transfers have no price to test and are excluded while this is set."
+              />
+              <span class="sales-range-sep" aria-hidden="true">–</span>
+              <input
+                type="number" min="0" step="1000"
+                id="sales-price-high" class="sales-range-input"
+                placeholder="Max" aria-label="Maximum sale price"
+                title="Maximum total sale price. Empty = no upper limit."
+              />
+            </div>
 
-          <!-- Street name substring. Matched against the CSV's own
-               Street Number / Direction / Name, so it behaves the same
-               whether or not the roll matched a live record. -->
-          <div class="sales-street-row">
-            <input
-              type="text"
-              id="sales-street-name"
-              class="sales-street-input"
-              placeholder="Street name"
-              autocomplete="off"
-              aria-label="Filter sales by street name"
-              title="Keep only sales whose address contains this text. Case-insensitive substring, so BANNER finds BANNERMAN. Empty = no filter."
-            />
-          </div>
+            <!-- Lot size range, in square feet. Compares against the
+                 SALE's total land (the sum across a multi-parcel sale),
+                 which is the same denominator $/Lot SF uses — so the
+                 filter and the column can't disagree about how big a
+                 sale is. Either bound may be left empty. -->
+            <div class="sales-range-row">
+              <span class="sales-range-label">Lot size (sf):</span>
+              <input
+                type="number" min="0" step="1"
+                id="sales-size-low" class="sales-range-input"
+                placeholder="Min" aria-label="Minimum lot size in square feet"
+                title="Minimum total land area for the sale, in square feet. Empty = no lower limit. A sale whose CSV rows are missing Land Actual sqft can't be measured and is excluded while this filter is set."
+              />
+              <span class="sales-range-sep" aria-hidden="true">–</span>
+              <input
+                type="number" min="0" step="1"
+                id="sales-size-high" class="sales-range-input"
+                placeholder="Max" aria-label="Maximum lot size in square feet"
+                title="Maximum total land area for the sale, in square feet. Empty = no upper limit."
+              />
+            </div>
+
+            <!-- Street name substring. Matched against the CSV's own
+                 Street Number / Direction / Name, so it behaves the same
+                 whether or not the roll matched a live record. -->
+            <div class="sales-street-row">
+              <input
+                type="text"
+                id="sales-street-name"
+                class="sales-street-input"
+                placeholder="Street name"
+                autocomplete="off"
+                aria-label="Filter sales by street name"
+                title="Keep only sales whose address contains this text. Case-insensitive substring, so BANNER finds BANNERMAN. Empty = no filter."
+              />
+            </div>
+
+            <!-- N1 crosswalk status. Matched = the row carries an N1 ID
+                 (already in the comp database); Unmatched = blank — the
+                 data-entry queue. Row-level on purpose: a multi-parcel
+                 sale matched on some rolls only shows exactly its
+                 unmatched rows. -->
+            <div class="sales-n1-row">
+              <span class="sales-range-label">N1:</span>
+              <select
+                id="sales-n1-filter"
+                aria-label="N1 match filter"
+                title="Filter by N1 crosswalk status. Matched = sale carries an N1 ID; Unmatched = no N1 record linked yet — the data-entry queue. CSVs without an N1 ID column read as entirely unmatched."
+              >
+                <option value="any" selected>Any</option>
+                <option value="matched">Matched</option>
+                <option value="unmatched">Unmatched</option>
+              </select>
+            </div>
+          </details>
 
           <!-- Clear. Same hard reset as the Property tab's Clear: a
                reload of the bare URL, so every filter, the loaded CSV,
                the subject roll and the map all go back to first-load
                rather than leaving a stale corner of state behind. -->
+          <!-- Clear + the nominal-transfer toggle share a row (MB pattern):
+               the toggle governs the whole result set, so it belongs beside
+               the other whole-set action rather than among the filters. -->
           <div class="action-row sales-action-row">
-            <button id="sales-clear" type="button" class="secondary">Clear</button>
+            <button id="sales-clear" type="button" class="danger">Clear</button>
+            <label class="sales-filter-row sales-nominal-inline">
+              <input type="checkbox" id="sales-hide-sentinels" checked />
+              <span>Hide $0 / $1 non-arms-length transfers</span>
+            </label>
           </div>
 
           <span id="sales-count" class="count"></span>
@@ -610,7 +705,7 @@
           <a class="overlay-link secondary" data-layer-set="quick" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" title="City of Winnipeg Planning, Property &amp; Development Property Map">PP&amp;D Property Map</a>
           <a class="overlay-link secondary" data-layer-set="quick" href="https://dmis.winnipeg.ca/" target="_blank" rel="noreferrer" title="City of Winnipeg Development Management Information System (development applications, permits, plans)">DMIS</a>
         </div>
-        <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the rendered image below the table and Save Image As to drop into a report.">Generate Map</button>
+        <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the rendered image below the table and Save Image As to drop into a report.">📸 Generate Map</button>
         <p class="overlay-note">* Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.</p>
       </aside>
 
@@ -684,6 +779,8 @@
                 <option value="Residential">Residential</option>
                 <option value="Zoning detail">Zoning detail</option>
                 <option value="Sales analysis">Sales analysis</option>
+                <option value="Commercial Sales">Commercial Sales</option>
+                <option value="Land Sales">Land Sales</option>
                 <option value="Full detail">Full detail</option>
               </select>
             </label>
@@ -835,6 +932,79 @@
             <button type="button" id="sales-import-load" class="sales-modal-btn primary">Load sales</button>
           </footer>
         </section>
+      </div>
+    </dialog>
+
+    <!-- Data Status. Opened from the topbar 📅 button; contents are
+         fetched lazily on first open (src/dataStatusDialog.js). Shows only
+         PUBLIC data vintages — the SABRE sales database is subscriber data
+         and its coverage renders exclusively in the sales panel's own
+         Coverage dialog, never here. -->
+    <dialog id="data-status-modal" class="sales-modal data-status-modal">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title">Data status</h2>
+          <button
+            type="button"
+            id="data-status-close"
+            class="sales-modal-close"
+            aria-label="Close data status dialog"
+          >×</button>
+        </header>
+        <p class="data-status-intro">When each data source behind this site was last refreshed.</p>
+        <details class="data-status-block" open>
+          <summary><strong>Published site data</strong></summary>
+          <div class="data-status-scroll">
+            <table class="data-status-table">
+              <thead><tr><th>Dataset</th><th>Vintage</th><th>Detail</th><th>Next update</th></tr></thead>
+              <tbody id="data-status-published"></tbody>
+            </table>
+          </div>
+        </details>
+        <details class="data-status-block" open>
+          <summary><strong>Historical archive &amp; imagery</strong></summary>
+          <div class="data-status-scroll">
+            <table class="data-status-table">
+              <thead><tr><th>Source</th><th>Vintage</th><th>Detail</th></tr></thead>
+              <tbody id="data-status-historical"></tbody>
+            </table>
+          </div>
+        </details>
+        <details class="data-status-block" open>
+          <summary><strong>Live open-data services</strong></summary>
+          <p class="data-status-hint">Each dataset's own last-row-update stamp on data.winnipeg.ca, fetched when this dialog opens.</p>
+          <div class="data-status-scroll">
+            <table class="data-status-table">
+              <thead><tr><th>Dataset</th><th>Upstream last update</th></tr></thead>
+              <tbody id="data-status-services"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+    </dialog>
+
+    <!-- SABRE database coverage. Per-file row counts and sale-date ranges
+         from the LOCAL IndexedDB import — the gap-spotting table for the
+         manual backfill pulls (each capped near 500 records). Subscriber
+         data: local only, never in the public Data Status dialog. -->
+    <dialog id="sales-db-coverage-modal" class="sales-modal data-status-modal">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title">SABRE database coverage</h2>
+          <button
+            type="button"
+            id="sales-db-coverage-close"
+            class="sales-modal-close"
+            aria-label="Close coverage dialog"
+          >×</button>
+        </header>
+        <p class="data-status-intro" id="sales-db-coverage-summary"></p>
+        <div class="data-status-scroll">
+          <table class="data-status-table">
+            <thead><tr><th>File</th><th>Rows</th><th>Sale dates</th><th>File modified</th><th>Imported</th></tr></thead>
+            <tbody id="sales-db-coverage-rows"></tbody>
+          </table>
+        </div>
       </div>
     </dialog>
 

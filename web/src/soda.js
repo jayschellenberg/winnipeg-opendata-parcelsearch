@@ -108,6 +108,25 @@ const MIDBLOCK_TRAFFIC_COUNTS_URL = 'https://data.winnipeg.ca/resource/buvf-b9wp
 const PERMANENT_TRAFFIC_COUNTS_URL = 'https://data.winnipeg.ca/resource/46sc-6jrs.json';
 const ROAD_NETWORK_URL = 'https://data.winnipeg.ca/resource/ngsx-caav.geojson';
 
+// Every Socrata dataset the app queries, for the Data Status dialog's
+// live-services block. Metadata endpoint (same origin, already in the
+// CSP): https://data.winnipeg.ca/api/views/<id>.json
+export const SOCRATA_SOURCES = [
+  { id: 'd4mq-wa44', label: 'Assessment Parcels' },
+  { id: 'sjjm-nj47', label: 'Survey Parcels' },
+  { id: 'cam2-ii3u', label: 'Civic Addresses' },
+  { id: 'dxrp-w6re', label: 'Zoning By-law Parcels' },
+  { id: 'xh28-4smq', label: 'OurWinnipeg Precincts' },
+  { id: 'piz6-n3at', label: 'OurWinnipeg Major Redevelopment Sites' },
+  { id: '5guk-f7xw', label: 'OurWinnipeg Mature Communities (Infill)' },
+  { id: 'wv32-jdtk', label: 'Regional Mixed Use Centres' },
+  { id: 't4kh-5gtd', label: 'Urban Mixed Use Corridors' },
+  { id: 'ahzi-uwu2', label: 'Regional Mixed Use Corridors' },
+  { id: 'buvf-b9wp', label: 'Traffic Counts (midblock)' },
+  { id: '46sc-6jrs', label: 'Traffic Counts (permanent stations)' },
+  { id: 'ngsx-caav', label: 'Road Network' },
+];
+
 // Optional Socrata app token. Raises the anonymous rate limit.
 // Set via Vercel env var VITE_SODA_APP_TOKEN; undefined in anonymous mode.
 // SECURITY: any VITE_-prefixed env var is statically inlined into the public
@@ -1041,6 +1060,9 @@ function parcelSetCacheKey(fc) {
 // wpg-parcel-history (rebuild the shards, push, copy the new SHA here).
 const HISTORICAL_CDN =
   'https://cdn.jsdelivr.net/gh/jayschellenberg/wpg-parcel-history@eca2c00cd69524446fa28297160fd0d986ff73d0';
+
+// The pinned revision, for the Data Status dialog's archive row.
+export const HISTORICAL_PIN = HISTORICAL_CDN;
 
 // Branch-HEAD index, used ONLY by the staleness backstop below (never for shard
 // data — the data path pins a SHA precisely because jsDelivr's @main view lags).

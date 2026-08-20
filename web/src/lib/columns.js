@@ -9,7 +9,7 @@
  * so the appraiser's gear-customizations in sales mode don't
  * trample their property-mode preferences and vice versa.
  *
- * Four presets are baked in:
+ * The baked-in presets:
  *   - Quick lookup:    lot, block, plan, roll, address, water, area
  *   - Residential:     roll, address, buildingType, yearBuilt,
  *                      livingArea, rooms, dwellingUnits, area, zoning,
@@ -20,7 +20,9 @@
  *   - Sales analysis:  the sales-mode default (roll, address,
  *                      saleDate, useCode, livingArea, yearBuilt,
  *                      area, propertyType, groupSize, salePrice,
- *                      pricePerSf, saleToAsmt, dist)
+ *                      pricePerSf, saleToAsmt, dist, n1Id)
+ *   - Commercial Sales / Land Sales: comp-set presets, see the
+ *                      literals below for what each carries and why
  *
  * The map-badge "#" column (`seq`) is deliberately outside this whole
  * mechanism — see UNGOVERNED below.
@@ -33,6 +35,17 @@
 
 const STORAGE_KEY_PROPERTY = 'wps_table_columns_v1';
 const STORAGE_KEY_SALES    = 'wps_table_columns_sales_v1';
+
+/*
+ * Columns added AFTER a user's stored sales visible-set may have been
+ * written. A stored set predating a column cannot contain it, and the
+ * stored set wins over SALES_DEFAULT — so a newly-added column would
+ * stay invisible for exactly the people who have used the app before.
+ * Each key here is added to the stored SALES set once (tracked in
+ * ADOPTED_KEY); untick it after that and it stays unticked.
+ */
+const ADOPTED_KEY = 'wps_table_columns_adopted_v1';
+const ADOPT_ONCE_SALES = ['n1Id'];
 
 /*
  * Columns this module does not govern. `seq` (the map badge "#") is gated
@@ -73,6 +86,26 @@ const SALES_DEFAULT = [
   // when it does fill in it is flagging a nominal-price transfer the
   // appraiser must not read as a market sale.
   'salePrice', 'swornValue', 'pricePerSf', 'saleToAsmt', 'dist',
+  // Default-visible because spotting comps not yet in N1 is the point of
+  // the crosswalk — a hidden column can't be a work queue.
+  'n1Id',
+];
+
+// Commercial comp set: identity + the sale + the structure + zoning /
+// size / assessment. Deliberately carries NO unit-rate column and no
+// Dist — a $/Lot SF invites comparing building-value properties by
+// land rate (the MB Commercial Sales preset's rationale, kept here).
+const COMMERCIAL_SALES = [
+  'roll', 'address', 'cluster', 'saleDate', 'salePrice', 'swornValue',
+  'useCode', 'propertyType', 'buildingType', 'yearBuilt', 'livingArea',
+  'numUnits', 'area', 'saleZoning', 'value', 'n1Id', 'instrument',
+];
+// Bare-land comp set: the lot, its rate, water influence and zoning;
+// building columns are noise on a land sale.
+const LAND_SALES = [
+  'roll', 'address', 'cluster', 'saleDate', 'salePrice', 'swornValue',
+  'area', 'pricePerSf', 'saleZoning', 'zoning', 'water',
+  'saleToAsmt', 'dist', 'value', 'n1Id',
 ];
 
 export const DEFAULT_VISIBLE = new Set(QUICK_LOOKUP);
@@ -83,6 +116,8 @@ export const PRESETS = {
   'Zoning detail':   new Set(ZONING_DETAIL),
   'Full detail':     null,
   'Sales analysis':  new Set(SALES_DEFAULT),
+  'Commercial Sales': new Set(COMMERCIAL_SALES),
+  'Land Sales':       new Set(LAND_SALES),
 };
 
 // Per-mode visible sets. Each entry can be null (Full detail =
@@ -221,6 +256,27 @@ export function initColumns() {
   if (storedProperty !== undefined) visibleByMode.property = storedProperty;
   const storedSales = readStored(STORAGE_KEY_SALES);
   if (storedSales !== undefined) visibleByMode.sales = storedSales;
+
+  // One-time adoption of columns newer than the stored sales set. Writes
+  // STORAGE_KEY_SALES directly rather than via writeStored(): the active
+  // mode is still 'property' at init, and writeStored() persists whichever
+  // mode is active.
+  try {
+    const adopted = new Set(JSON.parse(localStorage.getItem(ADOPTED_KEY) || '[]'));
+    let changed = false;
+    for (const key of ADOPT_ONCE_SALES) {
+      if (adopted.has(key)) continue;
+      adopted.add(key);
+      // A null set is Full detail — the column is already visible there.
+      if (visibleByMode.sales != null) visibleByMode.sales.add(key);
+      changed = true;
+    }
+    if (changed) {
+      localStorage.setItem(ADOPTED_KEY, JSON.stringify([...adopted]));
+      const v = visibleByMode.sales;
+      localStorage.setItem(STORAGE_KEY_SALES, JSON.stringify(v == null ? null : [...v]));
+    }
+  } catch { /* localStorage unavailable — defaults already include the keys */ }
 
   const gear = document.getElementById('columns-gear');
   const popover = document.getElementById('columns-popover');

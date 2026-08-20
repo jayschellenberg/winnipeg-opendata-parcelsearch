@@ -36,6 +36,9 @@ import { initColumns, applyVisibility as applyColumnVisibility, setMode as setCo
 import { formatSqFt } from './lib/format.js';
 import { encodeState, decodeState } from './lib/urlState.js';
 import { initSidebarTabs, setActiveTab, onTabChange } from './lib/tabs.js';
+import { presetRange } from './lib/datePresets.js';
+import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
+import { initSalesDbPanel } from './salesDbPanel.js';
 import bbox from '@turf/bbox';
 import {
   searchSurveyParcels,
@@ -293,6 +296,7 @@ const SORT_KEYS = {
   swornValue:   (r) => finiteOrNeg(r.assess?.properties?._saleSwornValue),
   numUnits:     (r) => finiteOrNeg(r.assess?.properties?._saleNumUnits),
   saleZoning:   (r) => strKey(r.assess?.properties?._saleZoning),
+  n1Id:         (r) => numOrStr(r.assess?.properties?._n1Id),
 };
 
 // Numeric-smart string key: if the value looks like a number, compare it
@@ -448,6 +452,25 @@ onTabChange(() => queueUrlWrite());
 // Wire the Sales Analysis tab — dropzone, subject roll, sentinel
 // filter. The CSV is parsed entirely client-side; no upload.
 wireSalesTab();
+
+// Topbar Data Status dialog + the tile-staleness banner. Lazy: the
+// dialog fetches nothing until first opened; the banner costs one
+// ~500-byte same-origin fetch at init.
+initDataStatusDialog();
+initStalenessBanner();
+
+// SABRE sales database panel. onLoad hands the merged archive to the
+// same pipeline as a file drop; remember=false keeps the multi-file
+// merge out of the localStorage Recent-uploads cache — it already
+// lives in IndexedDB, and recents are a 5-slot quota-bound cache.
+initSalesDbPanel({
+  onLoad: (payload) => handleSalesUpload(payload, false),
+  setStatus: (m) => setSalesCount(m),
+  getDateWindow: () => ({
+    from: document.getElementById('sales-date-from')?.value || '',
+    to: document.getElementById('sales-date-to')?.value || '',
+  }),
+});
 
 // Wire the parcel-summary close button. The card is populated on
 // row click below; the X dismisses without clearing the results.
@@ -606,6 +629,11 @@ function captureUrlState() {
   const subjectRollVal = (subjectRollEl?.value || '').trim();
   if (subjectRollVal) s.subjectRoll = subjectRollVal;
 
+  // N1 crosswalk filter (Sales tab). 'any' is the default and stays
+  // out of the URL.
+  const n1Val = document.getElementById('sales-n1-filter')?.value;
+  if (n1Val === 'matched' || n1Val === 'unmatched') s.salesN1 = n1Val;
+
   return s;
 }
 
@@ -676,6 +704,11 @@ function applyUrlState(state) {
     // chipInput hasn't bound to #subject-roll yet at this point in
     // module init — it picks up the value when wireSalesTab runs
     // later. No need to dispatch a render event.
+  }
+
+  if ('salesN1' in state) {
+    const el = document.getElementById('sales-n1-filter');
+    if (el) el.value = state.salesN1;
   }
 }
 
@@ -3069,6 +3102,43 @@ function wireSalesTab() {
     $dateTo.addEventListener('change', () => { if (salesData) runSalesAnalysis(); });
   }
 
+  // Date-preset pills. Fill the pickers, flash them so the change is
+  // visible, then dispatch 'change' — the pickers' own listeners above
+  // do the rest (Winnipeg's date inputs commit on change, not input).
+  const flashDates = () => {
+    for (const el of [$dateFrom, $dateTo]) {
+      if (!el) continue;
+      el.classList.remove('just-set');
+      void el.offsetWidth;   // restart the animation
+      el.classList.add('just-set');
+    }
+  };
+  for (const btn of document.querySelectorAll('.date-preset-btn')) {
+    btn.addEventListener('click', () => {
+      if (!$dateFrom || !$dateTo) return;
+      if (btn.dataset.clear === '1') {
+        $dateFrom.value = '';
+        $dateTo.value = '';
+      } else {
+        const { from, to } = presetRange(parseInt(btn.dataset.months || '0', 10));
+        $dateFrom.value = from;
+        $dateTo.value = to;
+      }
+      flashDates();
+      $dateFrom.dispatchEvent(new Event('change', { bubbles: true }));
+      $dateTo.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+
+  // N1 crosswalk filter (Additional filters). Shareable via ?n1=.
+  const $n1Filter = document.getElementById('sales-n1-filter');
+  if ($n1Filter) {
+    $n1Filter.addEventListener('change', () => {
+      queueUrlWrite();
+      if (salesData) runSalesAnalysis();
+    });
+  }
+
   // Lot-size range + street name. 'input' rather than 'change' so the
   // set narrows as you type — these two are the filters you tune by
   // watching the count, unlike the date pickers which commit once.
@@ -3262,6 +3332,10 @@ async function handleSalesUpload({ name, text }, remember = true) {
     // codes).
     pucsFilter.reset();
     classFilter.reset();
+    // The N1 filter resets too: Matched/Unmatched is a statement about
+    // THIS CSV's crosswalk column, not a standing preference.
+    const $n1 = document.getElementById('sales-n1-filter');
+    if ($n1) $n1.value = 'any';
     rebuildPucsFilter();
     // Same reasoning for drawn area shapes: a stale include shape over
     // the previous CSV's neighbourhood would filter the new sale set to
@@ -3423,6 +3497,15 @@ async function runSalesAnalysis() {
     visibleSales = visibleSales.filter((s) => passesPriceFilter(s, priceLo, priceHi));
   }
 
+  // N1 crosswalk status. Row-level (one record per roll+instrument), so
+  // a multi-parcel sale matched on some rolls only keeps exactly its
+  // unmatched rows — those ARE the data-entry queue being asked for.
+  // Pre-join like the rest: every filtered row is a roll never fetched.
+  const n1Mode = document.getElementById('sales-n1-filter')?.value || 'any';
+  if (n1Mode !== 'any') {
+    visibleSales = visibleSales.filter((s) => (n1Mode === 'matched' ? !!s.n1Id : !s.n1Id));
+  }
+
 
   if (!visibleSales.length) {
     let msg;
@@ -3442,6 +3525,9 @@ async function runSalesAnalysis() {
       // has no size to test and drops out silently otherwise.
       msg = `${salesData.sales.length} sales loaded, but none fall inside the lot-size range `
           + `(sales missing Land Actual sqft can't be measured and are excluded while it's set).`;
+    } else if (n1Mode !== 'any') {
+      msg = `${salesData.sales.length} sales loaded, but none are N1-${n1Mode}. `
+          + `CSVs without an N1 ID column read as entirely unmatched.`;
     } else if (dateFrom || dateTo) {
       msg = `${salesData.sales.length} sales loaded, but none fall inside the selected date range.`;
     } else if (pucsSelected) {

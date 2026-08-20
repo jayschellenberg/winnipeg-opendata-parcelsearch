@@ -115,6 +115,9 @@ export function dedupAndGroupSales(rows) {
         streetDirection: r['Street Direction'] || null,
         streetName: r['Street Name'] || null,
         numUnits,
+        // N1 comp-database ID from the offline crosswalk; null (not '')
+        // so the N1 filter's truthiness test reads clean.
+        n1Id: String(r['N1 ID'] ?? '').trim() || null,
       });
     } else {
       // Merge: same Parcel ID + same Instrument Number = multiple
@@ -130,6 +133,10 @@ export function dedupAndGroupSales(rows) {
       }
       if (!existing.useCode && r['Par Use Code']) existing.useCode = r['Par Use Code'];
       if (!existing.zoning && r['Zoning']) existing.zoning = r['Zoning'];
+      // The crosswalk stamps its ID on specific rows; when component rows
+      // merge, the surviving record must not lose the ID just because an
+      // un-stamped copy happened to come first.
+      if (!existing.n1Id && r['N1 ID']) existing.n1Id = String(r['N1 ID']).trim();
       // SABRE enumerates a multi-unit parcel one row per unit, with
       // Number of Unit running 1..N (six rows for 185 BANNERMAN). The
       // first row's value is 1, so keeping it would report a six-unit
@@ -212,6 +219,7 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     p._saleYearBuilt = sale.yearBuilt;
     p._saleZoning = sale.zoning || null;
     p._saleNumUnits = sale.numUnits ?? null;
+    p._n1Id = sale.n1Id || null;
     // Shown whenever the CSV carries one.
     //
     // This used to blank the cell when the sworn value EQUALLED the sale

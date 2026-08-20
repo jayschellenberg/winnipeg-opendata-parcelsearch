@@ -3716,3 +3716,343 @@ body.shape-drawing .maplibregl-canvas {
 #results tbody tr:hover td.sworn-mismatch {
   background: #fbe6b8;
 }
+
+/* =================================================================
+   MB-parity port (2026-08): action-button colours, sales-filter
+   layout, date presets, Data Status, SABRE sales database.
+
+   Appended as one block at the tail on purpose — the refresh layer
+   above also matches .controls button, and these must win on source
+   order. Greens/reds are hard-coded hexes for parity with the
+   Manitoba site (its accessibility numbers are already checked:
+   #166534 on white is 7.1:1).
+   ================================================================= */
+
+/* Clear — destructive, dark red. Both tabs' Clear buttons carry
+   class="danger"; so does the SABRE panel's Disconnect. */
+.controls button.danger {
+  background: #8b0000;
+  color: #fff;
+  border: 1px solid #8b0000;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.controls button.danger:hover:not(:disabled) {
+  background: #6f0000;
+  border-color: #6f0000;
+  color: #fff;
+}
+.controls button.danger:disabled {
+  background: #e7ebe7;
+  color: #8b958f;
+  border-color: var(--ui-line);
+  box-shadow: none;
+}
+
+/* The two "go" actions, green — scoped to IDs, deliberately not a
+   class, so nothing else drifts green. The :disabled overrides are
+   NOT decoration: the ID selector outranks the shared
+   .controls button:disabled fill, so without them a dead button
+   stays green. */
+.controls button#search,
+.controls button#sales-db-load {
+  background: #166534;
+  border-color: #166534;
+  color: #fff;
+}
+.controls button#search:hover:not(:disabled),
+.controls button#sales-db-load:hover:not(:disabled) {
+  background: #14532d;
+  border-color: #14532d;
+}
+.controls button#search:disabled,
+.controls button#sales-db-load:disabled {
+  background: #e7ebe7;
+  color: #8b958f;
+  border-color: var(--ui-line);
+  box-shadow: none;
+}
+
+/* The Data Status trigger is a BUTTON wearing the topbar link's
+   clothes — kill the UA button chrome the .topbar-link rules never
+   had to fight on an <a>. */
+button.topbar-link {
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0 10px;
+}
+
+/* -----------------------------------------------------------------
+   Sales tab: Additional-filters disclosure. Same look as the
+   property tab's Additional Searches (the rules above at ~2262) —
+   duplicated here rather than edited in place so the port stays one
+   appended block.
+   ----------------------------------------------------------------- */
+.sidebar details.more-filters {
+  margin-top: 2px;
+  padding-top: 2px;
+}
+.sidebar details.more-filters > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  margin: 6px 0 2px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  background: var(--ui-panel-muted);
+  color: var(--ui-ink-soft);
+  font-size: 12px;
+  list-style: none;
+  cursor: pointer;
+}
+.sidebar details.more-filters > summary::-webkit-details-marker {
+  display: none;
+}
+.sidebar details.more-filters > summary::before {
+  content: ">";
+  color: var(--ui-muted);
+  font-size: 11px;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+.sidebar details.more-filters[open] > summary::before {
+  transform: rotate(90deg);
+}
+.sidebar details.more-filters > summary:hover {
+  color: var(--ui-ink);
+  border-color: var(--ui-line-strong);
+  background: #fff;
+}
+
+/* N1 crosswalk filter row inside the disclosure. Label styling
+   comes from the existing .sales-range-label. */
+.sales-n1-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.sales-n1-row select {
+  flex: 0 1 auto;
+  font-size: 12px;
+  padding: 3px 4px;
+}
+
+/* -----------------------------------------------------------------
+   Date-preset pills. flex: 0 0 auto on the buttons on purpose —
+   stretching them to fill the row was tried on the MB site and
+   rejected: a pill the width of a button stops reading as a pill.
+   ----------------------------------------------------------------- */
+.sidebar .date-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+.date-presets-prefix {
+  font-size: 11.5px;
+  color: var(--ui-muted);
+  margin-right: 2px;
+}
+.controls button.date-preset-btn {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ui-ink-soft);
+  background: var(--ui-panel-muted);
+  border: 1px solid var(--ui-line);
+  border-radius: 999px;
+  box-shadow: none;
+}
+.controls button.date-preset-btn:hover:not(:disabled) {
+  color: var(--ui-ink);
+  background: #fff;
+  border-color: var(--ui-line-strong);
+}
+.controls button.date-preset-clear {
+  padding: 3px 7px;
+}
+
+/* One-shot flash on the pickers when a preset fills them, so the
+   change is visible even with the inputs below the fold of the eye. */
+@keyframes date-set-flash {
+  from {
+    background: var(--ui-accent-soft);
+    border-color: var(--ui-accent);
+  }
+}
+.sales-date-input.just-set {
+  animation: date-set-flash 700ms ease-out;
+}
+
+/* Hide-sentinels shares the action row with Clear (MB pattern): the
+   toggle governs the whole result set, so it sits beside the other
+   whole-set action. Clear keeps its natural width; the label takes
+   the rest and right-aligns. */
+.sales-action-row #sales-clear {
+  flex: 0 0 auto;
+  padding-left: 18px;
+  padding-right: 18px;
+}
+.sales-action-row .sales-nominal-inline {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+/* -----------------------------------------------------------------
+   Data-staleness banner. Hidden is the healthy state — display:flex
+   would defeat the hidden attribute without the explicit guard.
+   ----------------------------------------------------------------- */
+.data-staleness-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.data-staleness-banner[hidden] {
+  display: none;
+}
+.data-staleness-banner.data-staleness-amber {
+  background: #fef3c7;
+  color: #92400e;
+}
+.data-staleness-banner.data-staleness-red {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* -----------------------------------------------------------------
+   Data Status dialog (and the SABRE Coverage dialog, which reuses
+   the same table classes).
+   ----------------------------------------------------------------- */
+.data-status-intro {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  color: var(--ui-ink-soft);
+}
+.data-status-hint {
+  margin: 2px 0 6px;
+  font-size: 11.5px;
+  color: var(--ui-muted);
+}
+.data-status-block {
+  margin: 10px 0;
+}
+.data-status-block > summary {
+  cursor: pointer;
+  font-size: 13px;
+  padding: 3px 0;
+}
+.data-status-scroll {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  margin-top: 4px;
+}
+.data-status-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.data-status-table th {
+  position: sticky;
+  top: 0;
+  background: var(--ui-panel-muted);
+  text-align: left;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ui-line-strong);
+  white-space: nowrap;
+}
+.data-status-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--ui-line);
+  vertical-align: top;
+}
+.data-status-table .is-unknown {
+  color: var(--ui-muted);
+}
+
+/* -----------------------------------------------------------------
+   SABRE sales database panel.
+   ----------------------------------------------------------------- */
+.sidebar details.sales-db {
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  background: var(--ui-panel-muted);
+  margin: 0 0 10px;
+}
+.sidebar details.sales-db > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  font-size: 12.5px;
+  color: var(--ui-ink-soft);
+  list-style: none;
+  cursor: pointer;
+}
+.sidebar details.sales-db > summary::-webkit-details-marker {
+  display: none;
+}
+.sidebar details.sales-db > summary::before {
+  content: ">";
+  color: var(--ui-muted);
+  font-size: 11px;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+.sidebar details.sales-db[open] > summary::before {
+  transform: rotate(90deg);
+}
+.sidebar details.sales-db > summary:hover {
+  color: var(--ui-ink);
+}
+.sales-db-status {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ui-muted);
+  white-space: nowrap;
+}
+.sales-db-empty,
+.sales-db-ready {
+  padding: 0 10px 10px;
+}
+.sales-db-hint {
+  margin: 4px 0 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ui-ink-soft);
+}
+.sales-db-daterange-hint {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  color: #92400e;
+}
+.sales-db-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sales-db-actions button {
+  flex: 1 1 auto;
+}
+.sales-db-update {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--ui-ink-soft);
+}
+.sales-db-update.is-stale {
+  color: #92400e;
+  font-weight: 600;
+}

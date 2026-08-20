@@ -128,6 +128,11 @@ export const SCHEMA = {
   // so 10-digit and 11-digit forms both round-trip; main.js
   // normalizes via normalizeRoll() on read.
   subjectRoll: { param: 'sr', validate: cleanString, format: (v) => v },
+
+  // --- N1 crosswalk filter (Sales tab) ---
+  // 'any' is the default and never emitted; only the two narrowing
+  // states are shareable.
+  salesN1: { param: 'n1', validate: oneOf(['matched', 'unmatched']), format: (v) => v },
 };
 
 const PARAM_TO_KEY = Object.fromEntries(

@@ -69,6 +69,11 @@ export const SALES_HEADER_ALIASES = {
   'Street Direction':   ['street direction', 'street dir', 'st direction'],
   'Street Name':        ['street name', 'st name'],
   'Number of Unit':     ['number of unit', 'number of units', 'no of units', 'units'],
+  // Jason's N1 comp-database ID, stamped onto SABRE rows by the offline
+  // crosswalk (a backfill archive, non-residential only). Blank or absent
+  // means "not matched yet" — the N1 filter reads that as the queue of
+  // sales still to be entered into N1.
+  'N1 ID':              ['n1 id', 'n1id', 'n1'],
 };
 
 /**

@@ -293,6 +293,30 @@ test('buildSaleFeatures — a single-parcel sale lists just itself', () => {
   assert.deepEqual(JSON.parse(f.properties._saleGroupRollIds), ['06070731000']);
 });
 
+test('dedupAndGroupSales — N1 ID: first non-blank wins across component rows', () => {
+  const out = dedupAndGroupSales([
+    row({ 'N1 ID': '' }),
+    row({ 'N1 ID': '4471' }),
+    row({ 'N1 ID': '9999' }),   // a later stamped copy must not overwrite
+  ]);
+  assert.equal(out.sales.length, 1);
+  assert.equal(out.sales[0].n1Id, '4471');
+});
+
+test('dedupAndGroupSales — no N1 column at all leaves n1Id null', () => {
+  const out = dedupAndGroupSales([row()]);
+  assert.equal(out.sales[0].n1Id, null);
+});
+
+test('buildSaleFeatures — _n1Id stamped from the record; null when absent', () => {
+  const { sales, groups } = dedupAndGroupSales([row({ 'N1 ID': ' 4471 ' })]);
+  const [f] = buildSaleFeatures(sales, liveMap(), groups);
+  assert.equal(f.properties._n1Id, '4471');
+  const bare = dedupAndGroupSales([row()]);
+  const [g] = buildSaleFeatures(bare.sales, liveMap(), bare.groups);
+  assert.equal(g.properties._n1Id, null);
+});
+
 console.log('');
 console.log(`${passed}/${passed + failed} passed`);
 if (failed > 0) process.exit(1);

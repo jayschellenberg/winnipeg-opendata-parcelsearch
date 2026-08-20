@@ -395,4 +395,24 @@ assert.deepEqual(
   [['a', 'b', 'c'], ['1\n2', 'x', 'y']],
 );
 
+// ---- N1 ID (optional crosswalk column) ------------------------------------
+{
+  const withN1 = parseSalesText(
+    'Parcel ID,Instrument Number,Sale Dates,Sold Price,n1\n'
+    + '6070731000,INST-1,2024-03-01,350000,4471\n'
+    + '6070731001,INST-2,2024-04-02,410000,\n'
+  );
+  assert.equal(withN1.missingRequired.length, 0);
+  assert.equal(withN1.rows.length, 2);
+  assert.equal(withN1.rows[0]['N1 ID'], '4471', 'n1 alias maps to canonical N1 ID');
+  assert.equal(withN1.rows[1]['N1 ID'], '', 'blank cell survives as blank');
+
+  const withoutN1 = parseSalesText(
+    'Parcel ID,Instrument Number,Sale Dates,Sold Price\n'
+    + '6070731000,INST-1,2024-03-01,350000\n'
+  );
+  assert.ok(!('N1 ID' in withoutN1.rows[0]),
+    'absent column leaves no N1 ID key on the row');
+}
+
 console.log('salesImport.test.js: all assertions passed');

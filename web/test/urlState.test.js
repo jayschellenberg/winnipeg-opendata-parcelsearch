@@ -315,8 +315,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 30 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 numbering + 1 subjectRoll)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 30);
+test('SCHEMA — has exactly 31 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 numbering + 1 subjectRoll + 1 salesN1)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 31);
 });
 
 test('numberingToggle round-trips as the nu param', () => {
@@ -381,6 +381,15 @@ test('decodeState — tab=unknown dropped', () => {
 test('round-trip — tab=sales survives', () => {
   const state = { tab: 'sales', roll: '12345' };
   assert.deepEqual(decodeState(encodeState(state)), state);
+});
+
+test('salesN1 — matched/unmatched round-trip; the default and garbage stay out', () => {
+  assert.equal(new URLSearchParams(encodeState({ salesN1: 'unmatched' })).get('n1'), 'unmatched');
+  assert.deepEqual(decodeState('n1=matched'), { salesN1: 'matched' });
+  assert.deepEqual(decodeState('n1=bogus'), {});
+  // 'any' is the default — never emitted, never accepted as state.
+  assert.deepEqual(decodeState('n1=any'), {});
+  assert.equal(encodeState({}), '');
 });
 
 console.log('');

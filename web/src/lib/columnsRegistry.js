@@ -227,6 +227,14 @@ export const COLUMNS = [
     render: (a) => td(a._saleInstrument || null),
     csv: { header: 'Instrument', extract: (a) => a._saleInstrument } },
 
+  { key: 'n1Id',         header: 'N1 ID',         mode: 'sales',  sortable: true,
+    theadTitle: 'Narrative1 comp-database ID from the offline SABRE crosswalk. '
+      + 'Blank = not matched to an N1 record yet (or the CSV carries no N1 ID '
+      + 'column) — filter to Unmatched under Additional filters to work the '
+      + 'data-entry queue.',
+    render: (a) => td(a._n1Id != null ? String(a._n1Id) : null, 'num'),
+    csv: { header: 'N1 ID', extract: (a) => a._n1Id } },
+
   { key: 'lot',          header: 'Lot',           mode: 'always', sortable: true,
     render: (_a, s) => truncatedTd(s.lot, 10),
     csv: { header: 'Lot', extract: (_a, s) => s.lot } },
