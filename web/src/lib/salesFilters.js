@@ -209,3 +209,191 @@ export function passesStreetFilter(sale, query) {
   if (text === '') return false;
   return text.includes(query);
 }
+
+/* ---------------------------------------------------------------------
+ * POST-JOIN predicates (Manitoba parity: `sale-asmt-max`,
+ * `vacant-improved`, `far-flung-km` / `far-flung-exclude`).
+ *
+ * Unlike everything above these run AFTER the d4mq-wa44 join, because
+ * what they test only exists once the live record is attached: the
+ * assessed total, the assessor's use code, and the parcel centroids.
+ * They take joined FEATURES, not SaleRecords.
+ *
+ * The two rules above still hold — empty is off, missing is excluded —
+ * with one deliberate exception, called out on isFarFlung: a sale whose
+ * spread cannot be measured is never *excluded*, because the far-flung
+ * control removes comps rather than narrowing to them.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Sale ÷ Assessed Total as a plain ratio, or null when the sale has no
+ * measurable ratio.
+ *
+ * buildSaleFeatures stamps `_saleToAsmt` as a PERCENTAGE (price/asmt ×
+ * 100) because that is what the grid column shows; the cap the user
+ * picks is a ratio (≤ 1.5), so the conversion happens here, once,
+ * rather than at each call site.
+ */
+export function saleAsmtRatio(feature) {
+  const pct = Number(feature?.properties?._saleToAsmt);
+  if (!Number.isFinite(pct) || pct <= 0) return null;
+  return pct / 100;
+}
+
+/**
+ * Keep sales whose Sale/Asmt ratio is at or below `cap`. Null cap is
+ * off. Inclusive at the bound, matching the "≤ 1.5" option labels.
+ *
+ * A sale with no ratio (no assessment on the live record, or no live
+ * match at all) fails an active cap: the cap exists to catch sales the
+ * assessment hasn't caught up to, and an unmeasured sale is exactly the
+ * case that must not be waved through unchecked.
+ */
+export function passesSaleAsmtMax(feature, cap) {
+  if (cap == null) return true;
+  const ratio = saleAsmtRatio(feature);
+  if (ratio == null) return false;
+  return ratio <= cap;
+}
+
+/*
+ * Vacant-land use codes. Winnipeg's assessor classifies vacancy
+ * directly in the Property Use Code, so this is the assessor's own
+ * determination rather than the Manitoba app's buildings-value
+ * threshold proxy — which is why this port carries no equivalent of
+ * MB's `vacant-threshold` input: there is no number to tune.
+ *
+ * Matched on the 5-character code prefix, since the live record spells
+ * it "VCOMM - VACANT COMMERCIAL" while a SABRE export carries the bare
+ * "VCOMM".
+ */
+const VACANT_CODES = new Set([
+  'VRES1',   // vacant residential 1
+  'VRES2',   // vacant residential 2
+  'VCOMM',   // vacant commercial
+  'VINDU',   // vacant industrial
+  'VAGRI',   // vacant agricultural
+  'VAPRK',   // vacant park
+  'CNVAC',   // condo vacant
+]);
+
+/** The bare 5-char use code for a joined sale feature, preferring the
+ *  CSV's own Par Use Code and falling back to the live record. '' when
+ *  neither is present. */
+export function saleUseCodeOf(feature) {
+  const p = feature?.properties || {};
+  const raw = p._saleUseCode || p.property_use_code || '';
+  return String(raw).trim().toUpperCase().split(/[\s-]/)[0];
+}
+
+/** True when the code is one the assessor marks vacant. */
+export function isVacantUseCode(code) {
+  return VACANT_CODES.has(String(code ?? '').trim().toUpperCase());
+}
+
+/**
+ * Vacancy verdict per SALE GROUP (instrument), so every row of a
+ * multi-parcel sale passes or fails together — the same rule the lot-
+ * size filter uses. A sale is:
+ *
+ *   'vacant'   — every parcel in it is a vacant code
+ *   'improved' — at least one parcel is not
+ *   'unknown'  — no parcel has any use code to read
+ *
+ * MB's wording, adapted to the code-based signal. A group is judged as
+ * a whole because that is how it sold: one improved parcel makes the
+ * transaction an improved sale, whatever the other lots were.
+ *
+ * @param {Array} features joined sale features
+ * @returns {Map<string, 'vacant'|'improved'|'unknown'>} keyed by instrument
+ */
+export function groupVacancy(features) {
+  const byGroup = new Map();
+  for (const f of features || []) {
+    const key = String(f?.properties?._saleInstrument ?? '');
+    const code = saleUseCodeOf(f);
+    const prev = byGroup.get(key);
+    if (!code) {
+      if (prev === undefined) byGroup.set(key, 'unknown');
+      continue;
+    }
+    if (isVacantUseCode(code)) {
+      // A vacant parcel only keeps a group vacant; it can't rescue one
+      // already known to hold an improvement.
+      if (prev === undefined || prev === 'unknown') byGroup.set(key, 'vacant');
+    } else {
+      byGroup.set(key, 'improved');
+    }
+  }
+  return byGroup;
+}
+
+/**
+ * Keep sales matching the vacant/improved mode. 'all' (or anything
+ * unrecognised) is off. A sale whose vacancy is unknown drops out of
+ * BOTH narrowed modes — it has not been checked either way.
+ */
+export function passesVacantFilter(feature, mode, vacancyByGroup) {
+  if (mode !== 'vacant' && mode !== 'improved') return true;
+  const key = String(feature?.properties?._saleInstrument ?? '');
+  return vacancyByGroup.get(key) === mode;
+}
+
+/**
+ * How far apart the parcels of each multi-parcel sale lie, in km,
+ * measured as the largest centroid-to-centroid distance within the
+ * group.
+ *
+ * Single-parcel sales get 0 — they have no spread, and reporting null
+ * would wrongly read as "couldn't measure". A group is null only when
+ * fewer than two of its parcels have a centroid, i.e. the spread
+ * genuinely cannot be measured.
+ *
+ * @param {Array} features joined sale features
+ * @param {(f: object) => [number, number]|null} centroidOf
+ * @param {(a: [number, number], b: [number, number]) => number|null} distanceKm
+ * @returns {Map<string, number|null>} keyed by instrument
+ */
+export function groupSpreadKm(features, centroidOf, distanceKm) {
+  const points = new Map();
+  const sizes = new Map();
+  for (const f of features || []) {
+    const key = String(f?.properties?._saleInstrument ?? '');
+    sizes.set(key, (sizes.get(key) || 0) + 1);
+    const c = centroidOf(f);
+    if (!c) continue;
+    if (!points.has(key)) points.set(key, []);
+    points.get(key).push(c);
+  }
+  const out = new Map();
+  for (const [key, count] of sizes) {
+    const pts = points.get(key) || [];
+    if (count < 2) { out.set(key, 0); continue; }
+    if (pts.length < 2) { out.set(key, null); continue; }
+    let max = 0;
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const d = distanceKm(pts[i], pts[j]);
+        if (Number.isFinite(d) && d > max) max = d;
+      }
+    }
+    out.set(key, max);
+  }
+  return out;
+}
+
+/**
+ * Is this spread beyond the threshold? Blank / 0 / negative threshold
+ * turns the marking off entirely.
+ *
+ * An unmeasurable spread (null) is NOT far-flung. This is the one place
+ * the "missing is excluded" rule is deliberately inverted: every other
+ * filter narrows TO something and an unchecked row must not sneak in,
+ * whereas this one REMOVES comps, so an unchecked row must not be
+ * silently thrown away. Same call the Manitoba app makes.
+ */
+export function isFarFlung(spreadKm, thresholdKm) {
+  if (thresholdKm == null || !(thresholdKm > 0)) return false;
+  if (spreadKm == null || !Number.isFinite(spreadKm)) return false;
+  return spreadKm > thresholdKm;
+}

@@ -26,6 +26,27 @@ import {
 } from './water.js';
 
 /**
+ * $/Lot SF, with a ⚠ span appended when the sale is far-flung — its own
+ * parcels lie farther apart than the threshold, so the blended rate is
+ * not a local comparable. The badge only appears while the Far-Flung
+ * threshold is set; marking never removes anything on its own.
+ */
+function farFlungTd(a) {
+  const cell = td(formatDollars(a._pricePerSf), 'num');
+  if (!a._farFlung) return cell;
+  const span = Number(a._saleGroupSpanKm);
+  const badge = document.createElement('span');
+  badge.className = 'far-flung-badge';
+  badge.textContent = Number.isFinite(span) ? ` ⚠ ${Math.round(span)} km` : ' ⚠';
+  badge.title = Number.isFinite(span)
+    ? `Far-flung sale: this transaction's parcels span ${Math.round(span)} km, so the blended $/Lot SF is not a local comparable.`
+    : "Far-flung sale: this transaction's parcels are widely separated.";
+  cell.appendChild(badge);
+  cell.classList.remove('empty');
+  return cell;
+}
+
+/**
  * Water cell: a colour dot plus the water body, with the full verdict
  * in the tooltip.
  *
@@ -208,7 +229,11 @@ export const COLUMNS = [
 
   { key: 'pricePerSf',   header: '$/Lot SF',      mode: 'sales',  sortable: true,
     theadTitle: 'Sale price ÷ Land Actual sqft. For multi-parcel sales, divides by the group total land.',
-    render: (a) => td(formatDollars(a._pricePerSf), 'num'),
+    // The far-flung warning rides on THIS cell rather than a group-size
+    // column, because the blended rate is the figure a scattered
+    // portfolio sale invalidates — and it is the number an appraiser
+    // would otherwise lift straight into a comp set.
+    render: (a) => farFlungTd(a),
     csv: { header: '$/Lot SF', extract: (a) => a._pricePerSf } },
 
   { key: 'saleToAsmt',   header: 'Sale/Asmt',     mode: 'sales',  sortable: true,

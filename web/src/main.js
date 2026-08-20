@@ -37,6 +37,7 @@ import { formatSqFt } from './lib/format.js';
 import { encodeState, decodeState } from './lib/urlState.js';
 import { initSidebarTabs, setActiveTab, onTabChange } from './lib/tabs.js';
 import { presetRange } from './lib/datePresets.js';
+import { readMapLegends, layoutMapLegends, paintMapLegends } from './lib/mapLegend.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
 import bbox from '@turf/bbox';
@@ -105,6 +106,8 @@ import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
   passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
+  passesSaleAsmtMax, groupVacancy, passesVacantFilter,
+  groupSpreadKm, isFarFlung,
 } from './lib/salesFilters.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { computeSizeChanges } from './lib/sizeChange.js';
@@ -458,6 +461,14 @@ wireSalesTab();
 // ~500-byte same-origin fetch at init.
 initDataStatusDialog();
 initStalenessBanner();
+
+// Legend-in-image tick: reveal it only while a legend is on screen.
+updateLegendAvailability();
+if ($mapEl) {
+  new MutationObserver(updateLegendAvailability).observe($mapEl, {
+    subtree: true, attributes: true, attributeFilter: ['hidden', 'style', 'class'],
+  });
+}
 
 // SABRE sales database panel. onLoad hands the merged archive to the
 // same pipeline as a file drop; remember=false keeps the multi-file
@@ -2838,6 +2849,45 @@ function pruneVerifyKeys(max) {
 // summary card.
 
 /**
+ * The far-flung tally that sits outside the Additional-filters
+ * disclosure. Silent when nothing is flagged: a permanent "none
+ * flagged" beside a control the user can't see would be noise that
+ * trains the eye to skip it. Counted by distinct SALE, not by row — a
+ * 14-parcel portfolio sale is one sale, and saying 14 would badly
+ * overstate what is being set aside.
+ */
+function updateFarFlungCount(sales, thresholdKm, excluding) {
+  const el = document.getElementById('far-flung-count');
+  if (!el) return;
+  if (!thresholdKm || !sales) {
+    el.textContent = '';
+    el.classList.remove('has-flagged');
+    el.removeAttribute('title');
+    return;
+  }
+  const verb = excluding ? 'excluded' : 'flagged';
+  el.textContent = `⚠ Far-Flung: ${sales} sale${sales === 1 ? '' : 's'} ${verb}`;
+  el.classList.add('has-flagged');
+  el.title = excluding
+    ? `Sales whose own parcels lie more than ${thresholdKm} km apart are being REMOVED from the table, map and export. Change the threshold or untick Exclude under Additional filters.`
+    : `Sales whose own parcels lie more than ${thresholdKm} km apart are marked with a ⚠ on $/Lot SF. Nothing is removed unless you tick Exclude under Additional filters.`;
+}
+
+/**
+ * Show the "Include legend in map image" tick only once a legend is
+ * actually on screen. Watching the map pane for hidden/style flips
+ * beats hooking each of the dozen overlay handlers — one observer
+ * cannot be forgotten when a new overlay is added.
+ */
+function updateLegendAvailability() {
+  const label = document.getElementById('legend-toggle-label');
+  if (!label || !$mapEl) return;
+  const any = [...$mapEl.querySelectorAll('.map-legend')]
+    .some((el) => !el.hidden && el.offsetParent !== null);
+  label.hidden = !any;
+}
+
+/**
  * Capture the current interactive-map view as a static <img> embedded
  * below the table. Forces a synchronous repaint first (waits for the
  * `idle` event) so the snapshot captures every layer in its final
@@ -2925,6 +2975,23 @@ function composeWithAttribution(srcCanvas) {
   for (let i = 0; i < lines.length; i++) {
     const yMid = y0 + padY + i * lineHeight + Math.round(fontSize / 2);
     ctx.fillText(lines[i], x0 + padX, yMid);
+  }
+
+  // Legend, when asked for: stacked upward from just above the credit
+  // pill, in the same bottom-right corner it occupies on screen. Drawn
+  // last so it sits over the map; the image keeps its dimensions.
+  if (document.getElementById('legend-toggle')?.checked) {
+    const legends = readMapLegends($mapEl, (el) => getComputedStyle(el));
+    if (legends.length) {
+      const measure = (t, bold) => {
+        ctx.font = `${bold ? '600 ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+        return ctx.measureText(t).width;
+      };
+      const boxes = layoutMapLegends(legends, {
+        width: w, height: h, bottomY: y0 - 6, fontSize, measureText: measure,
+      });
+      paintMapLegends(ctx, boxes, fontSize);
+    }
   }
   return out.toDataURL('image/png');
 }
@@ -3128,6 +3195,18 @@ function wireSalesTab() {
       $dateFrom.dispatchEvent(new Event('change', { bubbles: true }));
       $dateTo.dispatchEvent(new Event('change', { bubbles: true }));
     });
+  }
+
+  // Sale/Asmt cap, vacant/improved, and the far-flung pair. All re-run
+  // the analysis; the far-flung km field listens on 'input' too so the
+  // tally tracks as you type rather than only on blur.
+  for (const id of ['sale-asmt-max', 'vacant-improved', 'far-flung-exclude', 'far-flung-km']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('change', () => { if (salesData) runSalesAnalysis(); });
+    if (id === 'far-flung-km') {
+      el.addEventListener('input', () => { if (salesData) runSalesAnalysis(); });
+    }
   }
 
   // N1 crosswalk filter (Additional filters). Shareable via ?n1=.
@@ -3336,6 +3415,14 @@ async function handleSalesUpload({ name, text }, remember = true) {
     // THIS CSV's crosswalk column, not a standing preference.
     const $n1 = document.getElementById('sales-n1-filter');
     if ($n1) $n1.value = 'any';
+    // Same reasoning for the other narrowing controls: they describe the
+    // previous comp set, not a standing preference. Far-flung is left
+    // alone — its threshold is a judgement about what counts as
+    // scattered, which does carry across uploads.
+    const $asmtCap = document.getElementById('sale-asmt-max');
+    if ($asmtCap) $asmtCap.value = '';
+    const $vacant = document.getElementById('vacant-improved');
+    if ($vacant) $vacant.value = 'all';
     rebuildPucsFilter();
     // Same reasoning for drawn area shapes: a stale include shape over
     // the previous CSV's neighbourhood would filter the new sale set to
@@ -3685,7 +3772,50 @@ async function runSalesAnalysis() {
     : afterClass.filter((f) => passesZoningFilter(f, zoningSelected, stripZoningCode));
   const zoningHidden = afterClass.length - visibleFeatures.length;
 
-  const rows = visibleFeatures.map((f) => ({ assess: f, survey: null }));
+  // Sale/Asmt cap. Post-join by necessity: the ratio needs the live
+  // assessed total, so it does not exist until the roll lookup resolves.
+  const asmtCapRaw = parseFloat(document.getElementById('sale-asmt-max')?.value ?? '');
+  const asmtCap = Number.isFinite(asmtCapRaw) && asmtCapRaw > 0 ? asmtCapRaw : null;
+  const afterAsmt = asmtCap == null
+    ? visibleFeatures
+    : visibleFeatures.filter((f) => passesSaleAsmtMax(f, asmtCap));
+  const asmtHidden = visibleFeatures.length - afterAsmt.length;
+
+  // Vacant / improved, from the assessor's use code. Judged per SALE so
+  // every parcel of a multi-parcel transaction passes or fails together
+  // — one improved parcel makes the whole thing an improved sale.
+  const vacantMode = document.getElementById('vacant-improved')?.value || 'all';
+  const vacancyByGroup = groupVacancy(afterAsmt);
+  const afterVacant = vacantMode === 'all'
+    ? afterAsmt
+    : afterAsmt.filter((f) => passesVacantFilter(f, vacantMode, vacancyByGroup));
+  const vacantHidden = afterAsmt.length - afterVacant.length;
+
+  // Far-flung. The threshold MARKS; only the Exclude tick removes. The
+  // span is a group property, so a flagged sale drops whole — never
+  // part of one, which would silently corrupt its $/Lot SF.
+  const farFlungRaw = parseFloat(document.getElementById('far-flung-km')?.value ?? '');
+  const farFlungKm = Number.isFinite(farFlungRaw) && farFlungRaw > 0 ? farFlungRaw : null;
+  const farFlungExclude = !!document.getElementById('far-flung-exclude')?.checked;
+  const spanByGroup = groupSpreadKm(afterVacant, featureCentroid, haversineKm);
+  for (const f of afterVacant) {
+    const span = spanByGroup.get(String(f.properties._saleInstrument ?? ''));
+    f.properties._saleGroupSpanKm = span;
+    f.properties._farFlung = isFarFlung(span, farFlungKm);
+  }
+  // Tally off the PRE-exclusion set: counting what survived would report
+  // "none flagged" at the moment six sales are being hidden.
+  const flaggedSales = new Set(
+    afterVacant.filter((f) => f.properties._farFlung)
+      .map((f) => String(f.properties._saleInstrument ?? ''))
+  ).size;
+  const finalFeatures = farFlungKm != null && farFlungExclude
+    ? afterVacant.filter((f) => !f.properties._farFlung)
+    : afterVacant;
+  const farFlungHidden = afterVacant.length - finalFeatures.length;
+  updateFarFlungCount(flaggedSales, farFlungKm, farFlungExclude);
+
+  const rows = finalFeatures.map((f) => ({ assess: f, survey: null }));
   const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
   // Counted off the SHOWN rows rather than liveByRoll, which spans the
   // whole pre-class-filter set — subtracting it once the class filter
@@ -3711,14 +3841,17 @@ async function runSalesAnalysis() {
     // named: a filter the user can forget they set must never silently
     // shrink the comp set.
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
-    (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '')
+    (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
+    (asmtHidden ? ` · ${asmtHidden} over the Sale/Asmt cap` : '') +
+    (vacantHidden ? ` · ${vacantHidden} hidden by the ${vacantMode} filter` : '') +
+    (farFlungHidden ? ` · ${farFlungHidden} far-flung excluded` : '')
   );
 
   // Draw matched parcels on the map. Repeat sales share one polygon;
   // setParcels' geometry-hash dedupe draws it once.
   const mappable = {
     type: 'FeatureCollection',
-    features: visibleFeatures.filter((f) => f.geometry),
+    features: finalFeatures.filter((f) => f.geometry),
   };
   setParcels(EMPTY_FC, mappable);
 

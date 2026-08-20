@@ -19,6 +19,9 @@ import {
   saleAddressText, normalizeStreetQuery, passesStreetFilter,
   salePriceOf, passesRange, passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
+  saleAsmtRatio, passesSaleAsmtMax,
+  saleUseCodeOf, isVacantUseCode, groupVacancy, passesVacantFilter,
+  groupSpreadKm, isFarFlung,
 } from '../src/lib/salesFilters.js';
 
 let passed = 0;
@@ -271,6 +274,129 @@ test('passesZoningFilter — matches if ANY of the sale’s codes is ticked', ()
 
 test('passesZoningFilter — a sale with no zoning fails an active filter', () => {
   assert.equal(passesZoningFilter(zoned({}), new Set(['R2']), strip), false);
+});
+
+// ---- Sale/Asmt cap --------------------------------------------------------
+// buildSaleFeatures stamps _saleToAsmt as a PERCENTAGE; the cap is a ratio.
+const asmt = (pct, extra = {}) => ({ properties: { _saleToAsmt: pct, ...extra } });
+
+test('saleAsmtRatio converts the stamped percentage back to a ratio', () => {
+  assert.equal(saleAsmtRatio(asmt(150)), 1.5);
+  assert.equal(saleAsmtRatio(asmt(100)), 1);
+  assert.equal(saleAsmtRatio(asmt(0)), null);
+  assert.equal(saleAsmtRatio(asmt(undefined)), null);
+  assert.equal(saleAsmtRatio({}), null);
+});
+
+test('passesSaleAsmtMax — null cap is off; the bound is inclusive', () => {
+  assert.equal(passesSaleAsmtMax(asmt(500), null), true, 'no cap passes everything');
+  assert.equal(passesSaleAsmtMax(asmt(150), 1.5), true, 'exactly at the cap is kept');
+  assert.equal(passesSaleAsmtMax(asmt(151), 1.5), false);
+  assert.equal(passesSaleAsmtMax(asmt(75), 1.5), true);
+});
+
+test('passesSaleAsmtMax — an unmeasurable ratio fails an active cap', () => {
+  assert.equal(passesSaleAsmtMax(asmt(undefined), 1.5), false);
+  assert.equal(passesSaleAsmtMax({ properties: { _noLiveMatch: true } }, 1.5), false);
+  // ...but is untouched when no cap is set.
+  assert.equal(passesSaleAsmtMax(asmt(undefined), null), true);
+});
+
+// ---- Vacant / improved ----------------------------------------------------
+const useCode = (code, inst = 'I1', live = null) => ({
+  properties: { _saleUseCode: code, property_use_code: live, _saleInstrument: inst },
+});
+
+test('saleUseCodeOf prefers the CSV code and strips the live description', () => {
+  assert.equal(saleUseCodeOf(useCode('VCOMM')), 'VCOMM');
+  assert.equal(saleUseCodeOf(useCode(null, 'I1', 'VRES1 - VACANT RESIDENTIAL 1')), 'VRES1');
+  assert.equal(saleUseCodeOf(useCode('resmc')), 'RESMC');
+  assert.equal(saleUseCodeOf({ properties: {} }), '');
+});
+
+test('isVacantUseCode knows the assessor’s vacant codes', () => {
+  for (const c of ['VRES1', 'VRES2', 'VCOMM', 'VINDU', 'VAGRI', 'VAPRK', 'CNVAC']) {
+    assert.equal(isVacantUseCode(c), true, c);
+  }
+  assert.equal(isVacantUseCode('RESMC'), false);
+  assert.equal(isVacantUseCode(''), false);
+  assert.equal(isVacantUseCode(null), false);
+});
+
+test('groupVacancy — a group is vacant only when EVERY parcel is', () => {
+  const v = groupVacancy([
+    useCode('VCOMM', 'A'), useCode('VINDU', 'A'),   // all vacant
+    useCode('VCOMM', 'B'), useCode('RESMC', 'B'),   // one improvement
+    useCode('', 'C'),                                // nothing to read
+  ]);
+  assert.equal(v.get('A'), 'vacant');
+  assert.equal(v.get('B'), 'improved');
+  assert.equal(v.get('C'), 'unknown');
+});
+
+test('groupVacancy — an improved verdict is not undone by a later vacant parcel', () => {
+  const v = groupVacancy([useCode('RESMC', 'A'), useCode('VCOMM', 'A')]);
+  assert.equal(v.get('A'), 'improved');
+});
+
+test('groupVacancy — a blank code does not downgrade a known verdict', () => {
+  assert.equal(groupVacancy([useCode('VCOMM', 'A'), useCode('', 'A')]).get('A'), 'vacant');
+  assert.equal(groupVacancy([useCode('RESMC', 'A'), useCode('', 'A')]).get('A'), 'improved');
+});
+
+test('passesVacantFilter — unknown drops out of BOTH narrowed modes', () => {
+  const v = groupVacancy([useCode('VCOMM', 'A'), useCode('RESMC', 'B'), useCode('', 'C')]);
+  assert.equal(passesVacantFilter(useCode('VCOMM', 'A'), 'all', v), true, 'all is off');
+  assert.equal(passesVacantFilter(useCode('VCOMM', 'A'), 'vacant', v), true);
+  assert.equal(passesVacantFilter(useCode('VCOMM', 'A'), 'improved', v), false);
+  assert.equal(passesVacantFilter(useCode('RESMC', 'B'), 'improved', v), true);
+  assert.equal(passesVacantFilter(useCode('', 'C'), 'vacant', v), false);
+  assert.equal(passesVacantFilter(useCode('', 'C'), 'improved', v), false);
+});
+
+// ---- Far-flung ------------------------------------------------------------
+const at = (lon, lat, inst) => ({ properties: { _saleInstrument: inst, centroid_lon: lon, centroid_lat: lat } });
+const centroidOf = (f) => {
+  const lon = Number(f.properties.centroid_lon);
+  const lat = Number(f.properties.centroid_lat);
+  return Number.isFinite(lon) && Number.isFinite(lat) ? [lon, lat] : null;
+};
+// Flat-earth stand-in: 1 unit of longitude == 1 km. Enough to test the
+// group arithmetic without importing main.js's haversine.
+const fakeKm = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+test('groupSpreadKm — a single-parcel sale spans 0, not null', () => {
+  const spans = groupSpreadKm([at(0, 0, 'A')], centroidOf, fakeKm);
+  assert.equal(spans.get('A'), 0);
+});
+
+test('groupSpreadKm — the widest internal gap wins', () => {
+  const spans = groupSpreadKm(
+    [at(0, 0, 'A'), at(3, 0, 'A'), at(10, 0, 'A')], centroidOf, fakeKm,
+  );
+  assert.equal(spans.get('A'), 10);
+});
+
+test('groupSpreadKm — a multi-parcel sale with under two centroids is unmeasurable', () => {
+  const spans = groupSpreadKm(
+    [at(0, 0, 'A'), { properties: { _saleInstrument: 'A' } }], centroidOf, fakeKm,
+  );
+  assert.equal(spans.get('A'), null, 'null means unknown, not zero');
+});
+
+test('isFarFlung — strictly beyond the threshold, and off when blank or 0', () => {
+  assert.equal(isFarFlung(10, 5), true);
+  assert.equal(isFarFlung(5, 5), false, 'exactly at the threshold is not far-flung');
+  assert.equal(isFarFlung(10, null), false, 'blank threshold is off');
+  assert.equal(isFarFlung(10, 0), false, '0 is off, not "everything"');
+});
+
+test('isFarFlung — an unmeasurable span is never far-flung (fails OPEN)', () => {
+  // The one deliberate inversion of "missing is excluded": this filter
+  // REMOVES comps, so an unchecked sale must not be thrown away.
+  assert.equal(isFarFlung(null, 5), false);
+  assert.equal(isFarFlung(NaN, 5), false);
+  assert.equal(isFarFlung(undefined, 5), false);
 });
 
 console.log('');

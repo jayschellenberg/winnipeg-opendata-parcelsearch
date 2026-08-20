@@ -545,6 +545,27 @@
             ></div>
           </div>
 
+          <!-- Vacant / improved, from the assessor's own Property Use
+               Code. Winnipeg classifies vacancy directly (VRES1, VCOMM,
+               VINDU, VAGRI, VAPRK, VRES2, CNVAC), so unlike the Manitoba
+               app there is no buildings-value threshold to tune — hence
+               no equivalent of its Bldg Threshold input. -->
+          <div class="sales-vacant-row">
+            <label class="vacant-only-label" for="vacant-improved" title="Vacant / improved from the assessment Property Use Code. Vacant Land Only keeps sales where EVERY parcel in the sale carries a vacant code; Improved Only keeps sales where at least one parcel does not. Sales with no use code on any parcel drop out of both. The code is the assessor's classification at the time of the record — verify before relying on it for a land comp.">
+              <select id="vacant-improved">
+                <option value="all" selected>All Sales</option>
+                <option value="vacant">Vacant Land Only</option>
+                <option value="improved">Improved Only</option>
+              </select>
+            </label>
+            <!-- The Far-Flung CONTROLS live under Additional filters; this
+                 read-out stays here, outside the collapsible, and speaks up
+                 only when the filter is actually marking or removing sales.
+                 Otherwise a filter hidden behind a disclosure could be
+                 silently dropping comps. -->
+            <span id="far-flung-count" class="far-flung-count"></span>
+          </div>
+
           <!-- The tune-later filters live behind a disclosure so the
                panel leads with the pickers every comp search starts from
                (date, use, class, zoning). Same pattern as the property
@@ -606,6 +627,50 @@
                 aria-label="Filter sales by street name"
                 title="Keep only sales whose address contains this text. Case-insensitive substring, so BANNER finds BANNERMAN. Empty = no filter."
               />
+            </div>
+
+            <!-- Sale/Asmt cap. Sale price over the assessed total, as a
+                 ratio: a sale well above 1 is often one the assessment
+                 hadn't caught up to (a new building on an old assessment).
+                 Unlike the Manitoba app this is NOT gated behind Vacant
+                 Only — the cap is useful on any comp set, and hiding a
+                 live control behind an unrelated dropdown reads as a bug. -->
+            <div class="sale-asmt-row">
+              <span class="sales-range-label">Sale/Asmt:</span>
+              <select id="sale-asmt-max" aria-label="Maximum Sale/Assessment ratio" title="Drop sales whose Sale ÷ Assessed Total exceeds the cap — usually a sale the assessment hadn't caught up to. Inclusive, so a ratio exactly at the cap is kept. A sale with no assessed value can't be measured and is dropped while a cap is set. Leave on No cap for no filter.">
+                <option value="" selected>No cap</option>
+                <option value="0.5">&#8804; 0.5</option>
+                <option value="0.75">&#8804; 0.75</option>
+                <option value="1">&#8804; 1</option>
+                <option value="1.25">&#8804; 1.25</option>
+                <option value="1.5">&#8804; 1.5</option>
+                <option value="1.75">&#8804; 1.75</option>
+                <option value="2">&#8804; 2</option>
+                <option value="3">&#8804; 3</option>
+                <option value="4">&#8804; 4</option>
+                <option value="5">&#8804; 5</option>
+              </select>
+            </div>
+
+            <!-- Far-Flung. Marks multi-parcel sales whose own parcels lie
+                 farther apart than the threshold (largest centroid-to-
+                 centroid gap inside the one transaction) — a scattered
+                 portfolio whose blended $/Lot SF is not a local comp.
+                 Distinct from Dist (km), which measures distance to the
+                 SUBJECT. No default: Manitoba's calibrated 30 km came off
+                 rural portfolio sales and would never fire inside a city
+                 roughly that wide, so the threshold starts blank (off)
+                 and is Jason's to tune. -->
+            <div class="far-flung-controls-row">
+              <span class="far-flung-field">
+                <label for="far-flung-km">Far-Flung &gt;</label>
+                <input id="far-flung-km" type="number" min="0" step="1" placeholder="km" aria-label="Far-flung threshold in kilometres" />
+                <span class="far-flung-unit">km</span>
+              </span>
+              <label class="far-flung-exclude" for="far-flung-exclude" title="Marking alone removes nothing — a flagged sale just gets a ⚠ on its $/Lot SF, the figure the spread invalidates. Tick Exclude to drop flagged sales from the table, the map and the CSV export. A sale whose spread can't be measured (a parcel with no geometry) is never excluded. Blank or 0 km turns the marking off entirely.">
+                <input type="checkbox" id="far-flung-exclude" />
+                <span>Exclude</span>
+              </label>
             </div>
 
             <!-- N1 crosswalk status. Matched = the row carries an N1 ID
@@ -799,6 +864,20 @@
             >
               <input type="checkbox" id="numbering-toggle" />
               <span>Number parcels</span>
+            </label>
+            <!-- Include legend in map image. Hidden until at least one
+                 map legend is actually on screen — a checkbox that can't
+                 change the output is worse than no checkbox. Affects the
+                 Generate Map PNG only; the on-screen legends are governed
+                 by their own overlay buttons. -->
+            <label
+              id="legend-toggle-label"
+              class="numbering-toggle"
+              title="Draw the map's visible legends into the Generate Map image, stacked in the bottom-right corner just above the credit line — the same corner they occupy on screen. The image keeps its normal dimensions, so the legend sits over the map rather than beside it."
+              hidden
+            >
+              <input type="checkbox" id="legend-toggle" />
+              <span>Include legend in map image</span>
             </label>
             <div class="results-toolbar-spacer"></div>
             <div class="columns-popover-wrap">
