@@ -64,12 +64,18 @@ Two things about the merge are load-bearing:
 
 - Exports are manual pulls capped near 500 records, so their date windows
   overlap and the same sale row arrives in several files. Duplicate rows are
-  dropped across files by an exact full-row match, because
-  `dedupAndGroupSales` SUMS living area per (roll, instrument) — the same
-  physical row imported twice would report a 1,200 sf building as 2,400.
-  Distinct component rows sharing that key are genuine (SABRE enumerates a
-  multi-unit parcel one row per unit) and must survive, and only an
-  exact-cell match tells the two cases apart.
+  dropped across files by an exact full-row match (with the date cell
+  normalized first — SABRE exported one month in two date formats).
+- **SABRE repeats a building's area on every row rather than splitting it.**
+  It writes one row per suite and puts the WHOLE building's Living Area on
+  each: 397 HORACE carries 1,950 sf three times, and the City's assessment
+  record says the building is 1,950 sf. Summing every row matched that record
+  on 0 of the 168 multi-row sales that carry one. But 355 of 889 multi-row
+  sales DO carry genuinely different areas, and those are real sections that
+  must still add up — so `dedupAndGroupSales` sums the DISTINCT areas, which
+  matches on 156 of 168. It also collapses SABRE's blank-`Zoning` twin rows,
+  which used to report 609 sales at exactly 2.00x their true floor area and
+  so halve every `$/Bldg SF`.
 - Files are recognised by their **header**, not their filename, so a renamed
   export still imports and a stray CSV in the folder is ignored and counted.
 
@@ -77,8 +83,18 @@ Two things about the merge are load-bearing:
 (Living Area from the export, else the live record — withheld on a
 vacant-coded sale, since the live record describes the parcel today and
 a lot that sold bare then got built on would otherwise report a
-confident, fictional building rate). Acres is derived from Land Actual
-sqft (÷ 43,560), the City publishing area in square feet only, and joins
+confident, fictional building rate).
+
+The land denominator is SABRE's `Land Actual sqft` — the area at the time of
+sale — falling back to the assessment record's `assessed_land_area` where
+SABRE's is missing or implausibly small, and withheld entirely where neither
+is usable. 41 records carry an area under 100 sf, most of them literally 1,
+and they are not tiny parcels: their prices are ordinary and the roll gives
+them 2,460–8,217 sf. Dividing by the placeholder printed rates up to
+$615,000/sf, which left the median alone but destroyed every trend the charts
+fit. A rate computed on anything other than the row's own figure is marked
+with a ⚠ rather than substituted silently. Acres is derived from that same
+denominator (÷ 43,560), the City publishing area in square feet only, and joins
 `$/Acre` and `$/Lot` — the latter being the consideration split across
 the parcels in the transaction, which is what prices a building lot in a
 multi-lot deal. Every rate uses the same group-total denominator, so an
@@ -88,8 +104,13 @@ The **Charts** button opens [charts.html](web/charts.html) in a second
 tab: `$/Lot SF` over time, `$/Acre` against lot size (the
 size-adjustment curve), and `$/Lot` against lot size. It holds no data of its own — the app broadcasts the filtered set
 over a `BroadcastChannel` and the page redraws, so the charts track the
-sidebar filters live (hence Freeze). It defaults to vacant-land sales,
-where "vacant" is any Property Use Code starting with V plus `CNVAC`.
+sidebar filters live (hence Freeze). It defaults to land sales — which now
+means the grid's permit-corrected **Category**, so the two can never disagree
+about what land is — and to EXCLUDING already-built sales, vacant-coded lots
+that in fact carried a finished house when they changed hands. Roughly half
+the vacant-coded sales in the archive are those, and they clear about 3x a
+genuine lot per square foot, so leaving them in dragged every land trendline
+upward. The header reports the count either way round.
 A chart point is a SALE, not a grid row: a three-parcel assembly is one
 transaction, and three points would triple its weight in every
 trendline. The renderer is hand-rolled SVG because the CSP is
