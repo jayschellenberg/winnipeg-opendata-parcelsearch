@@ -51,8 +51,15 @@ function builtTd(a) {
     if (a._buildUnjudgedTitle) cell.title = a._buildUnjudgedTitle;
     return cell;
   }
+  // A building was found and the verdict was HELD BACK because the price
+  // says the market paid nothing for it. The row is still in the Land
+  // set, which is exactly why it needs the alarm rather than the quiet
+  // styling: it is a land comp with a building on it, and it is the one
+  // row in the set an appraiser has to look at before using.
   const cell = verdict === 'already-built'
     ? td('⚠ Already built', 'demo-teardown')
+    : verdict === 'built-priced-as-land'
+    ? td('⚠ Building, priced as land', 'demo-teardown')
     : td('land → built', 'demo-confirms');
   if (a._buildTitle) cell.title = a._buildTitle;
   return cell;
@@ -396,9 +403,10 @@ export const COLUMNS = [
     theadTitle: 'Was a building standing on a VACANT-coded sale? Three instruments, strongest first: a new-construction permit (City Building Permits, matched by address), then the assessment roll\'s own year built, then SABRE\'s. '
       + 'ALREADY BUILT means the building predates the sale, so the house was finished when the lot changed hands — the sale is an IMPROVED sale the roll had not caught up with, and its rate is not a land rate. '
       + 'Land → built means construction started at or after the sale, which confirms the sale itself bought bare land. '
+      + 'BUILDING, PRICED AS LAND means one of the two inferred instruments found a building but the price works out below $50 per building square foot — the 5th percentile of ordinary improved sales — so the market paid nothing for it. That is a teardown, and the sale STAYS in Land rather than being reclassified out of it. A permit verdict is never overruled this way. '
       + 'NOT VERIFIED means the roll has been retired and none of the three could answer — the sale is still counted as Land, but nothing has checked it. Improved-coded sales are not judged here: every house has a build permit.',
     render: (a) => builtTd(a),
-    csv: { header: 'Built', extract: (a) => (a._buildVerdict === 'already-built' ? 'ALREADY BUILT' : a._buildVerdict === 'land-then-built' ? 'land then built' : a._buildUnjudged ? 'not verified' : '') } },
+    csv: { header: 'Built', extract: (a) => (a._buildVerdict === 'already-built' ? 'ALREADY BUILT' : a._buildVerdict === 'built-priced-as-land' ? 'BUILDING, PRICED AS LAND' : a._buildVerdict === 'land-then-built' ? 'land then built' : a._buildUnjudged ? 'not verified' : '') } },
 
   { key: 'builtDate',    header: 'Built Date',    mode: 'sales',  sortable: true,
     theadTitle: 'Issue date of the new-construction permit nearest this sale.',

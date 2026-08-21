@@ -43,6 +43,7 @@ import {
   buildVerdict, describeBuildPermit,
   rollBuildVerdict, describeRollBuilt,
   sabreBuildVerdict, describeSabreBuilt,
+  pricedAsLand, describePricedAsLand,
 } from './lib/permitEvidence.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
@@ -4082,7 +4083,8 @@ async function runSalesAnalysis() {
   // from a stale snapshot; 71 of the 72 are absent from the LIVE
   // d4mq-wa44 too.
   //
-  // Reaches 30 sales: 6 of those 79, and 24 that DO have a live record
+  // Reaches 30 sales — 3 of which the teardown tiebreak below then holds
+  // back, leaving 27: 6 of those 79, and 24 that DO have a live record
   // but where the roll cannot contradict, because the building stood at
   // the sale and has been demolished since. Positive evidence only — a
   // blank living area here means "not populated", never "no building",
@@ -4105,6 +4107,45 @@ async function runSalesAnalysis() {
       livingArea: p._saleLivingArea,
       saleDate: p._saleDate,
       hasLiveRecord: !p._noLiveMatch,
+    });
+  }
+
+  // The teardown tiebreak, and the reason it sits AFTER both inferred
+  // passes and never touches the permit one.
+  //
+  // demoVerdict already calls "a building stood here and was worthless"
+  // a LAND sale — that is the definition of a teardown. The roll and
+  // SABRE call the same fact disqualifying, because all they know is
+  // that a building existed. Where a permit exists the two never
+  // collide; where none does, the same transaction gets opposite answers
+  // depending on whether it4w-cpf4 reaches back far enough, which for a
+  // pre-war house it never does.
+  //
+  // So: only reclassify where it is obvious or a permit says so. Where
+  // the price says the building was worth nothing, hold the verdict
+  // back — the row STAYS in Land and carries a mark instead. 6 sales,
+  // 3 from each inferred instrument: 570 BALMORAL ($32/bldg sf), 294
+  // CHARLES ($35), 511 WILLIAM ($38), 431 LANGSIDE ($42), 488 SHERBROOK
+  // ($28) and one unaddressed 1914 row ($23), against $174 for an
+  // ordinary improved sale. Land 6,709 -> 6,715.
+  //
+  // A PERMIT VERDICT IS NEVER SECOND-GUESSED. Price is a weaker
+  // instrument than a dated permit at the address, and 'already-built'
+  // from a permit is the obvious case this rule exists to preserve.
+  for (const f of saleFc.features) {
+    const p = f.properties;
+    if (p._buildVerdict !== 'already-built') continue;
+    if (p._buildEvidence !== 'roll' && p._buildEvidence !== 'sabre') continue;
+    const area = p._buildEvidence === 'roll' ? p.total_living_area : p._saleLivingArea;
+    const year = p._buildEvidence === 'roll' ? p.year_built : p._saleYearBuiltNumeric;
+    if (!pricedAsLand({
+      salePrice: p._salePrice, livingArea: area, groupSize: p._saleGroupSize,
+    })) continue;
+    // Deliberately NOT 'already-built': saleCategory only acts on that
+    // value, so this leaves the row in Land, which is the whole point.
+    p._buildVerdict = 'built-priced-as-land';
+    p._buildTitle = describePricedAsLand({
+      yearBuilt: year, livingArea: area, saleDate: p._saleDate, salePrice: p._salePrice,
     });
   }
 
@@ -4310,6 +4351,13 @@ async function runSalesAnalysis() {
   // between a land comp that was checked and one that merely wasn't
   // contradicted. Quiet — an absence of evidence is not a finding.
   const unverifiedCount = finalFeatures.filter((f) => f.properties._buildUnjudged).length;
+  // Held back rather than acted on: a building was found, the price says
+  // it was worth nothing, and the row stays in Land. Named because it is
+  // the only ⚠ finding that leaves the comp set unchanged — silence here
+  // would read as "nothing found" when something was.
+  const pricedAsLandCount = finalFeatures.filter((f) => (
+    f.properties._buildVerdict === 'built-priced-as-land'
+  )).length;
   const rows = finalFeatures.map((f) => ({ assess: f, survey: null }));
   const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
   // Counted off the SHOWN rows rather than liveByRoll, which spans the
@@ -4339,7 +4387,7 @@ async function runSalesAnalysis() {
     // appraiser is about to build a land comp set from.
     // Still said, and still says the same thing in substance: both
     // fallbacks need no network and survive this, but between them they
-    // account for 67 of 6,305 already-built findings. Losing the permits
+    // account for 61 of 6,299 already-built findings. Losing the permits
     // loses essentially all of them.
     (permitsOk ? '' : " · ⚠ PERMIT CHECK FAILED — only the roll's and SABRE's own year built are judging, which catches a small fraction, so already-built houses are still counted as Land") +
     (categoryHidden ? ` · ${categoryHidden} hidden by the category filter` : '') +
@@ -4364,6 +4412,10 @@ async function runSalesAnalysis() {
       : '') +
     // Last, and deliberately after the findings: this one asserts
     // nothing about the parcels, only about how much is known.
+    (pricedAsLandCount
+      ? ` · ⚠ ${pricedAsLandCount} kept in Land with a building on ${pricedAsLandCount === 1 ? 'it' : 'them'}`
+        + ` (price says the building was worth nothing — check before using)`
+      : '') +
     (unverifiedCount
       ? ` · ${unverifiedCount} land sale${unverifiedCount === 1 ? '' : 's'} not verified (roll retired, no instrument could answer)`
       : '')

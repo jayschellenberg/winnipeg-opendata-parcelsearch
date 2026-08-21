@@ -9,6 +9,7 @@ import {
   BUILT_BEFORE_DAYS, buildVerdict, describeBuildPermit,
   rollBuildVerdict, describeRollBuilt,
   sabreBuildVerdict, describeSabreBuilt, MIN_PLAUSIBLE_LIVING_SF,
+  pricedAsLand, describePricedAsLand, MIN_BUILDING_PRICE_PER_SF,
 } from '../src/lib/permitEvidence.js';
 
 let passed = 0;
@@ -334,6 +335,82 @@ test('describeSabreBuilt — drops the retired-roll clause when the roll IS live
   assert.doesNotMatch(text, /no longer on the assessment roll/i);
   assert.match(text, /nothing on the assessment roll to contradict it/i);
   assert.match(text, /not a permit/i);
+});
+
+// ---- pricedAsLand: the teardown tiebreak ------------------------------------
+// demoVerdict calls "a building stood here and was worthless" a LAND sale --
+// that is what a teardown IS -- while the roll and SABRE call the same fact
+// disqualifying. Where a permit exists they never collide; where none does,
+// the same transaction gets opposite answers. This decides it on price, and
+// only ever in the direction of NOT reclassifying.
+
+test('pricedAsLand — the market paid nothing for the building', () => {
+  // 570 BALMORAL: $52,500, 1,636 sf built 1891 = $32/bldg sf, against $174
+  // for an ordinary improved sale. You cannot buy a 1,636 sf house for
+  // $52,500; that is a lot with a liability standing on it.
+  assert.equal(pricedAsLand({ salePrice: 52500, livingArea: 1636 }), true);
+  // 294 CHARLES ($35), 511 WILLIAM ($38), 431 LANGSIDE ($42).
+  assert.equal(pricedAsLand({ salePrice: 43500, livingArea: 1244 }), true);
+  assert.equal(pricedAsLand({ salePrice: 60000, livingArea: 1583 }), true);
+});
+
+test('pricedAsLand — a price that DOES support the building is left alone', () => {
+  // 219 GORDON: $286,900 over 1,308 sf = $219/bldg sf, near the improved
+  // median. The buyer paid for a house and the verdict stands.
+  assert.equal(pricedAsLand({ salePrice: 286900, livingArea: 1308 }), false);
+});
+
+test('pricedAsLand — it CANNOT misfire on new construction, by construction', () => {
+  // The failure that killed the mirror test. A flat HIGH cut flags 28
+  // WATERSTONE DRIVE -- 2,871 sf built 2014 at $531/bldg sf, a normal price
+  // for a new luxury home and a row c79a65c correctly reclassified. The low
+  // cut has no such exposure: the 1st percentile for post-2000 stock is
+  // $128, so no new building can reach $50 at all.
+  assert.equal(pricedAsLand({ salePrice: 1525000, livingArea: 2871 }), false);
+  assert.equal(pricedAsLand({ salePrice: 5500000, livingArea: 1970 }), false);
+  assert.equal(pricedAsLand({ salePrice: 3500000, livingArea: 2200 }), false);
+});
+
+test('pricedAsLand — group sales are never judged on a per-parcel ratio', () => {
+  // The price is the whole transaction's, the living area is one parcel's,
+  // so the ratio means nothing. All six rows this catches are single-parcel.
+  assert.equal(pricedAsLand({ salePrice: 52500, livingArea: 1636, groupSize: 2 }), false);
+  assert.equal(pricedAsLand({ salePrice: 52500, livingArea: 1636, groupSize: 1 }), true);
+});
+
+test('pricedAsLand — a placeholder area cannot trigger it either', () => {
+  // 1 sf would make every price look enormous, not small, so it fails the
+  // test anyway -- but the guard is explicit so it cannot invert later.
+  assert.equal(pricedAsLand({ salePrice: 4800000, livingArea: 1 }), false);
+  assert.equal(pricedAsLand({ salePrice: 100, livingArea: 1 }), false);
+  assert.equal(pricedAsLand({ salePrice: 1000, livingArea: 99 }), false);
+});
+
+test('pricedAsLand — junk inputs decide nothing, and never THROW', () => {
+  for (const salePrice of [null, undefined, 0, -1, '', 'n/a'])
+    assert.equal(pricedAsLand({ salePrice, livingArea: 1636 }), false, `price ${salePrice}`);
+  for (const livingArea of [null, undefined, 0, -1, '', 'n/a'])
+    assert.equal(pricedAsLand({ salePrice: 52500, livingArea }), false, `area ${livingArea}`);
+  assert.equal(pricedAsLand({}), false);
+});
+
+test('pricedAsLand — the threshold is the improved p5, not a guess', () => {
+  assert.equal(MIN_BUILDING_PRICE_PER_SF, 50);
+  const area = 1000;
+  assert.equal(pricedAsLand({ salePrice: 49 * area, livingArea: area }), true);
+  assert.equal(pricedAsLand({ salePrice: 50 * area, livingArea: area }), false);
+});
+
+test('describePricedAsLand — says it was NOT acted on, and why', () => {
+  const text = describePricedAsLand({ yearBuilt: 1891, livingArea: 1636, saleDate: '2020-07-28', salePrice: 52500 });
+  assert.match(text, /1891/);
+  assert.match(text, /1,636 sf/);
+  assert.match(text, /\$32 per building square foot/);
+  assert.match(text, /TEARDOWN/);
+  // The two things a reader must not miss: the row stayed in Land, and
+  // nothing external confirms it.
+  assert.match(text, /left in the LAND set/i);
+  assert.match(text, /No permit confirms it/i);
 });
 
 console.log('');

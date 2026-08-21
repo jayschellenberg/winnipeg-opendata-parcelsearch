@@ -216,6 +216,78 @@ export const BUILT_BEFORE_DAYS = Math.round(6 * 30.44);
 export const MIN_PLAUSIBLE_LIVING_SF = 100;
 
 /**
+ * Below this many dollars per BUILDING square foot, the market paid
+ * nothing for the building.
+ *
+ * $50, the 5th percentile of ordinary improved single-parcel sales
+ * (n=3,385 with placeholders excluded; median $174, p95 $398). Under it
+ * sit 4.93% of improved sales — a real tail, not a rounding error, and
+ * the shape of a building nobody valued.
+ *
+ * WHY THIS RESOLVES THE TEARDOWN QUESTION. demoVerdict already treats
+ * "a building stood here and was worthless" as making a sale a LAND
+ * comp — that is what a teardown IS. rollBuildVerdict and
+ * sabreBuildVerdict treat the same fact as disqualifying, because the
+ * only evidence they have is that a building existed. Where a permit
+ * exists the two never collide; where none does, the same transaction
+ * gets opposite answers depending on whether it4w-cpf4 happens to reach
+ * back far enough. This is the tiebreak: if the price says the building
+ * was worth nothing, do not reclassify the sale out of Land — mark it
+ * and leave it there for a human.
+ *
+ * IT ONLY CUTS ONE WAY, and that is deliberate. The mirror test — "the
+ * price is too HIGH for the building to explain" — was measured and
+ * REJECTED. A flat ceiling flags new construction: the floor and ceiling
+ * are both age-sensitive (p5/p95 run $39/$290 for pre-1945, $180/$494
+ * for 2000+), so a single high cut catches 28 WATERSTONE DRIVE, 2,871 sf
+ * built 2014 at $531/sf — a normal price for a new luxury home, and a
+ * row c79a65c correctly reclassified. The floor cannot make that mistake
+ * in reverse: the 1st percentile for post-2000 stock is $128, so no new
+ * building can reach $50 at all. An age-relative ceiling would work but
+ * needs three cohort thresholds to move four rows, and a boundary at
+ * 1.04x of a cohort p99 is not the "obvious" this is reserved for.
+ *
+ * SINGLE-PARCEL SALES ONLY. On a group the price is the whole
+ * transaction's and the living area is one parcel's, so the ratio is
+ * meaningless. All six rows this currently catches are single-parcel.
+ */
+export const MIN_BUILDING_PRICE_PER_SF = 50;
+
+/**
+ * Does the price contradict the building — did the market pay nothing
+ * for it?
+ *
+ * Asked only of a roll- or SABRE-derived already-built verdict. A PERMIT
+ * verdict is never second-guessed: a dated permit at the address is the
+ * "obvious" case, and price is a weaker instrument than the record it
+ * would be overturning.
+ *
+ * @returns {boolean} true when the sale should NOT be reclassified
+ */
+export function pricedAsLand({ salePrice, livingArea, groupSize = 1 }) {
+  if (Number(groupSize) > 1) return false;
+  const price = Number(salePrice);
+  const area = Number(livingArea);
+  if (!Number.isFinite(price) || price <= 0) return false;
+  if (!Number.isFinite(area) || area < MIN_PLAUSIBLE_LIVING_SF) return false;
+  return price / area < MIN_BUILDING_PRICE_PER_SF;
+}
+
+/** Plain-language reading of a verdict held back by the price. Says what
+ *  was found, why it was not acted on, and what the reader must decide. */
+export function describePricedAsLand({ yearBuilt, livingArea, saleDate, salePrice }) {
+  const area = Math.round(Number(livingArea) || 0).toLocaleString('en-CA');
+  const rate = Math.round(Number(salePrice) / Number(livingArea));
+  const saleYear = String(saleDate ?? '').slice(0, 4);
+  return `A ${yearBuilt} building of ${area} sf is recorded on this parcel, older than the `
+    + `${saleYear} sale — but the price works out to $${rate} per building square foot against `
+    + `$174 for an ordinary improved sale, and only 5% of improved sales fall below $50. The `
+    + `market paid nothing for the building, which is what a TEARDOWN is: the price bought the `
+    + `lot and a demolition bill. So this is left in the LAND set rather than reclassified out `
+    + `of it. No permit confirms it either way — decide this one yourself.`;
+}
+
+/**
  * Did this sale actually include a building the use code doesn't know
  * about?
  *
@@ -347,7 +419,8 @@ export function rollBuildVerdict({
  * inside those 79, and 24 more that DO have a live record but where the
  * roll cannot contradict, because the building stood at the sale and
  * has come down since. That is 185 BANNERMAN in reverse, and the roll
- * is the wrong way round to see it.
+ * is the wrong way round to see it. Three of the 30 are then held back
+ * by pricedAsLand below, leaving 27 acted on.
  *
  * They price like buildings, which is the point: the 24 run a median
  * $58.23 per lot square foot against the Land set's $30.14, p75 $98.74

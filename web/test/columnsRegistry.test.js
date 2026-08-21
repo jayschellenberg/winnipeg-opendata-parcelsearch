@@ -226,6 +226,7 @@ test('Built CSV — the three verdicts and the unjudged mark are all distinct', 
   const { extract } = COLUMNS.find((c) => c.key === 'built').csv;
   assert.equal(extract({ _buildVerdict: 'already-built' }), 'ALREADY BUILT');
   assert.equal(extract({ _buildVerdict: 'land-then-built' }), 'land then built');
+  assert.equal(extract({ _buildVerdict: 'built-priced-as-land' }), 'BUILDING, PRICED AS LAND');
   assert.equal(extract({ _buildUnjudged: true }), 'not verified');
   assert.equal(extract({}), '');
   // A verdict always wins over the mark — main.js only sets _buildUnjudged
