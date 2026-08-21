@@ -100,12 +100,34 @@ the parcels in the transaction, which is what prices a building lot in a
 multi-lot deal. Every rate uses the same group-total denominator, so an
 assembly is rated as one deal.
 
+**Was a building standing?** The assessment use code describes a parcel as
+it was last assessed, not as it stood the day it sold, so a comp set built on
+the code alone inherits that error in both directions. Three instruments
+answer, strongest first, each consulted only where the one before it said
+nothing: a City **building permit** matched by address (6,238 findings), the
+assessment roll's own **year built** (34), and **SABRE's** own record (27) —
+which is the only one that can speak for a parcel whose roll has since been
+retired, and 71 of those 72 rolls are gone from the live assessment data too.
+The **Built** column names which instrument spoke, because a dated permit is
+evidence about the transaction while the other two are later snapshots read
+backwards.
+
+A fourth pass holds verdicts BACK rather than making them. Where the price
+works out below $50 per building square foot — the 5th percentile of ordinary
+improved sales, against a $174 median — the market paid nothing for the
+building, which is what a teardown is: the sale bought the lot and a
+demolition bill. Those 6 sales stay in the Land set with a
+`⚠ Building, priced as land` mark instead of being reclassified out of it. A
+permit verdict is never overruled this way. And where the roll has been
+retired and nothing can answer at all, the column reads `not verified` rather
+than going blank — 73 sales, still counted as Land, but checked by nothing.
+
 The **Charts** button opens [charts.html](web/charts.html) in a second
 tab: `$/Lot SF` over time, `$/Acre` against lot size (the
 size-adjustment curve), and `$/Lot` against lot size. It holds no data of its own — the app broadcasts the filtered set
 over a `BroadcastChannel` and the page redraws, so the charts track the
 sidebar filters live (hence Freeze). It defaults to land sales — which now
-means the grid's permit-corrected **Category**, so the two can never disagree
+means the grid's evidence-corrected **Category**, so the two can never disagree
 about what land is — and to EXCLUDING already-built sales, vacant-coded lots
 that in fact carried a finished house when they changed hands. Roughly half
 the vacant-coded sales in the archive are those, and they clear about 3x a
@@ -200,9 +222,10 @@ and swap against scratch asset names on the live release.
 
 ## Documentation
 
-- **[SESSION-HANDOFF-2026-08-20.md](SESSION-HANDOFF-2026-08-20.md)** — the
+- **[SESSION-HANDOFF-2026-08-21.md](SESSION-HANDOFF-2026-08-21.md)** — the
   current resume point: what the sales side is, the decisions that will
-  silently regress if you change them, and what is still open.
+  silently regress if you change them, and what is still open. Superseded
+  handoffs are archived under `.claude/`.
 - **[REPLICATION_GUIDE.md](REPLICATION_GUIDE.md)** — the deep doc: full
   architecture, every solved bug, SoQL reference, and a checklist for porting
   the tool to another jurisdiction.
