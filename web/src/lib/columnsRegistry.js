@@ -34,10 +34,23 @@ import { pucsName, UNCLASSIFIED_CATEGORY } from './pucs.js';
  * land-then-built case agrees with the use code and stays quiet, but is
  * still shown, because knowing a lot WAS verified as bare at sale is
  * worth as much to a land comp set as knowing it wasn't.
+ *
+ * The third state is an ABSENCE, and it earns a mark of its own. A
+ * blank cell here otherwise says the same thing on a sale the roll
+ * positively confirms bare and on one where the roll has been retired
+ * and no instrument could speak at all — 73 of those, and they sit in
+ * Land looking exactly like vetted comps. "not verified" is quiet
+ * because it is not a finding; it is the honest report of a question
+ * nobody could answer.
  */
 function builtTd(a) {
   const verdict = a._buildVerdict;
-  if (!verdict) return td(null);
+  if (!verdict) {
+    if (!a._buildUnjudged) return td(null);
+    const cell = td('not verified', 'demo-confirms');
+    if (a._buildUnjudgedTitle) cell.title = a._buildUnjudgedTitle;
+    return cell;
+  }
   const cell = verdict === 'already-built'
     ? td('⚠ Already built', 'demo-teardown')
     : td('land → built', 'demo-confirms');
@@ -380,11 +393,12 @@ export const COLUMNS = [
     csv: { header: 'Site Influences', extract: (a) => a._siteInfl } },
 
   { key: 'built',        header: 'Built',         mode: 'sales',  sortable: true,
-    theadTitle: 'New-construction permit against a VACANT-coded sale (City Building Permits, matched by address). '
-      + 'ALREADY BUILT means the permit predates the sale by six months or more, so the house was finished when the lot changed hands — the sale is an IMPROVED sale the roll had not caught up with, and its rate is not a land rate. '
-      + 'Land → built means construction started at or after the sale, which confirms the sale itself bought bare land. Improved-coded sales are not judged here: every house has a build permit.',
+    theadTitle: 'Was a building standing on a VACANT-coded sale? Three instruments, strongest first: a new-construction permit (City Building Permits, matched by address), then the assessment roll\'s own year built, then SABRE\'s. '
+      + 'ALREADY BUILT means the building predates the sale, so the house was finished when the lot changed hands — the sale is an IMPROVED sale the roll had not caught up with, and its rate is not a land rate. '
+      + 'Land → built means construction started at or after the sale, which confirms the sale itself bought bare land. '
+      + 'NOT VERIFIED means the roll has been retired and none of the three could answer — the sale is still counted as Land, but nothing has checked it. Improved-coded sales are not judged here: every house has a build permit.',
     render: (a) => builtTd(a),
-    csv: { header: 'Built', extract: (a) => (a._buildVerdict === 'already-built' ? 'ALREADY BUILT' : a._buildVerdict === 'land-then-built' ? 'land then built' : '') } },
+    csv: { header: 'Built', extract: (a) => (a._buildVerdict === 'already-built' ? 'ALREADY BUILT' : a._buildVerdict === 'land-then-built' ? 'land then built' : a._buildUnjudged ? 'not verified' : '') } },
 
   { key: 'builtDate',    header: 'Built Date',    mode: 'sales',  sortable: true,
     theadTitle: 'Issue date of the new-construction permit nearest this sale.',

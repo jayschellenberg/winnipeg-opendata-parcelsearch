@@ -188,6 +188,34 @@ export function describeDemoPermit(hit, verdict = null) {
 export const BUILT_BEFORE_DAYS = Math.round(6 * 30.44);
 
 /**
+ * Below this, a living area is a placeholder rather than a measurement,
+ * and no verdict may be founded on it.
+ *
+ * The same trap MIN_PLAUSIBLE_LAND_SF catches on the land side, and the
+ * same number, because the distribution is even cleaner here. Of the
+ * 3,721 sales carrying a SABRE living area above zero, 21 read exactly
+ * 1 and NOTHING at all falls between 2 and 199. The 1s are not tiny
+ * buildings: they are mostly CMPSP surface parking, plus a handful of
+ * vacant commercial and industrial rows, and their prices are ordinary
+ * to large — 280 YOUNG at $3,500,000, OAK POINT HIGHWAY at $4,800,000.
+ * The assessor is recording that something exists on a paved lot, not a
+ * structure anybody bought.
+ *
+ * Left ungated they are the worst possible false positives: a $4.8M
+ * VACANT COMMERCIAL land sale reclassified out of the Land set on the
+ * strength of "1 sf built 1960" — precisely the comp the set exists to
+ * hold. Four of the 34 SABRE verdicts were exactly this before the
+ * guard.
+ *
+ * Applied to the ROLL instrument too, where it is currently inert:
+ * d4mq-wa44 carries no placeholder of this kind at all — 221,534
+ * records above zero, none below 200 sf, so the threshold changes
+ * nothing there today. It is cheap symmetry against the day the roll
+ * starts doing what SABRE does.
+ */
+export const MIN_PLAUSIBLE_LIVING_SF = 100;
+
+/**
  * Did this sale actually include a building the use code doesn't know
  * about?
  *
@@ -259,8 +287,12 @@ export function describeBuildPermit(hit, verdict) {
  * read a demolished house as standing and call a genuine bare-lot sale
  * improved -- the exact error this is meant to remove, in reverse.
  *
- * REQUIRES A LIVE RECORD. No record is not evidence of bareness; those
- * 79 stay unjudged, which is the honest outcome.
+ * REQUIRES A LIVE RECORD. No record is not evidence of bareness, so
+ * this instrument declines those 79. It is not the last word on them:
+ * sabreBuildVerdict below reads the export's own attributes, which
+ * survive the roll's retirement, and settles 6. The other 73 have no
+ * instrument at all and stay unjudged, which is the honest outcome —
+ * main.js marks them rather than letting them pass as vetted.
  *
  * A PERMIT ALWAYS WINS. main.js only consults this when the permit pass
  * returned nothing. A permit is dated evidence about the transaction;
@@ -276,10 +308,95 @@ export function rollBuildVerdict({
   const built = Number(yearBuilt);
   if (!Number.isFinite(built) || built <= 1800) return null;
   const area = Number(livingArea);
-  if (!Number.isFinite(area) || area <= 0) return null;
+  if (!Number.isFinite(area) || area < MIN_PLAUSIBLE_LIVING_SF) return null;
   const saleYear = Number(String(saleDate ?? '').slice(0, 4));
   if (!Number.isFinite(saleYear) || saleYear <= 1800) return null;
   return built < saleYear ? 'already-built' : null;
+}
+
+/*
+ * The THIRD instrument: SABRE's own living area and year built.
+ *
+ * It exists for the parcels the roll cannot see at all. Of the 812
+ * vacant-coded sales no construct-new permit could judge, 79 matched no
+ * live assessment record — and that is not a stale snapshot. Every one
+ * of those 72 distinct rolls was re-checked against the LIVE d4mq-wa44
+ * on 2026-08-21 and 71 are absent there too; the single exception is a
+ * roll created after the local parquet was cut. The rolls are RETIRED.
+ *
+ * Which is the ordinary fate of land. They are big parcels — median lot
+ * 12,916 sf against the Land set's 4,475, p75 54,952 against 5,904 —
+ * and 20 of the 26 addresses that could be queried have no parcel at
+ * that address today either. Buy a large lot, subdivide it, and the
+ * roll and the address both die with it.
+ *
+ * SABRE's row survives that. It carries the parcel's own Total Living
+ * Area and Year Built, and it is the only instrument left that can
+ * speak about a roll the City has retired.
+ *
+ * POSITIVE ONLY, and the asymmetry is measured rather than assumed.
+ * Across the 12,082 vacant-coded sales a permit has already judged,
+ * SABRE reports a living area on THREE — 0.02%. It simply does not
+ * populate that field for a vacant-coded parcel, so a blank means "not
+ * filled in", never "no building", and reading bareness out of it would
+ * be rollBuildVerdict's hasLiveRecord trap wearing a different hat.
+ *
+ * But when it IS filled in, that is a rare and deliberate statement. Of
+ * the 37 sales the roll contradicted, 6 carry one — 16.2%, roughly 700x
+ * the base rate. Fired across the whole archive it reaches 30 sales: 6
+ * inside those 79, and 24 more that DO have a live record but where the
+ * roll cannot contradict, because the building stood at the sale and
+ * has come down since. That is 185 BANNERMAN in reverse, and the roll
+ * is the wrong way round to see it.
+ *
+ * They price like buildings, which is the point: the 24 run a median
+ * $58.23 per lot square foot against the Land set's $30.14, p75 $98.74
+ * against $37.84.
+ *
+ * Corroborated on a row that can be checked end to end. 3021 ROBLIN,
+ * retired roll 01000612300, sold 2024-08 for $500,000 coded VRES1, with
+ * SABRE reporting 1,308 sf built 1962. The live successor parcel at
+ * that address — roll 01000612000 — is RESSD, year built 1962, living
+ * area 1,308. The same house, still standing. The use code was wrong
+ * and SABRE knew it.
+ *
+ * ORDERED LAST. main.js consults this only where the permit pass and
+ * then the roll pass both returned nothing. A permit is dated evidence
+ * about the transaction; the roll is a later snapshot of the same
+ * parcel; this is the export's own attribute, and it is the weakest of
+ * the three because nothing pins it to the sale date.
+ *
+ * Needs no live record BY DESIGN — that absence is the reason it
+ * exists — but it keeps every other guard rollBuildVerdict has: a
+ * living area, a plausible year, and a year older than the sale.
+ *
+ * @returns {'already-built'|null}
+ */
+export function sabreBuildVerdict({ saleIsVacant, yearBuilt, livingArea, saleDate }) {
+  if (!saleIsVacant) return null;
+  const built = Number(yearBuilt);
+  if (!Number.isFinite(built) || built <= 1800) return null;
+  const area = Number(livingArea);
+  if (!Number.isFinite(area) || area < MIN_PLAUSIBLE_LIVING_SF) return null;
+  const saleYear = Number(String(saleDate ?? '').slice(0, 4));
+  if (!Number.isFinite(saleYear) || saleYear <= 1800) return null;
+  return built < saleYear ? 'already-built' : null;
+}
+
+/** Plain-language reading of a SABRE-derived verdict. Names the
+ *  instrument for the same reason describeRollBuilt does, and says the
+ *  extra thing a reader needs here: the parcel may no longer exist, so
+ *  there is nothing to go and look at. */
+export function describeSabreBuilt({ yearBuilt, livingArea, saleDate, hasLiveRecord }) {
+  const saleYear = String(saleDate ?? '').slice(0, 4);
+  const area = Math.round(Number(livingArea) || 0).toLocaleString('en-CA');
+  return `No construction permit within three years either way`
+    + `${hasLiveRecord ? ' and nothing on the assessment roll to contradict it' : ''}, but SABRE's `
+    + `own record for this parcel carries a ${yearBuilt} building of ${area} sf — older than the `
+    + `${saleYear} sale. Despite the vacant use code something was standing when the lot changed `
+    + `hands, so this is NOT a land comp. From SABRE's export, not a permit`
+    + `${hasLiveRecord ? '' : ', and this roll is no longer on the assessment roll at all'} — `
+    + `confirm before leaning on the row.`;
 }
 
 /** Plain-language reading of a ROLL-derived verdict. Says which

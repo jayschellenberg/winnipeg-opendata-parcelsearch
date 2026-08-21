@@ -42,6 +42,7 @@ import {
   buildPermitIndex, findNearestPermit, demoVerdict, describeDemoPermit,
   buildVerdict, describeBuildPermit,
   rollBuildVerdict, describeRollBuilt,
+  sabreBuildVerdict, describeSabreBuilt,
 } from './lib/permitEvidence.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
@@ -4073,6 +4074,87 @@ async function runSalesAnalysis() {
     });
   }
 
+  // Third instrument, ordered last and outside the try for the same
+  // reason: SABRE's export carries the parcel's OWN living area and year
+  // built, and that record survives the roll's retirement. It is the
+  // only thing that can speak for the 79 vacant-coded sales matching no
+  // live assessment record — those rolls are retired, not merely missing
+  // from a stale snapshot; 71 of the 72 are absent from the LIVE
+  // d4mq-wa44 too.
+  //
+  // Reaches 30 sales: 6 of those 79, and 24 that DO have a live record
+  // but where the roll cannot contradict, because the building stood at
+  // the sale and has been demolished since. Positive evidence only — a
+  // blank living area here means "not populated", never "no building",
+  // and a 1 sf one is a placeholder MIN_PLAUSIBLE_LIVING_SF rejects.
+  // lib/permitEvidence.js carries the measurement.
+  for (const f of saleFc.features) {
+    const p = f.properties;
+    if (p._buildVerdict) continue;
+    const sabreJudgement = sabreBuildVerdict({
+      saleIsVacant: isVacantUseCode(saleUseCodeOf(f)),
+      yearBuilt: p._saleYearBuiltNumeric,
+      livingArea: p._saleLivingArea,
+      saleDate: p._saleDate,
+    });
+    if (!sabreJudgement) continue;
+    p._buildVerdict = sabreJudgement;
+    p._buildEvidence = 'sabre';
+    p._buildTitle = describeSabreBuilt({
+      yearBuilt: p._saleYearBuiltNumeric,
+      livingArea: p._saleLivingArea,
+      saleDate: p._saleDate,
+      hasLiveRecord: !p._noLiveMatch,
+    });
+  }
+
+  // What is left after all three: a vacant-coded sale with no live roll
+  // record and no verdict from anything. 73 of them, and they must not
+  // read as vetted land comps — a blank Built cell otherwise means the
+  // same thing here as it does on the 642 sales the roll positively
+  // confirms bare, which are two completely different states.
+  //
+  // They STAY in Land. Their price signature is squarely land — median
+  // $24.71 per lot square foot against the Land set's $30.14, p75 $43.60
+  // against $37.84, and 3 of 70 above the Land p95 — and pulling 73 rows
+  // out of a comp set for want of a check is a different act from
+  // pulling the 37 that were positively contradicted. The marker says
+  // "nobody could ask", not "this is improved".
+  //
+  // The second sentence of the tooltip is the one that matters most:
+  // 49 of the 79 carry no street number AND name, so permitAddressKey
+  // returns '' and the permit lookup never ran at all. On those rows
+  // "no permit found" is a question that failed, not an answer.
+  for (const f of saleFc.features) {
+    const p = f.properties;
+    if (p._buildVerdict || !p._noLiveMatch) continue;
+    if (!isVacantUseCode(saleUseCodeOf(f))) continue;
+    const askable = !!(String(p._saleStreetNumber ?? '').trim()
+      && String(p._saleStreetName ?? '').trim());
+    // Checked, not assumed. Today all 73 have a blank SABRE living area,
+    // but a row could reach here carrying one — an area with no year, or
+    // a year at or after the sale — and a tooltip that flatly said "SABRE
+    // reports no building" would then be stating something false about
+    // the row it is attached to.
+    const sabreBlank = !(Number(p._saleLivingArea) > 0);
+    p._buildUnjudged = true;
+    p._buildUnjudgedTitle = `This roll is not on the assessment roll — it has been RETIRED, `
+      + `which is what happens when a parcel is subdivided or consolidated after it sells. `
+      + (askable
+        ? `No construction permit was found at this address within three years either way, and `
+          + `with no live record the roll cannot be asked either.`
+        : `The sale carries no usable street number and name, so the permit table could not even `
+          + `be queried — "no permit" here is a question that failed, not an answer.`)
+      + (sabreBlank
+        ? ` SABRE reports no building on the parcel, but it almost never does on a vacant-coded `
+          + `row, so that is not evidence of bareness.`
+        : ` SABRE reports a building, but not one that can be dated before the sale, so it `
+          + `settles nothing either way.`)
+      + ` NOTHING has verified this sale bought bare land. It is still counted as Land, and its `
+      + `rate sits with the rest of the Land set, but confirm it yourself before putting it in a `
+      + `report.`;
+  }
+
   // Appraisal category, stamped AFTER the permit pass because the permit
   // record is what overrules the roll: a vacant-coded sale whose house was
   // finished before it changed hands is not a land comp, and an improved
@@ -4207,13 +4289,27 @@ async function runSalesAnalysis() {
 
   const teardownCount = finalFeatures.filter((f) => f.properties._demoVerdict === 'teardown').length;
   const alreadyBuiltCount = finalFeatures.filter((f) => f.properties._buildVerdict === 'already-built').length;
-  // Split out because the two are not equally strong. A permit is dated
-  // evidence about the transaction; the roll is a snapshot read
-  // backwards, and an appraiser weighing one of these rows is entitled
-  // to know which one they have without opening the tooltip.
-  const rollBuiltCount = finalFeatures.filter((f) => (
-    f.properties._buildVerdict === 'already-built' && f.properties._buildEvidence === 'roll'
+  // Split out because the three are not equally strong. A permit is
+  // dated evidence about the transaction; the roll is a later snapshot
+  // of the same parcel; SABRE's is the export's own attribute with
+  // nothing pinning it to the sale date. An appraiser weighing one of
+  // these rows is entitled to know which one they have without opening
+  // the tooltip.
+  const builtBy = (evidence) => finalFeatures.filter((f) => (
+    f.properties._buildVerdict === 'already-built' && f.properties._buildEvidence === evidence
   )).length;
+  const rollBuiltCount = builtBy('roll');
+  const sabreBuiltCount = builtBy('sabre');
+  const inferredBuiltParts = [
+    rollBuiltCount ? `${rollBuiltCount} from the roll's year built` : '',
+    sabreBuiltCount ? `${sabreBuiltCount} from SABRE's own record` : '',
+  ].filter(Boolean);
+  // Vacant-coded, roll retired, no instrument could answer. Named here
+  // for the same reason the teardowns are: it is invisible unless the
+  // Built column happens to be on screen, and it is the difference
+  // between a land comp that was checked and one that merely wasn't
+  // contradicted. Quiet — an absence of evidence is not a finding.
+  const unverifiedCount = finalFeatures.filter((f) => f.properties._buildUnjudged).length;
   const rows = finalFeatures.map((f) => ({ assess: f, survey: null }));
   const unmatched = rows.filter((r) => r.assess.properties._noLiveMatch).length;
   // Counted off the SHOWN rows rather than liveByRoll, which spans the
@@ -4241,11 +4337,11 @@ async function runSalesAnalysis() {
     // shrink the comp set.
     // Loudest clause in the line, because it invalidates the column an
     // appraiser is about to build a land comp set from.
-    // Still said, and still says the same thing in substance: the roll
-    // fallback needs no network and survives this, but it accounts for
-    // 37 of 6,275 already-built findings. Losing the permits loses
-    // essentially all of them.
-    (permitsOk ? '' : " · ⚠ PERMIT CHECK FAILED — only the roll's own year built is judging, which catches a small fraction, so already-built houses are still counted as Land") +
+    // Still said, and still says the same thing in substance: both
+    // fallbacks need no network and survive this, but between them they
+    // account for 67 of 6,305 already-built findings. Losing the permits
+    // loses essentially all of them.
+    (permitsOk ? '' : " · ⚠ PERMIT CHECK FAILED — only the roll's and SABRE's own year built are judging, which catches a small fraction, so already-built houses are still counted as Land") +
     (categoryHidden ? ` · ${categoryHidden} hidden by the category filter` : '') +
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
@@ -4262,9 +4358,14 @@ async function runSalesAnalysis() {
     // sales that already had a finished house standing on them.
     (alreadyBuiltCount
       ? ` · ⚠ ${alreadyBuiltCount} vacant-coded sale${alreadyBuiltCount === 1 ? '' : 's'} already built on`
-        + (rollBuiltCount
-          ? ` (${rollBuiltCount} from the roll's year built, not a permit — confirm before using)`
+        + (inferredBuiltParts.length
+          ? ` (${inferredBuiltParts.join(' and ')}, not a permit — confirm before using)`
           : '')
+      : '') +
+    // Last, and deliberately after the findings: this one asserts
+    // nothing about the parcels, only about how much is known.
+    (unverifiedCount
+      ? ` · ${unverifiedCount} land sale${unverifiedCount === 1 ? '' : 's'} not verified (roll retired, no instrument could answer)`
       : '')
   );
 

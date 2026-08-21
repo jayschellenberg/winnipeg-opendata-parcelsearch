@@ -8,6 +8,7 @@ import {
   demoVerdict, describeDemoPermit,
   BUILT_BEFORE_DAYS, buildVerdict, describeBuildPermit,
   rollBuildVerdict, describeRollBuilt,
+  sabreBuildVerdict, describeSabreBuilt, MIN_PLAUSIBLE_LIVING_SF,
 } from '../src/lib/permitEvidence.js';
 
 let passed = 0;
@@ -186,7 +187,9 @@ test('rollBuildVerdict — a year with NO living area is a demolished building',
 
 test('rollBuildVerdict — no live record is not evidence of anything', () => {
   // 79 of the 812. Absence of a roll row says nothing about the parcel, so
-  // they stay unjudged rather than being read as bare OR as built.
+  // this instrument declines them rather than reading them as bare OR as
+  // built. sabreBuildVerdict picks 6 of them up from the export's own
+  // attributes; the rest stay unjudged and main.js marks them.
   assert.equal(rollBuildVerdict({ ...ROLL, hasLiveRecord: false }), null);
 });
 
@@ -218,6 +221,118 @@ test('describeRollBuilt — names the instrument and does not claim a permit', (
   assert.match(text, /NOT a land comp/);
   // The whole point of a separate description: a reader must not come away
   // thinking a permit was found.
+  assert.match(text, /not a permit/i);
+});
+
+// ---- sabreBuildVerdict: the third instrument --------------------------------
+// For the 79 vacant-coded sales matching no live assessment record. Those
+// rolls are RETIRED -- 71 of the 72 are absent from the live d4mq-wa44 too --
+// so the roll can never answer, but SABRE's own export row survives. These pin
+// the asymmetry that makes it safe: positive evidence only.
+
+const SABRE = {
+  saleIsVacant: true,
+  yearBuilt: 1962, livingArea: 1308, saleDate: '2024-08-18',
+};
+
+test('sabreBuildVerdict — SABRE reports a building older than the sale', () => {
+  // 3021 ROBLIN, retired roll 01000612300: $500,000, coded VRES1, SABRE says
+  // 1,308 sf built 1962. The live successor parcel at that address --
+  // 01000612000 -- is RESSD, year built 1962, living area 1,308. Same house,
+  // still standing, and the only instrument that could see it was SABRE.
+  assert.equal(sabreBuildVerdict(SABRE), 'already-built');
+  // 599 WASHINGTON, sold twice as VINDU with a 2,847 sf 1956 building on it.
+  assert.equal(sabreBuildVerdict({ ...SABRE, yearBuilt: 1956, livingArea: 2847, saleDate: '2021-08-20' }), 'already-built');
+});
+
+test('sabreBuildVerdict — needs NO live record; that absence is why it exists', () => {
+  // The one guard rollBuildVerdict has that this must not: 6 of the 79 are
+  // settled here precisely because the roll is gone.
+  assert.equal(sabreBuildVerdict({ ...SABRE, hasLiveRecord: false }), 'already-built');
+});
+
+test('sabreBuildVerdict — a 1 sf living area is a PLACEHOLDER, not a building', () => {
+  // The defect this guard exists for, and it is SABRE-specific: 21 sales in
+  // the archive read exactly 1 sf and NOTHING falls between 2 and 199. They
+  // are mostly CMPSP surface parking, and their prices are large. Ungated,
+  // four of the 34 SABRE verdicts were these -- including OAK POINT HIGHWAY
+  // at $4,800,000 and 280 YOUNG at $3,500,000, both VACANT-coded land sales
+  // reclassified out of the Land set on the strength of "1 sf built 1960".
+  // The worst false positive available: it removes exactly the comp the set
+  // exists to hold.
+  assert.equal(sabreBuildVerdict({ ...SABRE, livingArea: 1 }), null);
+  assert.equal(sabreBuildVerdict({ ...SABRE, livingArea: 99 }), null);
+  assert.equal(sabreBuildVerdict({ ...SABRE, livingArea: MIN_PLAUSIBLE_LIVING_SF }), 'already-built');
+});
+
+test('rollBuildVerdict — the same placeholder guard, currently inert', () => {
+  // d4mq-wa44 carries no placeholder of this kind: 221,534 records above
+  // zero and none below 200 sf, so this changes nothing on the roll today.
+  // Symmetry against the day it starts doing what SABRE does.
+  assert.equal(rollBuildVerdict({ ...ROLL, livingArea: 1 }), null);
+  assert.equal(rollBuildVerdict({ ...ROLL, livingArea: 99 }), null);
+  assert.equal(rollBuildVerdict({ ...ROLL, livingArea: MIN_PLAUSIBLE_LIVING_SF }), 'already-built');
+});
+
+test('sabreBuildVerdict — a blank living area decides NOTHING', () => {
+  // The measured asymmetry, and the trap this instrument could have become.
+  // Across the 12,082 vacant-coded sales a permit has already judged, SABRE
+  // reports a living area on THREE. It does not populate the field for a
+  // vacant-coded parcel, so blank means "not filled in", never "no building".
+  // Reading bareness out of it would be the hasLiveRecord trap in new clothes.
+  assert.equal(sabreBuildVerdict({ ...SABRE, livingArea: 0 }), null);
+  assert.equal(sabreBuildVerdict({ ...SABRE, livingArea: null }), null);
+  assert.equal(sabreBuildVerdict({ ...SABRE, livingArea: undefined }), null);
+  assert.equal(sabreBuildVerdict({ ...SABRE, livingArea: '' }), null);
+});
+
+test('sabreBuildVerdict — built AT or AFTER the sale is not this finding', () => {
+  assert.equal(sabreBuildVerdict({ ...SABRE, yearBuilt: 2024 }), null);
+  assert.equal(sabreBuildVerdict({ ...SABRE, yearBuilt: 2025 }), null);
+});
+
+test('sabreBuildVerdict — only asked of vacant-coded sales', () => {
+  assert.equal(sabreBuildVerdict({ ...SABRE, saleIsVacant: false }), null);
+});
+
+test('sabreBuildVerdict — junk years and junk dates decide nothing', () => {
+  for (const yearBuilt of [null, undefined, 0, '', 'n/a', 1800, -1]) {
+    assert.equal(sabreBuildVerdict({ ...SABRE, yearBuilt }), null, `yearBuilt ${yearBuilt}`);
+  }
+  for (const saleDate of [null, undefined, '', 'not-a-date']) {
+    assert.equal(sabreBuildVerdict({ ...SABRE, saleDate }), null, `saleDate ${saleDate}`);
+  }
+});
+
+test('sabreBuildVerdict — the numeric year is the OLDEST section, and that is right', () => {
+  // 165 PROVENCHER carries "1937, 1951". buildSaleFeatures stamps the oldest
+  // as _saleYearBuiltNumeric, which is the correct one for "was anything
+  // standing when this sold" -- the later section only adds to it.
+  assert.equal(sabreBuildVerdict({ ...SABRE, yearBuilt: 1937, livingArea: 2200, saleDate: '2023-11-28' }), 'already-built');
+});
+
+test('sabreBuildVerdict — string inputs from the CSV are coerced, not rejected', () => {
+  assert.equal(sabreBuildVerdict({ ...SABRE, yearBuilt: '1962', livingArea: '1308' }), 'already-built');
+});
+
+test('describeSabreBuilt — names the instrument and does not claim a permit', () => {
+  const text = describeSabreBuilt({ yearBuilt: 1962, livingArea: 1308, saleDate: '2024-08-18', hasLiveRecord: false });
+  assert.match(text, /1962/);
+  assert.match(text, /1,308 sf/);
+  assert.match(text, /2024/);
+  assert.match(text, /NOT a land comp/);
+  assert.match(text, /not a permit/i);
+  // The extra thing this description owes a reader over the roll's: there may
+  // be no parcel left to go and look at.
+  assert.match(text, /no longer on the assessment roll/i);
+});
+
+test('describeSabreBuilt — drops the retired-roll clause when the roll IS live', () => {
+  // 28 of the 34 have a live record; the roll simply cannot contradict,
+  // because the building stood at the sale and has come down since.
+  const text = describeSabreBuilt({ yearBuilt: 1977, livingArea: 1300, saleDate: '2022-08-30', hasLiveRecord: true });
+  assert.doesNotMatch(text, /no longer on the assessment roll/i);
+  assert.match(text, /nothing on the assessment roll to contradict it/i);
   assert.match(text, /not a permit/i);
 });
 

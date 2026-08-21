@@ -218,6 +218,21 @@ test('csvSchemaForMode — extractors run without throwing on a minimal row', ()
   }
 });
 
+test('Built CSV — the three verdicts and the unjudged mark are all distinct', () => {
+  // A blank Built cell used to mean two opposite things: the roll positively
+  // confirmed the lot bare (642 sales), or the roll is retired and nothing
+  // could be asked at all (73). The second must not export as an empty
+  // string, or a comp set lifted out of the CSV cannot tell them apart.
+  const { extract } = COLUMNS.find((c) => c.key === 'built').csv;
+  assert.equal(extract({ _buildVerdict: 'already-built' }), 'ALREADY BUILT');
+  assert.equal(extract({ _buildVerdict: 'land-then-built' }), 'land then built');
+  assert.equal(extract({ _buildUnjudged: true }), 'not verified');
+  assert.equal(extract({}), '');
+  // A verdict always wins over the mark — main.js only sets _buildUnjudged
+  // where nothing judged, but the extractor must not depend on that.
+  assert.equal(extract({ _buildVerdict: 'already-built', _buildUnjudged: true }), 'ALREADY BUILT');
+});
+
 console.log('');
 console.log(`${passed}/${passed + failed} passed`);
 if (failed > 0) process.exit(1);
