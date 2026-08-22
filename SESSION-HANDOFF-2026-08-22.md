@@ -6,11 +6,12 @@ https://winnipeg-opendata-parcelsearch.vercel.app/ ; every push to `main`
 deploys. Replaces `SESSION-HANDOFF-2026-08-21.md`, now archived under
 `.claude/`, whose still-live constraints are carried forward below.
 
-Eight commits landed and deployed across 2026-08-21/22, `74ad076` →
-`826060c`. Three came out of answering ONE question nobody had asked —
+Ten commits landed and deployed across 2026-08-21/22, `74ad076` →
+`758f128`. Three came out of answering ONE question nobody had asked —
 the 79 vacant sales with no live roll record — three more came out of
-things that broke while verifying those, and the last two came out of
-Jason reading the result and naming two rules the app did not have.
+things that broke while verifying those, and the last four came out of
+Jason reading the result: two rules the app did not have, and then a
+row-by-row review of the rows no rule can settle.
 
 ---
 
@@ -42,8 +43,8 @@ still stands for 2026-10-02 as routine maintenance.
 
 Beyond that nothing is queued. Candidates, none of them asked for:
 
-- **The 14 top-end rows** — see "Still open" below. Offered and declined
-  once, deliberately.
+- The 14 top-end rows are **CLOSED** — reviewed one by one on
+  2026-08-22, six decided by hand. See that section before re-opening.
 - Taxonomy still arguable: REFRL / PERP / STATU in Infrastructure,
   RESOT, INWSC, CMPST, RESAM vs RESMU.
 - Three definitions of "land" are still only PARTLY reconciled.
@@ -110,6 +111,12 @@ Jason's rule: if any parcel in a multi-parcel sale is not parking or
 vacant land, the whole transaction is improved. 23 transactions, 41
 rows, and the land-denominated rates are withheld rather than marked.
 
+### `758f128` — Jason's verdicts on the rows no instrument can settle
+
+The top-end review. Six rolls decided by hand in `lib/saleJudgements.js`,
+each with its reason and date. Includes the 165 PROVENCHER assembly,
+whose rate was wrong by 6.8x and is now correct.
+
 ---
 
 ## What the numbers do now
@@ -125,7 +132,8 @@ from `it4w-cpf4`:
 | held back, price says the building was worthless | — | **6** |
 | marked "not verified" | 0 | **76** |
 | re-categorised as a MIXED sale | 0 | **41** |
-| Land category | 6,739 | **6,674** |
+| decided by hand (`saleJudgements`) | 0 | **6 rolls** |
+| Land category | 6,739 | **6,680** |
 | median $/Lot SF (Land) | $30.14 | **$30.13** |
 
 The Land median ends up almost where it started, but not because little
@@ -286,22 +294,70 @@ true. New:
     pulls its rates.** Silence about which improved type the deal was is
     not permission to keep a blended rate. None exist in the archive
     today.
+13. **`lib/saleJudgements.js` overrides the VERDICT, never the
+    category — and that is what makes it correct.** Dropping the verdict
+    lets `saleCategory` return the row to Land on its own AND lets
+    `resolveMixedSales` re-read the group, so 1204 STURGEON and 365
+    OAKDALE each take a SIBLING parcel back to Land with them. Forcing a
+    category would have fixed one row and left its sibling wrong.
+    Verified both move.
+14. **Three verdict types, because two would lie.** `no-building` drops
+    it; `priced-as-land` downgrades to `built-priced-as-land`, because
+    365 OAKDALE really did have a 1937 house and the row must keep the
+    visible mark rather than pretend otherwise; `upheld` changes nothing
+    and exists so a settled question is not re-opened to the opposite
+    answer. `judgedVerdict` returns `null` to DROP and `undefined` to
+    LEAVE ALONE — a caller testing truthiness would collapse them and
+    silently stop reversing anything. Pinned by a test.
+15. **A corrected land area may ONLY come from a dated record, never an
+    estimate, and the note must say where.** 165 PROVENCHER's 27,422 sf
+    comes from the `wpg-parcel-history` snapshot 2023-11-13, two weeks
+    before the sale. Rebuilding the rate beat withholding it — an
+    appraiser can use $127.63 and cannot use a blank — but only because
+    the figure is sourced. Withholding was the first plan and is the
+    right answer whenever it is not.
+16. **`saleJudgements` is not a dumping ground.** A rule that is wrong
+    in general belongs in the rule: the six parking false positives were
+    fixed by narrowing the SABRE gate, not by listing them. A test caps
+    the list at 25 with the message "if this keeps growing, fix the rule
+    instead".
 
 ---
 
-## Still open — the 14 top-end rows
+## CLOSED — the 14 top-end rows, reviewed one by one
 
-The other end of the price band. 14 rows carry an inferred already-built
-verdict where the building cannot plausibly explain the price: 365
-OAKDALE at $2,792 per building sf on a 67,755 sf lot, 165 PROVENCHER at
-$1,591, 1204 STURGEON at $1,126, an unaddressed $9.7M row at $1,060.
-Those are land deals with a building standing on them and they are
-currently reclassified OUT of Land.
+Settled 2026-08-22. This section used to say "offered and declined once";
+Jason then asked to go through them individually and did. **Do not
+re-open these without new information.**
 
-An age-relative ceiling at each cohort's p99 would catch about four and
-correctly spare the new builds — a flat ceiling does NOT, because it
-flags 28 WATERSTONE DRIVE (2,871 sf built 2014 at $531/bldg sf), which
-`c79a65c` correctly reclassified. The cohort bands:
+The live roll sorted them before he saw them. **Eight needed nothing** —
+28 WATERSTONE ×2, 100 ST PIERRE, 47 KARSCHUK BAY, 88 FIFTH AVE, 409
+QUEEN, 323 WEBSTER and 45 DAMAN FARM all match the live roll exactly on
+year built and living area. Four of those are ordinary new houses
+(2014–2024) that only appeared on the list because the flat $398 cut
+ignores age; all sit at 0.4–0.7x their own cohort's p99.
+
+**Six he decided himself**, and they are now in `lib/saleJudgements.js`
+with his reasons and the date:
+
+| roll | | his verdict |
+|---|---|---|
+| 14098347100 | 2730 KING EDWARD | vacant multi-family land → Land |
+| 07438470500 | 1204 STURGEON RD | vacant multifamily → Land |
+| 01009600025 | 365 OAKDALE | multifamily redevelopment → Land, marked |
+| 06093124800 | 165 PROVENCHER | redevelopment w/ consolidation → Land, rate rebuilt |
+| 14098695400 | unaddressed $9.7M | "an oddity but an improved sale" — UPHELD |
+| 02040550500 | 599 WASHINGTON | improved, and CONSOLIDATED — UPHELD |
+
+The first two and the last two had **identical data shapes** — SABRE
+reporting a building, live roll reporting none — and he split them from
+knowledge of the properties. That is why the file exists; see decision
+13.
+
+**The age-cohort ceiling was never built and is no longer needed.** It
+existed to catch these rows automatically, and it would have been wrong
+on at least two of them: it cannot tell 2730 KING EDWARD from
+14098695400. The bands stay recorded for reference —
 
 | building age | p5 | median | p95 | p99 |
 |---|---:|---:|---:|---:|
@@ -309,18 +365,8 @@ flags 28 WATERSTONE DRIVE (2,871 sf built 2014 at $531/bldg sf), which
 | 1945–1999 | $80 | $210 | $441 | $748 |
 | 2000+ | $180 | $309 | $494 | $968 |
 
-It needs three thresholds to move four rows and one lands at 1.04x its
-boundary, which is not the "obvious" reclassification is reserved for.
-Jason was offered it and chose to leave it. Close it deliberately or not
-at all.
-
-**One of them has since moved by a different route.** 365 OAKDALE is
-half of instrument 5265912, a $5,500,000 two-parcel sale, and its
-SIBLING carried an already-built verdict — so `826060c`'s mixed-sale
-rule now reads the whole transaction as improved. The row left Land, but
-not because the top-end question was answered. Anyone revisiting that
-question should re-measure the 14 rather than assume the list still
-holds.
+— but the conclusion is that no threshold separates this population, and
+the six-row list did the job a rule could not.
 
 ---
 
@@ -371,15 +417,24 @@ Winnipeg-specific LAND charts; `lib/pucs.js` has no MB counterpart; the
 street-name typeahead; the N1 crosswalk binds to SABRE rather than MAO.
 Winnipeg-only from this session: `sabreBuildVerdict`, `pricedAsLand`,
 the "not verified" mark (all three depend on SABRE's export schema),
-`lib/yieldToPaint.js` (MB has no such helper), and `isLandSetUseCode` /
+`lib/yieldToPaint.js` (MB has no such helper), `isLandSetUseCode` /
 `resolveMixedSales` (both hang off `lib/pucs.js`, which has no MB
-counterpart).
+counterpart), and `lib/saleJudgements.js` (Winnipeg rolls, Winnipeg
+decisions — an MB equivalent would be a separate list, not a shared
+one).
 
 ---
 
 ## Known gaps
 
-- **The 14 top-end rows.** See "Still open".
+- **SABRE can attach the WRONG PARCEL'S land area to a roll.** Found on
+  165 PROVENCHER: SABRE gave roll 06093124800 an area of 4,044 sf, which
+  is 157 PROVENCHER's; its own is 12,111. That alone made the rate 6.8x
+  too high. Only this one instance is known and it is corrected by hand,
+  but nothing detects the class — a cross-check of SABRE's land area
+  against the roll's would find others, and `_landDisagree` already
+  flags a >10% gap where a LIVE record exists. It cannot help here,
+  because this roll is retired.
 - **Parking sales carry no STALL count, so there is no $/stall.**
   `_saleNumUnits` and `_saleUnitLabel` are empty on all 17 CMPSP sales;
   neither SABRE nor the roll records stalls. Jason's plan is to enter
@@ -439,6 +494,7 @@ SABRE CSVs  ->  D:\Dropbox\ClaudeCode\WpgOpenData\SABRE\*.csv  (53 files)
   PASS 1  buildPermitIndex / findNearestPermit / demoVerdict / buildVerdict
   PASS 2  rollBuildVerdict            (only where PASS 1 said nothing)
   PASS 3  sabreBuildVerdict           (only where 1 and 2 said nothing)
+  JUDGE   judgedVerdict               (Jason's list; inferred verdicts only)
   PASS 4  pricedAsLand                (only on a roll/sabre verdict)
   MARK    _buildUnjudged              (land set + _noLiveMatch + no verdict)
   saleCategory                          pucs.js
@@ -546,6 +602,14 @@ show him the table, recommend — then do what he says.
    them is not a parking lot or vacant land then the entire sale should
    be considered as an improved property and not a parking lot." A
    transaction is one deal.
+
+A fourth thing, learned 2026-08-22 rather than stated: **he will review
+rows individually and he is fast at it.** Offered the 14 top-end rows as
+a rule to build, he declined; asked to see them one at a time, he
+settled all fourteen in four short messages, and supplied the five-parcel
+list for 165 PROVENCHER that turned an unusable rate into a correct one.
+When a population resists a rule, put the table in front of him rather
+than tuning the threshold — it is faster and the answers are better.
 
 Rule 1 is the tie-breaker when the others are ambiguous, and it is what
 decided against trusting SABRE's building figures on parking rows. It
