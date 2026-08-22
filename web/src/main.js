@@ -46,6 +46,7 @@ import {
   pricedAsLand, describePricedAsLand,
 } from './lib/permitEvidence.js';
 import { yieldToPaint } from './lib/yieldToPaint.js';
+import { judgedVerdict, judgedAssembly, saleJudgement } from './lib/saleJudgements.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
 import bbox from '@turf/bbox';
@@ -4129,6 +4130,35 @@ async function runSalesAnalysis() {
     });
   }
 
+  // JASON'S OWN VERDICTS, applied before the price tiebreak and before
+  // saleCategory so everything downstream recomputes from the corrected
+  // state -- including resolveMixedSales, which re-reads the group. Two
+  // of these un-mix a sale and return a SIBLING parcel to Land as a
+  // side effect; forcing the category instead would have fixed one row
+  // and left its sibling wrong.
+  //
+  // Only ever rewrites an INFERRED verdict. A permit is dated evidence
+  // about the transaction and is not overridden from a list.
+  //
+  // lib/saleJudgements.js carries the reasoning. The short version: on
+  // 2026-08-22 the top-end review put rows of identical shape in front
+  // of Jason -- SABRE reporting a building, live roll reporting none --
+  // and he split them from knowledge of the properties. Nothing in the
+  // data separates them.
+  for (const f of saleFc.features) {
+    const p = f.properties;
+    if (p._buildVerdict !== 'already-built') continue;
+    if (p._buildEvidence !== 'roll' && p._buildEvidence !== 'sabre') continue;
+    const judged = judgedVerdict(p.roll_number);
+    if (judged === undefined) continue;
+    const j = saleJudgement(p.roll_number);
+    p._buildVerdict = judged;          // null drops it, a string downgrades it
+    p._judged = true;
+    p._judgedTitle = `${j.note} (Jason, ${j.decided})`;
+    if (judged === null) { p._buildEvidence = null; p._buildTitle = null; }
+    else { p._buildTitle = p._judgedTitle; }
+  }
+
   // The teardown tiebreak, and the reason it sits AFTER both inferred
   // passes and never touches the permit one.
   //
@@ -4255,6 +4285,24 @@ async function runSalesAnalysis() {
   for (const f of saleFc.features) {
     const p = f.properties;
     const key = String(p._saleInstrument ?? '');
+    // A sale SABRE mis-measured gets its rates REBUILT, not withheld.
+    // 165 PROVENCHER assembled five parcels; SABRE linked one and gave it
+    // 4,044 sf, which is a DIFFERENT parcel's area -- its own is 12,111.
+    // The published rate read $865.48 per lot square foot against a real
+    // $127.63, high by 6.8x. The corrected area comes from the
+    // wpg-parcel-history snapshot dated two weeks before the sale, so it
+    // is a sourced figure rather than an estimate, and an appraiser can
+    // use $127.63 where they could not use a blank.
+    const assembly = judgedAssembly(p.roll_number);
+    if (assembly && p._salePrice) {
+      p._pricePerSf = p._salePrice / assembly.landSf;
+      p._saleAcres = assembly.landSf / 43560;
+      p._pricePerAcre = p._salePrice / p._saleAcres;
+      p._pricePerLot = p._salePrice / assembly.parcels;
+      p._assemblyCorrected = true;
+      const j = saleJudgement(p.roll_number);
+      p._assemblyTitle = `${j.note} (Jason, ${j.decided})`;
+    }
     if (!mixedSales.has(key)) continue;
     p._mixedSale = true;
     const forced = mixedCategory.get(key);
