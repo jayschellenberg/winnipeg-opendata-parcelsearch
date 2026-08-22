@@ -465,6 +465,12 @@ export function saleCategory(input) {
     const code = pucsCode(saleUseCode);
     if (code === 'VCOMM') return 'Retail-Commercial';
     if (code === 'VINDU') return 'Industrial';
+    // Surface parking reaches Land by CATEGORY rather than by a vacant
+    // code, and the build instruments can now judge it. A parking lot
+    // that turns out to have been built on is a commercial property --
+    // falling through to Residential would file a downtown lot as a
+    // house, which is a worse answer than the one we started with.
+    if (code === 'CMPSP') return 'Retail-Commercial';
     return 'Residential';
   }
   if (demoVerdict === 'teardown') return 'Land';

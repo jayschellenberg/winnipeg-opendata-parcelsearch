@@ -21,6 +21,7 @@ import {
   saleZoningCodes, passesZoningFilter,
   saleUseCodeOf, isVacantUseCode, groupVacancy, passesVacantFilter,
   groupSpreadKm, isFarFlung,
+  isLandSetUseCode,
 } from '../src/lib/salesFilters.js';
 
 let passed = 0;
@@ -375,6 +376,52 @@ test('isFarFlung — an unmeasurable span is never far-flung (fails OPEN)', () =
   assert.equal(isFarFlung(null, 5), false);
   assert.equal(isFarFlung(NaN, 5), false);
   assert.equal(isFarFlung(undefined, 5), false);
+});
+
+// ---- isLandSetUseCode: the gate the build instruments use ------------------
+// Every build pass used to gate on isVacantUseCode, so it policed the V-codes
+// and nothing else. saleCategory files a sale under Land by CATEGORY, and one
+// code reaches Land without being vacant-coded: CMPSP, surface parking. 17
+// sales sat in the Land set that no instrument could ever judge.
+
+test('isLandSetUseCode — every vacant code still counts', () => {
+  for (const c of ['VRES1', 'VRES2', 'VCOMM', 'VINDU', 'VAGRI', 'CNVAC']) {
+    assert.equal(isLandSetUseCode(c), true, c);
+  }
+});
+
+test('isLandSetUseCode — CMPSP is the one code this adds', () => {
+  // Measured: exactly 11 codes have category Land, and surface parking is the
+  // only one of them that is not vacant-coded. This widens by that and nothing
+  // else, which is why the change moved zero rows out of Land.
+  assert.equal(isLandSetUseCode('CMPSP'), true);
+  assert.equal(isVacantUseCode('CMPSP'), false, 'and it is still NOT vacant');
+});
+
+test('isLandSetUseCode — improved codes stay out', () => {
+  for (const c of ['RESSD', 'CMOFF', 'INWWH', 'RESMC', 'CMRST']) {
+    assert.equal(isLandSetUseCode(c), false, c);
+  }
+});
+
+test('isLandSetUseCode — an UNKNOWN vacant code still counts', () => {
+  // The reason this is a union and not just a category test. pucsCategory
+  // returns null for a code it has never been taught, so gating on the
+  // category alone would silently STOP judging any future V-code -- narrowing
+  // the gate while appearing to widen it.
+  assert.equal(isLandSetUseCode('VZZZZ'), true);
+});
+
+test('isLandSetUseCode — junk decides nothing', () => {
+  for (const c of ['', null, undefined, '   ']) assert.equal(isLandSetUseCode(c), false, JSON.stringify(c));
+});
+
+test('isVacantUseCode is NOT replaced by it', () => {
+  // isVacantUseCode still answers "the assessor marked this vacant" and still
+  // owns the vacant FILTER and groupVacancy, where a surface parking lot is
+  // emphatically not vacant. The two questions must stay different.
+  assert.equal(isVacantUseCode('CMPSP'), false);
+  assert.equal(isLandSetUseCode('CMPSP'), true);
 });
 
 console.log('');

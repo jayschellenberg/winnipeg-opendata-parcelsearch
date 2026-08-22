@@ -299,6 +299,22 @@ test('saleCategory — an unknown sale code is still null, and no args does not 
   assert.equal(saleCategory(), null);
 });
 
+test('saleCategory — an already-built PARKING lot is commercial, not a house', () => {
+  // CMPSP reaches Land by CATEGORY rather than by a vacant code, and the
+  // build instruments can now judge it. With no usable live record the
+  // fallback chain used to end at 'Residential', which would file a downtown
+  // parking site as a house -- a worse answer than the one we started with.
+  assert.equal(saleCategory({
+    saleUseCode: 'CMPSP', liveUseCode: null, buildVerdict: 'already-built',
+  }), 'Retail-Commercial');
+  // A usable live record still wins over the fallback.
+  assert.equal(saleCategory({
+    saleUseCode: 'CMPSP', liveUseCode: 'CMOFF', buildVerdict: 'already-built',
+  }), 'Office');
+  // And with no verdict it stays exactly where it was: in the Land set.
+  assert.equal(saleCategory({ saleUseCode: 'CMPSP' }), 'Land');
+});
+
 console.log('');
 test('UNCLASSIFIED_CATEGORY — one spelling, shared by the filter, the column and the CSV', () => {
   // The filter, the badge and the export each used to coalesce a missing

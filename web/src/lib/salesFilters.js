@@ -1,3 +1,5 @@
+import { pucsCategory } from './pucs.js';
+
 /*
  * Sales-tab range and text filters — the pure predicates behind the
  * "Additional filters" row (Manitoba parity: `size-low` / `size-high` /
@@ -258,6 +260,41 @@ export function isVacantUseCode(code) {
   const c = String(code ?? '').trim().toUpperCase();
   if (!c) return false;
   return c.startsWith('V') || VACANT_EXTRA_CODES.has(c);
+}
+
+/**
+ * True when the sale belongs to the LAND SET -- which is a wider question
+ * than "did the assessor mark it vacant".
+ *
+ * The build instruments (permit, roll, SABRE, and the price tiebreak) all
+ * used isVacantUseCode as their gate, so they policed the V-codes and
+ * nothing else. But saleCategory files a sale under Land by CATEGORY, and
+ * one code reaches Land without being vacant-coded: CMPSP, surface
+ * parking. Result: 17 sales sat in the Land set that no instrument could
+ * ever judge -- structurally invisible, at a median $74.21 per lot square
+ * foot against the set's $30.14, and 6 of them carrying SABRE building
+ * evidence nothing was asking for.
+ *
+ * Measured before widening: exactly 11 codes have category Land, and
+ * CMPSP is the ONLY one of them that is not vacant-coded. So this adds
+ * that one code and nothing else.
+ *
+ * THE UNION IS REQUIRED, not just the category test. pucsCategory returns
+ * null for a code it does not know, so gating on the category ALONE would
+ * silently stop judging any future V-code the taxonomy has not been taught
+ * yet -- narrowing the gate while appearing to widen it. Keeping
+ * isVacantUseCode as the first clause means this can only ever add.
+ *
+ * NOT a replacement for isVacantUseCode. That function answers "the
+ * assessor marked this vacant" and still owns the vacant FILTER and
+ * groupVacancy, where a surface parking lot is emphatically not vacant.
+ * The two questions are different and must stay different.
+ */
+export function isLandSetUseCode(code) {
+  if (isVacantUseCode(code)) return true;
+  const c = String(code ?? '').trim().toUpperCase();
+  if (!c) return false;
+  return pucsCategory(c) === 'Land';
 }
 
 /**

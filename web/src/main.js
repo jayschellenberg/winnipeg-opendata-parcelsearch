@@ -118,7 +118,7 @@ import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
   passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
-  groupVacancy, passesVacantFilter, isVacantUseCode, saleUseCodeOf,
+  groupVacancy, passesVacantFilter, isVacantUseCode, isLandSetUseCode, saleUseCodeOf,
   groupSpreadKm, isFarFlung,
 } from './lib/salesFilters.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
@@ -4005,7 +4005,14 @@ async function runSalesAnalysis() {
         streetName: p._saleStreetName,
         saleDate: p._saleDate,
       };
+      // Two different questions, deliberately kept apart. demoVerdict asks
+      // "did the ASSESSOR call this vacant" -- a surface parking lot is
+      // emphatically not vacant, and a demolition permit on one is a real
+      // teardown finding. buildVerdict asks "is this sale in the LAND SET",
+      // which is wider by exactly one code (CMPSP). Collapsing them would
+      // silently turn 17 teardown findings into confirmations.
       const vacant = isVacantUseCode(saleUseCodeOf(f));
+      const landSet = isLandSetUseCode(saleUseCodeOf(f));
 
       const demoHit = findNearestPermit(at, demoIndex);
       if (demoHit) {
@@ -4021,7 +4028,7 @@ async function runSalesAnalysis() {
       // (median $424k in Jason's archive), so a two-year window would
       // miss the oldest of exactly the rows this is meant to catch.
       const buildHit = findNearestPermit(at, buildIndex, 3 * 365);
-      const buildJudgement = buildVerdict(buildHit, vacant);
+      const buildJudgement = buildVerdict(buildHit, landSet);
       if (buildJudgement) {
         p._buildDate = buildHit.date;
         p._buildVerdict = buildJudgement;
@@ -4053,7 +4060,7 @@ async function runSalesAnalysis() {
     const p = f.properties;
     if (p._buildVerdict) continue;
     const rollJudgement = rollBuildVerdict({
-      saleIsVacant: isVacantUseCode(saleUseCodeOf(f)),
+      saleIsVacant: isLandSetUseCode(saleUseCodeOf(f)),
       hasLiveRecord: !p._noLiveMatch,
       yearBuilt: p.year_built,
       livingArea: p.total_living_area,
@@ -4087,6 +4094,23 @@ async function runSalesAnalysis() {
   for (const f of saleFc.features) {
     const p = f.properties;
     if (p._buildVerdict) continue;
+    // STRICT vacant test here, unlike the permit and roll passes above.
+    //
+    // SABRE's building fields are not trustworthy on a surface-parking
+    // row, and the evidence is overwhelming: of the 17 CMPSP sales, 11
+    // carry a 1 sf placeholder and the other 6 carry figures the live
+    // roll flatly contradicts -- 165 FORT reporting 120,126 sf of
+    // building on a 34,305 sf lot, PIONEER 110,140 sf on 10,271, while
+    // d4mq-wa44 shows those parcels with NO year built and NO living
+    // area at all. Widening this gate reclassified all 6 out of Land on
+    // that alone.
+    //
+    // The permit and roll passes are widened because their evidence is
+    // sound for parking: a construction permit at the address is dated
+    // fact, and the roll is the very source that contradicts SABRE here.
+    // This one is not, so it keeps the narrow gate. "Only reclassify if
+    // obvious or a permit says so" -- and a figure the roll denies is
+    // the opposite of obvious.
     const sabreJudgement = sabreBuildVerdict({
       saleIsVacant: isVacantUseCode(saleUseCodeOf(f)),
       yearBuilt: p._saleYearBuiltNumeric,
@@ -4163,7 +4187,7 @@ async function runSalesAnalysis() {
   for (const f of saleFc.features) {
     const p = f.properties;
     if (p._buildVerdict || !p._noLiveMatch) continue;
-    if (!isVacantUseCode(saleUseCodeOf(f))) continue;
+    if (!isLandSetUseCode(saleUseCodeOf(f))) continue;
     const askable = !!(String(p._saleStreetNumber ?? '').trim()
       && String(p._saleStreetName ?? '').trim());
     // Checked, not assumed. Today all 73 have a blank SABRE living area,
