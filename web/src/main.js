@@ -45,6 +45,7 @@ import {
   sabreBuildVerdict, describeSabreBuilt,
   pricedAsLand, describePricedAsLand,
 } from './lib/permitEvidence.js';
+import { yieldToPaint } from './lib/yieldToPaint.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
 import bbox from '@turf/bbox';
@@ -3769,13 +3770,6 @@ function setResultsProgress(text) {
   bar.classList.toggle('results-status-busy', !!text);
 }
 
-/** Hand the thread back long enough for one frame to paint. */
-function yieldToPaint() {
-  return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(resolve, 0));
-    else setTimeout(resolve, 0);
-  });
-}
 
 /**
  * Phase 7 (2/2): join the parsed CSV against live d4mq-wa44 data
