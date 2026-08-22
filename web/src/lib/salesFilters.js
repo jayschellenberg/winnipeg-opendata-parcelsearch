@@ -298,6 +298,67 @@ export function isLandSetUseCode(code) {
 }
 
 /**
+ * The category a MIXED sale should really carry, per group.
+ *
+ * A transaction is one deal. If any parcel in it is improved, the buyer
+ * bought an improved property, and every row of that sale has to say so
+ * -- Jason's rule, 2026-08-22: "if there are multiple parcels, and at
+ * least one of them is not a parking lot or vacant land then the entire
+ * sale should be considered as an improved property".
+ *
+ * Left uncorrected this quietly poisons the Land set. 5650563 is a
+ * $6,650,000 VINDU + INWWH sale whose vacant parcel sat in Land reading
+ * $16.63 per lot square foot -- a number that prices the warehouse.
+ * Measured over the archive: 16 groups, 34 Land rows.
+ *
+ * JUDGED ON THE FINAL CATEGORY, not the use code, and that is the whole
+ * design. It means two things fall out for free:
+ *
+ *   - A teardown assembly needs no exception. demoVerdict has already
+ *     moved the improved parcel to Land, so the group no longer spans
+ *     two categories and nothing here fires. A warehouse sold with a
+ *     vacant lot for its land stays a land deal.
+ *   - EVIDENCE counts, not just the code. 8 of the 16 groups are all
+ *     vacant-CODED but hold one parcel an instrument proved was built
+ *     on. The biggest is a 24-parcel $1,930,000 subdivision sale, 6 of
+ *     the lots already built. Jason's call, deliberately: the sale
+ *     bought buildings, so all 24 rows read improved.
+ *
+ * Silent on a group with more than ONE non-Land category -- it cannot
+ * say which improved type the deal was, so it declines rather than
+ * picking. None exist in the archive today; the caller still marks the
+ * sale mixed and withholds its land rates.
+ *
+ * @param {Array} features joined sale features, categories already stamped
+ * @returns {{force: Map<string,string>, mixed: Set<string>}} the category to
+ *          force per instrument, and every instrument whose sale mixed Land
+ *          with anything else (a superset -- `mixed` also holds the groups
+ *          `force` declined to name).
+ */
+export function resolveMixedSales(features) {
+  const byGroup = new Map();
+  for (const f of features || []) {
+    const key = String(f?.properties?._saleInstrument ?? '');
+    const cat = f?.properties?._saleCategory;
+    if (!cat) continue;
+    if (!byGroup.has(key)) byGroup.set(key, new Set());
+    byGroup.get(key).add(cat);
+  }
+  const force = new Map();
+  const mixed = new Set();
+  for (const [key, cats] of byGroup) {
+    if (!cats.has('Land') || cats.size < 2) continue;
+    // Mixed either way -- the land-denominated rates divide a
+    // consideration that partly bought buildings, so they go whether or
+    // not the improved category can be named.
+    mixed.add(key);
+    const others = [...cats].filter((c) => c !== 'Land');
+    if (others.length === 1) force.set(key, others[0]);
+  }
+  return { force, mixed };
+}
+
+/**
  * Vacancy verdict per SALE GROUP (instrument), so every row of a
  * multi-parcel sale passes or fails together — the same rule the lot-
  * size filter uses. A sale is:

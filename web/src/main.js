@@ -119,6 +119,7 @@ import {
   passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
   groupVacancy, passesVacantFilter, isVacantUseCode, isLandSetUseCode, saleUseCodeOf,
+  resolveMixedSales,
   groupSpreadKm, isFarFlung,
 } from './lib/salesFilters.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
@@ -4231,6 +4232,40 @@ async function runSalesAnalysis() {
       buildVerdict: p._buildVerdict,
       demoVerdict: p._demoVerdict,
     });
+  }
+
+  // A transaction is ONE deal, so a sale that mixed land and improvements
+  // is an improved sale in all of its rows. Runs AFTER the per-row
+  // categories because it reads them: a teardown assembly has already
+  // been pulled to Land on both sides and correctly does not register as
+  // mixed, while a group whose only improved parcel was found by an
+  // instrument rather than by its use code does. lib/salesFilters.js
+  // carries the measurement -- 16 groups, 34 rows.
+  //
+  // THE LAND-DENOMINATED RATES ARE WITHHELD, not just marked. $/Lot SF,
+  // $/Acre and $/Lot all divide the WHOLE consideration by a land-side
+  // denominator, and on a mixed sale part of that consideration bought
+  // buildings. 5650563 is the case that decides it: a $6,650,000
+  // VINDU + INWWH deal reading $16.63 per lot square foot. That is not a
+  // land rate, it is arithmetic, and an appraiser could lift it into a
+  // report. $/Bldg SF stays -- the sale IS improved, so that is now the
+  // meaningful figure. Same principle as parcelLandSf withholding every
+  // rate rather than pricing on a placeholder: a blank claims nothing.
+  const { force: mixedCategory, mixed: mixedSales } = resolveMixedSales(saleFc.features);
+  for (const f of saleFc.features) {
+    const p = f.properties;
+    const key = String(p._saleInstrument ?? '');
+    if (!mixedSales.has(key)) continue;
+    p._mixedSale = true;
+    const forced = mixedCategory.get(key);
+    if (forced) p._saleCategory = forced;
+    p._pricePerSf = null;
+    p._pricePerAcre = null;
+    p._pricePerLot = null;
+    p._mixedSaleTitle = `This sale included ${forced ? `an improved ${forced} parcel` : 'improved parcels'} `
+      + `alongside land, so the whole transaction is an improved sale rather than a land comp. `
+      + `$/Lot SF, $/Acre and $/Lot are withheld: they divide the entire price by a land-side `
+      + `denominator, and part of this price bought buildings.`;
   }
 
   // Neighbourhood cluster, from the parcel centroid. Non-fatal: if the

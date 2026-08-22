@@ -21,7 +21,7 @@ import {
   saleZoningCodes, passesZoningFilter,
   saleUseCodeOf, isVacantUseCode, groupVacancy, passesVacantFilter,
   groupSpreadKm, isFarFlung,
-  isLandSetUseCode,
+  isLandSetUseCode, resolveMixedSales,
 } from '../src/lib/salesFilters.js';
 
 let passed = 0;
@@ -422,6 +422,74 @@ test('isVacantUseCode is NOT replaced by it', () => {
   // emphatically not vacant. The two questions must stay different.
   assert.equal(isVacantUseCode('CMPSP'), false);
   assert.equal(isLandSetUseCode('CMPSP'), true);
+});
+
+// ---- resolveMixedSales: one deal, one verdict -----------------------------
+// Jason's rule, 2026-08-22: if any parcel in a multi-parcel sale is not
+// parking or vacant land, the WHOLE transaction is an improved sale. Left
+// uncorrected the vacant parcel of a $6,650,000 VINDU+INWWH deal sat in Land
+// reading $16.63 per lot square foot -- a number that prices the warehouse.
+
+const row = (inst, cat) => ({ properties: { _saleInstrument: inst, _saleCategory: cat } });
+
+test('resolveMixedSales — Land beside one improved parcel forces the group', () => {
+  const { force, mixed } = resolveMixedSales([row('A', 'Land'), row('A', 'Industrial')]);
+  assert.equal(force.get('A'), 'Industrial');
+  assert.ok(mixed.has('A'));
+});
+
+test('resolveMixedSales — a TEARDOWN assembly is not mixed, and needs no exception', () => {
+  // This is why it judges the FINAL category rather than the use code.
+  // demoVerdict has already pulled the improved parcel to Land, so the group
+  // spans one category and nothing fires. A warehouse sold with a vacant lot
+  // for its land stays a land deal.
+  const { force, mixed } = resolveMixedSales([row('B', 'Land'), row('B', 'Land')]);
+  assert.equal(force.size, 0);
+  assert.equal(mixed.size, 0);
+});
+
+test('resolveMixedSales — a wholly improved sale is left alone', () => {
+  const { mixed } = resolveMixedSales([row('C', 'Industrial'), row('C', 'Office')]);
+  assert.equal(mixed.size, 0, 'no Land member, so this rule has nothing to say');
+});
+
+test('resolveMixedSales — a single-parcel sale can never be mixed', () => {
+  const { mixed } = resolveMixedSales([row('D', 'Land')]);
+  assert.equal(mixed.size, 0);
+});
+
+test('resolveMixedSales — MORE than one improved category names none, but still marks it', () => {
+  // It cannot say which improved type the deal was, so it declines to pick.
+  // The sale is still mixed and the caller still withholds its land rates --
+  // silence about the category is not permission to keep a blended rate.
+  const { force, mixed } = resolveMixedSales([
+    row('E', 'Land'), row('E', 'Industrial'), row('E', 'Office'),
+  ]);
+  assert.equal(force.has('E'), false);
+  assert.ok(mixed.has('E'), 'still mixed');
+});
+
+test('resolveMixedSales — rows with no category yet are ignored, not treated as a category', () => {
+  const { mixed } = resolveMixedSales([row('F', 'Land'), row('F', null), row('F', undefined)]);
+  assert.equal(mixed.size, 0);
+});
+
+test('resolveMixedSales — groups are independent', () => {
+  const { force, mixed } = resolveMixedSales([
+    row('G', 'Land'), row('G', 'Residential'),
+    row('H', 'Land'), row('H', 'Land'),
+  ]);
+  assert.equal(force.get('G'), 'Residential');
+  assert.ok(mixed.has('G'));
+  assert.ok(!mixed.has('H'));
+});
+
+test('resolveMixedSales — empty and junk input never throws', () => {
+  for (const input of [[], null, undefined, [{}, { properties: null }]]) {
+    const { force, mixed } = resolveMixedSales(input);
+    assert.equal(force.size, 0);
+    assert.equal(mixed.size, 0);
+  }
 });
 
 console.log('');
