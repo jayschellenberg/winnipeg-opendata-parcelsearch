@@ -222,7 +222,7 @@ and swap against scratch asset names on the live release.
 
 ## Documentation
 
-- **[SESSION-HANDOFF-2026-08-21.md](SESSION-HANDOFF-2026-08-21.md)** — the
+- **[SESSION-HANDOFF-2026-08-22.md](SESSION-HANDOFF-2026-08-22.md)** — the
   current resume point: what the sales side is, the decisions that will
   silently regress if you change them, and what is still open. Superseded
   handoffs are archived under `.claude/`.
