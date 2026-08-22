@@ -454,7 +454,39 @@ try {
 # fetch-pmtiles.mjs verifies the downloaded asset against this value at
 # deploy time, so it must be refreshed in the same run that uploads.
 Log 'Step 4/6: refresh web/scripts/parcels.pmtiles.sha256'
-$hash = (Get-FileHash $pmtilesPath -Algorithm SHA256).Hash.ToLower()
+# WAIT FOR THE ARCHIVE TO BE READABLE BEFORE HASHING IT.
+#
+# Dropbox keeps the freshly written ~99 MB archive open while it indexes and
+# uploads it, and Get-FileHash cannot read it until that finishes. Measured
+# on 2026-08-22: still failing 25s after the write, hashing in under a second
+# at 85s. Both runs that day died here with the archive already built, which
+# is 17 minutes of tiling discarded for a wait of about a minute.
+#
+# Poll on the condition that actually matters -- can the file be OPENED for
+# read -- rather than on a fixed sleep, so a fast machine proceeds at once
+# and a slow sync still completes. Ten minutes is far beyond the observed
+# window and still well inside the task's 6h limit.
+#
+# LOG THE REASON. The first version of this swallowed the exception and
+# logged a bare 'came back empty', which cost a whole second run to
+# diagnose. Whatever fails here, say what it was.
+$hash = ''
+$hashDeadline = (Get-Date).AddMinutes(10)
+$lastErr = 'no attempt made'
+while ((Get-Date) -lt $hashDeadline) {
+  try {
+    $fs = [System.IO.File]::Open($pmtilesPath, 'Open', 'Read', 'Read')
+    try {
+      $sha = [System.Security.Cryptography.SHA256]::Create()
+      $hash = (($sha.ComputeHash($fs) | ForEach-Object { $_.ToString('x2') }) -join '')
+    } finally { $fs.Close() }
+  } catch { $hash = ''; $lastErr = "$($_.Exception.GetType().Name): $($_.Exception.Message)" }
+  if ($hash) { break }
+  Log "  archive not readable yet ($lastErr); retrying in 10s"
+  Start-Sleep -Seconds 10
+}
+if (-not $hash) { Fail "could not read $pmtilesPath to hash it within 10 minutes. Last error: $lastErr" }
+$hash = $hash.ToLower()
 try {
   Set-Content -Path $shaPath -Value $hash -Encoding ascii -ErrorAction Stop
 } catch {
