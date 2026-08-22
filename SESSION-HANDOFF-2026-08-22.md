@@ -6,10 +6,11 @@ https://winnipeg-opendata-parcelsearch.vercel.app/ ; every push to `main`
 deploys. Replaces `SESSION-HANDOFF-2026-08-21.md`, now archived under
 `.claude/`, whose still-live constraints are carried forward below.
 
-Six commits landed and deployed across 2026-08-21/22, `74ad076` →
-`8c444c0`. Three of them came out of answering ONE question nobody had
-asked — the 79 vacant sales with no live roll record — and the other
-three came out of things that broke while verifying the first three.
+Eight commits landed and deployed across 2026-08-21/22, `74ad076` →
+`826060c`. Three came out of answering ONE question nobody had asked —
+the 79 vacant sales with no live roll record — three more came out of
+things that broke while verifying those, and the last two came out of
+Jason reading the result and naming two rules the app did not have.
 
 ---
 
@@ -95,6 +96,20 @@ the real exception.
 fires in a hidden tab. Pre-existing, and it has been silently costing
 anyone who starts a long run and switches tabs. See the decisions list.
 
+### `0a7bec6` — the build instruments can see surface parking
+
+Every build pass gated on `isVacantUseCode`, so it policed the V-codes
+and nothing else — but `saleCategory` files a sale under Land by
+CATEGORY, and CMPSP reaches Land without being vacant-coded. 17 sales
+sat in the Land set that nothing could ever judge. `isLandSetUseCode` is
+the union, and the SABRE pass deliberately keeps the NARROW gate.
+
+### `826060c` — a mixed sale is an improved sale in every row
+
+Jason's rule: if any parcel in a multi-parcel sale is not parking or
+vacant land, the whole transaction is improved. 23 transactions, 41
+rows, and the land-denominated rates are withheld rather than marked.
+
 ---
 
 ## What the numbers do now
@@ -108,9 +123,15 @@ from `it4w-cpf4`:
 | already-built, from the ROLL | 37 | **34** |
 | already-built, from SABRE | — | **27** |
 | held back, price says the building was worthless | — | **6** |
-| marked "not verified" | 0 | **73** |
-| Land category | 6,739 | **6,715** |
-| median $/Lot SF (Land) | $30.14 | **$30.06** |
+| marked "not verified" | 0 | **76** |
+| re-categorised as a MIXED sale | 0 | **41** |
+| Land category | 6,739 | **6,674** |
+| median $/Lot SF (Land) | $30.14 | **$30.13** |
+
+The Land median ends up almost where it started, but not because little
+happened: 65 rows left, and what left was a tail of artificially LOW
+blended rates ($16.63 on a $6.65M warehouse deal) alongside a set of
+high ones. Do not read the flat median as a null result.
 
 **Both columns are on the same basis — my replay, which INCLUDES the
 demolition pass.** Do not compare against the older 6,673 / 6,636: those
@@ -220,6 +241,51 @@ true. New:
 6. **The tile rebuild's Step 3 refuses to publish an archive it did not
    build in that run** (`LastWriteTime -lt $runStart`). Do not work
    around it to skip a rebuild — re-run the script.
+7. **`isLandSetUseCode` is a UNION and must stay one.** The build passes
+   ask "is this in the LAND SET", which is wider than "did the assessor
+   call it vacant" by exactly one code: CMPSP. Measured — 11 codes have
+   category Land and parking is the only non-vacant one. Gating on the
+   CATEGORY alone would be a silent narrowing, because `pucsCategory`
+   returns null for a code it has never been taught and any future
+   V-code would stop being judged. `isVacantUseCode` first means it can
+   only ever add. Pinned by a `'VZZZZ'` test.
+8. **`isVacantUseCode` is NOT replaced by it.** It still answers "the
+   assessor marked this vacant" and still owns the vacant FILTER,
+   `groupVacancy`, and `demoVerdict` — where a surface parking lot is
+   emphatically not vacant and a demolition permit on one is a real
+   teardown finding. Collapsing the two would turn 103 teardown findings
+   into confirmations.
+9. **The SABRE pass keeps the NARROW gate, on purpose.** Widening it to
+   parking reclassified 6 of the 17 straight out of Land on SABRE's own
+   living area — and the live roll contradicts every one. 165 FORT
+   reports 120,126 sf of building on a 34,305 sf lot, PIONEER 110,140 sf
+   on 10,271, while `d4mq-wa44` shows those parcels with NO year built
+   and NO living area and three still reading SURFACE PARKING. SABRE's
+   building fields are junk on a parking row in BOTH directions: the
+   other 11 carry the 1 sf placeholder `MIN_PLAUSIBLE_LIVING_SF` exists
+   to reject. Permits and the roll are widened because their evidence is
+   sound here; SABRE is not.
+10. **A mixed sale is judged on the FINAL category, not the use code.**
+    That is what makes `resolveMixedSales` correct without exceptions: a
+    teardown assembly has already had its improved parcel pulled to Land
+    by `demoVerdict`, so it spans one category and nothing fires, while
+    a group whose only improved parcel was found by an INSTRUMENT still
+    does. Jason's call that evidence counts, not just the code — the
+    largest case is a 24-parcel $1,930,000 subdivision sale with 6 lots
+    built, and all 24 rows read Residential.
+11. **A mixed sale's land rates are WITHHELD, group-wide.** $/Lot SF,
+    $/Acre and $/Lot all divide the whole consideration by a land-side
+    denominator, and part of that consideration bought buildings. 69
+    rates go. $/Bldg SF stays — the sale IS improved. Withheld on every
+    row of the group including the already-improved ones, because the
+    rate is a group aggregate and blanking one sibling but not the other
+    would be incoherent. Same principle as `parcelLandSf`: a blank
+    claims nothing, $16.63 on a $6.65M warehouse deal is a fiction.
+12. **`resolveMixedSales` declines to NAME a category when a group has
+    more than one non-Land member, but still marks it mixed and still
+    pulls its rates.** Silence about which improved type the deal was is
+    not permission to keep a blended rate. None exist in the archive
+    today.
 
 ---
 
@@ -247,6 +313,14 @@ It needs three thresholds to move four rows and one lands at 1.04x its
 boundary, which is not the "obvious" reclassification is reserved for.
 Jason was offered it and chose to leave it. Close it deliberately or not
 at all.
+
+**One of them has since moved by a different route.** 365 OAKDALE is
+half of instrument 5265912, a $5,500,000 two-parcel sale, and its
+SIBLING carried an already-built verdict — so `826060c`'s mixed-sale
+rule now reads the whole transaction as improved. The row left Land, but
+not because the top-end question was answered. Anyone revisiting that
+question should re-measure the 14 rather than assume the list still
+holds.
 
 ---
 
@@ -296,14 +370,33 @@ far-flung ships with no default threshold; the charts are
 Winnipeg-specific LAND charts; `lib/pucs.js` has no MB counterpart; the
 street-name typeahead; the N1 crosswalk binds to SABRE rather than MAO.
 Winnipeg-only from this session: `sabreBuildVerdict`, `pricedAsLand`,
-the "not verified" mark (all three depend on SABRE's export schema) and
-`lib/yieldToPaint.js` (MB has no such helper).
+the "not verified" mark (all three depend on SABRE's export schema),
+`lib/yieldToPaint.js` (MB has no such helper), and `isLandSetUseCode` /
+`resolveMixedSales` (both hang off `lib/pucs.js`, which has no MB
+counterpart).
 
 ---
 
 ## Known gaps
 
 - **The 14 top-end rows.** See "Still open".
+- **Parking sales carry no STALL count, so there is no $/stall.**
+  `_saleNumUnits` and `_saleUnitLabel` are empty on all 17 CMPSP sales;
+  neither SABRE nor the roll records stalls. Jason's plan is to enter
+  those sales into N1 and let the crosswalk supply the count — the
+  importer already recognises a units column (`Units`, `No of Units`,
+  `Number of Units`) and the grid already has a **Units** column, so a
+  count arriving that way flows through with no code change. What does
+  NOT exist is a `$/Unit` rate; that is the piece to build once counts
+  are real. Deriving stalls from lot area was considered and rejected:
+  at ~325 sf/stall, PIONEER AVENUE would read ~$490,000 per stall, which
+  says only that it is a redevelopment site, not a parking sale.
+- **Parking sales are surfaced but not analysed.** They stay in Land, as
+  Jason wants, and the existing PUCS filter isolates them (`Any PUCS` →
+  CMPSP). Only ONE of the 17 carries any verdict — 835 NOTRE DAME,
+  land-then-built from a permit. The rest are unjudgeable in practice
+  because the roll records no building on any of them and SABRE's
+  figures are not trusted here.
 - **73 vacant-coded sales are marked "not verified"** — the roll is
   retired and nothing can judge them. They stay in Land and price like
   land (median $24.71/lot sf against $30.06), but nothing has checked
@@ -347,9 +440,15 @@ SABRE CSVs  ->  D:\Dropbox\ClaudeCode\WpgOpenData\SABRE\*.csv  (53 files)
   PASS 2  rollBuildVerdict            (only where PASS 1 said nothing)
   PASS 3  sabreBuildVerdict           (only where 1 and 2 said nothing)
   PASS 4  pricedAsLand                (only on a roll/sabre verdict)
-  MARK    _buildUnjudged              (vacant + _noLiveMatch + no verdict)
+  MARK    _buildUnjudged              (land set + _noLiveMatch + no verdict)
   saleCategory                          pucs.js
+  PASS 5  resolveMixedSales           (group pass, reads the CATEGORIES)
 ```
+
+Passes 1-4 and the mark gate on `isLandSetUseCode` EXCEPT the SABRE one,
+which keeps `isVacantUseCode` — see decision 9. Pass 5 runs last because
+it reads the finished categories, which is what makes a teardown
+assembly resolve correctly without an exception.
 
 `liveByRoll` is a `Map<roll11, Feature>` built from
 `../AssessmentParcels/data/assessment-parcels-2026-03-10.parquet`
@@ -436,11 +535,23 @@ question he wants answered is "what should I do with this row", not
 **He will tell you to do something the data says is wrong.** Measure it,
 show him the table, recommend — then do what he says.
 
-**His standing rule for the Land set, stated 2026-08-21:** *"flag but do
-not reclassify if there is any question about it. Only reclassify if
-obvious/permit."* This REFINES rather than reverses the `c79a65c` call
-where he took the conservative reclassify-all option — that decision was
-made without the $/building-sf measurement. Before shipping any rule
+**His standing rules for the Land set.** Three now, and they compose:
+
+1. *2026-08-21:* "flag but do not reclassify if there is any question
+   about it. Only reclassify if obvious/permit."
+2. *2026-08-22:* parking lot sales BELONG in the land analysis, and he
+   also wants to analyse them as parking — per unit or per STALL, which
+   is the rate that matters for a parking lot, not $/lot sf.
+3. *2026-08-22:* "if there are multiple parcels, and at least one of
+   them is not a parking lot or vacant land then the entire sale should
+   be considered as an improved property and not a parking lot." A
+   transaction is one deal.
+
+Rule 1 is the tie-breaker when the others are ambiguous, and it is what
+decided against trusting SABRE's building figures on parking rows. It
+REFINES rather than reverses the `c79a65c` call where he took the
+conservative reclassify-all option — that decision was made without the
+$/building-sf measurement. Before shipping any rule
 that changes a sale's category, measure what it does to individual ROWS,
 not just the aggregate, and show him. Prefer holding a verdict back over
 asserting it. Never overrule a permit with an inference. When a proposed
