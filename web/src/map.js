@@ -27,6 +27,7 @@ import {
   CITYWIDE_PARCELS_LINE_STYLES,
   applyCitywideParcelsBasemapStyle,
 } from './lib/citywideParcelsStyle.js';
+import { formatDollars } from './lib/cells.js';
 
 // mapbox-gl-draw was written against the Mapbox GL `mapboxgl-*` DOM
 // class names; MapLibre uses `maplibregl-*`. Patch the lookup table
@@ -1558,7 +1559,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       }
 
       // Click a citywide-parcels polygon → sticky popup with the
-      // roll #, address, an Assessment-page link, and a Coordinates
+      // roll #, address, an Assessment-page link, and a GPS Coordinates
       // copy-to-clipboard action. Search-result clicks (parcel-fill
       // / assess-context-fill) take precedence — the citywide popup
       // is only for parcels NOT in the active search, since for
@@ -2495,7 +2496,7 @@ function formatDate(value) {
  * Sticky click popup for a citywide-parcels feature (i.e. a parcel
  * NOT in the active search). Shows the roll # + full address, a
  * link out to the Winnipeg Assessment & Taxation page for that
- * roll, and a Coordinates link that copies the polygon's centroid
+ * roll, and a GPS Coordinates link that copies the polygon's centroid
  * (bbox midpoint) to the clipboard. Mirrors the Manitoba sister
  * app's muniParcelHtml — same action-row layout so users moving
  * between the two tools see the same UX.
@@ -2523,15 +2524,32 @@ function citywideParcelHtml(p) {
   // rather than to assume.
   if (p.property_use_code) lines.push(`<em>${escapeHtml(p.property_use_code)}</em>`);
   if (p.zoning) lines.push(`<em>${escapeHtml(p.zoning)}</em>`);
+  // Size sits between the use codes and the unit count, the same slot it
+  // occupies in the hover popup, so the two popups read in one order:
+  // what it is, how big, how many units, what it is worth.
+  const size = parcelSizeLine(p);
+  if (size) lines.push(size);
   if (p.dwelling_unit_count != null && p.dwelling_unit_count !== '') {
     lines.push(`<strong>Total dwelling units</strong> ${escapeHtml(formatDwellingCount(p.dwelling_unit_count))}`);
   }
+  // Assessed value + year, then class + status: the same two lines, in the
+  // same order, as the hover popup. All four fields (total_assessed_value,
+  // current_assessment_year, property_class_1, status_1) were absent from
+  // the tile build; they were added to select_cols in r/build_parcel_tiles.R
+  // on 2026-08-24 and reach users at the next rebuild
+  // (WpgParcelTilesBiMonthly, 2026-10-02). Until then both helpers return
+  // null and the lines are silently absent — written to degrade rather than
+  // to assume, same as the zoning line above.
+  const asmt = assessmentLine(p);
+  if (asmt) lines.push(asmt);
+  const asmtClass = assessmentClassLine(p);
+  if (asmtClass) lines.push(asmtClass);
   const actions = [];
   if (roll) {
     const url = `https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
     actions.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Assessment →</a>`);
   }
-  actions.push(`<a href="#" class="parcel-coords-copy" role="button" title="Copy parcel centroid (lat, lng) to clipboard">Coordinates</a>`);
+  actions.push(`<a href="#" class="parcel-coords-copy" role="button" title="Copy parcel centroid (lat, lng) to clipboard">GPS Coordinates</a>`);
   if (actions.length) {
     lines.push(actions.join(' &nbsp;·&nbsp; '));
   }
@@ -2637,6 +2655,84 @@ function wireCoordsCopy(popup, lngLat) {
   });
 }
 
+/**
+ * "Size 5,400 sf (0.12 ac)" — assessed_land_area is in square feet on
+ * d4mq-wa44. Both units on one line for appraisal sanity-checking at a
+ * glance: square feet is how an urban lot is transacted, acres is how it
+ * is compared to anything rural.
+ *
+ * Shared by the hover popup and the citywide click popup. It was inline
+ * in the hover popup only, which is why the click popup silently had no
+ * size line at all despite assessed_land_area having been in the tile
+ * archive from the first build — the Manitoba sister app leads its popup
+ * with Land Size, and this was the gap.
+ */
+function parcelSizeLine(p) {
+  const sf = Number(p?.assessed_land_area);
+  if (!Number.isFinite(sf) || sf <= 0) return null;
+  const sfFmt = Math.round(sf).toLocaleString('en-US');
+  const ac = (sf / 43560).toFixed(2);
+  return `<strong>Size</strong> ${escapeHtml(sfFmt)} sf (${escapeHtml(ac)} ac)`;
+}
+
+/**
+ * "Assessment (2026) $723,000" — the parcel's total assessed value with
+ * the assessment year it belongs to, as one line. Shared by the hover
+ * popup and the citywide click popup so the two can never disagree.
+ *
+ * The year is in parentheses on the value rather than on its own line
+ * because the two are a single fact: a dollar figure with no year is
+ * not usable for a comparison, and the pair reads the same way it does
+ * in the Manitoba sister app's popup ("Assessment (2026)").
+ *
+ * Both halves degrade independently. total_assessed_value missing ⇒ no
+ * line at all (an assessment line with no amount says nothing);
+ * current_assessment_year missing ⇒ the amount still shows, unlabelled
+ * by year. formatDollars already returns null for 0 / blank / negative,
+ * which is the right call here — a $0 total is a data gap, not a
+ * valuation.
+ *
+ * On citywide (Show All Parcels) features BOTH fields are absent until
+ * the archive is next rebuilt with them — see the select_cols note in
+ * r/build_parcel_tiles.R — so this returns null there for now and the
+ * popup simply omits the line, exactly as it did for `zoning` between
+ * that field being added to the build and the rebuild landing.
+ */
+function assessmentLine(p) {
+  const value = formatDollars(p?.total_assessed_value);
+  if (!value) return null;
+  const year = Number(p?.current_assessment_year);
+  const yearLabel = Number.isFinite(year) && year > 0 ? ` (${year})` : '';
+  return `<strong>Assessment${escapeHtml(yearLabel)}</strong> ${escapeHtml(value)}`;
+}
+
+/**
+ * "RESIDENTIAL 1 · TAXABLE" — the parcel's assessment class and its
+ * taxable status, as one line under the assessed value. Same pairing,
+ * and the same middot separator, as the Manitoba sister app's popup.
+ *
+ * Deliberately independent of assessmentLine rather than folded into it:
+ * a parcel can carry a class with no published value, and the class is
+ * still worth stating on its own. Status is the half that earns the line
+ * — ~5,500 of 245K parcels are EXEMPT / GRANT / SCHOOL EXEMPT rather
+ * than TAXABLE, and an exempt comp is one you need to notice before you
+ * lean on it. It is dropped when absent rather than shown as a bare
+ * separator, so a parcel with a class and no status reads as just the
+ * class.
+ *
+ * property_class_N / status_N are portioned: a roll can carry up to five
+ * class/value/status triples. Only the first is shown, matching the
+ * sales-tab class filter, which reads property_class_1 for the same
+ * reason — the dominant portion is the one that describes the parcel.
+ */
+function assessmentClassLine(p) {
+  const cls = p?.property_class_1 ? String(p.property_class_1).trim() : '';
+  const status = p?.status_1 ? String(p.status_1).trim() : '';
+  if (!cls && !status) return null;
+  const text = [cls, status].filter(Boolean).join(' · ');
+  return `<em>${escapeHtml(text)}</em>`;
+}
+
 function combinedPopupHtml(primary, context) {
   const blocks = [];
   // Determine which schema `primary` is carrying.
@@ -2686,15 +2782,8 @@ function popupHtml(p) {
     // rather than render an empty one, same as every other field here.
     const zoning = p.zoning_top1 ?? p.zoning;
     if (zoning) lines.push(`<em>${escapeHtml(zoning)}</em>`);
-    // Parcel size: assessed_land_area is in square feet on d4mq-wa44.
-    // Show SF (with thousands separator) and acres (SF / 43,560) for
-    // appraisal sanity-checking at a glance.
-    const sf = Number(p.assessed_land_area);
-    if (Number.isFinite(sf) && sf > 0) {
-      const sfFmt = Math.round(sf).toLocaleString('en-US');
-      const ac = (sf / 43560).toFixed(2);
-      lines.push(`<strong>Size</strong> ${sfFmt} sf (${ac} ac)`);
-    }
+    const size = parcelSizeLine(p);
+    if (size) lines.push(size);
     // Dwelling units: dwelling_units is text-typed; coerce defensively.
     // Show even when 0 because vacant lot is a meaningful state.
     if (p.dwelling_units != null && p.dwelling_units !== '') {
@@ -2703,6 +2792,16 @@ function popupHtml(p) {
         lines.push(`<strong>Reported DU</strong> ${du}`);
       }
     }
+    // Assessed value + its assessment year, in the same slot the Manitoba
+    // sister app puts them: after zoning / size / DU, so the popup reads
+    // description first, valuation last. Search-result features carry both
+    // fields from the live SoDA query (ASSESS_SELECT in soda.js); citywide
+    // features do not carry them yet, and assessmentLine drops the line
+    // rather than render a half-empty one.
+    const asmt = assessmentLine(p);
+    if (asmt) lines.push(asmt);
+    const asmtClass = assessmentClassLine(p);
+    if (asmtClass) lines.push(asmtClass);
     // For multi-unit buildings (condos, strip malls) the same polygon
     // covers many roll numbers. dedupeByGeometryHash in main.js stamps
     // _unitCount on the representative feature so the popup can flag
