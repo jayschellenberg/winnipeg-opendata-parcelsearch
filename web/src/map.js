@@ -1543,20 +1543,53 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         map.getCanvas().style.cursor = '';
       });
 
-      // Click a parcel → let main.js scroll the results table to the
-      // matching row. Both layers participate so a click on either the
-      // blue lot or the red building outline lands on the row.
-      if (onFeatureClick) {
-        const handle = (e) => {
-          // A click that placed shape geometry, or flipped a drawn
-          // shape's Include/Exclude, is not a parcel click.
-          if (shapeClickHandled(map, e)) return;
-          const key = e.features?.[0]?.properties?._rowKey;
-          if (key != null) onFeatureClick(key);
-        };
-        map.on('click', 'parcel-fill', handle);
-        map.on('click', 'assess-context-fill', handle);
-      }
+      // Click a parcel → scroll the results table to the matching row AND
+      // leave a popup behind. Both layers participate so a click on either
+      // the blue lot or the red building outline lands on the row.
+      //
+      // The popup half used to be missing, and the row-scroll is exactly
+      // what exposed it: clicking a result jumps the table below the map,
+      // the cursor follows it off the canvas, and `map.on('mouseout')`
+      // removes the hover popup on the way out — so the parcel you just
+      // clicked to read about is the one whose details vanish
+      // (Jason, 2026-08-24). Search results were the ONLY clickable
+      // feature without a sticky popup of their own; citywide parcels,
+      // dwelling units, contaminated sites, zoning, secondary plans and
+      // transit stops all had one.
+      //
+      // Same content as the hover popup rather than a second format,
+      // because it is the same parcel — this is the hover popup made to
+      // stay put, not a new card. Content is recomputed from the layers
+      // under the click (not from e.features) so a parcel hit in both
+      // layers renders one combined block, identical to hover.
+      const resultClickPopup = new maplibregl.Popup({ closeButton: true });
+      const handleResultClick = (e) => {
+        // A click that placed shape geometry, or flipped a drawn shape's
+        // Include/Exclude, is not a parcel click.
+        if (shapeClickHandled(map, e)) return;
+        const key = e.features?.[0]?.properties?._rowKey;
+        if (key != null && onFeatureClick) onFeatureClick(key);
+
+        const primaryHits = map.getLayer('parcel-fill')
+          ? map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] })
+          : [];
+        const contextHits = map.getLayer('assess-context-fill')
+          ? map.queryRenderedFeatures(e.point, { layers: ['assess-context-fill'] })
+          : [];
+        const primaryProps = primaryHits[0]?.properties ?? null;
+        const contextProps = contextHits[0]?.properties;
+        if (!primaryProps && !contextProps) return;
+        resultClickPopup
+          .setLngLat(e.lngLat)
+          .setHTML(combinedPopupHtml(primaryProps, contextProps))
+          .addTo(map);
+      };
+      // Registered per layer, so a click where both overlap fires twice.
+      // Harmless and deliberate: the second pass recomputes the identical
+      // HTML at the identical position, and onFeatureClick was already
+      // idempotent for the same reason before the popup existed.
+      map.on('click', 'parcel-fill', handleResultClick);
+      map.on('click', 'assess-context-fill', handleResultClick);
 
       // Click a citywide-parcels polygon → sticky popup with the
       // roll #, address, an Assessment-page link, and a GPS Coordinates
@@ -2508,21 +2541,7 @@ function citywideParcelHtml(p) {
   const lines = [];
   if (roll) lines.push(`<strong>Roll #</strong> ${escapeHtml(roll)}`);
   if (address) lines.push(escapeHtml(address));
-  // Property Use Code, then zoning directly beneath it — the same pair,
-  // in the same order, as the hover popup above. Actual use on top,
-  // legally permitted use under it, so a non-conforming parcel (RESSD on
-  // a C2 lot) reads as a mismatch between adjacent lines. The full
-  // published string, not stripZoningCode: that exists to fit a badge in
-  // a table cell and the popup has the room.
-  //
-  // Both come from the tile, so both can be absent and both drop their
-  // line rather than render an empty one. property_use_code has been in
-  // the archive all along and simply was not shown here; zoning was added
-  // on 2026-08-20 and landed in the 2026-08-24 rebuild. The degrade-don't-
-  // assume shape stays regardless — it is what lets a field be added to a
-  // popup before the rebuild that carries it.
-  if (p.property_use_code) lines.push(`<em>${escapeHtml(p.property_use_code)}</em>`);
-  if (p.zoning) lines.push(`<em>${escapeHtml(p.zoning)}</em>`);
+  lines.push(...useAndZoningLines(p));
   // Size sits between the use codes and the unit count, the same slot it
   // occupies in the hover popup, so the two popups read in one order:
   // what it is, how big, how many units, what it is worth.
@@ -2654,6 +2673,45 @@ function wireCoordsCopy(popup, lngLat) {
 }
 
 /**
+ * The Property-Use-Code and Zoning pair, labelled and in that order.
+ *
+ * One helper returning BOTH lines, rather than two callers each pushing
+ * their own, because the order is the point: actual use on top, legally
+ * permitted use directly beneath, so a non-conforming parcel (RESSD on a
+ * C2 lot) reads as a mismatch between adjacent lines instead of a
+ * separate lookup. Two popups were maintaining that pairing by hand.
+ *
+ * Both carry an explicit "PUCS:" / "Zoning:" label. Without them the two
+ * lines are a pair of bare code strings whose meaning you have to know
+ * (Jason, 2026-08-24) — and on parcels where only one of the two is
+ * published, the surviving line was genuinely ambiguous.
+ *
+ * Zoning source order matches the grid's Zoning column
+ * (lib/columnsRegistry.js renders `zoning_top1 ?? zoning`), so the popup
+ * and the table can never name different zones for one parcel:
+ * zoning_top1 is the area-weighted intersection soda.js stamps once the
+ * Zoning overlay has run, `zoning` the d4mq-wa44 primary code otherwise.
+ * Tile features carry no zoning_top1 and fall through to `zoning`.
+ *
+ * Unlike the grid we do NOT run stripZoningCode — that exists to fit a
+ * badge inside a table cell, while the popup has room for the full
+ * published string ("R1M - RES - S F - MEDIUM"). 27,769 parcels publish
+ * no zoning at all; those drop the line entirely rather than render an
+ * empty one, same as every other field here.
+ */
+function useAndZoningLines(p) {
+  const out = [];
+  if (p?.property_use_code) {
+    out.push(`<strong>PUCS:</strong> <em>${escapeHtml(p.property_use_code)}</em>`);
+  }
+  const zoning = p?.zoning_top1 ?? p?.zoning;
+  if (zoning) {
+    out.push(`<strong>Zoning:</strong> <em>${escapeHtml(zoning)}</em>`);
+  }
+  return out;
+}
+
+/**
  * "Size 5,400 sf (0.12 ac)" — assessed_land_area is in square feet on
  * d4mq-wa44. Both units on one line for appraisal sanity-checking at a
  * glance: square feet is how an urban lot is transacted, acres is how it
@@ -2756,27 +2814,7 @@ function popupHtml(p) {
     const lines = [];
     if (p.roll_number) lines.push(`<strong>Roll #</strong> ${escapeHtml(p.roll_number)}`);
     if (p.full_address) lines.push(escapeHtml(p.full_address));
-    // Property Use Code (PUC) - the City's classification of how the
-    // parcel is actually being used, e.g. "RESSD - DETACHED SINGLE
-    // DWELLING". More informative for appraisal context than zoning
-    // (which is the legally permitted use, often less specific).
-    if (p.property_use_code) lines.push(`<em>${escapeHtml(p.property_use_code)}</em>`);
-    // Zoning goes directly under the PUC because those two lines are read
-    // as a pair: actual use on top, legally permitted use beneath it, so a
-    // non-conforming parcel (RESSD sitting on a C2 lot) reads as a mismatch
-    // between adjacent lines instead of a separate lookup.
-    // Same source order as the grid's Zoning column (lib/columnsRegistry.js
-    // renders `zoning_top1 ?? zoning`), so the popup and the table can never
-    // name different zones for one parcel: zoning_top1 is the area-weighted
-    // intersection soda.js stamps once the Zoning overlay has run, `zoning`
-    // the d4mq-wa44 primary code otherwise. Unlike the grid we do NOT run
-    // stripZoningCode — that exists to fit a badge inside a cell, while the
-    // popup has room for the full published string ("R1M - RES - S F -
-    // MEDIUM"), which sits consistently beside the PUC line above.
-    // 27,769 parcels publish no zoning at all; those drop the line entirely
-    // rather than render an empty one, same as every other field here.
-    const zoning = p.zoning_top1 ?? p.zoning;
-    if (zoning) lines.push(`<em>${escapeHtml(zoning)}</em>`);
+    lines.push(...useAndZoningLines(p));
     const size = parcelSizeLine(p);
     if (size) lines.push(size);
     // Dwelling units: dwelling_units is text-typed; coerce defensively.
@@ -2790,9 +2828,8 @@ function popupHtml(p) {
     // Assessed value + its assessment year, in the same slot the Manitoba
     // sister app puts them: after zoning / size / DU, so the popup reads
     // description first, valuation last. Search-result features carry both
-    // fields from the live SoDA query (ASSESS_SELECT in soda.js); citywide
-    // features do not carry them yet, and assessmentLine drops the line
-    // rather than render a half-empty one.
+    // from the live SoDA query (ASSESS_SELECT in soda.js), citywide ones
+    // from the tile archive since the 2026-08-24 rebuild.
     const asmt = assessmentLine(p);
     if (asmt) lines.push(asmt);
     const asmtClass = assessmentClassLine(p);
