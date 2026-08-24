@@ -41,7 +41,7 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 | `web/src/` | The app — `main.js` (UI wiring), `soda.js` (all SODA queries/joins), `map.js` (MapLibre layers), `lib/` (reusable modules) |
 | `web/test/` | Unit tests, run by `npm test` |
 | `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods) |
-| `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcel polygons, address labels, and derived dwelling-unit totals; ~96 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Rebuilt and republished automatically every two months (see [Data freshness](#data-freshness)). |
+| `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcel polygons z8–z18, address labels, and derived dwelling-unit totals; ~100 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Rebuilt and republished automatically every two months (see [Data freshness](#data-freshness)). |
 | `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels + aerial-ortho PMTiles builds |
 | `extras/` | Early experiments kept for reference |
 
@@ -173,6 +173,20 @@ has a schedule and an alarm. All three jobs are registered by
 Tiles refresh on their own faster cadence than the snapshot archive on
 purpose: the overlay should track the current roll, while history stays
 sparse and deliberate.
+
+The archive spans **z8–z18**, and the floor is measured against the camera,
+not guessed from the parcels. It was z13 on the reasoning that a city lot is
+sub-pixel below that — true, and beside the point. The map opens at zoom 11
+and "reset view" returns to zoom 11, so at the extent every session starts in
+there were no tiles to draw: toggling **All Assessment Parcels** relabelled
+the button to "Hide All Assessment Parcels" and rendered nothing at all.
+Search results were affected too — `fitBounds` lands below z13 for 133 of the
+4,239 street names in `d4mq-wa44` on a 900×520 map pane (318 on a small one),
+including MAIN, PORTAGE, PEMBINA, ST MARY'S, HENDERSON and GRANT. The
+whole-city extent fits at z8.33–z10.10 depending on pane, which is where the
+floor comes from. `r/test_tippecanoe.R` asserts the floor still covers the
+app's opening zoom and cross-checks that zoom against `map.js`, so the two
+cannot drift apart again. Re-measure before raising it.
 
 Three independent alarms cover a job that stops running, since a failed job
 emails for itself but a job that never starts cannot:
