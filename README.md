@@ -162,7 +162,13 @@ it still works when the machine that runs the jobs is off.
 Search results are always live — every search queries the Socrata API
 directly. The build-time artifacts below are the parts that can age, so each
 has a schedule and an alarm. All three jobs are registered by
-`r/setup_schedule.ps1` and run as the logged-on user.
+`r/setup_schedule.ps1`, **which must be run from an elevated prompt**: it
+registers them with an S4U principal so they run whether or not anyone is
+logged on. `schtasks` alone can only create an Interactive task, and an
+Interactive task does not run at a logon screen — it does not fail, it waits,
+and no alert is possible because the job that would send it never starts. Run
+unelevated, the registrar silently leaves them Interactive; it reads the
+principal back and says loudly which one it got.
 
 | Job | When | Rebuilds | Stores history? |
 |---|---|---|---|
@@ -191,8 +197,31 @@ cannot drift apart again. Re-measure before raising it.
 Three independent alarms cover a job that stops running, since a failed job
 emails for itself but a job that never starts cannot:
 
-- Each job emails on failure and drops a dated `FAILED-*.txt` marker at the
-  archive root.
+- Each job alerts on failure over **two channels** — email, and an ntfy.sh
+  push to its own topic (`wpgps-parcel-tiles-jks`,
+  `wpgps-asset-refresh-jks`, `wpgps-semiannual-download-jks`) — and drops a
+  dated `FAILED-*.txt` marker at the archive root. Two channels because one is
+  one silent failure away from none: the email rides on a Gmail app password,
+  and the day that is revoked a single-channel setup goes quiet exactly when it
+  matters. Every send logs an `ALERT CHANNELS:` line recording what each
+  channel did.
+
+  The `-jks` topic suffix is load-bearing, not decoration. ntfy's anonymous
+  publish answers HTTP 200 for *any* topic string, subscribed or not, so a
+  plausible-looking variant reports success forever and reaches nobody. These
+  are the exact strings to subscribe to in the ntfy app. Prove the wiring
+  rather than reading it:
+
+  ```bash
+  powershell -ExecutionPolicy Bypass -File rebuild_tiles.ps1 -TestAlert
+  ```
+
+  Each of the three jobs carries the same switch; it sends one alert and exits
+  without touching anything else.
+- The quarterly job checks all three tasks are still `LogonType=S4U` and alerts
+  if one has drifted back to Interactive — which is what re-running the
+  registrar unelevated does. Its honest limit: it runs inside one of those same
+  tasks, so it catches drift, not a total outage.
 - The quarterly job verifies the archive actually contains the most recent
   scheduled capture (Jun 1 / Dec 1, plus 21 days of grace) and that the
   published tiles are under 80 days old, emailing and writing a
