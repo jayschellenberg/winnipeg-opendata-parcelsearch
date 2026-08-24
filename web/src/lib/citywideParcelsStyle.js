@@ -10,9 +10,12 @@
  * treatment, where any grey washes into the fields.
  *
  * The COLOURS are Manitoba's exactly. The width / opacity ZOOM RAMPS are
- * Winnipeg-only and deliberately not ported: Manitoba scopes its fabric to
- * one municipality and can afford flat values, whereas this archive serves
- * all ~245K parcels at once and a flat line is a citywide blackout below
+ * Winnipeg-only and deliberately not ported, and that asymmetry is measured
+ * rather than assumed. Manitoba scopes its fabric to one municipality: its
+ * densest, BRANDON (CITY), fits at z11.36 and renders 17,444 parcel lines,
+ * which its flat 0.75 px / 0.6 reads as texture (checked on production
+ * 2026-08-24). This archive serves all ~245K parcels at once — 37,248 of
+ * them in view at z11 — and a flat line there is a citywide blackout below
  * z14 (see the note at the citywide-parcels-line layer in map.js). White
  * needs no extra width — it carries more visual weight than the grey it
  * replaces — so imagery reuses the same width ramp and only lifts opacity.
