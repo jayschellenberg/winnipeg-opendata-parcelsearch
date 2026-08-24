@@ -66,11 +66,21 @@ cli_args  <- commandArgs(trailingOnly = TRUE)
 run_tippe <- "--run-tippecanoe" %in% cli_args
 
 # Sanity band for the finished archive, checked before it is promoted over
-# the live one. The Jul-2026 build was 95.8 MB; the floor catches a
-# truncated/empty tile run and the ceiling catches runaway growth heading
-# for GitHub's 100 MB *release-asset* comfort zone (releases allow 2 GB, but
-# a sudden doubling means something is wrong, not that the city grew).
-PMTILES_MIN_MB <- 60
+# the live one. The floor catches a truncated/empty tile run; the ceiling
+# catches runaway growth (releases allow 2 GB, but a sudden doubling means
+# something is wrong, not that the city grew).
+#
+# Sizes on record: Jul-2026 95.8 MB, Aug-2026 99.4 MB (both z13-z18), and
+# 116.5 MB for the first z8-z18 build on 2026-08-24. The five added zoom
+# levels cost 17.5 MB in total (z8 1.8, z9 2.9, z10 2.6, z11 3.8, z12 6.4)
+# and z13-z18 came out byte-for-byte within 0.2 MB of the previous build.
+#
+# The floor moved 60 -> 90 with that step. A 60 MB floor would have let a
+# build that lost every zoom below 15 through unnoticed; against a ~116 MB
+# expectation, 90 is the tighter truncation guard. The ceiling stays at 150:
+# it leaves room for organic growth but still fails a build whose size has
+# run away, which is the only thing it is there for.
+PMTILES_MIN_MB <- 90
 PMTILES_MAX_MB <- 150
 
 # jsonlite::toJSON() defaults to 4 significant digits, which snaps

@@ -37,9 +37,16 @@ to_wsl_path <- function(p) {
 #                          flag set used --no-tile-size-limit, i.e. no cap at
 #                          all, and the dense downtown z13-z18 tiles were built
 #                          under that rule -- they must not start losing
-#                          parcels now. A cap this generous binds only on the
-#                          newly added z8-z12 tiles. Do NOT re-add
-#                          --no-tile-size-limit: with no cap,
+#                          parcels now. Measured against the 2026-08-22
+#                          archive, the largest tile at ANY of z13-z18 was
+#                          343 KB, so --no-tile-size-limit had never actually
+#                          bound on anything and a cap this generous cannot
+#                          either. Confirmed on the 2026-08-24 rebuild: the
+#                          cap fired on exactly three tiles -- 9/117/173,
+#                          10/235/347 and 11/471/695, keeping the sparsest
+#                          39-53% -- and z13-z18 came out within 0.2 MB per
+#                          zoom of the previous build.
+#                          Do NOT re-add --no-tile-size-limit: with no cap,
 #                          --drop-densest-as-needed can never fire and every
 #                          one of z8-z12 would carry the entire city.
 #   --force              : overwrite any existing output
