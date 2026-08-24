@@ -253,11 +253,19 @@ release asset cannot reach users. Serving straight from a bucket drops that
 check unless it is rebuilt, and it would mean rebuilding the publish path that
 the 2026-08-05 incident hardened.
 
-**What would change the answer:** archive size. The sanity band in
-`r/build_parcel_tiles.R` tops out at 150 MB, and `r/rebuild_tiles.ps1`
-publishes to a GitHub *release asset*, whose comfortable ceiling is around
-100 MB. If a rebuild crosses that, the pinch point is the GitHub publish, not
-Vercel — and R2 becomes the right home for the archive of record.
+**What would change the answer:** archive size, and it has started moving.
+Lowering the tile zoom floor to z8 took the archive from 99.4 MB to
+**116.5 MB**. That is still comfortably inside the 60–150 MB sanity band in
+`r/build_parcel_tiles.R`, and a GitHub release asset may be up to 2 GB, so
+nothing is at a limit — but the headroom is no longer generous, and the next
+thing that adds a zoom level or a tile property spends it. The pinch point
+when it arrives will be the GitHub publish, not Vercel, and R2 is where the
+archive of record should then live.
+
+Re-run the two measurements above at that point rather than assuming they
+still hold: the session-egress number in particular is what makes Vercel the
+cheaper option today, and it is a property of how people use the overlay, not
+of the file.
 
 If it ever moves: the `wpg-ortho` bucket is already reachable (the five aerial
 archives live there), its origin is already in `connect-src` in
