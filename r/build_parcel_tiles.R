@@ -80,7 +80,21 @@ run_tippe <- "--run-tippecanoe" %in% cli_args
 # expectation, 90 is the tighter truncation guard. The ceiling stays at 150:
 # it leaves room for organic growth but still fails a build whose size has
 # run away, which is the only thing it is there for.
-PMTILES_MIN_MB <- 90
+#
+# The floor moved 90 -> 70 on 2026-08-24, for the layer-property split in
+# Step 2.6. That change drops six columns off 217K polygons and seven off
+# 217K label points while adding four to the polygons, and the NET is not
+# predictable from here -- it could plausibly land the archive smaller than
+# the ~116 MB it has been. A floor calibrated to the old packing would then
+# reject a perfectly good build, and the failure mode of a too-tight floor is
+# worse than a slightly loose one: it refuses to promote, so the deployed
+# archive silently goes stale instead of anything looking broken.
+#
+# 70 still catches what the floor is for -- a build that lost its lower zooms
+# or truncated mid-write, both of which more than halve the archive. Once the
+# first post-split build has run, set this back to about 80% of whatever it
+# actually measures.
+PMTILES_MIN_MB <- 70
 PMTILES_MAX_MB <- 150
 
 # jsonlite::toJSON() defaults to 4 significant digits, which snaps
@@ -102,13 +116,26 @@ url       <- "https://data.winnipeg.ca/resource/d4mq-wa44.geojson"
 # user actually searches a parcel, so anything not used by the
 # citywide overlay would just bloat the archive.
 #
-# Dropped on purpose:
-#   - total_assessed_value: the citywide popup doesn't show assessed
-#     value; the table's Assessment column comes from the live
-#     search-result query. This is the EXPENSIVE one of the two fields
-#     that used to be dropped together: 6,202 distinct values against
-#     zoning's 53, so it is the half that earned the "~9-11 MB" figure
-#     the old comment attributed to both.
+# Nothing is dropped on purpose any more. The two that were:
+#
+#   - total_assessed_value + current_assessment_year. Dropped because the
+#     citywide popup didn't show assessed value; it does now (2026-08-24,
+#     map.js assessmentLine), so the reason is gone. This is the EXPENSIVE
+#     pair -- 6,202 distinct values against zoning's 53 -- and it is what
+#     earned the "~9-11 MB" figure an older comment attributed to both it
+#     and zoning together. Budget for the archive growing by about that
+#     much at the next rebuild; the year column rides along nearly free
+#     (one distinct value in practice, and it is what makes the dollar
+#     figure usable -- a total with no year can't be compared to
+#     anything).
+#
+#     The 100 MB cap that justified dropping it does not apply: that is
+#     GitHub's limit for files committed to a REPOSITORY, and this archive
+#     is deliberately not in git -- web/scripts/fetch-pmtiles.mjs pulls it
+#     from a rolling release at Vercel build time, and release assets cap
+#     at 2 GB. Same reasoning that brought zoning back below. What the
+#     growth does cost is Vercel build-time download; watch the size
+#     trigger (see DATA-ARCHIVE-PLAN.md, 99.4 -> 116.5 MB and climbing).
 #
 # zoning was in that list and should not have been. Two reasons it is
 # back, both measured 2026-08-20:
@@ -128,7 +155,68 @@ url       <- "https://data.winnipeg.ca/resource/d4mq-wa44.geojson"
 # way the hover popup does: actual use on top, legally permitted use
 # directly beneath, so a non-conforming parcel is a mismatch between two
 # adjacent lines rather than a separate lookup.
-select_cols <- "roll_number,full_address,property_use_code,zoning,dwelling_units,assessed_land_area,geometry"
+#
+# Both popups are written to omit a field they don't find, so adding a
+# column here and rebuilding later is safe in either order -- the web
+# side simply starts showing the line once the archive carries it.
+#   - property_class_1 + status_1. The Winnipeg half of the Manitoba popup's
+#     Class / Status line, and both are cheaper than zoning: 11 and 6 distinct
+#     values respectively, against zoning's 53 (measured against the live API,
+#     2026-08-24). status_1 earns its place on its own -- roughly 5,500 of the
+#     245K parcels are EXEMPT / GRANT / SCHOOL EXEMPT rather than TAXABLE, and
+#     an exempt comp is one you want flagged before you lean on it.
+select_cols <- paste(
+  "roll_number", "full_address", "property_use_code", "zoning",
+  "dwelling_units", "assessed_land_area",
+  "total_assessed_value", "current_assessment_year",
+  "property_class_1", "status_1",
+  "geometry",
+  sep = ","
+)
+
+# --- What each tile LAYER carries -----------------------------------
+# Two lists, not one, because the archive has two feature layers over the
+# same 217K parcels and they read different things. Ported from the Manitoba
+# sister app, which has kept TILE_POLYGON_PROPS / TILE_LABEL_PROPS separate
+# from the start (web/scripts/build-parcel-tiles.js).
+#
+# Winnipeg had no such split: Step 2.5 derived the label points with
+# st_point_on_surface() over the whole polygon layer, which copies EVERY
+# column onto every label point. So the label layer has been carrying
+# property_use_code, zoning and assessed_land_area for nothing since the
+# first build -- and total_assessed_value, the expensive one, would have
+# ridden along too, paying its ~9-11 MB twice.
+#
+# Both lists are derived from what map.js actually reads, not guessed:
+#
+#   parcels        -- citywideParcelHtml (roll, address, PUC, zoning, size,
+#                     units, assessed value + year, class + status) and the
+#                     citywide-parcels-line/-fill layers.
+#   parcels-labels -- citywide-parcels-label (address + roll) and the three
+#                     dwelling-unit layers, whose circles filter on
+#                     dwelling_is_condo / dwelling_unit_count and whose popup
+#                     (dwellingUnitHtml) reads the rest of the dwelling_*
+#                     block.
+#
+# Adding a field to a popup means adding it HERE too, or it will be absent
+# from the archive and the line will silently never render.
+TILE_POLYGON_PROPS <- c(
+  "roll_number", "full_address", "property_use_code", "zoning",
+  "assessed_land_area", "dwelling_unit_count",
+  "total_assessed_value", "current_assessment_year",
+  "property_class_1", "status_1"
+)
+TILE_LABEL_PROPS <- c(
+  "full_address", "roll_number",
+  "dwelling_unit_count", "dwelling_is_condo", "dwelling_count_method",
+  "dwelling_group_address", "dwelling_record_count", "dwelling_group_size",
+  "dwelling_pucs_codes"
+)
+
+# dwelling_units is in select_cols but in NEITHER list, and that is correct:
+# it is the City's raw per-record count, the INPUT that lib_dwelling_units.R
+# turns into the dwelling_unit_count both layers actually read. It has to be
+# fetched and it must not be tiled. Don't "tidy" it into a list.
 
 # Optional Socrata app token — raises the anonymous rate limit for the ~50
 # paged calls this build fires. Same env vars as r/download_parcels.R
@@ -353,6 +441,20 @@ write_meta <- function() {
 cat("Computing label centroids (one Point per parcel)...\n")
 sf_polygons  <- sf::st_read(output_geojson, quiet = TRUE)
 sf_centroids <- suppressWarnings(sf::st_point_on_surface(sf_polygons))
+# Keep only what the label + dwelling layers read. st_point_on_surface()
+# carries every polygon column across, so without this the label points
+# duplicate the whole attribute table -- see the TILE_LABEL_PROPS note above.
+# A missing column is a hard stop, not a warning: the failure mode of a
+# silently-dropped label property is a map that renders and is simply wrong
+# (blank labels, or dwelling circles that filter nothing), which is exactly
+# the kind of thing that survives to production.
+missing_label_props <- setdiff(TILE_LABEL_PROPS, names(sf_centroids))
+if (length(missing_label_props)) {
+  stop("label properties missing from the parcel features: ",
+       paste(missing_label_props, collapse = ", "),
+       " -- check select_cols and lib_dwelling_units.R before tiling.")
+}
+sf_centroids <- sf_centroids[, TILE_LABEL_PROPS]
 # Atomic write (same temp + rename pattern as the polygons file above).
 tmp_centroids <- paste0(output_centroids, ".tmpwrite")
 if (file.exists(tmp_centroids)) file.remove(tmp_centroids)
@@ -362,6 +464,52 @@ if (file.exists(output_centroids)) file.remove(output_centroids)
 if (!file.rename(tmp_centroids, output_centroids)) stop("rename failed: ", tmp_centroids, " -> ", output_centroids)
 cat("Centroids: ", nrow(sf_centroids), " features, ",
     round(file.size(output_centroids) / 1e6, 1), " MB\n", sep = "")
+
+# --- Step 2.6: prune the polygon layer to what it actually reads ----
+# The polygon file was written unpruned above BECAUSE Step 2.5 reads it back
+# to place the label points, and the label points need the dwelling_* block
+# that the polygons themselves never touch. So the pruning happens here, once
+# the centroids are safely on disk, and the file is rewritten.
+#
+# That second dump is the price of the split. It is a few minutes on a build
+# that already makes ~50 paged API calls, and it buys dropping six columns --
+# including dwelling_group_address, which is effectively a second copy of the
+# civic address -- off all 217K polygons.
+#
+# Same loud-stop rule as the label side: a polygon property that vanishes
+# here is a popup line that silently never renders.
+cat("Pruning polygon properties to the tile layer's own fields...\n")
+missing_poly_props <- setdiff(
+  TILE_POLYGON_PROPS,
+  unique(unlist(lapply(all_features, function(f) names(f$properties))))
+)
+if (length(missing_poly_props)) {
+  stop("polygon properties missing from the parcel features: ",
+       paste(missing_poly_props, collapse = ", "),
+       " -- check select_cols before tiling.")
+}
+all_features <- lapply(all_features, function(f) {
+  f$properties <- f$properties[intersect(TILE_POLYGON_PROPS, names(f$properties))]
+  f
+})
+size_before <- file.size(output_geojson)
+tmp_geojson2 <- paste0(output_geojson, ".tmpwrite")
+if (file.exists(tmp_geojson2)) file.remove(tmp_geojson2)
+writeLines(
+  toJSON(
+    list(type = "FeatureCollection", features = all_features),
+    auto_unbox = TRUE,
+    digits = geojson_digits,
+    na = "null"
+  ),
+  tmp_geojson2
+)
+if (file.exists(output_geojson)) file.remove(output_geojson)
+if (!file.rename(tmp_geojson2, output_geojson)) {
+  stop("rename failed: ", tmp_geojson2, " -> ", output_geojson)
+}
+cat("GeoJSON size: ", round(size_before / 1e6, 1), " MB -> ",
+    round(file.size(output_geojson) / 1e6, 1), " MB after pruning\n", sep = "")
 
 # One centroid per normalized condominium civic address. Ordinary residential
 # labels reuse parcels-labels; this small third layer prevents thousands of
