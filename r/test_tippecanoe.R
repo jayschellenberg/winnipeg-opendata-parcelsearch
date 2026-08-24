@@ -26,11 +26,54 @@ stopifnot(
   "dwelling-condo-labels:/mnt/d/in/d.geojson" %in% args,
   sum(args == "-L") == 3L,
   "--maximum-zoom=18" %in% args,
-  "--minimum-zoom=13" %in% args,
   "--no-feature-limit" %in% args,
-  "--no-tile-size-limit" %in% args,
-  "--force" %in% args
+  "--force" %in% args,
+  # --no-tile-size-limit would make --drop-densest-as-needed a no-op, so the
+  # low zooms would each carry all ~217k parcels. See lib_tippecanoe.R.
+  !("--no-tile-size-limit" %in% args),
+  "--drop-densest-as-needed" %in% args,
+  "--maximum-tile-bytes=2000000" %in% args
 )
+
+# --- The zoom floor must reach the camera ----------------------------
+# The overlay is citywide and the app opens at APP_OPENING_ZOOM; a floor above
+# it renders nothing at the extent every session starts in, with the toggle
+# reading "Hide All Assessment Parcels" the whole time. That is the bug this
+# assertion exists to prevent coming back -- it shipped once, at floor 13
+# against an opening zoom of 11.
+min_zoom_flag <- grep("^--minimum-zoom=", args, value = TRUE)
+stopifnot(length(min_zoom_flag) == 1L)
+tile_floor <- as.integer(sub("^--minimum-zoom=", "", min_zoom_flag))
+stopifnot(
+  !is.na(tile_floor),
+  tile_floor <= APP_OPENING_ZOOM
+)
+cat(sprintf("zoom floor z%d covers the app's opening zoom z%d
+",
+            tile_floor, APP_OPENING_ZOOM))
+
+# The opening zoom is read out of the app source rather than restated here,
+# so changing `zoom: 11` in map.js without rebuilding the tiles fails this
+# test instead of silently blanking the overlay again.
+map_js <- file.path(dirname(script_dir), "web", "src", "map.js")
+if (file.exists(map_js)) {
+  src <- readLines(map_js, warn = FALSE)
+  init_line <- grep("^[[:space:]]*zoom:[[:space:]]*[0-9]", src, value = TRUE)
+  zooms <- unique(as.numeric(sub("^[[:space:]]*zoom:[[:space:]]*([0-9.]+).*$", "\\1", init_line)))
+  zooms <- zooms[!is.na(zooms)]
+  stopifnot(length(zooms) >= 1L)
+  if (!all(zooms == APP_OPENING_ZOOM)) {
+    stop("map.js sets the camera to zoom ", paste(zooms, collapse = "/"),
+         " but APP_OPENING_ZOOM in lib_tippecanoe.R says ", APP_OPENING_ZOOM,
+         ". Re-measure the zoom floor before changing either.")
+  }
+  cat(sprintf("map.js opening zoom (%s) agrees with APP_OPENING_ZOOM
+",
+              paste(zooms, collapse = "/")))
+} else {
+  cat("SKIP map.js opening-zoom cross-check: ", map_js, " not found
+", sep = "")
+}
 
 cat("tippecanoe argument fixtures passed\n")
 
@@ -89,6 +132,21 @@ if (is.null(probe) || !any(grepl("tippecanoe", probe, ignore.case = TRUE))) {
     identical(rawToChar(magic[1:7]), "PMTiles"),
     as.integer(magic[8]) == 3L
   )
+  # The PMTiles v3 header carries min/max zoom at byte offsets 100 and 101.
+  # Assert what tippecanoe actually WROTE, not just what we asked for: the
+  # flag and the archive disagreeing is precisely how a blank overlay ships.
+  # MapLibre reads these same two bytes to decide which tiles to request.
+  hdr <- readBin(out_path, "raw", n = 127)
+  archive_min <- as.integer(hdr[101])   # 1-based R index for byte offset 100
+  archive_max <- as.integer(hdr[102])
+  stopifnot(
+    archive_min == tile_floor,
+    archive_min <= APP_OPENING_ZOOM,
+    archive_max == 18L
+  )
+  cat(sprintf("archive header zoom range z%d-z%d (floor covers z%d)
+",
+              archive_min, archive_max, APP_OPENING_ZOOM))
   cat(sprintf("live tippecanoe smoke test passed (%d bytes, PMTiles v3)\n", file.size(out_path)))
   unlink(tmp, recursive = TRUE)
 }

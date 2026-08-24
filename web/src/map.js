@@ -934,8 +934,39 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
           //   'line-width': 1.0,
           //   'line-opacity': 0.7,
           'line-color': '#6b7280',
-          'line-width': 1.5,
-          'line-opacity': 0.8,
+          // Graded by zoom, and the ramp is not cosmetic — it is what makes
+          // the low end of the archive usable at all.
+          //
+          // The tiles now reach down to z8 so the overlay is not blank at the
+          // zoom the app opens at (see r/lib_tippecanoe.R). But a flat
+          // 1.5 px / 0.8 line is a citywide BLACKOUT down there: at z11 a
+          // Winnipeg lot is about a pixel wide, ~37,000 of them are in view,
+          // and every boundary overlaps its neighbours. Lines stack the same
+          // way the fills that were removed from this layer did — the first
+          // render at z11 painted the whole city a solid dark grey with the
+          // basemap, the river and the place names completely buried.
+          //
+          // Ramped, the same data reads as a density wash: you can see where
+          // the built-up fabric is, and the streets and labels stay legible.
+          // z16+ is byte-identical to the old flat values, so the zooms where
+          // a parcel is actually interrogated are untouched.
+          //
+          // Tuned by eye in a browser at z11 / z14 / z16 against the real
+          // archive, not derived. Re-check visually if you change it.
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            8, 0.15,
+            12, 0.3,
+            14, 0.8,
+            16, 1.5,
+          ],
+          'line-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            8, 0.12,
+            11, 0.18,
+            13, 0.45,
+            15, 0.8,
+          ],
         },
       });
 
