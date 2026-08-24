@@ -81,20 +81,12 @@ run_tippe <- "--run-tippecanoe" %in% cli_args
 # it leaves room for organic growth but still fails a build whose size has
 # run away, which is the only thing it is there for.
 #
-# The floor moved 90 -> 70 on 2026-08-24, for the layer-property split in
-# Step 2.6. That change drops six columns off 217K polygons and seven off
-# 217K label points while adding four to the polygons, and the NET is not
-# predictable from here -- it could plausibly land the archive smaller than
-# the ~116 MB it has been. A floor calibrated to the old packing would then
-# reject a perfectly good build, and the failure mode of a too-tight floor is
-# worse than a slightly loose one: it refuses to promote, so the deployed
-# archive silently goes stale instead of anything looking broken.
-#
-# 70 still catches what the floor is for -- a build that lost its lower zooms
-# or truncated mid-write, both of which more than halve the archive. Once the
-# first post-split build has run, set this back to about 80% of whatever it
-# actually measures.
-PMTILES_MIN_MB <- 70
+# The floor went 90 -> 70 -> 95 across 2026-08-24. It was dropped to 70 as a
+# deliberately loose guard for one build, because the layer-property split in
+# Step 2.6 made the archive's new size genuinely unpredictable and a floor
+# calibrated to the old packing would have rejected a good build. That build
+# has now run and MEASURED 120.6 MB, so the floor is back to ~80% of it.
+PMTILES_MIN_MB <- 95
 PMTILES_MAX_MB <- 150
 
 # jsonlite::toJSON() defaults to 4 significant digits, which snaps
@@ -123,10 +115,13 @@ url       <- "https://data.winnipeg.ca/resource/d4mq-wa44.geojson"
 #     map.js assessmentLine), so the reason is gone. This is the EXPENSIVE
 #     pair -- 6,202 distinct values against zoning's 53 -- and it is what
 #     earned the "~9-11 MB" figure an older comment attributed to both it
-#     and zoning together. Budget for the archive growing by about that
-#     much at the next rebuild; the year column rides along nearly free
-#     (one distinct value in practice, and it is what makes the dollar
-#     figure usable -- a total with no year can't be compared to
+#     and zoning together. MEASURED at the 2026-08-24 rebuild: the archive
+#     went 116.5 -> 120.6 MB, so all four added fields together cost 4.1 MB
+#     net -- far less than the estimate, because the Step 2.6 layer split
+#     landed in the same build and paid for most of them (the polygon
+#     GeoJSON alone dropped 186 -> 142.9 MB). The year column rides along
+#     nearly free (one distinct value in practice, and it is what makes the
+#     dollar figure usable -- a total with no year can't be compared to
 #     anything).
 #
 #     The 100 MB cap that justified dropping it does not apply: that is
@@ -474,7 +469,9 @@ cat("Centroids: ", nrow(sf_centroids), " features, ",
 # That second dump is the price of the split. It is a few minutes on a build
 # that already makes ~50 paged API calls, and it buys dropping six columns --
 # including dwelling_group_address, which is effectively a second copy of the
-# civic address -- off all 217K polygons.
+# civic address -- off all 217K polygons. MEASURED on 2026-08-24: the polygon
+# GeoJSON went 186 -> 142.9 MB, a 23% cut, which is what let four new fields
+# (two of them expensive) cost only 4.1 MB in the finished archive.
 #
 # Same loud-stop rule as the label side: a polygon property that vanishes
 # here is a popup line that silently never renders.

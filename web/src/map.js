@@ -2517,11 +2517,10 @@ function citywideParcelHtml(p) {
   //
   // Both come from the tile, so both can be absent and both drop their
   // line rather than render an empty one. property_use_code has been in
-  // the archive all along and simply was not shown here. zoning was added
-  // to r/build_parcel_tiles.R on 2026-08-20 and reaches users at the next
-  // scheduled rebuild (WpgParcelTilesBiMonthly, 2026-10-02) — until then
-  // this line is silently absent, which is why it is written to degrade
-  // rather than to assume.
+  // the archive all along and simply was not shown here; zoning was added
+  // on 2026-08-20 and landed in the 2026-08-24 rebuild. The degrade-don't-
+  // assume shape stays regardless — it is what lets a field be added to a
+  // popup before the rebuild that carries it.
   if (p.property_use_code) lines.push(`<em>${escapeHtml(p.property_use_code)}</em>`);
   if (p.zoning) lines.push(`<em>${escapeHtml(p.zoning)}</em>`);
   // Size sits between the use codes and the unit count, the same slot it
@@ -2535,11 +2534,10 @@ function citywideParcelHtml(p) {
   // Assessed value + year, then class + status: the same two lines, in the
   // same order, as the hover popup. All four fields (total_assessed_value,
   // current_assessment_year, property_class_1, status_1) were absent from
-  // the tile build; they were added to select_cols in r/build_parcel_tiles.R
-  // on 2026-08-24 and reach users at the next rebuild
-  // (WpgParcelTilesBiMonthly, 2026-10-02). Until then both helpers return
-  // null and the lines are silently absent — written to degrade rather than
-  // to assume, same as the zoning line above.
+  // the tile build until 2026-08-24; the archive rebuilt that day carries
+  // them, verified in the tile metadata's per-layer field list. They stay
+  // written to degrade rather than assume, because that is what makes a
+  // field addition safe to land before the rebuild that carries it.
   const asmt = assessmentLine(p);
   if (asmt) lines.push(asmt);
   const asmtClass = assessmentClassLine(p);
@@ -2692,11 +2690,8 @@ function parcelSizeLine(p) {
  * which is the right call here — a $0 total is a data gap, not a
  * valuation.
  *
- * On citywide (Show All Parcels) features BOTH fields are absent until
- * the archive is next rebuilt with them — see the select_cols note in
- * r/build_parcel_tiles.R — so this returns null there for now and the
- * popup simply omits the line, exactly as it did for `zoning` between
- * that field being added to the build and the rebuild landing.
+ * Both fields arrive as STRINGS from Socrata and are String-typed in the
+ * tiles too, which is why the coercions here are not decorative.
  */
 function assessmentLine(p) {
   const value = formatDollars(p?.total_assessed_value);
