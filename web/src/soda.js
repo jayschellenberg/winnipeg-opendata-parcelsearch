@@ -44,7 +44,13 @@ import { dedupeAddresses } from './lib/addressFormat.js';
  * returns, because the gap shows up as a blank cell on an arbitrary
  * subset of rows.
  *
- *   property_class_1     — the sales-tab "Filter by class" control.
+ *   property_class_1     — the sales-tab "Filter by class" control, and
+ *                          the popup's Class · Status line.
+ *   status_1             — TAXABLE / EXEMPT / GRANT / …, the second half
+ *                          of that line. Its own field rather than folded
+ *                          into the class because ~5,500 parcels are not
+ *                          TAXABLE, and a comp that is exempt is a comp
+ *                          you need to know is exempt before you use it.
  *   property_influences  — the City's own water verdicts
  *                          (RED RIVER ADJACENT, RETENTION POND
  *                          INFLUENCE, …) behind the Water column and
@@ -54,7 +60,7 @@ const ASSESS_SELECT = [
   'roll_number', 'full_address', 'zoning', 'property_use_code',
   'centroid_lat', 'centroid_lon', 'assessed_land_area', 'dwelling_units',
   'total_assessed_value', 'detail_url', 'current_assessment_year',
-  'property_class_1', 'property_influences',
+  'property_class_1', 'status_1', 'property_influences',
   // Residential attributes behind the Residential column preset.
   'building_type', 'year_built', 'total_living_area', 'rooms',
   'geometry',
