@@ -35,17 +35,29 @@ const LINE_WIDTH_RAMP = [
 
 export const CITYWIDE_PARCELS_LINE_STYLES = {
   light: {
-    // Tailwind gray-300. Lighter than the gray-500 (#6b7280) this layer
-    // shipped with, matching Manitoba; the higher top-end opacity below
-    // keeps the apparent weight about where it was on Positron.
+    // Tailwind gray-300, matching Manitoba, and lighter than the gray-500
+    // (#6b7280) this layer shipped with. The opacity below carries the
+    // apparent weight the darker grey used to.
     'line-color': '#d1d5db',
     'line-width': LINE_WIDTH_RAMP,
+    // Raised at the top end on 2026-08-24: gray-300 at 0.8 read too faint
+    // on Positron in use (Jason). Only the two upper stops moved --
+    // 0.45 -> 0.55 and 0.8 -> 0.92. z8 and z11 are deliberately untouched
+    // because they are not a look, they are the blackout guard: at z11
+    // roughly 37,000 lots are in view and every boundary overlaps its
+    // neighbours, so lifting the low end there is how you repaint the
+    // whole city solid grey.
+    //
+    // 0.92 is very nearly the headroom this preset has. If the lines still
+    // read faint, opacity is no longer the lever -- the colour is, and the
+    // move is a step back down the grey ramp (gray-400 #9ca3af, then the
+    // original gray-500 #6b7280), accepting the divergence from Manitoba.
     'line-opacity': [
       'interpolate', ['linear'], ['zoom'],
       8, 0.12,
       11, 0.18,
-      13, 0.45,
-      15, 0.8,
+      13, 0.55,
+      15, 0.92,
     ],
   },
   imagery: {

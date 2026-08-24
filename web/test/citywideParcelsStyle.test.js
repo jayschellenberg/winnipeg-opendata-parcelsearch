@@ -121,6 +121,39 @@ test('the zoom ramps survive the port — no flat values, imagery no wider', () 
     > top(CITYWIDE_PARCELS_LINE_STYLES.light['line-opacity']));
 });
 
+test('the low-zoom stops stay low — this is the blackout guard, not a look', () => {
+  // "The lines are too faint" is recurring feedback, and the tempting fix is
+  // to lift the whole ramp. Don't. At z11 roughly 37,000 lots are in view and
+  // every boundary overlaps its neighbours, so the z8/z11 stops are what stop
+  // the overlay repainting the city solid. Raise the z13+ stops instead, or
+  // change the colour. Values pinned at what was measured by eye against the
+  // real archive.
+  for (const preset of Object.values(CITYWIDE_PARCELS_LINE_STYLES)) {
+    const ramp = preset['line-opacity'];
+    // ['interpolate', ['linear'], ['zoom'], z, v, z, v, ...] — pairs start at 3.
+    const stops = new Map();
+    for (let i = 3; i < ramp.length; i += 2) stops.set(ramp[i], ramp[i + 1]);
+    assert.ok(stops.get(8) <= 0.15, `z8 opacity ${stops.get(8)} is above the blackout guard`);
+    assert.ok(stops.get(11) <= 0.25, `z11 opacity ${stops.get(11)} is above the blackout guard`);
+  }
+});
+
+test('opacity climbs monotonically with zoom in both presets', () => {
+  for (const preset of Object.values(CITYWIDE_PARCELS_LINE_STYLES)) {
+    const ramp = preset['line-opacity'];
+    let prevZoom = -Infinity;
+    let prevOpacity = -Infinity;
+    for (let i = 3; i < ramp.length; i += 2) {
+      const [zoom, opacity] = [ramp[i], ramp[i + 1]];
+      assert.ok(zoom > prevZoom, `zoom stops must ascend, got ${zoom} after ${prevZoom}`);
+      assert.ok(opacity > prevOpacity, `opacity must increase with zoom, got ${opacity} after ${prevOpacity}`);
+      assert.ok(opacity <= 1, `opacity cannot exceed 1, got ${opacity}`);
+      prevZoom = zoom;
+      prevOpacity = opacity;
+    }
+  }
+});
+
 const fails = results.filter((r) => r.status === 'fail');
 console.log(`\n${results.length - fails.length}/${results.length} passed`);
 if (fails.length > 0) process.exit(1);
