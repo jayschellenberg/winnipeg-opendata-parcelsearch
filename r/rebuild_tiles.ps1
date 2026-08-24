@@ -63,6 +63,14 @@
 # scheduled-task runtime - reads a BOM-less .ps1 as the ANSI codepage, so a
 # non-ASCII byte inside a string literal corrupts the parse silently.
 
+param(
+    # Send one alert through both channels and exit, changing nothing else.
+    # This is the ONLY way to prove alerts reach a human: ntfy's anonymous
+    # publish answers HTTP 200 for any topic string, subscribed or not, so a
+    # wrong topic is indistinguishable from a right one in the logs.
+    [switch]$TestAlert
+)
+
 $ErrorActionPreference = 'Continue'
 
 $repo        = 'D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch'
@@ -100,6 +108,30 @@ function Log($m) { ('{0}  {1}' -f (Get-Date -Format 's'), $m) | Tee-Object -File
 $selfCmd = "powershell -ExecutionPolicy Bypass -File $(Join-Path $repo 'r\rebuild_tiles.ps1')"
 
 . (Join-Path $PSScriptRoot 'lib_mail.ps1')
+
+# ntfy topic for this job. The -jks suffix is the convention across these
+# projects and it is load-bearing, not decoration: this exact string is what
+# gets subscribed in the ntfy app, and ntfy's anonymous publish answers HTTP
+# 200 for ANY topic -- so a merely-plausible variant reports success forever
+# while reaching nobody. Prove the wiring with -TestAlert, never by reading it.
+$WpgNtfyTopic = 'wpgps-parcel-tiles-jks'
+
+if ($TestAlert) {
+  Send-FailureMail `
+    -Subject 'Wpg Open Data: TEST - parcel-tile rebuild alerts' `
+    -Body ("Test alert from rebuild_tiles.ps1 on $env:COMPUTERNAME at $(Get-Date -Format s).`n" +
+           "If this reached you, parcel-tile rebuild failure alerts are wired up.`n" +
+           "ntfy topic: wpgps-parcel-tiles-jks") `
+    -Topic $WpgNtfyTopic | Tee-Object -FilePath $log -Append | Out-Null
+  $a = $global:WpgLastAlert
+  Log ("TestAlert: email={0} push={1} topic={2} verified={3}" -f `
+       $a.Emailed, $a.Pushed, $a.Topic, $a.Delivered)
+  # Exit non-zero when NEITHER channel worked, so a human running this in a
+  # pipeline notices instead of reading past it.
+  if ($a.Emailed -or $a.Pushed) { exit 0 } else { exit 1 }
+}
+
+
 # Publish primitives (Invoke-Gh, Read-Release, Publish-ReleaseAsset, ...).
 # Extracted so the publish sequence - the code that caused the 2026-08-05
 # outage - can be exercised by r/test_gh_publish.ps1 against scratch asset
@@ -236,7 +268,7 @@ function Fail($why) {
   $tail = ''
   try { $tail = (Get-Content $log -Tail 40 -ErrorAction Stop) -join "`n" } catch {}
   $body = "Reason: $why`n`n$($state.Block)`n$repair`n`nFull log: $log`n`nLast 40 lines:`n$tail"
-  Send-FailureMail -Subject $state.Subject -Body $body | Tee-Object -FilePath $log -Append | Out-Null
+  Send-FailureMail -Subject $state.Subject -Body $body -Topic $WpgNtfyTopic | Tee-Object -FilePath $log -Append | Out-Null
   exit 1
 }
 
@@ -326,7 +358,7 @@ if ((-not $prevAsset) -and $headSha) {
     $fix = Invoke-Gh @('api', '--method', 'PATCH', $candidate.apiUrl, '-f', "name=$assetName") 90000
     if ($fix.ExitCode -eq 0) {
       Log "  preflight: repaired interrupted swap - restored $($candidate.name) to $assetName"
-      Send-FailureMail -Subject 'Wpg Open Data: parcel-tile release RECOVERED at preflight' `
+      Send-FailureMail -Subject 'Wpg Open Data: parcel-tile release RECOVERED at preflight' -Topic $WpgNtfyTopic `
         -Body "The release had no asset named $assetName, and $($candidate.name) carried the committed checksum, so it was renamed back. This is the signature of a crash inside the publish swap. The overlay is serving again.`n`nLog: $log" |
         Tee-Object -FilePath $log -Append | Out-Null
       $rel0 = Read-ThisRelease 2
@@ -441,7 +473,7 @@ try {
       "",
       "Log: $log"
     ) -join "`n"
-    Send-FailureMail -Subject "Wpg Open Data: $($unreviewed.Count) unreviewed residential PUCS code(s)" -Body $body |
+    Send-FailureMail -Subject "Wpg Open Data: $($unreviewed.Count) unreviewed residential PUCS code(s)" -Body $body -Topic $WpgNtfyTopic |
       Tee-Object -FilePath $log -Append | Out-Null
   } else {
     Log '  PUCS: every residential-looking code is explicitly classified'
@@ -525,7 +557,7 @@ if ($pub.Status -ne 'published') { Fail $pub.Message }
 # Only report degraded verification once the publish actually succeeded -
 # otherwise a run that failed later still mails "the publish proceeded".
 if ($pub.Degraded) {
-  Send-FailureMail -Subject 'Wpg Open Data: parcel-tile publish verified by SIZE only' `
+  Send-FailureMail -Subject 'Wpg Open Data: parcel-tile publish verified by SIZE only' -Topic $WpgNtfyTopic `
     -Body "GitHub reported no sha256 digest for the uploaded asset after 60s, so it was verified by byte size only. The publish proceeded. Worth a look if this recurs.`n`nLog: $log" |
     Tee-Object -FilePath $log -Append | Out-Null
 }

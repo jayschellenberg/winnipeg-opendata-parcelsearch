@@ -16,6 +16,14 @@
 #
 #   Run manually:  powershell -ExecutionPolicy Bypass -File r\refresh_assets.ps1
 
+param(
+    # Send one alert through both channels and exit, changing nothing else.
+    # This is the ONLY way to prove alerts reach a human: ntfy's anonymous
+    # publish answers HTTP 200 for any topic string, subscribed or not, so a
+    # wrong topic is indistinguishable from a right one in the logs.
+    [switch]$TestAlert
+)
+
 $ErrorActionPreference = 'Continue'
 $repo        = 'D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch'
 $archiveRoot = 'D:\Dropbox\Appraisal\Web\WpgSnapshots'
@@ -30,14 +38,75 @@ function Log($m) { ('{0}  {1}' -f (Get-Date -Format 's'), $m) | Tee-Object -File
 
 # Failure-email helper (best-effort; tolerant of missing setup).
 . (Join-Path $PSScriptRoot 'lib_mail.ps1')
+
+# ntfy topic for this job. The -jks suffix is the convention across these
+# projects and it is load-bearing, not decoration: this exact string is what
+# gets subscribed in the ntfy app, and ntfy's anonymous publish answers HTTP
+# 200 for ANY topic -- so a merely-plausible variant reports success forever
+# while reaching nobody. Prove the wiring with -TestAlert, never by reading it.
+$WpgNtfyTopic = 'wpgps-asset-refresh-jks'
+
+if ($TestAlert) {
+  Send-FailureMail `
+    -Subject 'Wpg Open Data: TEST - asset refresh alerts' `
+    -Body ("Test alert from refresh_assets.ps1 on $env:COMPUTERNAME at $(Get-Date -Format s).`n" +
+           "If this reached you, asset refresh failure alerts are wired up.`n" +
+           "ntfy topic: wpgps-asset-refresh-jks") `
+    -Topic $WpgNtfyTopic | Tee-Object -FilePath $log -Append | Out-Null
+  $a = $global:WpgLastAlert
+  Log ("TestAlert: email={0} push={1} topic={2} verified={3}" -f `
+       $a.Emailed, $a.Pushed, $a.Topic, $a.Delivered)
+  # Exit non-zero when NEITHER channel worked, so a human running this in a
+  # pipeline notices instead of reading past it.
+  if ($a.Emailed -or $a.Pushed) { exit 0 } else { exit 1 }
+}
+
+
 function Mail-Fail($why) {
   $tail = ''
   try { $tail = (Get-Content $log -Tail 60 -ErrorAction Stop) -join "`n" } catch {}
   $body = "Reason: $why`n`nFull log: $log`n`nLast 60 lines:`n$tail"
-  Send-FailureMail -Subject "Wpg Open Data: refresh_assets FAILED" -Body $body | Tee-Object -FilePath $log -Append | Out-Null
+  Send-FailureMail -Subject "Wpg Open Data: refresh_assets FAILED" -Body $body -Topic $WpgNtfyTopic | Tee-Object -FilePath $log -Append | Out-Null
 }
 
 Log '=== refresh transit + neighbourhood static assets ==='
+
+# --- Task-principal heartbeat (can these jobs run at all?) -----------------
+# Runs before every other tripwire, because it is the one they all depend on:
+# a task whose LogonType is Interactive DOES NOT RUN while Jason is logged off.
+# It does not fail, it does not alert, it just waits for the next logon. A
+# Windows Update reboot landing on a logon screen therefore costs every 03:00
+# run silently -- the Manitoba sister project lost 9.3 h to exactly that on
+# 2026-08-12, and all three Winnipeg tasks were still Interactive when audited
+# on 2026-08-24.
+#
+# The cure is registering with an S4U principal (r/setup_schedule.ps1, from an
+# ELEVATED prompt). This check is the tripwire for that cure being undone:
+# re-running the registrar unelevated silently downgrades a task back to
+# Interactive, and nothing else would ever say so.
+#
+# HONEST LIMIT: this check lives inside one of those same tasks, so if
+# WpgAssetRefreshQuarterly is itself Interactive and the machine is logged off,
+# this does not run either. It catches drift on the OTHER tasks and drift
+# noticed at the next successful run - it is not a substitute for registering
+# them properly.
+try {
+  $notS4U = @()
+  foreach ($tn in @('WpgOpenDataSemiAnnualDownload', 'WpgAssetRefreshQuarterly', 'WpgParcelTilesBiMonthly')) {
+    $lt = 'missing'
+    try { $lt = [string](Get-ScheduledTask -TaskName $tn -ErrorAction Stop).Principal.LogonType } catch {}
+    Log ("task principal: {0} = {1}" -f $tn, $lt)
+    if ($lt -ne 'S4U') { $notS4U += "$tn ($lt)" }
+  }
+  if ($notS4U.Count) {
+    $why = "task-principal heartbeat: $($notS4U -join ', ') " +
+           "- these do NOT run while logged off, and cannot alert about it either. " +
+           "Re-register from an ELEVATED prompt:  powershell -ExecutionPolicy Bypass -File $(Join-Path $repo 'r\setup_schedule.ps1')"
+    Log "WARNING: $why"; Mail-Fail $why
+  }
+} catch {
+  Log "task-principal heartbeat errored (non-fatal): $($_.Exception.Message)"
+}
 
 # --- Snapshot-age heartbeat (alert on ABSENCE, not just failure) -----------
 # Runs FIRST so every quarterly invocation checks it - the common "no asset

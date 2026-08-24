@@ -9,6 +9,14 @@
 #
 # Run manually any time:  powershell -ExecutionPolicy Bypass -File r\scheduled_download.ps1
 
+param(
+    # Send one alert through both channels and exit, changing nothing else.
+    # This is the ONLY way to prove alerts reach a human: ntfy's anonymous
+    # publish answers HTTP 200 for any topic string, subscribed or not, so a
+    # wrong topic is indistinguishable from a right one in the logs.
+    [switch]$TestAlert
+)
+
 $ErrorActionPreference = 'Continue'
 $repo        = 'D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch'
 $archiveRoot = 'D:\Dropbox\Appraisal\Web\WpgSnapshots'
@@ -26,6 +34,30 @@ function Log($m) { ('{0}  {1}' -f (Get-Date -Format 's'), $m) | Tee-Object -File
 # Failure-email helper (best-effort; tolerant of missing setup).
 . (Join-Path $PSScriptRoot 'lib_mail.ps1')
 
+# ntfy topic for this job. The -jks suffix is the convention across these
+# projects and it is load-bearing, not decoration: this exact string is what
+# gets subscribed in the ntfy app, and ntfy's anonymous publish answers HTTP
+# 200 for ANY topic -- so a merely-plausible variant reports success forever
+# while reaching nobody. Prove the wiring with -TestAlert, never by reading it.
+$WpgNtfyTopic = 'wpgps-semiannual-download-jks'
+
+if ($TestAlert) {
+  Send-FailureMail `
+    -Subject 'Wpg Open Data: TEST - semi-annual download alerts' `
+    -Body ("Test alert from scheduled_download.ps1 on $env:COMPUTERNAME at $(Get-Date -Format s).`n" +
+           "If this reached you, semi-annual download failure alerts are wired up.`n" +
+           "ntfy topic: wpgps-semiannual-download-jks") `
+    -Topic $WpgNtfyTopic | Tee-Object -FilePath $log -Append | Out-Null
+  $a = $global:WpgLastAlert
+  Log ("TestAlert: email={0} push={1} topic={2} verified={3}" -f `
+       $a.Emailed, $a.Pushed, $a.Topic, $a.Delivered)
+  # Exit non-zero when NEITHER channel worked, so a human running this in a
+  # pipeline notices instead of reading past it.
+  if ($a.Emailed -or $a.Pushed) { exit 0 } else { exit 1 }
+}
+
+
+
 # Loud failure: write a dated FAILED marker at the archive root (where it's
 # seen in normal file browsing), send an email with the log tail, skip the
 # destructive cleanup step, exit 1. The run is unattended twice a year -
@@ -38,7 +70,7 @@ function Fail($why) {
   $tail = ''
   try { $tail = (Get-Content $log -Tail 60 -ErrorAction Stop) -join "`n" } catch {}
   $body = "Reason: $why`n`nFull log: $log`n`nLast 60 lines:`n$tail"
-  Send-FailureMail -Subject "Wpg Open Data: scheduled_download FAILED" -Body $body | Tee-Object -FilePath $log -Append | Out-Null
+  Send-FailureMail -Subject "Wpg Open Data: scheduled_download FAILED" -Body $body -Topic $WpgNtfyTopic | Tee-Object -FilePath $log -Append | Out-Null
   exit 1
 }
 
@@ -102,6 +134,6 @@ $reminder = @(
   "Log: $log"
 ) -join "`n"
 Log 'REMINDER: snapshot archived - run the historical shard rebuild to advance the app (see email / script header).'
-Send-FailureMail -Subject 'Wpg Open Data: semi-annual snapshot archived - shard rebuild pending' -Body $reminder |
+Send-FailureMail -Subject 'Wpg Open Data: semi-annual snapshot archived - shard rebuild pending' -Body $reminder -Topic $WpgNtfyTopic |
   Tee-Object -FilePath $log -Append | Out-Null
 Log '=== done ==='
