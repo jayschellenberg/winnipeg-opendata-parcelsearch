@@ -423,8 +423,28 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
     // once, and a thrown "Style is not done loading" re-arms so the next
     // trigger retries.
     let setupDone = false;
+    // DO NOT gate this on map.isStyleLoaded(). That predicate is true only when
+    // the style spec has parsed AND every source in it reports loaded, and the
+    // five ortho pmtiles archives are sources that can fail to load: they are
+    // fetched from Cloudflare R2, and a CORS rejection, an offline machine or
+    // an outage leaves them permanently un-loaded. isStyleLoaded() then never
+    // becomes true, this poll returns early forever, and the app sits on its
+    // nine base style layers with all sixty-odd overlays missing — no parcels,
+    // no zoning, no search highlight. The 30 s failsafe below could not rescue
+    // it either, because it re-armed on a throw and every subsequent poll tick
+    // hit this same early return.
+    //
+    // Reproduced 2026-08-24 by serving dev on a port the R2 bucket's CORS
+    // policy does not allow: style._loaded true, isStyleLoaded() false forever,
+    // getStyle().layers.length stuck at 9. addSource/addLayer only require
+    // style._loaded, so setupLayers() would have succeeded the whole time.
+    //
+    // So: just attempt it. setupLayers() throws "Style is not done loading"
+    // while the style spec is still parsing, runSetup() catches that and
+    // re-arms, and the poll retries — which is what the retry was always for.
+    // A slow or dead BASEMAP source must not be able to withhold the app.
     const trySetup = () => {
-      if (setupDone || !map.isStyleLoaded()) return;
+      if (setupDone || !map.style) return;
       runSetup();
     };
     const runSetup = () => {
