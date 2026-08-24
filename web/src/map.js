@@ -23,6 +23,10 @@ import {
   shapeClickHandled,
   isShapeDrawing,
 } from './drawShapes.js';
+import {
+  CITYWIDE_PARCELS_LINE_STYLES,
+  applyCitywideParcelsBasemapStyle,
+} from './lib/citywideParcelsStyle.js';
 
 // mapbox-gl-draw was written against the Mapbox GL `mapboxgl-*` DOM
 // class names; MapLibre uses `maplibregl-*`. Patch the lookup table
@@ -920,54 +924,22 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         source: 'citywide-parcels',
         'source-layer': 'parcels',
         layout: { visibility: 'none' },
-        paint: {
-          // Slate-grey (Tailwind gray-500) so the muni-wide parcel
-          // fabric reads as pure supporting context — visible
-          // enough to trace lot boundaries when looking for it but
-          // invisible enough that zoning + sale highlights paint
-          // cleanly on top. Matches the Manitoba sister app's
-          // muni-parcels-line exactly.
-          //
-          // Previous Winnipeg styling (kept here for a one-diff
-          // revert if needed):
-          //   'line-color': '#1d4ed8',   // Tailwind blue-700
-          //   'line-width': 1.0,
-          //   'line-opacity': 0.7,
-          'line-color': '#6b7280',
-          // Graded by zoom, and the ramp is not cosmetic — it is what makes
-          // the low end of the archive usable at all.
-          //
-          // The tiles now reach down to z8 so the overlay is not blank at the
-          // zoom the app opens at (see r/lib_tippecanoe.R). But a flat
-          // 1.5 px / 0.8 line is a citywide BLACKOUT down there: at z11 a
-          // Winnipeg lot is about a pixel wide, ~37,000 of them are in view,
-          // and every boundary overlaps its neighbours. Lines stack the same
-          // way the fills that were removed from this layer did — the first
-          // render at z11 painted the whole city a solid dark grey with the
-          // basemap, the river and the place names completely buried.
-          //
-          // Ramped, the same data reads as a density wash: you can see where
-          // the built-up fabric is, and the streets and labels stay legible.
-          // z16+ is byte-identical to the old flat values, so the zooms where
-          // a parcel is actually interrogated are untouched.
-          //
-          // Tuned by eye in a browser at z11 / z14 / z16 against the real
-          // archive, not derived. Re-check visually if you change it.
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            8, 0.15,
-            12, 0.3,
-            14, 0.8,
-            16, 1.5,
-          ],
-          'line-opacity': [
-            'interpolate', ['linear'], ['zoom'],
-            8, 0.12,
-            11, 0.18,
-            13, 0.45,
-            15, 0.8,
-          ],
-        },
+        // Initial paint = the Streets preset (Streets is the boot basemap).
+        // The basemap menu re-paints on every switch via
+        // applyCitywideParcelsBasemapStyle: light grey on Streets, white on
+        // the aerials. The parcel fabric is pure supporting context —
+        // visible enough to trace lot boundaries when you are looking for
+        // it, invisible enough that zoning + sale highlights paint cleanly
+        // on top. Colours match the Manitoba sister app's muni-parcels-line
+        // exactly; the zoom ramps are Winnipeg-only and load-bearing (a flat
+        // line is a citywide blackout below z14) — see
+        // lib/citywideParcelsStyle.js for the full rationale.
+        //
+        // Original Winnipeg styling (kept here for a one-diff revert):
+        //   'line-color': '#1d4ed8',   // Tailwind blue-700
+        //   'line-width': 1.0,
+        //   'line-opacity': 0.7,
+        paint: { ...CITYWIDE_PARCELS_LINE_STYLES.light },
       });
 
       // Citywide-parcels label. Address is the primary identifier and
@@ -2879,6 +2851,9 @@ class BasemapMenuControl {
       const id = `ortho-${y}`;
       if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', (state === 'aerial' && y === year) ? 'visible' : 'none');
     }
+    // The citywide Assessment Parcels fabric re-calibrates to the new
+    // ground: light grey over the Positron streets, white over imagery.
+    applyCitywideParcelsBasemapStyle(m, ORTHO_YEARS.map((y) => `ortho-${y}`));
     this._render();
     if (this._onChange) {
       Promise.resolve(this._onChange({ state, year, previousState }))
