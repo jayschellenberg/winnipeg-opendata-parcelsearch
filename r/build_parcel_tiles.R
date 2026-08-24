@@ -116,13 +116,39 @@ url       <- "https://data.winnipeg.ca/resource/d4mq-wa44.geojson"
 #     pair -- 6,202 distinct values against zoning's 53 -- and it is what
 #     earned the "~9-11 MB" figure an older comment attributed to both it
 #     and zoning together. MEASURED at the 2026-08-24 rebuild: the archive
-#     went 116.5 -> 120.6 MB, so all four added fields together cost 4.1 MB
-#     net -- far less than the estimate, because the Step 2.6 layer split
-#     landed in the same build and paid for most of them (the polygon
-#     GeoJSON alone dropped 186 -> 142.9 MB). The year column rides along
-#     nearly free (one distinct value in practice, and it is what makes the
-#     dollar figure usable -- a total with no year can't be compared to
-#     anything).
+#     went 116.5 -> 120.6 MB, so all four added fields cost 4.1 MB NET.
+#
+#     Split by tile layer (walking the PMTiles directory and sizing each
+#     MVT layer inside the tiles, before vs after):
+#
+#                          before     after      delta
+#       parcels            99.0 MB   106.6 MB    +7.6
+#       parcels-labels     18.4 MB    15.3 MB    -3.1
+#       total             117.6 MB   122.0 MB    +4.4
+#
+#     (Sum-of-entry-lengths, so slightly above the 120.6 MB tileDataLength:
+#     identical tiles are stored once but counted at every address.)
+#
+#     So the fields themselves cost 7.6 MB -- under the 9-11 MB estimate,
+#     because the year / class / status columns are low-cardinality and
+#     compress well -- and the Step 2.6 layer split paid for 41% of them,
+#     not "most". The year column rides along nearly free (one distinct
+#     value in practice, and it is what makes the dollar figure usable --
+#     a total with no year can't be compared to anything).
+#
+#     ALL of the growth is at z16-z18 (+0.4 / +1.0 / +3.0 MB). z8-z13 did
+#     not move, because --drop-densest-as-needed caps those tiles: at a
+#     capped zoom the tile is already full, so a new field cannot make it
+#     bigger. The intuition that it must therefore make it carry FEWER
+#     parcels is wrong, and measuring beat guessing here -- the label
+#     pruning shrank the point features enough that drop-densest cuts less
+#     deep, so MORE parcels survive:
+#
+#       z9   114,805 -> 118,296 parcels     z11  136,682 -> 140,139
+#       z10   94,728 ->  98,127             z8/z12/z13 unchanged (not capped)
+#
+#     i.e. the split did not only save bytes, it made the low-zoom wash
+#     slightly more complete at exactly the zooms the z8 floor exposed.
 #
 #     The 100 MB cap that justified dropping it does not apply: that is
 #     GitHub's limit for files committed to a REPOSITORY, and this archive
@@ -195,6 +221,21 @@ select_cols <- paste(
 #
 # Adding a field to a popup means adding it HERE too, or it will be absent
 # from the archive and the line will silently never render.
+#
+# ONE THING TO KNOW ABOUT THE LABEL LAYER AT LOW ZOOM, measured 2026-08-24.
+# Below z13 the archive is essentially 100% polygons: the biggest z8 tile
+# carries 44,667 parcels and TWENTY label points. --drop-densest-as-needed
+# has thinned parcels-labels to nothing down there, because point features
+# are the densest thing in the tile and the cheapest for it to cut.
+#
+# That is free today and arguably ideal -- citywide-parcels-label is
+# minzoom 16 and the dwelling layers are minzoom 13, so nothing reads the
+# label layer below z13 anyway. But it is an ACCIDENT of tippecanoe's
+# density heuristic, not something asked for. If a future layer ever reads
+# parcels-labels below z13 it will find it almost empty, with no error and
+# no warning -- the layer exists, it is just missing its features. Either
+# raise that layer's minzoom to 13+, or stop relying on the accident and
+# give the label features an explicit low-zoom budget.
 TILE_POLYGON_PROPS <- c(
   "roll_number", "full_address", "property_use_code", "zoning",
   "assessed_land_area", "dwelling_unit_count",
