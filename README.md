@@ -220,6 +220,57 @@ failed upload leaves the release with no asset and every deploy silently
 loses the overlay. `r/test_gh_publish.ps1` exercises the real upload, verify,
 and swap against scratch asset names on the live release.
 
+### Why the archive is served from Vercel and not object storage
+
+Reviewed 2026-08-24, after the Manitoba sister project moved its equivalent
+archive to Cloudflare R2. The answer here is different, and the numbers are
+why. Re-measure before revisiting; do not port the Manitoba decision across.
+
+`scripts/fetch-pmtiles.mjs` pulls the archive into `web/public/` during the
+Vercel build, Vite copies `public/` into `dist/`, so the whole file ships in
+every deploy. That sounds like the thing to fix. Measured, it mostly is not:
+
+| | Vercel (today) | R2 public domain |
+|---|---|---|
+| Range request | `206`, `Accept-Ranges: bytes` | `206`, `Accept-Ranges: bytes` |
+| Warm 16 KB read | **193 ms**, `X-Vercel-Cache: HIT` | 368 ms, no `Cache-Control` at all |
+| Egress | billed | free |
+
+And egress barely exists: a full session — cold load at z11, toggle the
+overlay on, jump to downtown at z15 — pulled **80 KB in 7 range requests**
+from the 99 MB archive. The file is big; nobody downloads it. R2's zero-egress
+advantage is worth approximately nothing at this scale, and the public
+`r2.dev` domain is measurably slower and sets no cache policy.
+
+Manitoba's case was not this case. That archive is 509 MB of province-wide
+parcels, past what belongs in a deploy pipeline at all. Winnipeg's is 99 MB of
+one city.
+
+Moving would also cost something Manitoba never had: the SHA-256 of the
+published archive is pinned in `web/scripts/parcels.pmtiles.sha256`, committed
+to git, and verified before the bytes are written — so a swapped or tampered
+release asset cannot reach users. Serving straight from a bucket drops that
+check unless it is rebuilt, and it would mean rebuilding the publish path that
+the 2026-08-05 incident hardened.
+
+**What would change the answer:** archive size. The sanity band in
+`r/build_parcel_tiles.R` tops out at 150 MB, and `r/rebuild_tiles.ps1`
+publishes to a GitHub *release asset*, whose comfortable ceiling is around
+100 MB. If a rebuild crosses that, the pinch point is the GitHub publish, not
+Vercel — and R2 becomes the right home for the archive of record.
+
+If it ever moves: the `wpg-ortho` bucket is already reachable (the five aerial
+archives live there), its origin is already in `connect-src` in
+[vercel.json](vercel.json), and its CORS policy already exposes
+`content-range`, which PMTiles cannot work without. One gap to fix first,
+which already affects the aerial basemap: `AllowedOrigins` covers production
+and `http://localhost:5173` only, so **branch previews are not allowed** and
+the aerial basemap silently fails on them. Add
+`https://*-jks-consulting-inc.vercel.app` in the Cloudflare dashboard under
+R2 → `wpg-ortho` → Settings → CORS Policy. Note also that
+`http://127.0.0.1:5173` is a different origin to CORS and is *not* allowed —
+start the dev server on `localhost`.
+
 ## Documentation
 
 - **[SESSION-HANDOFF-2026-08-22.md](SESSION-HANDOFF-2026-08-22.md)** — the
