@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@mapbox/mapbox-gl-draw": "^1.5.1",
+    "@protomaps/basemaps": "^5.7.2",
     "@turf/area": "^7.3.5",
     "@turf/bbox": "^7.1.0",
     "@turf/boolean-intersects": "^7.1.0",

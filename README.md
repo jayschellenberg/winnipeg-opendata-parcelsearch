@@ -344,7 +344,7 @@ Data Portal, under the
 [Open Government Licence – Winnipeg](https://data.winnipeg.ca/open-data-licence).
 Transit overlays are derived from the Winnipeg Transit GTFS feed.
 Environmentally tracked sites: Manitoba Contaminated/Impacted Sites Registry.
-Basemaps © OpenStreetMap contributors / CARTO; satellite imagery © Esri and partners; aerial ortho imagery © City of Winnipeg (Open Government Licence – Winnipeg).
+Streets basemap © OpenStreetMap contributors, via Protomaps; satellite imagery © Esri and partners; aerial ortho imagery © City of Winnipeg (Open Government Licence – Winnipeg).
 
 ## Disclaimer
 

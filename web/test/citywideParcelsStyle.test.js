@@ -43,7 +43,7 @@ console.log('applyCitywideParcelsBasemapStyle');
 test('streets gets the light preset', () => {
   const m = stubMap({
     'citywide-parcels-line': 'none',
-    'carto-positron': 'visible',
+    'pm-background': 'visible',
     'esri-imagery': 'none',
     ...Object.fromEntries(ORTHO_LAYERS.map((id) => [id, 'none'])),
   });
@@ -58,7 +58,7 @@ test('streets gets the light preset', () => {
 test('satellite gets the imagery preset', () => {
   const m = stubMap({
     'citywide-parcels-line': 'none',
-    'carto-positron': 'none',
+    'pm-background': 'none',
     'esri-imagery': 'visible',
     ...Object.fromEntries(ORTHO_LAYERS.map((id) => [id, 'none'])),
   });
@@ -70,7 +70,7 @@ test('every aerial year triggers the imagery preset', () => {
   for (const ortho of ORTHO_LAYERS) {
     const m = stubMap({
       'citywide-parcels-line': 'none',
-      'carto-positron': 'none',
+      'pm-background': 'none',
       // Esri backs the aerials but is explicitly off here, so the ortho
       // layer is the only thing that can flip the preset.
       'esri-imagery': 'none',
