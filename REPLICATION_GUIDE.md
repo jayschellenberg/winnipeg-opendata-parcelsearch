@@ -98,7 +98,7 @@ SODA paging is centralized in `fetchSodaPaged` / `fetchSodaRowsPaged`. Internal 
 
 **Dependencies** (`web/package.json`):
 
-- `maplibre-gl` — the map (CartoDB Positron + Esri World Imagery + an optional City aerial-ortho PMTiles raster basemap, no API keys)
+- `maplibre-gl` + `@protomaps/basemaps` + `pmtiles` — the map (self-hosted Protomaps/OSM vector streets + Esri World Imagery + an optional City aerial-ortho PMTiles raster basemap, no API keys)
 - `@turf/bbox` — bounding boxes
 - `@turf/boolean-intersects` — defensive fallback when centroid coords are missing
 - `@turf/boolean-point-in-polygon` — primary client-side join primitive
@@ -781,6 +781,43 @@ OSGeo4W GDAL with the ECW plugin + ~50 GB scratch. 2024 output: 16.5 GB, z12–2
   origin — a `206` + `PMTiles` magic bytes exercises CSP + CORS + R2 at once.
 
 ---
+
+### 8.8 Streets basemap — Protomaps, self-hosted
+
+The default **Streets** basemap is a Manitoba cut of the Protomaps daily
+OpenStreetMap build, served as one `basemap-manitoba.pmtiles` archive from the
+same `wpg-ortho` R2 bucket as the aerial years (so the CORS policy and the
+`connect-src` entry from §8.7 already cover it). `map.js` builds the layer
+stack in the browser from the `@protomaps/basemaps` npm package (light
+flavor, ids prefixed `pm-`, one font remapped to a stack the demotiles glyph
+server carries); the sprite sheet is checked in under
+`web/public/basemap-sprites/`. No API key and no vendor tile quota. This
+replaced CARTO's raster Positron tiles in 2026-09, when CARTO began
+watermarking unkeyed requests and announced the raster service's retirement.
+
+`BASEMAP_PMTILES_URL` in `map.js` hard-codes the public R2 URL;
+`VITE_BASEMAP_PMTILES_URL` in `web/.env.local` overrides it for local work
+(the Protomaps demo planet, `https://demo-bucket.protomaps.com/v4.pmtiles`,
+is a slow but handy stand-in).
+
+**Rebuild** (~annual, or when the road network changes) — re-extract from a
+newer daily build and overwrite the object:
+
+```
+# pmtiles CLI: https://github.com/protomaps/go-pmtiles/releases (Windows zip, ~18 MB)
+# Latest build date: https://maps.protomaps.com/builds/
+pmtiles extract https://build.protomaps.com/<YYYYMMDD>.pmtiles basemap-manitoba.pmtiles `
+  --bbox=-102.5,48.5,-88.5,60.5 --maxzoom=15 --download-threads=8
+rclone copy basemap-manitoba.pmtiles r2:wpg-ortho/ --s3-no-check-bucket --s3-chunk-size 64M --s3-upload-concurrency 8
+```
+
+First build (2026-08-31 planet): 3 min 21 s, 234 range requests, 1.09 GB,
+z0–15; MapLibre overzooms the z15 vector tiles cleanly to z20. The bbox is
+Manitoba plus a margin so neighbouring provinces/states draw at province-wide
+zooms. The Manitoba sister app ships the identical file on its own bucket
+(`r2-mb:mb-ortho/`) — rebuild both together. If Protomaps bumps its tileset
+major version (v4 today), `@protomaps/basemaps` must move in step: its
+`layers()` are written against the tileset schema.
 
 ## 9. Step 5 — Deploy to Vercel
 
