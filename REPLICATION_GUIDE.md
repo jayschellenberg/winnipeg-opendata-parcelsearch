@@ -800,24 +800,28 @@ watermarking unkeyed requests and announced the raster service's retirement.
 (the Protomaps demo planet, `https://demo-bucket.protomaps.com/v4.pmtiles`,
 is a slow but handy stand-in).
 
-**Rebuild** (~annual, or when the road network changes) — re-extract from a
-newer daily build and overwrite the object:
+**Rebuild is automated from the Manitoba sister repo.** `mb-parcelsearch\rebuild-basemap.ps1`
+re-cuts the archive from the newest Protomaps daily build and publishes it to
+**both** buckets (`r2-mb:mb-ortho` and this app's `r2:wpg-ortho`) with a
+staged upload-then-swap, a tileset schema gate, `pmtiles verify`, a size band
+and a public range probe; it is scheduled there as
+`mb-parcelsearch-basemap-refresh` (Jan 2 / Jul 2) with a daily dead-man
+watchdog (`basemap-staleness-check.ps1`) reading the published
+`basemap-manitoba.meta.json` sidecar on both hosts. Full write-up:
+`mb-parcelsearch\MAINTENANCE.md` §7b. By hand, from that repo:
 
 ```
-# pmtiles CLI: https://github.com/protomaps/go-pmtiles/releases (Windows zip, ~18 MB)
-# Latest build date: https://maps.protomaps.com/builds/
-pmtiles extract https://build.protomaps.com/<YYYYMMDD>.pmtiles basemap-manitoba.pmtiles `
-  --bbox=-102.5,48.5,-88.5,60.5 --maxzoom=15 --download-threads=8
-rclone copy basemap-manitoba.pmtiles r2:wpg-ortho/ --s3-no-check-bucket --s3-chunk-size 64M --s3-upload-concurrency 8
+powershell -ExecutionPolicy Bypass -File rebuild-basemap.ps1 -Publish
 ```
 
 First build (2026-08-31 planet): 3 min 21 s, 234 range requests, 1.09 GB,
-z0–15; MapLibre overzooms the z15 vector tiles cleanly to z20. The bbox is
-Manitoba plus a margin so neighbouring provinces/states draw at province-wide
-zooms. The Manitoba sister app ships the identical file on its own bucket
-(`r2-mb:mb-ortho/`) — rebuild both together. If Protomaps bumps its tileset
-major version (v4 today), `@protomaps/basemaps` must move in step: its
-`layers()` are written against the tileset schema.
+z0–15; MapLibre overzooms the z15 vector tiles cleanly to z20. The bbox
+(`-102.5,48.5,-88.5,60.5`) is Manitoba plus a margin so neighbouring
+provinces/states draw at province-wide zooms. If Protomaps bumps its tileset
+major version (v4 today), `@protomaps/basemaps` must move in step in **both**
+web trees — its `layers()` are written against the tileset schema — and the
+rebuild script refuses such a build until `$ExpectedTilesetMajor` is bumped
+alongside.
 
 ## 9. Step 5 — Deploy to Vercel
 
