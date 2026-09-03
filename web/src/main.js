@@ -47,6 +47,7 @@ import {
 } from './lib/permitEvidence.js';
 import { yieldToPaint } from './lib/yieldToPaint.js';
 import { judgedVerdict, judgedAssembly, saleJudgement } from './lib/saleJudgements.js';
+import { loadRiseLookup, stampRise, passesRiseFilter } from './lib/riseLookup.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
 import bbox from '@turf/bbox';
@@ -339,6 +340,8 @@ const SORT_KEYS = {
   unitLabel:    (r) => strKey(r.assess?.properties?._saleUnitLabel),
   saleZoning:   (r) => strKey(r.assess?.properties?._saleZoning),
   n1Id:         (r) => numOrStr(r.assess?.properties?._n1Id),
+  // Rank, not label text: low, mid, high, then unclassified.
+  rise:         (r) => strKey(r.assess?.properties?._riseSortKey ?? '9'),
   saleAcres:    (r) => finiteOrNeg(r.assess?.properties?._saleAcres),
   pricePerBldgSf: (r) => finiteOrNeg(r.assess?.properties?._pricePerBldgSf),
   // Rank, not text: teardown first, then confirms-vacant, then the
@@ -754,6 +757,10 @@ function captureUrlState() {
   const n1Val = document.getElementById('sales-n1-filter')?.value;
   if (n1Val === 'matched' || n1Val === 'unmatched') s.salesN1 = n1Val;
 
+  // Rise filter (Sales tab). Same rule: 'any' stays out of the URL.
+  const riseVal = document.getElementById('sales-rise-filter')?.value;
+  if (riseVal === 'low' || riseVal === 'mid' || riseVal === 'high') s.salesRise = riseVal;
+
   return s;
 }
 
@@ -833,6 +840,11 @@ function applyUrlState(state) {
   if ('salesN1' in state) {
     const el = document.getElementById('sales-n1-filter');
     if (el) el.value = state.salesN1;
+  }
+
+  if ('salesRise' in state) {
+    const el = document.getElementById('sales-rise-filter');
+    if (el) el.value = state.salesRise;
   }
 }
 
@@ -3295,6 +3307,9 @@ let salesData = null;
 // most recent run mutate the DOM. Earlier runs check the token
 // before render and abort if a newer run has started.
 let salesRunToken = 0;
+// Parsed /rise-lookup.json (lib/riseLookup.js), fetched once on the first
+// sales run; null while unavailable.
+let riseLookup = null;
 
 // The required-column list now lives in lib/salesImport.js alongside the
 // header aliases that satisfy it, so the schema and the vocabulary that
@@ -3463,6 +3478,15 @@ function wireSalesTab() {
   const $n1Filter = document.getElementById('sales-n1-filter');
   if ($n1Filter) {
     $n1Filter.addEventListener('change', () => {
+      queueUrlWrite();
+      if (salesData) runSalesAnalysis();
+    });
+  }
+
+  // Rise (storey band) filter. Shareable via ?rise=.
+  const $riseFilter = document.getElementById('sales-rise-filter');
+  if ($riseFilter) {
+    $riseFilter.addEventListener('change', () => {
       queueUrlWrite();
       if (salesData) runSalesAnalysis();
     });
@@ -3712,6 +3736,8 @@ async function handleSalesUpload({ name, text }, remember = true) {
     // THIS CSV's crosswalk column, not a standing preference.
     const $n1 = document.getElementById('sales-n1-filter');
     if ($n1) $n1.value = 'any';
+    const $rise = document.getElementById('sales-rise-filter');
+    if ($rise) $rise.value = 'any';
     // Same reasoning for the other narrowing controls: they describe the
     // previous comp set, not a standing preference. Far-flung is left
     // alone — its threshold is a judgement about what counts as
@@ -3873,6 +3899,11 @@ function setResultsProgress(text) {
 async function runSalesAnalysis() {
   if (!salesData || !salesData.sales.length) return;
   const myToken = ++salesRunToken;
+  // The rise lookup is fetched once per page load and answers both the
+  // pre-join filter below and the column stamp after the join. Null when
+  // the file is unavailable: the column stays blank and an active Rise
+  // filter passes nothing, which is the honest reading of "unclassified".
+  riseLookup = await loadRiseLookup();
   const hideSentinels = document.getElementById('sales-hide-sentinels')?.checked;
   let visibleSales = hideSentinels
     ? salesData.sales.filter((s) => s.salePrice > 1)
@@ -3937,6 +3968,14 @@ async function runSalesAnalysis() {
     visibleSales = visibleSales.filter((s) => (n1Mode === 'matched' ? !!s.n1Id : !s.n1Id));
   }
 
+  // Rise (storey band). Pre-join and row-level like N1; a sale the
+  // lookup does not classify fails an active band rather than slipping
+  // into it unchecked — lib/riseLookup.js carries the rule.
+  const riseMode = document.getElementById('sales-rise-filter')?.value || 'any';
+  if (riseMode !== 'any') {
+    visibleSales = visibleSales.filter((s) => passesRiseFilter(s, riseLookup, riseMode));
+  }
+
 
   if (!visibleSales.length) {
     let msg;
@@ -3956,6 +3995,11 @@ async function runSalesAnalysis() {
       // has no size to test and drops out silently otherwise.
       msg = `${salesData.sales.length} sales loaded, but none fall inside the lot-size range `
           + `(sales missing Land Actual sqft can't be measured and are excluded while it's set).`;
+    } else if (riseMode !== 'any') {
+      msg = riseLookup
+        ? `${salesData.sales.length} sales loaded, but none are ${riseMode}-rise apartments or offices `
+          + `(only RESAP/RESAM and CMOFF/CMOMC/CMOGV/CMFBK sales carry a rise band).`
+        : `${salesData.sales.length} sales loaded, but the rise lookup could not be fetched — set Rise back to Any.`;
     } else if (n1Mode !== 'any') {
       msg = `${salesData.sales.length} sales loaded, but none are N1-${n1Mode}. `
           + `CSVs without an N1 ID column read as entirely unmatched.`;
@@ -4081,6 +4125,11 @@ async function runSalesAnalysis() {
   // difference is 6,736 Land rows against 12,889, and $30.11/lot SF
   // against $40.58. So it has to be said out loud, not warned to a console
   // nobody has open.
+  // Rise band on apartment / office sales, from the offline lookup. Done
+  // before the permit pass so the column is populated even if that pass
+  // fails; the two say nothing about each other.
+  stampRise(saleFc.features, riseLookup);
+
   let permitsOk = false;
   try {
     // Both permit sets in parallel — they answer opposite halves of one

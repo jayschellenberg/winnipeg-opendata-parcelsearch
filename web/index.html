@@ -770,6 +770,23 @@
                 <option value="unmatched">Unmatched</option>
               </select>
             </div>
+            <!-- Rise: storey band of apartment / office sales, from the
+                 offline RESAPStoreys lookup (see lib/riseLookup.js).
+                 Missing is excluded once set, like the other narrowing
+                 filters. -->
+            <div class="sales-n1-row">
+              <span class="sales-range-label">Rise:</span>
+              <select
+                id="sales-rise-filter"
+                aria-label="Rise (storey band) filter"
+                title="Filter apartment and office sales by storey band. Apartments: Low-rise = 1–3 storeys, Mid-rise = 4+ (no High-rise band). Offices: Low-rise 1–4, Mid-rise 5–9, High-rise 10+. Sales the lookup does not classify are excluded while a band is set."
+              >
+                <option value="any" selected>Any</option>
+                <option value="low">Low-rise</option>
+                <option value="mid">Mid-rise</option>
+                <option value="high">High-rise</option>
+              </select>
+            </div>
           </details>
 
           <!-- Clear. Same hard reset as the Property tab's Clear: a

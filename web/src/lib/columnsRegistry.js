@@ -265,6 +265,23 @@ export const COLUMNS = [
     render: (a) => badgeTd(a._saleCategory || UNCLASSIFIED_CATEGORY, 'badge-category'),
     csv: { header: 'Category', extract: (a) => a._saleCategory || UNCLASSIFIED_CATEGORY } },
 
+  // Rise. The storey band of an apartment or office parcel, from the
+  // offline RESAPStoreys lookup (OpenStreetMap levels, Overture heights,
+  // a model where neither exists) — the sub-type neither SABRE nor the
+  // roll can supply. Blank on every other use, and blank with a tooltip
+  // on an apartment/office the lookup does not carry. See lib/riseLookup.js.
+  { key: 'rise',         header: 'Rise',          mode: 'sales',  sortable: true,
+    theadTitle: 'Storey band for apartment (RESAP/RESAM) and office (CMOFF/CMOMC/CMOGV/CMFBK) sales, from the offline RESAPStoreys lookup. '
+      + 'Apartments: Low-rise / garden = 1–3 storeys, Mid/high-rise = 4+. Offices: Low-rise 1–4, Mid-rise 5–9, High-rise 10+. '
+      + 'Hover a cell for the storey count and its source (OpenStreetMap, Overture Maps height, or a model estimate). '
+      + 'Blank = not an apartment or office, or a parcel the lookup does not carry.',
+    render: (a) => {
+      const cell = td(a._rise || null);
+      if (a._riseTitle) cell.title = a._riseTitle;
+      return cell;
+    },
+    csv: { header: 'Rise', extract: (a) => a._rise } },
+
   // Living Area and Year Built are dual-source: the sales CSV value when
   // there is one, otherwise the live assessment record. That makes them
   // usable in a plain property search (where no CSV exists) without a

@@ -147,6 +147,25 @@ is row-level, so a multi-parcel sale matched on only some of its rolls shows
 exactly the rows that still need doing. A CSV with no N1 ID column reads as
 entirely unmatched, which is the truth.
 
+**Rise (storey band).** Neither SABRE nor the assessment roll says how
+tall an apartment or office building is — `building_type` is only filled
+for houses and `number_floors_condo` only for condo suites — so the
+**Rise** column and the Rise filter come from an offline lookup,
+`public/rise-lookup.json`, built by `WpgOpenData/RESAPStoreys`. That
+pipeline derives storeys for every RESAP/RESAM and CMOFF/CMOMC/CMOGV/CMFBK
+parcel in the roll from OpenStreetMap `building:levels`, Overture Maps
+building heights, and a model on assessed value, land area, units and
+zoning where neither exists; the cell tooltip names the storey count and
+which of those spoke. Apartments band at 1–3 (low-rise / garden) vs 4+;
+offices at 1–4 / 5–9 / 10+. Because the lookup covers parcels rather than
+sales, a sale in a new export classifies as soon as it is imported. The
+filter is row-level and excludes unclassified sales while a band is set,
+shareable as `?rise=`. Rebuild the lookup after a new parcel snapshot:
+
+```bash
+python RESAPStoreys/build_resap_storeys.py --group apartment && python RESAPStoreys/build_resap_storeys.py --group office && python RESAPStoreys/build_rise_lookup.py
+```
+
 ## Data freshness
 
 The **Data Status** dialog in the top bar is the in-app view of everything

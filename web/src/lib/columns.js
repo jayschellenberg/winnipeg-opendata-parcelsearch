@@ -54,7 +54,10 @@ const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'sou
   // reach existing users rather than waiting for them to find the gear.
   // useCodeName rides with it: a code column whose meaning is only
   // available on a tooltip is not much of an answer to "what is RESMC".
-  'category', 'useCodeName'];
+  'category', 'useCodeName',
+  // The storey band on apartment and office sales — the sub-type a
+  // multi-family or office comp search is usually narrowing on.
+  'rise'];
 
 /*
  * Columns this module does not govern. `seq` (the map badge "#") is gated
@@ -90,7 +93,7 @@ const SALES_DEFAULT = [
   // Category leads the classification columns because it is what the
   // sidebar's Category picker filters on — a default preset that hides it
   // would leave the grid being narrowed by a value the grid never shows.
-  'roll', 'address', 'cluster', 'water', 'saleDate', 'category', 'useCode', 'useCodeName',
+  'roll', 'address', 'cluster', 'water', 'saleDate', 'category', 'useCode', 'useCodeName', 'rise',
   'livingArea', 'yearBuilt', 'area',
   'propertyType', 'groupSize',
   // Sworn is on by default: it only renders when it DIFFERS from the
@@ -109,7 +112,7 @@ const SALES_DEFAULT = [
 // land rate (the MB Commercial Sales preset's rationale, kept here).
 const COMMERCIAL_SALES = [
   'roll', 'address', 'cluster', 'saleDate', 'salePrice', 'swornValue',
-  'category', 'useCode', 'propertyType', 'buildingType', 'yearBuilt', 'livingArea',
+  'category', 'useCode', 'rise', 'propertyType', 'buildingType', 'yearBuilt', 'livingArea',
   'pricePerBldgSf',
   // A teardown hiding in an improved comp set is exactly what this
   // preset must not let through unnoticed.
@@ -134,7 +137,7 @@ const LAND_SALES = [
 const MLS_SALES = [
   'roll', 'address', 'cluster', 'source', 'saleDate', 'mlsDate',
   'salePrice', 'listPrice', 'origPrice', 'dom',
-  'useCode', 'propertyType', 'bldgType', 'style', 'siteInfl',
+  'useCode', 'rise', 'propertyType', 'bldgType', 'style', 'siteInfl',
   'yearBuilt', 'livingArea', 'pricePerBldgSf', 'numUnits', 'unitLabel',
   'area', 'saleZoning', 'demo', 'built', 'n1Id', 'mlsNumber',
 ];

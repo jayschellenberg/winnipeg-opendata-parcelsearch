@@ -139,6 +139,11 @@ export const SCHEMA = {
   // 'any' is the default and never emitted; only the two narrowing
   // states are shareable.
   salesN1: { param: 'n1', validate: oneOf(['matched', 'unmatched']), format: (v) => v },
+
+  // --- Rise filter (Sales tab) ---
+  // Storey band of apartment / office sales from the offline lookup.
+  // 'any' is the default and never emitted.
+  salesRise: { param: 'rise', validate: oneOf(['low', 'mid', 'high']), format: (v) => v },
 };
 
 const PARAM_TO_KEY = Object.fromEntries(
