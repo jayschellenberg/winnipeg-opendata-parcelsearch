@@ -210,7 +210,7 @@ export const COLUMNS = [
   // toggle by marking it col-hidden underneath.
   { key: 'seq',          header: '#',             mode: 'always', sortable: true,
     theadClass: 'seq-col',
-    theadTitle: 'Map number. Parcels are numbered 1..N by roll number; a multi-parcel sale and a repeat sale of the same parcel each carry ONE number. Turn on with "Number parcels" above the table.',
+    theadTitle: 'Map number. Parcels are numbered 1..N by roll number; a multi-parcel sale and a repeat sale of the same parcel each carry ONE number. Turn on with "Number parcels" under the Search buttons; "Entry order" beside it numbers in the order the rolls were entered.',
     render: (a, s) => td(seqOf(a, s), 'num'),
     csv: { header: '#', extract: (a, s) => seqOf(a, s) } },
 

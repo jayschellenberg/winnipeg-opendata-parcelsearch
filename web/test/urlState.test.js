@@ -315,8 +315,17 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 31 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 1 numbering + 1 subjectRoll + 1 salesN1)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 31);
+test('SCHEMA — has exactly 32 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 2 numbering + 1 subjectRoll + 1 salesN1)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 32);
+});
+
+test('numberingOrder ("Entry order") round-trips as the no param', () => {
+  assert.equal(encodeState({ numberingOrder: true }), 'no=1');
+  assert.deepEqual(decodeState('?no=1'), { numberingOrder: true });
+  assert.deepEqual(decodeState('?no=0'), { numberingOrder: false });
+  assert.deepEqual(decodeState('?no=maybe'), {});
+  // Both numbering params together, in schema order.
+  assert.equal(encodeState({ numberingToggle: true, numberingOrder: true }), 'nu=1&no=1');
 });
 
 test('numberingToggle round-trips as the nu param', () => {

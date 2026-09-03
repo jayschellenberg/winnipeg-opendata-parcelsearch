@@ -33,6 +33,7 @@ import {
   applyCitywideParcelsBasemapStyle,
 } from './lib/citywideParcelsStyle.js';
 import { formatDollars } from './lib/cells.js';
+import { assessFillOpacity } from './lib/assessFillOpacity.js';
 
 // mapbox-gl-draw was written against the Mapbox GL `mapboxgl-*` DOM
 // class names; MapLibre uses `maplibregl-*`. Patch the lookup table
@@ -116,12 +117,17 @@ const ASSESS_LINE_WIDTH = [
   3.0,
   2.0,
 ];
-const ASSESS_FILL_OPACITY = [
-  'case',
-  ['boolean', ['feature-state', 'groupHover'], false],
-  0.5,
-  0.3,
-];
+// Fill opacity is resolved by lib/assessFillOpacity.js from the two
+// overlay states that both need the yellow out of the way: Water
+// Influence (opacity 0 — it repaints the same polygons) and Zoning:
+// Shaded (a faint wash, so the district colours read through the result
+// parcels instead of being swamped by the highlight). Module state here;
+// setWaterInfluenceVisible / setZoningMode update it and re-apply.
+const assessFillState = { waterOn: false, zoningShaded: false };
+function applyAssessFillOpacity(map) {
+  if (!map.getLayer('assess-context-fill')) return;
+  map.setPaintProperty('assess-context-fill', 'fill-opacity', assessFillOpacity(assessFillState));
+}
 
 // Categorical fill colors keyed off the dataset's `map_colour` field. Values
 // taken from a $group=map_colour query against dxrp-w6re — 13 categories
@@ -1066,7 +1072,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         // which draws at 75% and stays true.
         paint: {
           'fill-color': '#ffea00',
-          'fill-opacity': ASSESS_FILL_OPACITY,
+          'fill-opacity': assessFillOpacity(assessFillState),
         },
       });
       // Solid black under-stroke for the selection outline. Sits directly
@@ -2264,6 +2270,11 @@ export function setZoningMode(map, mode) {
   if (map.getLayer('zoning-fill')) map.setLayoutProperty('zoning-fill', 'visibility', fill);
   if (map.getLayer('zoning-line')) map.setLayoutProperty('zoning-line', 'visibility', lineLabel);
   if (map.getLayer('zoning-label')) map.setLayoutProperty('zoning-label', 'visibility', lineLabel);
+  // While the district colours are showing, the yellow result highlight
+  // drops to a faint wash so the zoning shading reads through the subject
+  // parcels. Labels-only and off restore the full highlight.
+  assessFillState.zoningShaded = mode === 'shading';
+  applyAssessFillOpacity(map);
 }
 
 /** Toggle the citywide-parcels vector overlay on/off. The PMTiles
@@ -2291,9 +2302,8 @@ export function setWaterInfluenceVisible(map, visible) {
   for (const id of ['water-influence-fill', 'water-influence-line']) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
   }
-  if (map.getLayer('assess-context-fill')) {
-    map.setPaintProperty('assess-context-fill', 'fill-opacity', visible ? 0 : 0.3);
-  }
+  assessFillState.waterOn = !!visible;
+  applyAssessFillOpacity(map);
 }
 
 export function setCitywideParcelsVisible(map, visible) {

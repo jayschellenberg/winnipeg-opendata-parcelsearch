@@ -14,10 +14,14 @@
 //   5. Assignment is idempotent and independent of input order — that's
 //      what lets main.js re-assign on every render without the numbers
 //      shifting under a re-sort or an area filter.
+//   6. "Entry order" (rollOrder): entered rolls number in entered order,
+//      keyed by the canonical 11-digit roll; un-entered rolls follow by
+//      roll number; a group takes its first-entered member's number.
 
 import assert from 'node:assert/strict';
 import {
   rollNumericValue, rollKey, instrumentKey,
+  canonicalRoll, enteredOrderValue,
   orderForNumbering, assignParcelSeq, clearParcelSeq,
 } from '../src/lib/parcelNumbering.js';
 
@@ -92,6 +96,101 @@ test('assignParcelSeq numbers 1..N in roll order', () => {
   const ordered = assignParcelSeq(list);
   assert.deepEqual(rolls(ordered), ['100', '200', '300']);
   assert.deepEqual(seqs(ordered), [1, 2, 3]);
+});
+
+// 2b. Entry order ===========================================================
+/** rollOrder map the way main.js builds it: canonical roll → position. */
+const order = (...rollsIn) => new Map(rollsIn.map((r, i) => [canonicalRoll(r), i]));
+
+test('canonicalRoll zero-pads to 11 digits and strips punctuation', () => {
+  assert.equal(canonicalRoll('3547800'), '00003547800');
+  assert.equal(canonicalRoll('01003547800'), '01003547800');
+  assert.equal(canonicalRoll(' 0100-3547-800 '), '01003547800');
+  assert.equal(canonicalRoll(1003547800), '01003547800');
+  assert.equal(canonicalRoll(''), null);
+  assert.equal(canonicalRoll(null), null);
+  assert.equal(canonicalRoll('PENDING'), null);
+});
+
+test('enteredOrderValue reads the position by canonical roll, Infinity otherwise', () => {
+  const ro = order('1003547800', '01003546600');
+  assert.equal(enteredOrderValue({ roll_number: '01003547800' }, ro), 0);
+  assert.equal(enteredOrderValue({ roll_number: '1003546600' }, ro), 1);
+  assert.equal(enteredOrderValue({ roll_number: '01003547000' }, ro), Infinity);
+  assert.equal(enteredOrderValue({ roll_number: '01003547800' }, null), Infinity);
+  assert.equal(enteredOrderValue({}, ro), Infinity);
+});
+
+test('orderForNumbering follows the entered order when a rollOrder is given', () => {
+  // Pasted high-to-low; the numeric sort would reverse it.
+  const ro = order('01003547800', '01003547600', '01003547400');
+  const ordered = orderForNumbering(
+    [f('01003547400'), f('01003547600'), f('01003547800')], ro,
+  );
+  assert.deepEqual(rolls(ordered), ['01003547800', '01003547600', '01003547400']);
+});
+
+test('orderForNumbering with no rollOrder is unchanged (roll order)', () => {
+  const ordered = orderForNumbering([f('100'), f('90')], null);
+  assert.deepEqual(rolls(ordered), ['90', '100']);
+});
+
+test('un-entered rolls follow the entered ones, by roll number', () => {
+  const ro = order('300');
+  const ordered = orderForNumbering([f('50'), f('300'), f('10')], ro);
+  assert.deepEqual(rolls(ordered), ['300', '10', '50']);
+});
+
+test('assignParcelSeq numbers 1..N in entered order', () => {
+  const ro = order('300', '100', '200');
+  const list = [f('100'), f('200'), f('300')];
+  const ordered = assignParcelSeq(list, { rollOrder: ro });
+  assert.deepEqual(rolls(ordered), ['300', '100', '200']);
+  assert.deepEqual(seqs(ordered), [1, 2, 3]);
+});
+
+test('a multi-parcel sale takes its FIRST-entered member\'s number under entry order', () => {
+  // Pasted as 100, 200, 300, 400; 200 + 400 sold together under INST-A.
+  const ro = order('100', '200', '300', '400');
+  const a = f('100', 'INST-1');
+  const b = f('200', 'INST-A');
+  const c = f('300', 'INST-3');
+  const d = f('400', 'INST-A');
+  assignParcelSeq([d, c, b, a], { rollOrder: ro });
+  assert.equal(a.properties._seq, 1);
+  assert.equal(b.properties._seq, 2);
+  assert.equal(c.properties._seq, 3, 'the count advances once for the group');
+  assert.equal(d.properties._seq, 2, 'the later-entered partner keeps the group number');
+});
+
+test('entry order matches a 10-digit entry to its 11-digit live roll', () => {
+  const ro = order('1003547800', '1003546600');
+  const list = [f('01003546600'), f('01003547800')];
+  const ordered = assignParcelSeq(list, { rollOrder: ro });
+  assert.deepEqual(seqs(ordered), [1, 2]);
+  assert.deepEqual(rolls(ordered), ['01003547800', '01003546600']);
+});
+
+test('entry-order assignment is idempotent and input-order independent', () => {
+  const ro = order('300', '100', '200');
+  const a = f('100');
+  const b = f('200');
+  const c = f('300');
+  assignParcelSeq([a, b, c], { rollOrder: ro });
+  const first = [a, b, c].map((x) => x.properties._seq);
+  assignParcelSeq([c, a, b], { rollOrder: ro });
+  assert.deepEqual([a, b, c].map((x) => x.properties._seq), first);
+  assert.deepEqual(first, [2, 3, 1]);
+});
+
+test('switching rollOrder off re-derives roll order on the same features', () => {
+  const ro = order('300', '100');
+  const a = f('100');
+  const b = f('300');
+  assignParcelSeq([a, b], { rollOrder: ro });
+  assert.deepEqual([a.properties._seq, b.properties._seq], [2, 1]);
+  assignParcelSeq([a, b]);
+  assert.deepEqual([a.properties._seq, b.properties._seq], [1, 2]);
 });
 
 // 3. Multi-parcel sale = one number =========================================

@@ -2131,9 +2131,27 @@ body:not(.numbering-on) .seq-col {
   display: none !important;
 }
 
-/* "Number parcels" checkbox on the results toolbar. Sits left of the
-   spacer, so it reads as part of the same control strip as the column
-   preset rather than as a table heading. */
+/* "Number parcels" + "Entry order" row. Sits under the active tab's
+   action row (main.js moves the one row between the tabs), so it reads
+   as part of the Search / Clear strip. The .numbering-toggle rule below
+   is shared with the toolbar's "Include legend" checkbox. */
+.numbering-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 8px;
+}
+.numbering-row[hidden] {
+  display: none;
+}
+.numbering-row .numbering-toggle {
+  margin-left: 0;
+}
+
+/* Checkbox-with-label used by the numbering row and, on the results
+   toolbar, by "Include legend in map image" (left of the spacer, so it
+   reads as part of the control strip rather than as a table heading). */
 .numbering-toggle {
   display: inline-flex;
   align-items: center;

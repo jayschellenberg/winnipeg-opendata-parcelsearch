@@ -19,7 +19,8 @@
  *     omitted means off)
  *   - 2 sort (sortCol, sortDir)
  *   - 1 tab (property | sales) — Phase 7
- *   - 1 numberingToggle (the results-toolbar "Number parcels" checkbox)
+ *   - 2 numbering: numberingToggle ("Number parcels", under the active
+ *     tab's action row) and numberingOrder ("Entry order" beside it)
  *   - 1 subjectRoll (the sales-tab subject parcel) — Phase 7 fu2
  *
  * Map center/zoom/basemap are deliberately NOT encoded (the locked
@@ -116,11 +117,16 @@ export const SCHEMA = {
   tab: { param: 't', validate: oneOf(['property', 'sales']), format: (v) => v },
 
   // --- Number parcels (1) ---
-  // The results-toolbar "Number parcels" checkbox. Worth a param because
-  // the numbers are what a shared link is usually FOR — "look at #7" is
-  // meaningless if the recipient's map opens unnumbered. Off by default,
-  // so captureState only emits it when on.
+  // The "Number parcels" checkbox (under the active tab's action row).
+  // Worth a param because the numbers are what a shared link is usually
+  // FOR — "look at #7" is meaningless if the recipient's map opens
+  // unnumbered. Off by default, so captureState only emits it when on.
   numberingToggle: { param: 'nu', validate: cleanBool, format: formatBool },
+  // "Entry order" beside it — number in the order the rolls were entered.
+  // Same reasoning: "#3" in a shared link has to land on the same parcel
+  // for the recipient, and that depends on the order rule as much as on
+  // the toggle. Off by default, so only emitted when on.
+  numberingOrder: { param: 'no', validate: cleanBool, format: formatBool },
 
   // --- Subject roll (1, Phase 7 follow-up 2) ---
   // The subject parcel against which loaded sales are compared

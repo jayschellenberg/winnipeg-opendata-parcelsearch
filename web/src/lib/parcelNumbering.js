@@ -28,6 +28,13 @@
  * also order-independent of the table sort: it re-derives its own order
  * from the roll numbers, so calling it twice on the same set is a no-op.
  *
+ * "Entry order" (the checkbox beside "Number parcels") swaps the roll sort
+ * for the order the rolls were ENTERED — the Roll # chips on Property
+ * Search, or the pasted / uploaded rows on Sales Analysis — via the
+ * `rollOrder` option. When you paste a comp list you are usually pasting
+ * it in the order you mean to present it. Same idea as the Manitoba app's
+ * option; the key is Winnipeg's 11-digit roll rather than MB's Roll_No_Txt.
+ *
  * Pure (no DOM / no map) so it unit-tests in plain node; main.js owns the
  * "when" and map.js owns the "where".
  */
@@ -63,20 +70,54 @@ export function instrumentKey(props) {
 }
 
 /**
+ * Canonical 11-digit roll for the entry-order lookup — digits only, zero-
+ * padded on the left. Mirrors soda.js normalizeRoll (kept local so this
+ * module stays free of the network layer): a typed "1003547800" and the live
+ * record's "01003547800" key the same. '' / non-numeric → null.
+ */
+export function canonicalRoll(value) {
+  const digits = String(value ?? '').replace(/[^0-9]/g, '');
+  if (!digits) return null;
+  return digits.length >= 11 ? digits : digits.padStart(11, '0');
+}
+
+/**
+ * Where this parcel's roll sat in the entered list. `rollOrder` is a
+ * `Map<canonical roll, position>` built by the caller from what the user
+ * actually entered; rolls not in it (or no map at all) return +Infinity so
+ * they fall past the entered ones and sort among themselves by roll.
+ */
+export function enteredOrderValue(props, rollOrder) {
+  if (!rollOrder) return Infinity;
+  const roll = canonicalRoll(props?.roll_number);
+  if (roll == null) return Infinity;
+  const pos = rollOrder.get(roll);
+  return Number.isFinite(pos) ? pos : Infinity;
+}
+
+/**
  * Return the features ordered by roll (numeric), with the raw roll string
  * and the original index as stable tie-breakers. Does not mutate the input
  * array or the features. Features without `.properties` are dropped.
+ *
+ * Pass `rollOrder` (see enteredOrderValue) to order by the sequence the
+ * rolls were ENTERED instead. Two rolls entered as "1003547800, 1003546600" then
+ * number 1 and 2 in that order, rather than 1003546600 first as the numeric
+ * sort would have it. Rolls the list doesn't name still fall back to the
+ * roll sort, after the entered ones.
  */
-export function orderForNumbering(features) {
+export function orderForNumbering(features, rollOrder = null) {
   return (features || [])
     .filter((f) => f && f.properties)
     .map((f, idx) => ({
       f,
       idx,
+      entered: enteredOrderValue(f.properties, rollOrder),
       roll: rollNumericValue(f.properties),
       rollStr: String(f.properties.roll_number ?? ''),
     }))
     .sort((a, b) => {
+      if (a.entered !== b.entered) return a.entered - b.entered;
       if (a.roll !== b.roll) return a.roll - b.roll;
       if (a.rollStr < b.rollStr) return -1;
       if (a.rollStr > b.rollStr) return 1;
@@ -95,10 +136,15 @@ export function orderForNumbering(features) {
  * under one instrument is one comp carrying one number, not six
  * consecutive ones; a parcel that sold twice is one badge, not two.
  *
+ * `opts.rollOrder` swaps the roll sort for the entered order — see
+ * orderForNumbering. It only reorders: the grouping is unchanged, and a
+ * group takes the number of its FIRST-entered member, so a multi-parcel
+ * sale pasted as rows 2 and 5 is #2, not #2 and #5.
+ *
  * Mutates the features and returns them in assigned order.
  */
-export function assignParcelSeq(features) {
-  const ordered = orderForNumbering(features);
+export function assignParcelSeq(features, { rollOrder = null } = {}) {
+  const ordered = orderForNumbering(features, rollOrder);
 
   // Union-find over positions in `ordered`. Two rows are the same subject
   // if they share a roll or share an instrument; unioning both keys in one

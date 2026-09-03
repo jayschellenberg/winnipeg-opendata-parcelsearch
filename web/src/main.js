@@ -35,7 +35,7 @@ import { initInfoIcons } from './lib/infoIcon.js';
 import { initColumns, applyVisibility as applyColumnVisibility, setMode as setColumnMode } from './lib/columns.js';
 import { formatSqFt } from './lib/format.js';
 import { encodeState, decodeState } from './lib/urlState.js';
-import { initSidebarTabs, setActiveTab, onTabChange } from './lib/tabs.js';
+import { initSidebarTabs, setActiveTab, onTabChange, getActiveTab } from './lib/tabs.js';
 import { presetRange } from './lib/datePresets.js';
 import { readMapLegends, layoutMapLegends, paintMapLegends } from './lib/mapLegend.js';
 import {
@@ -186,7 +186,9 @@ const $historicalArea   = document.getElementById('historical-area');
 const $historicalDate   = document.getElementById('historical-date');
 const $historicalBanner = document.getElementById('historical-banner');
 const $numberingToggle  = document.getElementById('numbering-toggle');
-const $numberingLabel   = document.getElementById('numbering-toggle-label');
+const $numberingRow     = document.getElementById('numbering-row');
+const $numberingOrderToggle = document.getElementById('numbering-order-toggle');
+const $numberingOrderLabel  = document.getElementById('numbering-order-label');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
@@ -203,13 +205,23 @@ let fullRows = [];
 // Counts behind the "· X of Y shown (area filter)" clause setCount appends.
 let shapeShown = 0;
 let shapeTotal = 0;
-// "Number parcels" (results toolbar). `numberingOn` is the user's choice;
-// `numberable` is whether the current result set has more than one
-// numbered subject. Numbers only appear when both hold — a lone "1" on a
-// single parcel is noise, and the checkbox itself stays hidden until it
-// would do something.
+// "Number parcels" (under the active tab's action row). `numberingOn` is
+// the user's choice; `numberable` is whether the current result set has
+// more than one numbered subject. Numbers only appear when both hold — a
+// lone "1" on a single parcel is noise, and the checkbox itself stays
+// hidden until it would do something.
 let numberingOn = false;
 let numberable = false;
+// "Entry order" beside it — number in the order the rolls were ENTERED
+// rather than by roll number. Opt-in, and only offered when the result
+// set on screen came from an entered list: the Roll # chips (property) or
+// the pasted / uploaded rows (sales). Each side keeps its own
+// `{ byRoll, rollCount }` so a sales filter re-run after a property search
+// still numbers the sales set in its own order; enteredRollOrder() picks
+// by mode. Like numberingOn, the choice survives while it is hidden.
+let numberingEntryOrder = false;
+let propertyRollOrder = null;
+let salesRollOrder = null;
 // Unfiltered FCs most recently pushed through setParcels, so a shape
 // change can re-narrow them without re-searching.
 let lastFullSurveyFc = { type: 'FeatureCollection', features: [] };
@@ -437,6 +449,16 @@ if ($numberingToggle) {
     queueUrlWrite();
   });
 }
+// "Entry order". renderTable re-stamps `_seq` from scratch (assignParcelSeq
+// re-derives its order every call), so this is the one place a live set is
+// deliberately renumbered; the badges and the "#" cells follow.
+if ($numberingOrderToggle) {
+  $numberingOrderToggle.addEventListener('change', () => {
+    numberingEntryOrder = $numberingOrderToggle.checked;
+    if (fullRows.length > 0) renderTable(fullRows);
+    queueUrlWrite();
+  });
+}
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
 // Historical (as-of-date) overlay: a date picker feeds the toggle, which loads
 // the parcel + survey shards (and lineage) for the neighbourhoods in the current
@@ -522,6 +544,21 @@ initColumns();
 // Tab switches refresh the URL state (tab=sales / no t= for the
 // default property tab).
 onTabChange(() => queueUrlWrite());
+
+// The numbering row (Number parcels / Entry order) sits under the active
+// tab's action row and MOVES with the tab rather than being copied into
+// both panels, so there is one checkbox state and no syncing — the
+// Manitoba app's placeMapOptionsRow pattern.
+function placeNumberingRow(tab) {
+  if (!$numberingRow) return;
+  const panel = document.querySelector(`.sidebar-tab-panel[data-tab="${tab}"]`);
+  const actionRow = panel?.querySelector(':scope > .action-row');
+  if (actionRow && actionRow.nextElementSibling !== $numberingRow) {
+    actionRow.insertAdjacentElement('afterend', $numberingRow);
+  }
+}
+onTabChange(placeNumberingRow);
+placeNumberingRow(getActiveTab());
 
 // Wire the Sales Analysis tab — dropzone, subject roll, sentinel
 // filter. The CSV is parsed entirely client-side; no upload.
@@ -695,6 +732,7 @@ function captureUrlState() {
   // run yet; dropping the param because this page happens to show one
   // parcel would strip the setting out of a shared link.
   if (numberingOn) s.numberingToggle = true;
+  if (numberingEntryOrder) s.numberingOrder = true;
 
   if (currentSort?.col) s.sortCol = currentSort.col;
   if (currentSort?.dir) s.sortDir = currentSort.dir;
@@ -765,6 +803,10 @@ function applyUrlState(state) {
   // the change handler would only toggle a body class that the first
   // renderTable recomputes anyway — and clicking would fire an extra URL
   // write mid-restore.
+  if ('numberingOrder' in state) {
+    numberingEntryOrder = !!state.numberingOrder;
+    if ($numberingOrderToggle) $numberingOrderToggle.checked = numberingEntryOrder;
+  }
   if ('numberingToggle' in state) {
     numberingOn = !!state.numberingToggle;
     if ($numberingToggle) $numberingToggle.checked = numberingOn;
@@ -870,6 +912,9 @@ async function runSearch() {
   // shapes. Silent: this run repopulates the table itself, and an emit
   // here would re-filter the outgoing result set on the way out.
   resetShapesSilently();
+  // Entry order for "Number parcels": the Roll # chips, as entered. An
+  // address / legal search leaves this null, which hides the checkbox.
+  propertyRollOrder = buildEnteredRollOrder($roll.value);
   // Property Search flips the body out of sales mode + restores the
   // property-mode column-visibility set (Quick lookup default or
   // whatever the user has persisted for property mode).
@@ -2532,7 +2577,7 @@ function clearTable() {
   // so a user who numbered one search doesn't have to re-tick for the
   // next one.
   numberable = false;
-  if ($numberingLabel) $numberingLabel.hidden = true;
+  if ($numberingRow) $numberingRow.hidden = true;
   document.body.classList.remove('numbering-on');
   mapReady.then(() => {
     setParcelNumberData(map, []);
@@ -2574,9 +2619,45 @@ function rowFeature(r) {
  * table shouldn't still be tagged on the map. It keeps its number for
  * when the shape is erased.
  */
+/**
+ * Build the roll → entered-position map behind "Entry order". `list` is
+ * either the Roll # field's comma string or an array of rolls (the sales
+ * rows, in CSV order). Keyed by the canonical 11-digit roll so a typed
+ * "1003547800" matches its live "01003547800". First appearance wins, so a
+ * repeat-sold parcel keeps the position of its first row. Returns null
+ * for an empty list; `rollCount` distinguishes one roll (no meaningful
+ * order) from a real list.
+ */
+function buildEnteredRollOrder(list) {
+  const tokens = Array.isArray(list) ? list : String(list ?? '').split(/[\s,;&]+/);
+  const byRoll = new Map();
+  for (const t of tokens) {
+    const roll = normalizeRoll(t);
+    if (roll && !byRoll.has(roll)) byRoll.set(roll, byRoll.size);
+  }
+  return byRoll.size ? { byRoll, rollCount: byRoll.size } : null;
+}
+
+/** The entered order for the result set on screen — the sales rows in
+ *  sales mode, the Roll # chips otherwise. */
+function enteredRollOrder() {
+  return document.body.classList.contains('sales-mode') ? salesRollOrder : propertyRollOrder;
+}
+
+/** The rollOrder to number by right now — null unless "Entry order" is
+ *  on AND there is a real order (two or more entered rolls) to follow.
+ *  The `rollCount > 1` test mirrors the checkbox's own visibility rule in
+ *  applyParcelNumbering, so what is applied never disagrees with what is
+ *  on offer. */
+function activeRollOrder() {
+  if (!numberingEntryOrder) return null;
+  const order = enteredRollOrder();
+  return (order?.rollCount ?? 0) > 1 ? order.byRoll : null;
+}
+
 function applyParcelNumbering(fullRows, shownRows) {
   const all = fullRows.map(rowFeature).filter(Boolean);
-  assignParcelSeq(all);
+  assignParcelSeq(all, { rollOrder: activeRollOrder() });
   // Count SUBJECTS, not rows. Five rows that are all one repeat-sold
   // parcel collapse to a single number, and numbering that set would put
   // a solitary "1" on the map while claiming to have numbered something.
@@ -2584,7 +2665,14 @@ function applyParcelNumbering(fullRows, shownRows) {
   numberable = subjects > 1;
   if (!numberable) clearParcelSeq(all);
 
-  if ($numberingLabel) $numberingLabel.hidden = !numberable;
+  if ($numberingRow) $numberingRow.hidden = !numberable;
+  // "Entry order" only when there IS an entry order — an entered list
+  // naming more than one roll. An address or legal-description search has
+  // none, so the checkbox stays out of the way rather than sitting there
+  // as a no-op. The choice itself is kept (activeRollOrder ignores it
+  // while unavailable), so it is still in force for the next pasted list.
+  const orderAvail = numberable && (enteredRollOrder()?.rollCount ?? 0) > 1;
+  if ($numberingOrderLabel) $numberingOrderLabel.hidden = !orderAvail;
   const active = numberingOn && numberable;
   document.body.classList.toggle('numbering-on', active);
 
@@ -3611,6 +3699,9 @@ async function handleSalesUpload({ name, text }, remember = true) {
       return;
     }
     salesData = dedupAndGroupSales(parsed.rows);
+    // Entry order for "Number parcels": each roll's first appearance in
+    // the pasted / uploaded rows, so a pasted comp list numbers as typed.
+    salesRollOrder = buildEnteredRollOrder(salesData.sales.map((s) => s.roll));
     // Fresh CSV = fresh filter. The user's previous PUCS picks
     // don't carry across uploads (different sale sets, different
     // codes).
