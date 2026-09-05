@@ -61,6 +61,7 @@ import {
   fetchBuildPermits,
   searchAssessmentParcelsExpanded,
   fetchStreetNames,
+  suggestCivicAddresses,
   fetchSurveyOverlap,
   joinAssessmentWithSurvey,
   fetchCityZoning,
@@ -116,6 +117,7 @@ import { initSalesPasteImport } from './lib/salesPasteImport.js';
 import { buildClusterIndex, clusterForFeature } from './lib/clusters.js';
 import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
 import { createStreetSuggest, buildStreetIndex } from './lib/streetSuggest.js';
+import { createMapAddressSearch } from './lib/mapAddressSearch.js';
 import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
   passesPriceFilter,
@@ -513,6 +515,30 @@ createStreetSuggest({
   listId: 'address-street-suggest',
   loadIndex: () => fetchStreetNames().then(buildStreetIndex),
   onSearch: () => runSearch(),
+});
+
+// The map's address box. Picking a suggestion writes the three sidebar
+// address controls and runs the ordinary search, so the sidebar always
+// shows what was actually searched and the URL state stays shareable.
+// Any legal-description fields left over from a previous search are
+// cleared: mixing them with an address would search the intersection and
+// return nothing, which would read as "that address doesn't exist".
+createMapAddressSearch({
+  inputId: 'map-address-input',
+  listId: 'map-address-list',
+  fetchAddresses: (q) => suggestCivicAddresses(q),
+  onPick: ({ from, to, street }) => {
+    for (const el of [$lot, $block, $plan, $desc]) el.value = '';
+    $addressFrom.value = from;
+    $addressTo.value = to;
+    $addressStreet.value = street;
+    for (const el of [$addressFrom, $addressTo, $addressStreet]) {
+      // main.js hangs the URL-state writer off 'input', and setting
+      // .value in script fires nothing.
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    runSearch();
+  },
 });
 
 // Phase 7: sidebar tabs (Property Search + Sales Analysis). The

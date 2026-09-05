@@ -873,6 +873,19 @@
 
       <main class="workspace" id="workspace">
         <div id="map" class="map-pane">
+          <!-- One-field way in. Resolves against the City's civic-address
+               dataset, then fills the sidebar's From/To/Street and runs the
+               ordinary search — it is an input to that search, not a second
+               search path. -->
+          <div id="map-address-search" class="map-address-search">
+            <input id="map-address-input" class="map-address-input" type="text"
+                   placeholder="Find an address…" autocomplete="off"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false"
+                   aria-controls="map-address-list"
+                   aria-label="Find a Winnipeg civic address and search it">
+            <div id="map-address-list" class="map-address-list" role="listbox"
+                 aria-label="Matching civic addresses" hidden></div>
+          </div>
           <div id="historical-banner" class="historical-banner" role="status" aria-live="polite" hidden></div>
           <div id="zoning-legend" class="map-legend zoning-legend" hidden>
             <strong>Zoning</strong>

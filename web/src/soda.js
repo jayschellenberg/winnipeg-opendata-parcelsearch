@@ -468,6 +468,40 @@ export async function searchAddresses({ addressFrom, addressTo, addressStreet })
 }
 
 /**
+ * Typeahead source for the map's address box: civic addresses matching what
+ * the user has typed so far, straight off cam2-ii3u.
+ *
+ * The clause narrows on the STRUCTURED columns rather than on full_address,
+ * because "1393 Bor" is a number and a street-name prefix, not a substring
+ * of anything — full_address spells the type out between them. A bare number
+ * is matched as a prefix so "139" still offers 1393; a number WITH a street
+ * fragment is matched exactly, since by then the user has said which one.
+ *
+ * Capped small and ordered server-side: this runs on every keystroke pause,
+ * and the ranking that decides the visible order is lib/mapAddressSearch.js.
+ */
+export async function suggestCivicAddresses(raw, limit = 60) {
+  const s = String(raw ?? '').toUpperCase().replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return [];
+  const m = s.match(/^(\d+)\s*(.*)$/);
+  const number = m ? m[1] : null;
+  const street = streetKey(m ? m[2] : s);
+  const clauses = [];
+  if (number) clauses.push(street
+    ? `street_number = '${escapeSoql(number)}'`
+    : `starts_with(street_number, '${escapeSoql(number)}')`);
+  if (street) clauses.push(`upper(street_name) like '%${escapeSoql(street)}%'`);
+  if (!clauses.length) return [];
+  const params = new URLSearchParams({
+    $where: clauses.join(' AND '),
+    $select: 'full_address,street_number,street_name,street_type',
+    $order: 'street_name,street_number',
+    $limit: String(limit),
+  });
+  return fetchSoda(`${ADDRESSES_URL}?${params.toString()}`);
+}
+
+/**
  * Enrich every parcel's `full_address` with the complete set of civic
  * addresses from cam2-ii3u that fall inside its polygon. The assessment
  * dataset stores only the primary address per parcel, but a single parcel
