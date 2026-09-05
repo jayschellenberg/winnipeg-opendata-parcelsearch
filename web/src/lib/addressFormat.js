@@ -137,3 +137,34 @@ export function dedupeAddresses(list) {
   }
   return out;
 }
+
+/**
+ * Hover text for the Full Address cell, splitting the joined list into the
+ * one address that can be searched and the ones that cannot.
+ *
+ * The cell reads "1347 BORDER STREET, 1361 BORDER ST, 1393 BORDER ST, …"
+ * and every entry looks equally usable — but only the FIRST is the
+ * assessment record's own address, and winnipegassessment.com indexes that
+ * one alone. Typing any of the others into the City's search returns
+ * nothing, which reads as "no such property" rather than "wrong spelling of
+ * the right property".
+ *
+ * enrichAssessmentAddresses guarantees the parcel's own address is first;
+ * this only labels what that ordering already means. Returns null when the
+ * parcel has a single address and there is nothing to disambiguate.
+ */
+export function addressListTooltip(joined) {
+  const parts = String(joined ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  const [primary, ...others] = parts;
+  return [
+    `Assessment record: ${primary}`,
+    '(the only one winnipegassessment.com will find)',
+    '',
+    `Also on this parcel (${others.length}):`,
+    ...others,
+  ].join('\n');
+}

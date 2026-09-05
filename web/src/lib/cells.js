@@ -9,6 +9,7 @@
 //   - No reach into main.js state. Pass in what you need.
 
 import { assessmentUrl } from './links.js';
+import { addressListTooltip } from './addressFormat.js';
 
 /** Default empty-cell content — keeps a single source of truth. */
 const EMPTY = '—';        // em-dash
@@ -117,6 +118,22 @@ export function truncatedTd(value, maxChars, className) {
     el.textContent = str;
   }
   addClasses(el, className);
+  return el;
+}
+
+/**
+ * The Full Address cell. Same truncation as truncatedTd, plus a hover that
+ * names which of a multi-address parcel's addresses is the assessment
+ * record's own — the only one the City's own search can find. A single-
+ * address parcel behaves exactly like truncatedTd.
+ */
+export function addressTd(value, maxChars, className) {
+  const el = truncatedTd(value, maxChars, className);
+  const tip = addressListTooltip(value);
+  if (tip) {
+    el.title = tip;
+    el.style.cursor = 'help';
+  }
   return el;
 }
 

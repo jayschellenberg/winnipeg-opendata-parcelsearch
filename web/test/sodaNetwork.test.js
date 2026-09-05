@@ -4,13 +4,17 @@
 // or
 //   node test/sodaNetwork.test.js
 //
-// Pins two behaviours that exist specifically because of past incidents:
+// Pins three behaviours that exist specifically because of past incidents:
 //   1. fetchSoda retries transient 5xx / network errors (added in 559f4f8,
 //      silently removed by the 1348c06 "simplify" pass, restored in
 //      Milestone 1 — this test is what keeps it from vanishing again).
 //   2. fetchCurrentAssessmentInBbox reports `complete: false` when its page
 //      loop is cut short, so the historical overlay never marks parcels
 //      "gone" off a partial fetch.
+//   3. Every spatial join asks an INTERSECTION predicate, never within_box.
+//      within_box is a containment test that drops any target geometry
+//      larger than the query box — silently, with no error and no empty
+//      result, just quietly fewer rows. It had broken four joins at once.
 
 import assert from 'node:assert/strict';
 import {
@@ -18,6 +22,9 @@ import {
   fetchCurrentAssessmentInBbox,
   searchAssessmentParcelsByRolls,
   fetchSurveyOverlap,
+  fetchZoningOverlap,
+  fetchAssessmentOverlap,
+  searchAssessmentParcelsExpanded,
   isHistoricalPinStale,
 } from '../src/soda.js';
 
@@ -166,10 +173,10 @@ test('fetchCurrentAssessmentInBbox — every page is ordered by roll_number (aud
   assert.equal(out.complete, true);
 });
 
-// ---------- fetchPerFeatureBboxUnion null-geometry guard (audit F3) ----------
+// ---------- paddedBoxes null-geometry guard (audit F3) ----------
 // d4mq-wa44 carries ~59 geometry:null rows (bus shelters, pipelines, some
-// condo unit rolls). turf bbox() yields ±Infinity for them, and one
-// within_box(...,Infinity,...) clause used to 400 the whole 50-feature batch
+// condo unit rolls). turf bbox() yields ±Infinity for them, and one clause
+// built from an Infinity used to 400 the whole 50-feature batch
 // — killing legal-description/zoning/address enrichment for every row of the
 // search. Exercised through fetchSurveyOverlap, the assessment-flow caller.
 
@@ -189,7 +196,7 @@ test('fetchSurveyOverlap — null-geometry features are skipped, not turned into
   await fetchSurveyOverlap({ type: 'FeatureCollection', features: [VALID_SQUARE, NULL_GEOM] });
   assert.equal(calls.length, 1);
   assert.ok(!calls[0].includes('Infinity'), `Infinity leaked into the query: ${calls[0]}`);
-  assert.ok(decodeURIComponent(calls[0]).includes('within_box(location,'), 'valid feature still queried');
+  assert.ok(decodeURIComponent(calls[0]).includes('intersects(location,'), 'valid feature still queried');
 });
 
 test('fetchSurveyOverlap — all features geometry-less → no request, empty result', async () => {
@@ -306,6 +313,101 @@ test('searchAssessmentParcelsByRolls — 2000 rolls split into four parallel chu
   assert.equal(fc.features.length, 2000);
   assert.equal(fc.meta.chunkCount, 4);
   assert.equal(fc.meta.rollCount, 2000);
+});
+
+// ---------- which spatial predicate each join asks for ----------
+//
+// SoQL within_box is a CONTAINMENT test, not an intersection test: it drops
+// any target geometry larger than the query box, silently and in proportion
+// to that size. Two joins were built on it and both were wrong — the address
+// cross-reference could not see a parcel bigger than the pad (1393 BORDER ST
+// found nothing), and the zoning overlap dropped the district covering the
+// parcel on 26 of 26 Border St lots. Both now ask `intersects`. These pin the
+// predicate, because a regression here reports no error and no empty result
+// — just quietly fewer rows.
+
+const PARCEL_FC = {
+  type: 'FeatureCollection',
+  features: [{
+    type: 'Feature',
+    properties: { roll_number: '07560170500' },
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[
+        [-97.20129, 49.91235], [-97.19992, 49.91235],
+        [-97.19992, 49.91632], [-97.20129, 49.91632], [-97.20129, 49.91235],
+      ]],
+    },
+  }],
+};
+const EMPTY_GEOJSON = { type: 'FeatureCollection', features: [] };
+
+// URLSearchParams writes spaces as '+', which decodeURIComponent leaves alone.
+const readWhere = (url) => decodeURIComponent(String(url)).replace(/\+/g, ' ');
+
+test('fetchZoningOverlap asks intersects, never within_box', async () => {
+  const calls = stubFetch([{ status: 200, json: EMPTY_GEOJSON }]);
+  await fetchZoningOverlap(PARCEL_FC);
+  assert.equal(calls.length, 1);
+  const where = readWhere(calls[0]);
+  // A zoning district dwarfs the lot it governs, so containment can only lose it.
+  assert.ok(!where.includes('within_box'), `still asking within_box: ${where}`);
+  assert.match(where, /intersects\(location,'POLYGON\(\(/);
+  // Five corners, closed ring — a rectangle, not the parcel's own outline,
+  // which would run to hundreds of vertices and blow the URL budget.
+  const ring = where.match(/POLYGON\(\((.*?)\)\)/)[1].split(',');
+  assert.equal(ring.length, 5);
+  assert.equal(ring[0].trim(), ring[4].trim());
+});
+
+test('the address cross-reference asks intersects on the POINT', async () => {
+  // Direct attribute query, then the address-point query, then the
+  // cross-reference; enrichment calls follow and get the same empty answer.
+  const calls = stubFetch(Array.from({ length: 12 }, () => ({
+    status: 200,
+    json: [{ full_address: '1393 BORDER ST', point: { type: 'Point', coordinates: [-97.200279, 49.915458] } }],
+  })));
+  await searchAssessmentParcelsExpanded({ addressFrom: '1393', addressTo: '1393', addressStreet: 'BORDER' });
+  const xref = calls.map(readWhere).find((u) => u.includes('intersects(geometry'));
+  assert.ok(xref, `no intersects query was issued:\n${calls.map(decodeURIComponent).join('\n')}`);
+  assert.match(xref, /intersects\(geometry,'POINT\(-97\.200279\d* 49\.915458\d*\)'\)/);
+});
+
+test('fetchAssessmentOverlap asks intersects — an assessment parcel is bigger than a survey lot', async () => {
+  const calls = stubFetch([{ status: 200, json: EMPTY_GEOJSON }]);
+  await fetchAssessmentOverlap(PARCEL_FC);
+  const where = readWhere(calls[0]);
+  assert.ok(!where.includes('within_box'), `still asking within_box: ${where}`);
+  assert.match(where, /intersects\(geometry,'POLYGON\(\(/);
+});
+
+test('fetchSurveyOverlap asks intersects — River Lot / Outer Two Mile parcels are enormous', async () => {
+  const calls = stubFetch([{ status: 200, json: EMPTY_GEOJSON }]);
+  await fetchSurveyOverlap(PARCEL_FC);
+  const where = readWhere(calls[0]);
+  assert.ok(!where.includes('within_box'), `still asking within_box: ${where}`);
+  assert.match(where, /intersects\(location,'POLYGON\(\(/);
+});
+
+test('fetchCurrentAssessmentInBbox asks intersects — a missing roll here paints a false "gone"', async () => {
+  const calls = stubFetch([{ status: 200, json: [] }]);
+  const { rows, complete } = await fetchCurrentAssessmentInBbox([-97.20129, 49.91235, -97.19992, 49.91632]);
+  assert.deepEqual(rows, []);
+  assert.equal(complete, true);
+  const where = readWhere(calls[0]);
+  assert.ok(!where.includes('within_box'), `still asking within_box: ${where}`);
+  assert.match(where, /intersects\(geometry,'POLYGON\(\(/);
+  assert.match(String(calls[0]), /d4mq-wa44\.json/);
+});
+
+test('the padded-bbox rectangle is a rectangle, not the parcel outline', async () => {
+  // A parcel runs to hundreds of vertices; sending it as WKT would blow the
+  // URL budget. Five corners is the whole point of the bbox form.
+  const calls = stubFetch([{ status: 200, json: EMPTY_GEOJSON }]);
+  await fetchSurveyOverlap(PARCEL_FC);
+  const ring = readWhere(calls[0]).match(/POLYGON\(\((.*?)\)\)/)[1].split(',');
+  assert.equal(ring.length, 5);
+  assert.equal(ring[0].trim(), ring[4].trim());
 });
 
 // ---------- async runner ----------

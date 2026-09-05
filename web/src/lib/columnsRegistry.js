@@ -17,7 +17,7 @@
 import { formatSqFt, formatAcres } from './format.js';
 import { assessmentUrl, walkscoreUrl, floodToolUrl } from './links.js';
 import {
-  td, badgeTd, truncatedTd, linkTd, assessmentTd,
+  td, badgeTd, truncatedTd, addressTd, linkTd, assessmentTd,
   formatDollars, formatPct, formatZone2, formatCoord, formatDist,
   stripZoningCode, propertyTypeBadgeClass, pucsBadgeClass,
 } from './cells.js';
@@ -218,8 +218,16 @@ export const COLUMNS = [
     render: (a) => linkTd(assessmentUrl(a), a.roll_number),
     csv: { header: 'Roll Number', extract: (a) => a.roll_number } },
 
+  // Every civic address on the parcel, not just the assessment record's
+  // own — the cross-reference against cam2-ii3u finds the side doors and
+  // alias numbers a large site carries. The first entry is the assessment
+  // record's, which is the only one winnipegassessment.com indexes; the
+  // hover says so, because the flat comma list can't.
   { key: 'address',      header: 'Full Address',  mode: 'always', sortable: true,
-    render: (a) => truncatedTd(a.full_address, 40),
+    theadTitle: 'Every civic address that falls inside the parcel (assessment record first, then the '
+      + 'City address dataset). The first is the only one winnipegassessment.com can be searched by — '
+      + 'hover a multi-address cell to see the split.',
+    render: (a) => addressTd(a.full_address, 40),
     csv: { header: 'Full Address', extract: (a) => a.full_address } },
 
   { key: 'saleDate',     header: 'Sale Date',     mode: 'sales',  sortable: true,

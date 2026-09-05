@@ -8,6 +8,7 @@ import {
   addressBaseKey,
   unitPrefixBaseKey,
   dedupeAddresses,
+  addressListTooltip,
 } from '../src/lib/addressFormat.js';
 
 // ---- normalizeAddressKey --------------------------------------------------
@@ -156,5 +157,30 @@ assert.deepEqual(dedupeAddresses([]), []);
 assert.deepEqual(dedupeAddresses(null), []);
 assert.deepEqual(dedupeAddresses(['', '   ', null, undefined]), []);
 assert.deepEqual(dedupeAddresses(['  407 LYNDALE DR  ', '407 LYNDALE DRIVE']), ['407 LYNDALE DR']);
+
+// ---- addressListTooltip ---------------------------------------------------
+// The reported case: 1393 BORDER ST is a real address on roll 07560170500,
+// but the City's own search only knows the parcel as 1347 BORDER STREET.
+{
+  const tip = addressListTooltip(
+    '1347 BORDER STREET, 1361 BORDER ST, 1393 BORDER ST, 1872 NOTRE DAME AVE'
+  );
+  const lines = tip.split('\n');
+  assert.equal(lines[0], 'Assessment record: 1347 BORDER STREET');
+  assert.match(lines[1], /winnipegassessment\.com/);
+  assert.equal(lines[3], 'Also on this parcel (3):');
+  assert.deepEqual(lines.slice(4), ['1361 BORDER ST', '1393 BORDER ST', '1872 NOTRE DAME AVE']);
+}
+// One address is not a list — nothing to disambiguate, so no hover.
+assert.equal(addressListTooltip('1636 MCCREARY ROAD'), null);
+assert.equal(addressListTooltip(''), null);
+assert.equal(addressListTooltip(null), null);
+assert.equal(addressListTooltip(undefined), null);
+// Stray separators don't invent an entry or a blank line.
+assert.equal(addressListTooltip('1636 MCCREARY ROAD, '), null);
+assert.equal(
+  addressListTooltip('400 HARGRAVE STREET,,440 HARGRAVE ST').split('\n')[3],
+  'Also on this parcel (1):',
+);
 
 console.log('addressFormat.test.js: all assertions passed');

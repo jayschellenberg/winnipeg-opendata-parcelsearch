@@ -45,6 +45,96 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 | `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels + aerial-ortho PMTiles builds |
 | `extras/` | Early experiments kept for reference |
 
+## Address aliases
+
+A parcel carries many civic addresses; the assessment roll records one. Roll
+07560170500 is **1347 Border Street** to `d4mq-wa44` and to
+winnipegassessment.com, but the same lot is also 1361 / 1377 / 1381 / 1385 /
+1393 Border St and 1860–1872 Notre Dame Ave. Those aliases exist in open data
+only as address points in `cam2-ii3u`, which carries no roll number, so the
+two have to be joined spatially. The app does it in both directions:
+
+- **Alias in, parcel out.** An address search cross-references `cam2-ii3u` and
+  finds the parcel each matching point sits in, so searching 1393 Border St
+  returns the 1347 Border Street roll.
+- **Parcel in, aliases out.** Every result's Full Address is enriched with
+  each civic address point inside its polygon, so a parcel found by roll or
+  legal description still reads as the one recognised from an address search.
+
+The **first** entry is the assessment record's own address and the only one
+winnipegassessment.com can be searched by; hovering a multi-address cell says
+so and lists the rest.
+
+`tools/address_aliases.py` in the parent repo answers the same question from
+the command line.
+
+### The within_box trap
+
+SoQL has two spatial predicates and they are not interchangeable:
+
+    within_box(geom, box)    true when geom is entirely INSIDE box
+    intersects(geom, wkt)    true when geom and wkt share any point
+
+`within_box` cannot answer "what covers this feature". It answers "what is
+small enough to fit near it", and it fails **silently and in proportion to the
+target's size** — no error, just a short list of the neighbours that happened
+to fit. Every spatial join in the app was built on it, and all four were wrong:
+
+- **Address cross-reference.** A padded box around an address point matches
+  only parcels smaller than the pad — precisely backwards. The box around the
+  1393 Border St point returned 25 small McDermot Ave lots and not the 288,252
+  sf warehouse parcel the point sits inside, so the search reported no parcels
+  found. Now `intersects(geometry, POINT(...))`, which is exact.
+- **Zoning overlap** (`fetchZoningOverlap`, cold-cache branch). A zoning
+  district is far larger than the lot it governs, so the query returned the
+  small neighbouring districts and dropped the governing one, leaving the
+  area-weighted `Zoning %` / `Zoning 2` columns blank. Measured against the
+  exact answer (`intersects` on each parcel's own polygon): **26 of 26** Border
+  St parcels lost their district, as did 9 of 10 lots on Fieldstone Bay, while
+  Osborne St lost none — mature-area districts are small enough to fit the box,
+  which is why it went unnoticed. A citywide sample put it near a quarter of
+  parcels. Now `intersects` against each parcel's padded bbox rectangle: five
+  corners of WKT rather than a parcel outline's hundreds of vertices, giving a
+  superset that `enrichAssessmentZoning` already narrows with an exact turf
+  pass.
+- **Survey → assessment** (`fetchAssessmentOverlap`), the legal-description
+  flow. An assessment parcel routinely consolidates several survey lots, so it
+  is bigger than the lot searched from. Searching Plan 2930 returned 220 rows
+  of which **20 had no roll number, no address and no assessed value** — blank
+  rows in the results table. It also disabled partial-lot detection, which asks
+  this same question about every parcel a survey lot touches. Now 0 blank rows
+  on the same search.
+- **Assessment → survey** (`fetchSurveyOverlap`), back-filling Lot / Block /
+  Plan. This direction looked safe because a survey lot is usually smaller than
+  the assessment parcel over it — except for the River Lot and Outer Two Mile
+  parcels the app explicitly supports, which are enormous and are exactly the
+  ones carrying the legal description. Containment dropped a real survey parcel
+  for 4 of 12 Border St rolls.
+- **Viewport → current assessment** (`fetchCurrentAssessmentInBbox`), which
+  feeds the historical overlay's gone/retired detection. A parcel larger than
+  the box is not contained by it, comes back missing, and is painted grey as a
+  roll that no longer exists. On a bbox drawn inside the Border St warehouse
+  the old query returned **zero rows** where 19 parcels really overlap — every
+  one of them a false "gone". The `complete` guard cannot catch this: nothing
+  was truncated, the predicate simply excluded them. Its week-long cache key
+  moved to `wpg_curasmt3_` so rows written by the old query aren't served past
+  the fix.
+
+The zoning one stayed invisible because the warm path was right.
+`fetchZoningOverlap` prefers the citywide IndexedDB cache and filters it
+in-process with a true bbox *overlap* test, so the columns filled in correctly
+once the Zoning overlay had been toggled once — and only then. The same search
+gave different answers on a first visit and a second.
+
+`within_box` now appears exactly once in `soda.js`, in
+`fetchAddressPointsForParcels`, where the target is an address POINT and
+containment is the same question as intersection. The per-feature helpers share
+one batching engine and differ only in the clause they build:
+`fetchPerFeatureBboxIntersects` (size-blind overlap against a bbox rectangle)
+and `fetchPerPointIntersects` (exact point-in-polygon). `sodaNetwork.test.js`
+pins the predicate each join asks for, because a regression here reports no
+error and no empty result — just quietly fewer rows.
+
 ## Sales Analysis
 
 Winnipeg publishes no sales dataset, so sales always arrive from the user: a
@@ -232,7 +322,8 @@ emails for itself but a job that never starts cannot:
   rather than reading it:
 
   ```bash
-  powershell -ExecutionPolicy Bypass -File rebuild_tiles.ps1 -TestAlert
+  powershell -ExecutionPolicy Bypass -File r
+ebuild_tiles.ps1 -TestAlert
   ```
 
   Each of the three jobs carries the same switch; it sends one alert and exits

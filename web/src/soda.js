@@ -10,18 +10,20 @@
 //
 //   A) Legal-description search (plan/lot/block/description):
 //      1. searchSurveyParcels({ plan, lot, block, desc })
-//      2. fetchAssessmentOverlap(surveyFc)   — within_box(geometry, ...)
+//      2. fetchAssessmentOverlap(surveyFc)   — intersects(geometry, ...)
 //      then joinSurveyWithAssessment() for the results table.
 //      The Survey Parcels geometry is what is drawn on the map.
 //
 //   B) Assessment-first search (Roll #, Address, and/or Zoning fields):
 //      1. searchAssessmentParcels({ roll, address, zoning })
-//      2. fetchSurveyOverlap(assessFc)       — within_box(location, ...)
+//      2. fetchSurveyOverlap(assessFc)       — intersects(location, ...)
 //      then joinAssessmentWithSurvey() for the results table.
 //      The Assessment Parcels geometry is what is drawn on the map.
 //
-// In both flows the final polygon-overlap join is done client-side with
-// turf.js so matching is exact, not just bbox containment.
+// In both flows the spatial fetch is a bbox-rectangle SUPERSET and the final
+// polygon-overlap join is done client-side with turf.js, so matching is exact.
+// See "Per-feature spatial unions" below for why the fetch must be an
+// intersection test and never a containment one.
 // User-facing searches intentionally cap at 1,000 rows and return
 // truncation metadata; enrichment and overlay queries page until complete.
 
@@ -193,7 +195,14 @@ export async function searchSurveyParcels({ plan, lot, block, desc }) {
  * Returns only the fields needed for enrichment.
  */
 export async function fetchAssessmentOverlap(surveyFc) {
-  return fetchPerFeatureBboxUnion({
+  // `intersects`, not `within_box`: an assessment parcel routinely consolidates
+  // several survey lots, so it is BIGGER than the lot we are searching from and
+  // a containment query drops it. Measured on plan 2930 (the Border St
+  // warehouse, one roll over lots 22-24): 8 of 12 survey lots lost their
+  // assessment parcel outright, leaving rows with no roll number, no address
+  // and no assessed value. It also silently disabled partial-lot detection,
+  // which asks this same question about every parcel a survey lot touches.
+  return fetchPerFeatureBboxIntersects({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
     select: ASSESS_SELECT,
@@ -377,8 +386,8 @@ export async function searchAssessmentParcelsByRolls(rolls) {
  * (cam2-ii3u): every matching address is a point that may sit on a parcel
  * whose *primary* full_address differs (e.g. "440 Hargrave" is a side door
  * of a parcel listed in assessment as "400 Hargrave"). Those extra parcels
- * are pulled in via per-point within_box and merged into the result, deduped
- * by roll_number.
+ * are pulled in via per-point `intersects` and merged into the result,
+ * deduped by roll_number.
  *
  * Roll/zoning filters carry through to the cross-reference path so the
  * combined intent — "parcel must match all the filters the user typed" —
@@ -655,7 +664,7 @@ async function fetchAddressPointsForParcels(parcelFc) {
   }
   const round = (n) => n.toFixed(6);
   const PAD = 0.002;
-  // Same null-geometry guard as fetchPerFeatureBboxUnion: a parcel with no
+  // Same null-geometry guard as paddedBoxes(): a parcel with no
   // polygon has an infinite bbox, and one Infinity clause 400s its whole batch.
   const clauses = [];
   for (const f of parcelFc.features) {
@@ -721,18 +730,16 @@ async function searchAddressesAndFindParcels(addressInput, extraFilters) {
     return { type: 'FeatureCollection', features: [] };
   }
   const candidates = await fetchAssessmentByAddressPoints(addressFc, extraFilters);
-  // The within_box query is bbox-based and returns neighbouring parcels too
-  // (the same 150m pad we use everywhere). Filter to only parcels that
-  // actually contain at least one matched address point.
-  const features = candidates.features.filter((parcel) =>
-    addressFc.features.some((addr) => booleanPointInPolygon(addr, parcel))
-  );
-  return featureCollection(features, mergeMeta([addressFc, candidates]));
+  // No client-side re-filter: the SoQL `intersects` below already answers
+  // "contains this point" exactly. Filtering again with turf could only
+  // subtract — a point sitting on a parcel's own boundary is a real match
+  // that the two libraries can disagree about.
+  return featureCollection(candidates.features, mergeMeta([addressFc, candidates]));
 }
 
 /**
- * Per-point within_box lookup against the assessment dataset. `extraFilters`
- * (roll, zoning) get ANDed with the OR'd within_box clauses so the user's
+ * Per-point containment lookup against the assessment dataset. `extraFilters`
+ * (roll, zoning) get ANDed with the OR'd intersects clauses so the user's
  * non-address filters still apply on this path.
  */
 async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
@@ -749,7 +756,7 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
   // non-waterfront rows into the result.
   const wc = buildWaterClause(extraFilters);
   if (wc) extras.push(wc);
-  return fetchPerFeatureBboxUnion({
+  return fetchPerPointIntersects({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
     select: 'roll_number,full_address,zoning,property_use_code,centroid_lat,centroid_lon,assessed_land_area,dwelling_units,total_assessed_value,detail_url,current_assessment_year,geometry',
@@ -1027,7 +1034,15 @@ export async function fetchZoningOverlap(parcelFc) {
   } catch { /* IDB unavailable; fall through to per-parcel fetch */ }
 
   if (!fc) {
-    fc = await fetchPerFeatureBboxUnion({
+    // `intersects`, not `within_box`: a zoning district is far larger than
+    // the lot it governs, so a containment query returns the small
+    // neighbouring districts and drops the one the parcel is actually in.
+    // On the Border St warehouse it answered with six R1-M single-family
+    // polygons and not one of the M2 districts covering the site, so the
+    // area-weighted columns came back blank — but only until the citywide
+    // cache warmed, which is what made it invisible: the same search gave
+    // different answers on a first visit and a second.
+    fc = await fetchPerFeatureBboxIntersects({
       baseUrl: ZONING_URL,
       geomColumn: 'location',
       select: 'id,zoning,short_description,long_description,map_colour,location',
@@ -1296,15 +1311,28 @@ export async function fetchCurrentAssessmentInBbox(bbox4) {
     return { rows: [], complete: false };
   }
   const [minLon, minLat, maxLon, maxLat] = bbox4;
-  // Key prefix v2: v1 entries were written by an unordered page loop (see the
-  // $order note below) and can be missing thousands of rolls — never trust them.
-  const cacheKey = `wpg_curasmt2_${[minLon, minLat, maxLon, maxLat].map((n) => n.toFixed(4)).join('_')}`;
+  // Key prefix v3. v1 entries were written by an unordered page loop (see the
+  // $order note below) and can be missing thousands of rolls. v2 entries were
+  // written by a within_box query, which omitted every parcel larger than the
+  // box (see the predicate note below) — the same defect, a different cause.
+  // Neither is trustworthy, and both are cached for a week, so the key moves
+  // rather than the stale rows being served until they expire.
+  const cacheKey = `wpg_curasmt3_${[minLon, minLat, maxLon, maxLat].map((n) => n.toFixed(4)).join('_')}`;
   const cached = await idbReadCache(cacheKey, CURRENT_ASMT_TTL_MS).catch(() => null);
   if (cached) return { rows: cached, complete: true };   // only complete runs are cached
   const PAD = 0.001;
   const round = (n) => n.toFixed(6);
-  // within_box(geom, nwLat, nwLon, seLat, seLon)
-  const where = `within_box(geometry,${round(maxLat + PAD)},${round(minLon - PAD)},${round(minLat - PAD)},${round(maxLon + PAD)})`;
+  // `intersects` against the padded box as a rectangle, not within_box: a
+  // parcel LARGER than the box is not contained by it and comes back missing,
+  // which this caller reads as "the roll no longer exists" and paints as a
+  // grey gone/retired parcel. The 288,252 sf warehouse at 1347 Border St
+  // vanishes this way once the box is tighter than the parcel. The
+  // `complete` guard below cannot catch it — nothing was truncated, the
+  // predicate simply excluded it.
+  const w = minLon - PAD, s = minLat - PAD, e = maxLon + PAD, n = maxLat + PAD;
+  const rect = `POLYGON((${round(w)} ${round(s)}, ${round(e)} ${round(s)}, `
+    + `${round(e)} ${round(n)}, ${round(w)} ${round(n)}, ${round(w)} ${round(s)}))`;
+  const where = `intersects(geometry,'${rect}')`;
   const base = ASSESS_URL.replace('.geojson', '.json');
   const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
   const rows = [];
@@ -2120,7 +2148,13 @@ async function fetchAllAndCache(key, url) {
  * The Survey Parcels geometry column is `location`, not `geometry`.
  */
 export async function fetchSurveyOverlap(assessFc) {
-  return fetchPerFeatureBboxUnion({
+  // `intersects`, not `within_box`. A survey lot is usually smaller than the
+  // assessment parcel over it, which is why this direction looked safe — but
+  // the River Lot and Outer Two Mile parcels the app explicitly supports are
+  // enormous, and those are the ones that carry the legal description. On
+  // Border St (Part Outer Two Mile St James) containment dropped a real survey
+  // parcel for 4 of 12 rolls, blanking their Lot / Block / Plan columns.
+  return fetchPerFeatureBboxIntersects({
     baseUrl: SURVEY_URL,
     geomColumn: 'location',
     select: null,
@@ -2479,41 +2513,36 @@ function joinDistinct(values) {
   return [...new Set(cleaned)].join(', ');
 }
 
-async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey, fc, extraWhere = null }) {
-  if (!fc.features.length) {
-    return { type: 'FeatureCollection', features: [] };
-  }
+// ---------------------------------------------------------------------------
+// Per-feature spatial unions.
+//
+// All three helpers below do the same thing — build one SoQL spatial clause
+// per input feature, OR them in batches of 50, and dedupe the responses — and
+// differ only in the clause. Which clause is NOT a style choice:
+//
+//   within_box(geom, box)     TRUE when geom is entirely INSIDE box.
+//   intersects(geom, wkt)     TRUE when geom and wkt share any point.
+//
+// within_box therefore cannot answer "what covers this feature". It answers
+// "what is small enough to fit near it", and silently returns fewer rows the
+// larger the target geometry gets — no error, no warning, just a short list
+// of the neighbours that happened to fit. Reach for it only when the target
+// is genuinely smaller than the query box (address POINTS are the safe case);
+// use intersects whenever the target may be bigger than the source.
+// ---------------------------------------------------------------------------
 
-  const round = (n) => n.toFixed(6);
-  // SoQL within_box requires the target geometry to be *fully contained*
-  // in the query box — not just to intersect it. Survey and assessment
-  // parcels rarely share edges to the millimeter (river lots are the worst
-  // offenders), so we pad each per-feature bbox by about 150 m in every
-  // direction. The client-side booleanIntersects join still makes the
-  // final call on actual overlap, so the extra rows fetched are harmless.
-  const PAD_DEG = 0.002;
-  // d4mq-wa44 carries ~59 rows with geometry:null (bus shelters, statutory
-  // pipelines, some condo unit rolls — e.g. every unit of 238 Portage). turf's
-  // bbox() returns ±Infinity for them, and one "within_box(...,Infinity,...)"
-  // clause 400s the whole 50-feature batch, killing enrichment for every row
-  // in the search. A geometry-less feature can't spatially match anything, so
-  // skip it instead of letting it poison the batch.
-  const clauses = [];
-  for (const f of fc.features) {
-    let bb;
-    try { bb = bbox(f); } catch { continue; }
-    if (!Array.isArray(bb) || !bb.every(Number.isFinite)) continue;
-    const [minLon, minLat, maxLon, maxLat] = bb;
-    // within_box(geom, nwLat, nwLon, seLat, seLon)
-    clauses.push(`within_box(${geomColumn},${round(maxLat + PAD_DEG)},${round(minLon - PAD_DEG)},${round(minLat - PAD_DEG)},${round(maxLon + PAD_DEG)})`);
-  }
+/**
+ * Shared engine: OR the supplied clauses in batches, AND in `extraWhere`,
+ * and dedupe the merged features on `dedupeKey`.
+ *
+ * 50 clauses per request keeps the URL comfortably under 8 KB even with the
+ * longest coordinate strings. Batches run in parallel so wall-clock time is
+ * bounded by the slowest single call, not the sum.
+ */
+async function fetchClauseUnion({ baseUrl, select, dedupeKey, clauses, extraWhere = null, label }) {
   if (!clauses.length) {
     return { type: 'FeatureCollection', features: [] };
   }
-
-  // 50 clauses per request keeps the URL comfortably under 8 KB even with
-  // the longest coordinate strings. Batches run in parallel so wall-clock
-  // time is bounded by the slowest single call, not the sum.
   const BATCH = 50;
   const batches = [];
   for (let i = 0; i < clauses.length; i += BATCH) {
@@ -2525,25 +2554,19 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
       const groupClause = group.join(' OR ');
       // When a caller supplies extra filters (e.g. roll/zoning constraints
       // riding along on an address-points lookup), AND them with the OR'd
-      // within_box clauses so the spatial result is still narrowed by the
-      // user's other filters. Parens around the OR group keep precedence
-      // explicit.
-      const where = extraWhere
-        ? `(${groupClause}) AND ${extraWhere}`
-        : groupClause;
-      const params = new URLSearchParams({
-        $where: where,
-      });
+      // spatial clauses so the result is still narrowed by the user's other
+      // filters. Parens around the OR group keep precedence explicit.
+      const where = extraWhere ? `(${groupClause}) AND ${extraWhere}` : groupClause;
+      const params = new URLSearchParams({ $where: where });
       if (select) params.set('$select', select);
       if (dedupeKey) params.set('$order', dedupeKey);
-      return fetchSodaPaged(baseUrl, params, {
-        label: 'Spatial enrichment query',
-      });
+      return fetchSodaPaged(baseUrl, params, { label });
     })
   );
 
-  // Dedupe: the same feature can appear in multiple batches if its bbox
-  // happens to straddle two input parcels near a batch boundary.
+  // The same feature legitimately comes back from several batches — a zoning
+  // district covering two of the queried parcels, a parcel holding two of the
+  // queried address points.
   const seen = new Set();
   const merged = [];
   const meta = mergeMeta(responses);
@@ -2556,6 +2579,82 @@ async function fetchPerFeatureBboxUnion({ baseUrl, geomColumn, select, dedupeKey
     }
   }
   return featureCollection(merged, meta);
+}
+
+/**
+ * Each feature's bbox, padded by ~150 m, as [minLon, minLat, maxLon, maxLat].
+ *
+ * d4mq-wa44 carries ~59 rows with geometry:null (bus shelters, statutory
+ * pipelines, some condo unit rolls — e.g. every unit of 238 Portage). turf's
+ * bbox() returns ±Infinity for them, and one clause built from an Infinity
+ * 400s the whole 50-feature batch, killing enrichment for every row in the
+ * search. A geometry-less feature can't match anything spatially, so skip it
+ * instead of letting it poison the batch.
+ */
+const PAD_DEG = 0.002;
+
+function paddedBoxes(fc) {
+  const out = [];
+  for (const f of fc.features) {
+    let bb;
+    try { bb = bbox(f); } catch { continue; }
+    if (!Array.isArray(bb) || !bb.every(Number.isFinite)) continue;
+    const [minLon, minLat, maxLon, maxLat] = bb;
+    out.push([minLon - PAD_DEG, minLat - PAD_DEG, maxLon + PAD_DEG, maxLat + PAD_DEG]);
+  }
+  return out;
+}
+
+/**
+ * Features OVERLAPPING each input feature's padded bbox, however large they
+ * are, and the only per-feature bbox form left — see the note above for why
+ * the within_box counterpart was removed rather than kept for the safe cases.
+ *
+ * The rectangle is sent as WKT rather than the source polygon itself: a
+ * parcel outline runs to hundreds of vertices and would blow the URL budget,
+ * while five corners cost ~130 characters. That makes the result a superset
+ * of the true overlaps — the same contract the bbox helper already has, and
+ * callers already narrow it with an exact turf pass.
+ */
+async function fetchPerFeatureBboxIntersects({ baseUrl, geomColumn, select, dedupeKey, fc, extraWhere = null }) {
+  const round = (n) => n.toFixed(6);
+  const clauses = paddedBoxes(fc).map(([minLon, minLat, maxLon, maxLat]) => {
+    const corners = [
+      [minLon, minLat], [maxLon, minLat], [maxLon, maxLat], [minLon, maxLat], [minLon, minLat],
+    ].map(([x, y]) => `${round(x)} ${round(y)}`).join(', ');
+    return `intersects(${geomColumn},'POLYGON((${corners}))')`;
+  });
+  return fetchClauseUnion({
+    baseUrl, select, dedupeKey, clauses, extraWhere,
+    label: 'Spatial overlap query',
+  });
+}
+
+/**
+ * Features CONTAINING each input point — the exact point-in-polygon lookup.
+ *
+ * within_box cannot do this at all: a padded box around a point matches only
+ * parcels smaller than the pad, which is precisely backwards. The box around
+ * the 1393 BORDER ST address point returns 25 small McDermot Ave lots and not
+ * roll 07560170500, the 288,252 sf warehouse parcel the point actually sits
+ * in, so the address cross-reference reported no parcels found.
+ *
+ * Exact and server-side, so callers need no re-filter and no pad to guess.
+ */
+async function fetchPerPointIntersects({ baseUrl, geomColumn, select, dedupeKey, fc, extraWhere = null }) {
+  const round = (n) => n.toFixed(8);
+  const clauses = [];
+  for (const f of fc.features) {
+    const c = f.geometry?.coordinates;
+    if (!Array.isArray(c) || c.length < 2 || !Number.isFinite(c[0]) || !Number.isFinite(c[1])) {
+      continue;
+    }
+    clauses.push(`intersects(${geomColumn},'POINT(${round(c[0])} ${round(c[1])})')`);
+  }
+  return fetchClauseUnion({
+    baseUrl, select, dedupeKey, clauses, extraWhere,
+    label: 'Address cross-reference query',
+  });
 }
 
 // NOTE: the retry loop below was originally added in 559f4f8 and silently
