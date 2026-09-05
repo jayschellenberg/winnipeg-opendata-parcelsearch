@@ -46,3 +46,7 @@ Thumbs.db
 # promotes over parcels.pmtiles on success; a build interrupted midway would
 # otherwise leave a ~100 MB untracked file that a `git add -A` could stage.
 web/public/parcels.tmpbuild.pmtiles*
+
+# Python bytecode from tools/
+__pycache__/
+*.pyc

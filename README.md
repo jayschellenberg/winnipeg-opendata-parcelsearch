@@ -43,6 +43,7 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 | `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods) |
 | `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcel polygons z8–z18, address labels, and derived dwelling-unit totals; ~100 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Rebuilt and republished automatically every two months (see [Data freshness](#data-freshness)). |
 | `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels + aerial-ortho PMTiles builds |
+| `tools/` | Standalone command-line tools, outside the web build. `address_aliases.py` — civic-address aliases for a property, Winnipeg or Manitoba (see [Address aliases](#address-aliases)). Python stdlib only, no dependencies. |
 | `extras/` | Early experiments kept for reference |
 
 ## Address aliases
@@ -65,8 +66,10 @@ The **first** entry is the assessment record's own address and the only one
 winnipegassessment.com can be searched by; hovering a multi-address cell says
 so and lists the rest.
 
-`tools/address_aliases.py` in the parent repo answers the same question from
-the command line.
+[`tools/address_aliases.py`](tools/address_aliases.py) answers the same question
+from the command line, for Winnipeg and (with `--mb`) for the rest of Manitoba —
+see [tools/ADDRESS_ALIASES.md](tools/ADDRESS_ALIASES.md). It is a standalone
+stdlib script, not part of the web build.
 
 ### The within_box trap
 
