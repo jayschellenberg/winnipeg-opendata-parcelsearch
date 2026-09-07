@@ -310,6 +310,15 @@ $ghStatus = (& cmd /c "gh auth status 2>&1") -join ' | '
 if ($LASTEXITCODE -ne 0) { Fail "gh not authenticated - cannot upload the release asset. $ghStatus" }
 Log '  gh: authenticated'
 
+# rclone publishes the SERVING copy to R2 (Step 5b). Checked here, before the
+# ~20-minute build, for the same reason gh is: a missing tool at 03:00 should
+# cost seconds, not the whole run. Note the asymmetry that matters - a failed
+# R2 publish leaves users on the PREVIOUS archive, whereas a failed GitHub
+# publish only affects the rollback copy.
+$rcloneExe = (Get-Command rclone -ErrorAction SilentlyContinue).Source
+if (-not $rcloneExe) { Fail 'rclone not found on PATH - cannot publish the serving copy to R2.' }
+Log "  rclone: $rcloneExe"
+
 # Must be on main, checked BEFORE anything is fetched or published. Step 6
 # commits the new checksum and pushes main; on any other branch the commit
 # would land on that branch while `push origin main` pushed a main without
@@ -589,6 +598,39 @@ foreach ($o in $olds) {
   $d = Invoke-Gh @('release', 'delete-asset', $releaseTag, $o.name, '--repo', $ghRepo, '--yes') 90000
   Log "  prune: $($o.name) $(if ($d.ExitCode -eq 0) { 'deleted' } else { 'delete failed (ignored)' })"
 }
+
+# --- Step 5b: publish the serving copy to R2 -----------------------------
+# The app fetches the archive from R2, not from the GitHub release (see
+# PARCEL_TILES_URL in web/src/map.js). The release above remains the versioned
+# archive and the rollback source; THIS is the copy users actually read.
+#
+# No staging/swap dance is needed here, unlike the release protocol: an S3 PUT
+# replaces the object atomically, so there is no window where the old bytes are
+# gone and the new ones have not landed. That is the whole reason the release
+# needed six steps and this needs one.
+#
+# Ordered BEFORE the commit+push so a failed upload cannot leave origin/main
+# advertising a build date that R2 is not serving.
+Log 'Step 5b: publish serving copy to R2'
+$r2Remote = 'r2:wpg-ortho/wpg-assessment-parcels.pmtiles'
+$rcloneOut = & rclone copyto $pmtilesPath $r2Remote --s3-no-check-bucket --stats-one-line --stats 60s 2>&1
+$rcloneCode = $LASTEXITCODE
+$rcloneOut | ForEach-Object { Log "  $_" }
+if ($rcloneCode -ne 0) {
+  Fail ("rclone upload to $r2Remote exited $rcloneCode - users are still being served the PREVIOUS archive. " +
+        "The new archive is built and live on the GitHub release, so a re-run republishes only.`n`n$($rcloneOut | Out-String)")
+}
+
+# Verify the object rather than trusting the exit code: a truncated upload that
+# reported success would serve a corrupt archive to every user.
+$localBytes = (Get-Item $pmtilesPath).Length
+$remoteBytes = $null
+try { $remoteBytes = ((& rclone lsjson $r2Remote 2>&1) -join '' | ConvertFrom-Json)[0].Size } catch { $remoteBytes = $null }
+if ($remoteBytes -ne $localBytes) {
+  Fail ("R2 object is $(if ($null -eq $remoteBytes) { 'unreadable' } else { "$remoteBytes bytes" }), expected $localBytes - " +
+        'refusing to report success for an archive that may be truncated.')
+}
+Log "  R2: $r2Remote verified at $localBytes bytes"
 
 # --- Step 6: commit + push the two tracked files -------------------------
 # ONLY meta + sha are staged, so this never sweeps up unrelated working-tree

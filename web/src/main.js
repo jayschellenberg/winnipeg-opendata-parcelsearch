@@ -91,7 +91,7 @@ import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
-  setCitywideParcelsVisible, setDwellingUnitsVisible, probeCitywideParcels,
+  setCitywideParcelsVisible, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
   setContamData, setContamVisible, setWaterInfluenceVisible,
   setSubjectData,
   setParcelNumberData, setParcelNumbersVisible,
@@ -1840,7 +1840,8 @@ async function toggleCitywideParcels() {
   const available = await probeCitywideParcels();
   if (!available) {
     setCount(
-      'Show All Parcels: tiles not built. Run r/build_parcel_tiles.R + tippecanoe to generate web/public/parcels.pmtiles.'
+      `Show All Parcels: tile archive unreachable at ${parcelTilesUrl()}. `
+      + 'Rebuild and republish with r/rebuild_tiles.ps1 -Publish.'
     );
     return;
   }
@@ -1857,7 +1858,8 @@ async function toggleDwellingUnits() {
   const available = await probeCitywideParcels();
   if (!available) {
     setCount(
-      'Dwelling Units: tiles not built. Run r/build_parcel_tiles.R + tippecanoe to rebuild web/public/parcels.pmtiles.'
+      `Dwelling Units: tile archive unreachable at ${parcelTilesUrl()}. `
+      + 'Rebuild and republish with r/rebuild_tiles.ps1 -Publish.'
     );
     return;
   }
