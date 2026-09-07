@@ -1,12 +1,20 @@
 // Fetch the citywide-parcels PMTiles archive from the rolling GitHub
-// release into web/public/ — run by the Vercel build (see vercel.json)
-// because the 82 MB archive is not tracked in git.
+// release into web/public/.
 //
-// TOLERANT BY DESIGN: any failure logs a warning and exits 0. The app
-// handles a missing archive gracefully (the All Assessment Parcels
-// toggle shows a "tiles not built" hint), which beats failing the whole
-// deploy over an optional overlay. Skips the download when a local copy
-// already exists (dev machines keep one in web/public).
+// NO LONGER PART OF THE DEPLOY (2026-09). Production reads the archive
+// straight from R2 — see PARCEL_TILES_URL in web/src/map.js — and the
+// Vercel build no longer runs this script. It ran on every build, and
+// Vite copied the resulting ~120 MB into dist/, so Vercel stored a fresh
+// copy per deployment: ~8 GB/month of deployment storage at this repo's
+// deploy rate, which is what exhausted the free tier.
+//
+// What it is now: a DEV convenience. Run it by hand (`npm run
+// fetch:pmtiles`) if you want a local copy to work against offline, then
+// point the app at it with VITE_PARCEL_TILES_URL=/parcels.pmtiles in
+// web/.env.local. Nothing in CI or the deploy path calls it.
+//
+// TOLERANT BY DESIGN: any failure logs a warning and exits 0. Skips the
+// download when a local copy already exists.
 //
 // INTEGRITY: the downloaded archive is verified against the SHA-256 in
 // scripts/parcels.pmtiles.sha256 before it is written, so a tampered or

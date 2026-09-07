@@ -47,16 +47,35 @@ MapboxDraw.constants.classes.CONTROL_GROUP  = 'maplibregl-ctrl-group';
 MapboxDraw.constants.classes.ATTRIBUTION    = 'maplibregl-ctrl-attrib';
 
 // Register the pmtiles:// protocol so MapLibre can read vector tiles
-// from a single .pmtiles archive served as a static asset on Vercel.
-// Used by the citywide-parcels overlay (web/public/parcels.pmtiles).
+// from a single .pmtiles archive.
 // Idempotent — addProtocol() simply replaces if already registered.
 maplibregl.addProtocol('pmtiles', new Protocol().tile);
 
-// Path the JS uses to fetch the citywide-parcels archive. Lives in
-// web/public/ and is served as a static asset from the site root.
-// Generated offline by r/build_parcel_tiles.R + tippecanoe; see the
-// REPLICATION_GUIDE for the build pipeline.
-const CITYWIDE_PARCELS_URL = 'pmtiles:///parcels.pmtiles';
+/**
+ * Where the citywide-parcels archive is fetched from. Generated offline by
+ * r/build_parcel_tiles.R + tippecanoe; see the REPLICATION_GUIDE.
+ *
+ * This is an absolute R2 origin, not a static asset beside the app, and the
+ * distinction is a billing one. The archive is ~120 MB. Shipping it in
+ * web/public/ meant Vite copied it into dist/ and Vercel stored a fresh copy
+ * for EVERY retained deployment — at ~65 deploys/month that is ~8 GB/month of
+ * deployment storage, which is what exhausted the 10 GB free tier in 2026-09.
+ * R2 stores it once, and charges nothing for egress.
+ *
+ * Overridable via VITE_PARCEL_TILES_URL, the same escape hatch the ortho and
+ * basemap archives above use — set it to '/parcels.pmtiles' in web/.env.local
+ * to work against a local copy. Any host must support HTTP Range requests and
+ * CORS, and an absolute origin must also appear in `connect-src` in
+ * vercel.json's CSP.
+ */
+const PARCEL_TILES_URL =
+  (() => { try { return import.meta.env.VITE_PARCEL_TILES_URL; } catch { return undefined; } })()
+  || 'https://pub-f351b204f73e4b2287acad946d79681c.r2.dev/wpg-assessment-parcels.pmtiles';
+
+const CITYWIDE_PARCELS_URL = `pmtiles://${PARCEL_TILES_URL}`;
+
+/** Where the archive is expected, for error messages and diagnostics. */
+export function parcelTilesUrl() { return PARCEL_TILES_URL; }
 
 // Streets basemap: a Manitoba cut of the Protomaps daily OSM build
 // (https://docs.protomaps.com/basemaps/downloads), extracted with
@@ -2533,8 +2552,19 @@ function warnIfTilesStale(builtDate) {
 export async function probeCitywideParcels() {
   if (_citywideTilesAvailable !== null) return _citywideTilesAvailable;
   try {
-    const res = await fetch('/parcels.pmtiles', { method: 'HEAD' });
-    _citywideTilesAvailable = res.ok;
+    // Read the first 16 bytes and check the PMTiles magic rather than
+    // HEADing. Now that the archive lives on a separate origin, "the host
+    // answers but ignores Range" is a real failure mode — and it is exactly
+    // the capability every tile read depends on. A HEAD would pass and then
+    // every tile would fail, leaving the toggle on and the map empty, which
+    // reads as "no parcels here" instead of "the layer is broken".
+    const res = await fetch(PARCEL_TILES_URL, { headers: { Range: 'bytes=0-15' } });
+    if (!res.ok) {
+      _citywideTilesAvailable = false;
+    } else {
+      const head = new Uint8Array(await res.arrayBuffer()).slice(0, 7);
+      _citywideTilesAvailable = String.fromCharCode(...head) === 'PMTiles';
+    }
   } catch {
     _citywideTilesAvailable = false;
   }
