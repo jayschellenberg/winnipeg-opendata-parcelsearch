@@ -1968,7 +1968,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // Click priority: an assessment-parcel click must take precedence over the
       // survey lot beneath it. Each layer defers to higher-priority historical
       // layers rendered under the same point.
-      const histClickPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
+      histClickPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
       let histPopupToken = 0;
       // lineageKind: which archive file answers this layer ('lineage' by roll,
       // 'survey-lineage' by survey id), or null for zoning, which has none.
@@ -3541,12 +3541,18 @@ export function setHistoricalLineageProvider(fn) {
   historicalLineageProvider = typeof fn === 'function' ? fn : null;
 }
 
+// The historical click popup, created in setupLayers; module-level so hiding
+// the overlay can close it — otherwise a popup quoting an as-of parcel sat
+// open over a map that no longer showed the overlay (seen live, 2026-09-14).
+let histClickPopup = null;
+
 export function setHistoricalVisible(map, on) {
   const vis = on ? 'visible' : 'none';
   for (const id of ['historical-parcels-fill', 'historical-parcels-line',
                     'historical-survey-fill', 'historical-survey-line']) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
   }
+  if (!on && histClickPopup?.isOpen()) histClickPopup.remove();
 }
 
 /** Push the whole-city historical zoning FC (or null to clear). Records `snap`
