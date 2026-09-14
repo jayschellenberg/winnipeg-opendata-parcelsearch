@@ -1360,13 +1360,14 @@ function toggleLayer(which) {
   const btn = which === 'survey' ? $surveyToggle : $assessToggle;
   const fillId = which === 'survey' ? 'parcel-fill' : 'assess-context-fill';
   const lineId = which === 'survey' ? 'parcel-line' : 'assess-context-line';
-  const labelOn = which === 'survey' ? 'Hide Survey Parcel Results' : 'Hide Assessment Results';
-  const labelOff = which === 'survey' ? 'Survey Parcel Results' : 'Assessment Results';
   const wasActive = btn.classList.contains('active');
   const nowVisible = !wasActive;
   btn.classList.toggle('active', nowVisible);
   btn.setAttribute('aria-pressed', String(nowVisible));
-  btn.textContent = nowVisible ? labelOn : labelOff;
+  // The label stays put; the pressed (dark) state says whether the layer
+  // is on, the same contract as every other overlay button. "Hide
+  // Assessment Results" used to read as a third parcel layer beside All
+  // Assessment Parcels rather than as this one's on state (Jason, 2026-09-14).
   mapReady.then(() => {
     const v = nowVisible ? 'visible' : 'none';
     if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', v);
