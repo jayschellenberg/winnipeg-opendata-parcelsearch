@@ -22,6 +22,8 @@ $repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $metaRel = 'web/public/historical-tiles-meta.json'
 function Log($m) { "$(Get-Date -Format 'HH:mm:ss')  $m" }
 
+# `-File` hands "a,b,c" over as ONE string; split it so both spellings work.
+$Snapshots = @($Snapshots | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if (-not $Snapshots.Count) {
   $index = Get-Content 'D:/Dropbox/ClaudeCode/WpgOpenData/wpg-parcel-history/index.json' -Raw | ConvertFrom-Json
   $Snapshots = @($index.snapshots.PSObject.Properties.Name | Sort-Object)
