@@ -29,7 +29,7 @@ if (-not $Snapshots.Count) {
 Log "Snapshots: $($Snapshots -join ', ')"
 
 foreach ($snap in $Snapshots) {
-  Log "== $snap: build + publish"
+  Log "== ${snap}: build + publish"
   & Rscript (Join-Path $repo 'r/build_historical_tiles.R') --snapshot $snap --publish
   if ($LASTEXITCODE -ne 0) { Log "FAILED on $snap (exit $LASTEXITCODE); stopping, nothing committed"; exit 1 }
 }
