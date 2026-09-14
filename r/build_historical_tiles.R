@@ -125,8 +125,14 @@ size_band <- function(delta_pct) {
          ifelse(a > SIZE_MAJOR_PCT, "major", ifelse(a > SIZE_MINOR_PCT, "minor", "same")))
 }
 
+# The 2023 snapshot ships its numerics formatted ("81,501", "391,000.00");
+# later ones are bare. Strip the separators before casting, or every 2023
+# parcel comes out "unknown" with no land area (which is exactly what the
+# first 2023 build did).
+num_field <- function(v) suppressWarnings(as.numeric(gsub(",", "", as.character(v), fixed = TRUE)))
+
 stamp_size_changes <- function(g, current) {
-  hist_area <- suppressWarnings(as.numeric(g$assessed_land_area))
+  hist_area <- num_field(g$assessed_land_area)
   cur_area  <- current$assessed_land_area[match(as.character(g$roll_number), current$roll_number)]
   present   <- as.character(g$roll_number) %in% current$roll_number
   delta     <- ifelse(present & hist_area > 0 & cur_area > 0, (cur_area - hist_area) / hist_area * 100, NA_real_)
@@ -134,7 +140,7 @@ stamp_size_changes <- function(g, current) {
   band[present & !(hist_area > 0 & cur_area > 0)] <- "unknown"
   band[!present] <- "gone"
   g$assessed_land_area   <- hist_area
-  g$total_assessed_value <- suppressWarnings(as.numeric(g$total_assessed_value))
+  g$total_assessed_value <- num_field(g$total_assessed_value)
   g$`_sizeBand` <- band
   g$`_histArea` <- ifelse(hist_area > 0, hist_area, NA_real_)
   g$`_curArea`  <- ifelse(present & cur_area > 0, cur_area, NA_real_)
