@@ -18,6 +18,54 @@
       },
       "size_change_vs": "2026-09-14",
       "size_change_vs_rolls": 245200
+    },
+    "2023-11-13": {
+      "file": "wpg-hist-2023-11-13.pmtiles",
+      "bytes": 114331875,
+      "sha256": "ad46bd268d0af6a3bcfd082081c0b073cfceab4665a737b7eb0f6c7e7e33220d",
+      "built": "2026-09-14",
+      "layers": {
+        "parcels": 241305
+      },
+      "size_change": {
+        "same": 212898,
+        "minor": 75,
+        "major": 151,
+        "gone": 629,
+        "unknown": 27552
+      },
+      "size_change_vs": "2026-09-14",
+      "size_change_vs_rolls": 245200
+    },
+    "2025-02-26": {
+      "file": "wpg-hist-2025-02-26.pmtiles",
+      "bytes": 115261599,
+      "sha256": "84728608ae02473a5e9712327f1c1a5ef99f2330e559fd7cb264cbaa3130f2bc",
+      "built": "2026-09-14",
+      "layers": {
+        "parcels": 244006
+      },
+      "size_change": {
+        "same": 215835,
+        "minor": 8,
+        "major": 17,
+        "gone": 340,
+        "unknown": 27806
+      },
+      "size_change_vs": "2026-09-14",
+      "size_change_vs_rolls": 245200
+    },
+    "2025-03-14": {
+      "file": "wpg-hist-2025-03-14.pmtiles",
+      "bytes": 74455036,
+      "sha256": "de3b919c445259169b411dc2ba37237b9b398e1335bbc47cd140ca2c5c8afb3b",
+      "built": "2026-09-14",
+      "layers": {
+        "survey": 262005
+      },
+      "size_change": null,
+      "size_change_vs": "2026-09-14",
+      "size_change_vs_rolls": 245200
     }
   },
   "built": "2026-09-14",
