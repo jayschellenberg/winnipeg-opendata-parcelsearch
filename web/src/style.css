@@ -4403,3 +4403,157 @@ button.topbar-link {
 .sales-category-filter .sales-pucs-btn {
   width: 100%;
 }
+
+/* -----------------------------------------------------------------
+   Segmented pills (Manitoba pattern, lib/pillBinding.js). Each pill is a
+   view of hidden backing checkboxes; the selected segment is BLACK when
+   it is the pill's default state (Off, Keep, Exclude-nominal —
+   `.mode-btn-off`) and BLUE for any other selection, so a glance down the
+   sidebar shows which pills are actually doing something. Declared last
+   so the segment reset beats the refresh layer's `.controls button`
+   (36px min-height, brand fill, shadow) on source order as well as
+   specificity.
+   ----------------------------------------------------------------- */
+.sidebar .mode-pill-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 0 1px 2px;
+  font-size: 12px;
+  color: var(--ui-ink-soft, #64748b);
+}
+.sidebar .mode-pill-row[hidden] { display: none; }
+/* The water pill reuses .water-row for its top margin; it wraps like the
+   other pills rather than stacking (the older column rule above). */
+.sidebar .mode-pill-row.water-row { flex-direction: row; }
+.sidebar .mode-pill-prefix { white-space: nowrap; }
+.sidebar .mode-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--ui-line-strong, var(--color-neutral-300, #d4d4d8));
+  border-radius: var(--ui-radius, 4px);
+  overflow: hidden;
+  background: #fff;
+}
+.sidebar .mode-btn,
+.sidebar .action-row .mode-btn {
+  appearance: none;
+  flex: 0 0 auto;
+  width: auto;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  padding: 4px 9px;
+  min-height: 0;
+  height: auto;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--ui-ink, var(--color-neutral-600, #52525b));
+  cursor: pointer;
+  line-height: 1.2;
+}
+.sidebar .mode-btn + .mode-btn {
+  border-left: 1px solid var(--ui-line-strong, var(--color-neutral-300, #d4d4d8));
+}
+.sidebar .mode-btn:hover:not(:disabled) {
+  background: var(--color-neutral-100, #f4f4f5);
+  transform: none;
+}
+.sidebar .mode-btn.active,
+.sidebar .mode-btn.active:hover:not(:disabled) {
+  background: #111827;
+  color: #fff;
+}
+.sidebar .mode-btn.active:not(.mode-btn-off),
+.sidebar .mode-btn.active:not(.mode-btn-off):hover:not(:disabled) {
+  background: #2563eb;
+}
+.sidebar .mode-btn[hidden] { display: none; }
+.sidebar .mode-btn:focus-visible {
+  outline: 2px solid var(--color-primary-500, #1e293b);
+  outline-offset: -2px;
+}
+/* Compact pills for the Sales tab's tighter rows (nominal sales beside
+   Clear, far-flung Exclude beside the km box). */
+.sidebar .mode-pill.compact .mode-btn { padding: 3px 7px; font-size: 11.5px; }
+.sidebar .mode-pill-row.far-flung-exclude,
+.sidebar .mode-pill-row.sales-nominal-inline { gap: 6px; }
+/* The numbering pill sits under the Search / Clear strip. */
+.sidebar .numbering-row .mode-pill-row { padding-left: 0; }
+
+/* Generate Map / Map w/Legend share one row, half the width each. The
+   buttons keep their full-width styling for any other placement; the row
+   is what halves them. min-width:0 lets a long label ellipsis rather than
+   push its sibling narrower than half. */
+.sidebar .generate-map-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.sidebar .generate-map-row .generate-map-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-top: 0;
+  padding-inline: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* "Map w/Legend" is blue so the pair reads as two distinct actions at a
+   glance instead of one button rendered twice (the brand button is
+   near-black). Disabled = no legend on screen, so nothing to draw: it goes
+   flat rather than silently producing an identical image. */
+.sidebar .generate-map-btn-legend,
+.sidebar .generate-map-btn-legend:disabled {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+.sidebar .generate-map-btn-legend:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+.sidebar .generate-map-btn-legend:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Links inside map popups (Roll #, Assessment →, GPS Coordinates) read as
+   links: the popup otherwise inherits the body ink with no underline, so
+   a linked roll number was indistinguishable from a plain one. */
+.maplibregl-popup-content a {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.maplibregl-popup-content a:hover { color: #1e3a8a; }
+
+/* Links in the results grid (Roll Number → City assessment page, Walk
+   Score, flood tool) read as links — blue and underlined — so a user can
+   tell a clickable roll number from a plain one. The row-click (fly the
+   map) is unaffected: the anchors stop propagation themselves. */
+#results tbody td a {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+#results tbody td a:hover { color: #1e3a8a; }
+
+/* Row-selection checkbox column (Manitoba pattern). Narrow and centred,
+   right after the "#" badge column. A row the user has unticked stays on
+   the grid but reads as withdrawn — dimmed, with the row struck through —
+   so "still listed" and "not in my analysis" are visibly different
+   states. Dimming only; no display:none, because a culled comp you cannot
+   see is a comp you cannot put back. */
+#results .sel-col { width: 26px; text-align: center; padding: 2px 4px; }
+#results th.sel-col input { cursor: pointer; margin: 0; vertical-align: middle; }
+.row-select { cursor: pointer; margin: 0; vertical-align: middle; }
+.row-select:focus-visible { outline: 2px solid #4a90e2; outline-offset: 2px; }
+#results tbody tr.deselected > td { opacity: 0.42; }
+#results tbody tr.deselected > td.sel-col { opacity: 1; }
+#results tbody tr.deselected > td:not(.sel-col) { text-decoration: line-through; }

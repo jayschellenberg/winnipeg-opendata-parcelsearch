@@ -73,7 +73,7 @@ const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'sou
  * for exactly the people who have used the app before — which is
  * everyone. The exemption is read at query time and has no such gap.
  */
-const UNGOVERNED = new Set(['seq']);
+const UNGOVERNED = new Set(['seq', 'select']);
 
 const QUICK_LOOKUP = ['lot', 'block', 'plan', 'roll', 'address', 'water', 'area'];
 // Residential property search: what actually matters on a house — the

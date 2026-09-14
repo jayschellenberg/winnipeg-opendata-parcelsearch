@@ -169,6 +169,29 @@ function seqOf(a, s) {
 }
 
 /**
+ * The row-selection checkbox cell. `_selKey` is stamped on both of a
+ * row's feature property objects by main.js renderTable before the cells
+ * are built, so the box can name the row it governs; main.js sets the
+ * checked state after render and listens for `change` on the tbody. The
+ * click stops propagating so ticking a box does not also fly the map to
+ * the row (the <tr> click handler).
+ */
+function selectTd(a, s) {
+  const el = document.createElement('td');
+  const key = a?._selKey ?? s?._selKey;
+  if (key == null || key === '') return el;
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.className = 'row-select';
+  box.checked = true;
+  box.dataset.selKey = String(key);
+  box.title = 'Show this row on the map, in the CSV export and in the charts. Unticking hides it from all three for this session.';
+  box.addEventListener('click', (e) => e.stopPropagation());
+  el.appendChild(box);
+  return el;
+}
+
+/**
  * Cell classes for the Sale Price / Sworn pair. When the two figures
  * disagree the Sold Price is not what the property changed hands for —
  * SABRE writes a nominal amount on a non-arms-length transfer and puts
@@ -213,6 +236,19 @@ export const COLUMNS = [
     theadTitle: 'Map number. Parcels are numbered 1..N by roll number; a multi-parcel sale and a repeat sale of the same parcel each carry ONE number. Turn on with "Number parcels" under the Search buttons; "Entry order" beside it numbers in the order the rolls were entered.',
     render: (a, s) => td(seqOf(a, s), 'num'),
     csv: { header: '#', extract: (a, s) => seqOf(a, s) } },
+
+  // Row selection (the Manitoba pattern, 2026-09-13). Every row arrives
+  // ticked; unticking hides it from the map, the CSV export and the charts
+  // for this session while the row stays on the grid, dimmed. The tick
+  // state itself lives in main.js (deselectedRowKeys) and is applied after
+  // render; this cell only carries the row's key. No CSV column: the
+  // export drops unticked rows instead of describing them. Ungoverned by
+  // the column picker (lib/columns.js UNGOVERNED) and not sortable.
+  { key: 'select',       header: '',              mode: 'always', sortable: false,
+    theadClass: 'sel-col', theadId: 'select-all-th',
+    theadTitle: 'Show/hide rows. Every row starts ticked; unticking hides it from the map, the CSV export and the charts for this session. Use the box in this header to tick or untick every row at once.',
+    render: (a, s) => selectTd(a, s),
+    csv: [] },
 
   { key: 'roll',         header: 'Roll Number',   mode: 'always', sortable: true,
     render: (a) => linkTd(assessmentUrl(a), a.roll_number),

@@ -2777,7 +2777,7 @@ function citywideParcelHtml(p) {
   const roll = p.roll_number ? String(p.roll_number) : null;
   const address = p.full_address || null;
   const lines = [];
-  if (roll) lines.push(`<strong>Roll #</strong> ${escapeHtml(roll)}`);
+  if (roll) lines.push(`<strong>Roll #</strong> ${rollDetailLink(roll, `Open Roll ${roll} on the City assessment site`)}`);
   if (address) lines.push(escapeHtml(address));
   lines.push(...useAndZoningLines(p));
   // Size sits between the use codes and the unit count, the same slot it
@@ -3050,7 +3050,7 @@ function combinedPopupHtml(primary, context) {
 function popupHtml(p) {
   if (p.roll_number != null || p.full_address != null) {
     const lines = [];
-    if (p.roll_number) lines.push(`<strong>Roll #</strong> ${escapeHtml(p.roll_number)}`);
+    if (p.roll_number) lines.push(`<strong>Roll #</strong> ${rollDetailLink(p.roll_number, `Open Roll ${p.roll_number} on the City assessment site`)}`);
     if (p.full_address) lines.push(escapeHtml(p.full_address));
     lines.push(...useAndZoningLines(p));
     const size = parcelSizeLine(p);

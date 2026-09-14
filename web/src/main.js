@@ -135,6 +135,7 @@ import {
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
 import { COLUMNS, csvSchemaForMode, buildThead, columnCellClasses } from './lib/columnsRegistry.js';
 import { assignParcelSeq, clearParcelSeq } from './lib/parcelNumbering.js';
+import { PILL_SPECS, modeFromChecked, checkedFromMode } from './lib/pillBinding.js';
 // Cell-value formatters still used by the parcel-summary card (not table cells).
 // The DOM constructors td/badgeTd/linkTd/etc are consumed inside the registry
 // render functions and never need to be imported here.
@@ -178,10 +179,16 @@ const $tbody = document.querySelector('#results tbody');
 // querySelectorAll('#results th[data-col]')) — otherwise no handlers
 // would be attached to the dynamically-built ths.
 buildThead(document.querySelector('#results thead tr'));
+wireRowSelection();   // header tick-all + delegated row boxes (needs the thead)
 
 const $mapEl = document.getElementById('map');
 const $staticMapBtn = document.getElementById('static-map-btn');
+const $staticMapLegendBtn = document.getElementById('static-map-legend-btn');
 const $staticMapOutput = document.getElementById('static-map-output');
+// True while a Generate Map / Map w/Legend capture owns the two buttons.
+// Declared up here because updateLegendAvailability() runs at init, well
+// before generateStaticMap's definition further down.
+let captureInFlight = false;
 const $zoningLegend = document.getElementById('zoning-legend');
 const $trafficLegend = document.getElementById('traffic-legend');
 const $historicalToggle = document.getElementById('historical-toggle');
@@ -205,6 +212,95 @@ let currentRows = [];
 // search/enrichment re-render that lands while shapes are drawn narrows
 // consistently because renderTable is the single funnel.
 let fullRows = [];
+
+// ---------- Row selection (Manitoba pattern, ported 2026-09-14) ----------
+//
+// Opt-OUT and transient: every row arrives ticked, and unticking one drops
+// it from the map, the CSV export and the charts for THIS session only. The
+// row stays on the grid, dimmed and struck through, because a culled comp
+// you cannot see is a comp you cannot put back. Nothing is persisted and
+// nothing rides in the URL — a cull belongs to the job in front of you,
+// and a remembered exclusion is the silent-row-dropping bug the far-flung
+// exclusion turned out to be in the Manitoba app (2026-09-13).
+//
+// Keyed per ROW, not per parcel: a parcel that sold twice is two comps and
+// must be cullable one at a time, so the key carries the sale instrument.
+let deselectedRowKeys = new Set();
+
+/** Identity of one grid row: the assessment roll plus which of its sales
+ *  this is (instrument, then date, as the tie-break); a survey-only row
+ *  keys on the survey id. '' when neither side can be named. */
+function rowSelKey(row) {
+  const a = row?.assess?.properties;
+  const s = row?.survey?.properties;
+  if (a?.roll_number != null && a.roll_number !== '') {
+    return `a:${a.roll_number}#${a._saleInstrument ?? ''}|${a._saleDate ?? ''}`;
+  }
+  if (s?.id != null) return `s:${s.id}`;
+  return '';
+}
+
+/** Stamp `_selKey` on BOTH of a row's feature property objects, so the
+ *  registry's select cell can name the row and setParcels can filter the
+ *  survey and assessment features alike. Runs over the whole set, not just
+ *  the drawn rows. */
+function stampRowSelKeys(rows) {
+  for (const r of rows || []) {
+    const key = rowSelKey(r);
+    if (r?.assess?.properties) r.assess.properties._selKey = key;
+    if (r?.survey?.properties) r.survey.properties._selKey = key;
+  }
+}
+
+function rowIsSelected(row) {
+  const key = rowSelKey(row);
+  return !key || !deselectedRowKeys.has(key);
+}
+
+/** How many of `rows` (default: the current rows) are culled. Computed,
+ *  never stored, so it cannot disagree with the boxes on screen. */
+function deselectedCount(rows) {
+  if (deselectedRowKeys.size === 0) return 0;
+  return (rows || currentRows).filter((r) => !rowIsSelected(r)).length;
+}
+
+/** Drop culled features from a FeatureCollection. Keeps any feature that
+ *  carries no `_selKey` (a set that was never rendered) so a missing stamp
+ *  fails open rather than blanking the map. */
+function filterFcBySelection(fc) {
+  if (deselectedRowKeys.size === 0 || !fc?.features?.length) return fc;
+  return {
+    ...fc,
+    features: fc.features.filter((f) => {
+      const k = f?.properties?._selKey;
+      return !k || !deselectedRowKeys.has(k);
+    }),
+  };
+}
+
+/** The "· N unticked, hidden from …" clause both count lines append. */
+function selectionSuffix() {
+  const culled = deselectedCount(currentRows);
+  if (culled === 0) return '';
+  const where = document.body.classList.contains('sales-mode') ? 'map/export/charts' : 'map/export';
+  return ` · ${culled} unticked, hidden from ${where}`;
+}
+
+/**
+ * Warn before an action that will silently carry fewer rows than the grid
+ * shows. Returns true to proceed. Asked on the user-initiated export and
+ * the Charts button only — the further a cull travels, the more places a
+ * number can quietly change.
+ */
+function confirmCulledExport(culled, total, what) {
+  const rowWord = culled === 1 ? 'row is' : 'rows are';
+  return window.confirm(
+    `${culled} of ${total} ${rowWord} unticked and will be EXCLUDED from this ${what}.\n\n`
+    + 'Tick them back on in the grid first if you want them included.\n\n'
+    + 'Continue without them?',
+  );
+}
+
 // Counts behind the "· X of Y shown (area filter)" clause setCount appends.
 let shapeShown = 0;
 let shapeTotal = 0;
@@ -464,7 +560,60 @@ if ($numberingOrderToggle) {
     queueUrlWrite();
   });
 }
-if ($staticMapBtn) $staticMapBtn.addEventListener('click', generateStaticMap);
+/**
+ * Segmented pills as views of hidden checkboxes — the Manitoba app's
+ * bindBackedPill. Water Proximity (Off / Waterfront / Near water / Both),
+ * Numbering (Off / By roll # / Entry order), Flagged (Keep / Exclude) and
+ * Nominal sales (Include / Exclude).
+ *
+ * The original <input type="checkbox"> elements stay in the DOM, hidden,
+ * and remain the source of truth: every handler (the water SoQL filter
+ * read at search time, the numbering change handlers above, the sales
+ * re-run, the URL-state writer) keeps reading them unchanged. A pill is a
+ * VIEW: clicking a segment sets the backing boxes to that mode's pattern
+ * (lib/pillBinding.js) and fires `change` on the ones that flipped — all
+ * boxes are set BEFORE any event fires, so a handler that reads its
+ * sibling sees the settled state. Any `change` on a backing box repaints
+ * the pill, so a programmatic `.checked =` followed by a change event, or
+ * a user-driven one, can never leave the pill stale. Programmatic sets
+ * WITHOUT an event (applyUrlState's numbering restore) call the painter
+ * in `pillPainters` directly.
+ */
+const pillPainters = {};
+function bindBackedPill(pillEl, spec) {
+  const inputs = spec.inputs.map((id) => document.getElementById(id));
+  const paint = () => {
+    const mode = modeFromChecked(spec, inputs.map((el) => !!el?.checked));
+    for (const b of pillEl.querySelectorAll('.mode-btn')) {
+      const on = b.dataset.mode === mode;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  };
+  pillEl.addEventListener('click', (e) => {
+    const btn = e.target?.closest?.('.mode-btn');
+    if (!btn || !pillEl.contains(btn)) return;
+    const want = checkedFromMode(spec, btn.dataset.mode);
+    const flipped = [];
+    inputs.forEach((el, i) => {
+      if (el && el.checked !== !!want[i]) { el.checked = !!want[i]; flipped.push(el); }
+    });
+    paint();
+    for (const el of flipped) el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  for (const el of inputs) el?.addEventListener('change', paint);
+  paint();
+  return paint;
+}
+for (const pillEl of document.querySelectorAll('.mode-pill[data-pill]')) {
+  const spec = PILL_SPECS[pillEl.dataset.pill];
+  if (spec) pillPainters[pillEl.dataset.pill] = bindBackedPill(pillEl, spec);
+}
+
+if ($staticMapBtn) $staticMapBtn.addEventListener('click', () => generateStaticMap());
+if ($staticMapLegendBtn) {
+  $staticMapLegendBtn.addEventListener('click', () => generateStaticMap({ withLegend: true }));
+}
 // Historical (as-of-date) overlay: a date picker feeds the toggle, which loads
 // the parcel + survey shards (and lineage) for the neighbourhoods in the current
 // map view from the wpg-parcel-history CDN — and reloads them as you pan/zoom.
@@ -844,6 +993,8 @@ function applyUrlState(state) {
     numberingOn = !!state.numberingToggle;
     if ($numberingToggle) $numberingToggle.checked = numberingOn;
   }
+  // The boxes were set without a change event, so repaint the pill by hand.
+  if ('numberingOrder' in state || 'numberingToggle' in state) pillPainters.numbering?.();
 
   if (state.sortCol) {
     currentSort = { col: state.sortCol, dir: state.sortDir === 'desc' ? 'desc' : 'asc' };
@@ -922,9 +1073,11 @@ for (const btn of [
 }
 
 // Wire sortable column headers.
+const SORTABLE_KEYS = new Set(COLUMNS.filter((c) => c.sortable).map((c) => c.key));
 for (const th of document.querySelectorAll('#results th[data-col]')) {
   th.addEventListener('click', () => {
     const col = th.dataset.col;
+    if (!SORTABLE_KEYS.has(col)) return;   // the select column is not a sort target
     if (currentSort.col === col) {
       currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
     } else {
@@ -950,6 +1103,10 @@ async function runSearch() {
   // shapes. Silent: this run repopulates the table itself, and an emit
   // here would re-filter the outgoing result set on the way out.
   resetShapesSilently();
+  // Row culling belongs to the result set it was done on. Carrying it into
+  // the next search would hide rows the user never looked at. Not
+  // persisted anywhere, so this is the whole reset.
+  deselectedRowKeys = new Set();
   // Entry order for "Number parcels": the Roll # chips, as entered. An
   // address / legal search leaves this null, which hides the checkbox.
   propertyRollOrder = buildEnteredRollOrder($roll.value);
@@ -1051,6 +1208,15 @@ function setParcels(surveyFc, assessFc = EMPTY_FC, { fit = true } = {}) {
     surveyFc = filterFcByShapes(surveyFc, shapes);
     assessFc = filterFcByShapes(assessFc, shapes);
   }
+  // Drop culled rows BEFORE the per-parcel dedupe, not after. A parcel that
+  // sold twice contributes two features here; unticking ONE of those sales
+  // must not remove the parcel while its other sale is still on the grid.
+  // Filtering first and deduping second gives that for free: the parcel
+  // survives as long as any of its rows is still ticked. The survey side is
+  // filtered too, so an unticked joined row leaves the map (and the
+  // dimensions overlay, which reads lastSurveyFc below) entirely.
+  surveyFc = filterFcBySelection(surveyFc);
+  assessFc = filterFcBySelection(assessFc);
   // Stash the survey FC separately so the dimensions overlay can tie
   // its edge labels to the legal-lot polygons only — assessment-parcel
   // edges describe building footprints, which aren't useful as "lot
@@ -2541,7 +2707,10 @@ function setCount(text) {
 }
 
 function renderCount() {
-  const text = lastCountBase ? lastCountBase + shapeFilterSuffix() : lastCountBase;
+  // Culled rows are stated, always: the grid still lists them (dimmed), so
+  // without this clause the map and the export would be quietly narrower
+  // than the row count sitting right next to them.
+  const text = lastCountBase ? lastCountBase + shapeFilterSuffix() + selectionSuffix() : lastCountBase;
   $count.textContent = text;
   // Phase 5: mirror the same message into the prominent status bar
   // above the results table. Hidden when text is empty so a fresh
@@ -2755,6 +2924,10 @@ function renderTable(rows) {
   // Must precede sortRows: `seq` is a sortable column, so the key has to
   // exist before the comparator can read it.
   applyParcelNumbering(rows, shown);
+  // Row-selection keys on every row (drawn or capped) BEFORE the cells are
+  // built: the registry's select cell reads `_selKey`, and setParcels
+  // filters the map features by it.
+  stampRowSelKeys(rows);
   const sorted = sortRows(shown);
   // Stamp the dominant assessment year onto the column header so it
   // reads "Assess-2026" (or whatever year the source data carries).
@@ -2859,6 +3032,12 @@ function renderTable(rows) {
       for (const cls of columnCellClasses(col)) cell.classList.add(cls);
       tr.appendChild(cell);
     }
+    // Row selection: the registry cell ships ticked; the state is ours.
+    if (!rowIsSelected(row)) {
+      tr.classList.add('deselected');
+      const box = tr.querySelector('input.row-select');
+      if (box) box.checked = false;
+    }
     frag.appendChild(tr);
   }
   $tbody.appendChild(frag);
@@ -2867,6 +3046,82 @@ function renderTable(rows) {
   // Phase 5: reapply column visibility so newly-built rows pick up
   // the user's hidden-column choices.
   applyColumnVisibility();
+  // The header tick reflects the whole result set, so it has to be
+  // recomputed whenever the set changes — a filter that removes the only
+  // unticked row should leave the header solidly checked, not stuck
+  // indeterminate.
+  syncSelectAllBox();
+}
+
+/**
+ * The header checkbox: tick all / untick all across the WHOLE current set,
+ * not the drawn page — a cull that silently stopped at the draw cap would
+ * be worse than no button at all. Indeterminate when mixed, so the header
+ * reports the real state instead of implying "none" whenever one row is off.
+ */
+function syncSelectAllBox() {
+  const box = document.getElementById('select-all-rows');
+  if (!box) return;
+  const total = currentRows.length;
+  const culled = deselectedCount(currentRows);
+  box.checked = total > 0 && culled === 0;
+  box.indeterminate = culled > 0 && culled < total;
+  box.title = culled > 0
+    ? `${culled} of ${total} rows unticked — tick to restore all`
+    : 'Untick to hide every row from the map, export and charts';
+}
+
+/** Re-push the map, the charts and the count lines from the current rows.
+ *  All three read the selection themselves, so this is "look again". */
+function applySelectionEverywhere() {
+  if (fullRows.length > 0) {
+    setParcels(lastFullSurveyFc, lastFullAssessFc, { fit: false });
+  }
+  if (document.body.classList.contains('sales-mode')) publishSalesToCharts(fullRows);
+  refreshCount();
+}
+
+function wireRowSelection() {
+  // The header box is injected here rather than declared in the registry
+  // (whose thead is text-only), into the <th> the registry ids for it.
+  const th = document.getElementById('select-all-th');
+  if (th && !document.getElementById('select-all-rows')) {
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.id = 'select-all-rows';
+    box.checked = true;
+    box.setAttribute('aria-label', 'Tick or untick every row');
+    // The <th> is a sort target; without this a tick would also re-sort.
+    box.addEventListener('click', (e) => e.stopPropagation());
+    box.addEventListener('change', () => {
+      if (box.checked) {
+        deselectedRowKeys = new Set();
+      } else {
+        for (const r of currentRows) {
+          const key = rowSelKey(r);
+          if (key) deselectedRowKeys.add(key);
+        }
+      }
+      // Every visible checkbox and row class has to follow, and there can
+      // be hundreds — a re-render is cheaper to reason about than walking
+      // the DOM. renderTable re-syncs the header box itself.
+      if (fullRows.length > 0) renderTable(fullRows);
+      applySelectionEverywhere();
+    });
+    th.appendChild(box);
+  }
+  // One delegated listener for every row box, present and future.
+  $tbody.addEventListener('change', (e) => {
+    const box = e.target;
+    if (!(box instanceof HTMLInputElement) || !box.classList.contains('row-select')) return;
+    const key = box.dataset.selKey;
+    if (!key) return;
+    if (box.checked) deselectedRowKeys.delete(key);
+    else deselectedRowKeys.add(key);
+    box.closest('tr')?.classList.toggle('deselected', !box.checked);
+    applySelectionEverywhere();
+    syncSelectAllBox();
+  });
 }
 
 // Phase 5: populate the parcel-summary card from a clicked row's
@@ -2991,6 +3246,14 @@ function setExportEnabled(enabled) {
 
 function exportCsv() {
   if (!currentRows.length) return;
+  // Unticked rows leave the spreadsheet. Say so BEFORE writing the file —
+  // an export that silently holds fewer rows than the grid shows is the
+  // failure shape row selection could otherwise introduce, and the
+  // recipient of the CSV has no way to notice.
+  const culled = deselectedCount(currentRows);
+  if (culled > 0 && !confirmCulledExport(culled, currentRows.length, 'CSV export')) return;
+  const exportRows = currentRows.filter(rowIsSelected);
+  if (!exportRows.length) return;
   // Schema + row extractors come from the columns registry — drives the
   // header order and adds the sales-mode columns to the export when sales
   // mode is active (closes the gap audit finding M5).
@@ -3000,7 +3263,7 @@ function exportCsv() {
   // exhibit. Otherwise the export keeps the schema it has always had.
   const { headers, cells } = csvSchemaForMode(mode, { numbering: numberingOn && numberable });
   const lines = [headers.map(csvCell).join(',')];
-  for (const row of currentRows) {
+  for (const row of exportRows) {
     const s = row.survey?.properties || {};
     const a = row.assess?.properties || {};
     lines.push(cells.map((extract) => csvCell(extract(a, s) ?? '')).join(','));
@@ -3120,7 +3383,9 @@ function chartsBus() {
 }
 
 function publishSalesToCharts(rows) {
-  lastChartRows = (rows || []).map((r) => {
+  // Culled rows are excluded from the plots, so the charts tab and the map
+  // always agree about which sales are in play.
+  lastChartRows = (rows || []).filter(rowIsSelected).map((r) => {
     const p = r.assess?.properties || {};
     return {
       assess: {
@@ -3163,11 +3428,15 @@ function publishSalesToCharts(rows) {
  * cannot be forgotten when a new overlay is added.
  */
 function updateLegendAvailability() {
-  const label = document.getElementById('legend-toggle-label');
-  if (!label || !$mapEl) return;
+  if (!$staticMapLegendBtn || !$mapEl) return;
+  // A capture owns the buttons until it finishes; it re-runs this itself.
+  if (captureInFlight) return;
   const any = [...$mapEl.querySelectorAll('.map-legend')]
     .some((el) => !el.hidden && el.offsetParent !== null);
-  label.hidden = !any;
+  $staticMapLegendBtn.disabled = !any;
+  $staticMapLegendBtn.title = any
+    ? "Capture the current map view as a PNG with the map's visible legends drawn into it, stacked in the bottom-right corner just above the credit line — the same corner they occupy on screen. The image keeps its normal dimensions, so the legend sits over the map rather than beside it."
+    : 'No legend on screen to include — turn on an overlay that has one (zoning, traffic, neighbourhoods).';
 }
 
 /**
@@ -3181,12 +3450,19 @@ function updateLegendAvailability() {
  * canvas.toDataURL() returns real bytes; without that flag the buffer
  * is cleared between frames and the read returns transparent black.
  */
-async function generateStaticMap() {
+async function generateStaticMap({ withLegend = false } = {}) {
   if (!$staticMapOutput) return;
   await mapReady;
-  $staticMapBtn.disabled = true;
-  const originalLabel = $staticMapBtn.textContent;
-  $staticMapBtn.textContent = 'Capturing…';
+  if (captureInFlight) return;
+  // `withLegend` is the one difference between the two buttons: Generate
+  // Map is the plain view, Map w/Legend draws the visible legends into it.
+  // Both buttons go busy for the capture so a second click can't overlap.
+  const btn = withLegend && $staticMapLegendBtn ? $staticMapLegendBtn : $staticMapBtn;
+  const busyBtns = [$staticMapBtn, $staticMapLegendBtn].filter(Boolean);
+  captureInFlight = true;
+  for (const b of busyBtns) b.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Capturing…';
   try {
     await new Promise((resolve) => {
       const onIdle = () => { map.off('idle', onIdle); resolve(); };
@@ -3194,7 +3470,7 @@ async function generateStaticMap() {
       map.triggerRepaint();
     });
     const canvas = map.getCanvas();
-    const dataUrl = composeWithAttribution(canvas);
+    const dataUrl = composeWithAttribution(canvas, { withLegend });
     $staticMapOutput.hidden = false;
     $staticMapOutput.innerHTML = '';
     const img = document.createElement('img');
@@ -3208,8 +3484,10 @@ async function generateStaticMap() {
     $staticMapOutput.hidden = false;
     $staticMapOutput.innerHTML = '<p style="color:#c0392b">Capture failed — try toggling the satellite basemap and re-trying. If it persists, check the browser console.</p>';
   } finally {
-    $staticMapBtn.disabled = false;
-    $staticMapBtn.textContent = originalLabel;
+    captureInFlight = false;
+    for (const b of busyBtns) b.disabled = false;
+    btn.textContent = originalLabel;
+    updateLegendAvailability();   // the legend button's enabled state is its own, not the capture's
   }
 }
 
@@ -3220,7 +3498,7 @@ async function generateStaticMap() {
  * (basemap + zoning + survey + assess) without us having to enumerate
  * them. Returns a PNG data URL ready for an <img>.src.
  */
-function composeWithAttribution(srcCanvas) {
+function composeWithAttribution(srcCanvas, { withLegend = false } = {}) {
   const w = srcCanvas.width;
   const h = srcCanvas.height;
   const out = document.createElement('canvas');
@@ -3260,10 +3538,11 @@ function composeWithAttribution(srcCanvas) {
     ctx.fillText(lines[i], x0 + padX, yMid);
   }
 
-  // Legend, when asked for: stacked upward from just above the credit
-  // pill, in the same bottom-right corner it occupies on screen. Drawn
-  // last so it sits over the map; the image keeps its dimensions.
-  if (document.getElementById('legend-toggle')?.checked) {
+  // Legend, when asked for (the Map w/Legend button): stacked upward from
+  // just above the credit pill, in the same bottom-right corner it
+  // occupies on screen. Drawn last so it sits over the map; the image
+  // keeps its dimensions.
+  if (withLegend) {
     const legends = readMapLegends($mapEl, (el) => getComputedStyle(el));
     if (legends.length) {
       const measure = (t, bold) => {
@@ -3498,6 +3777,12 @@ function wireSalesTab() {
   // Charts. A named window target so repeated clicks reuse the one
   // tab rather than littering a dozen identical ones.
   document.getElementById('charts-open')?.addEventListener('click', () => {
+    // Same warning as the CSV export, for the same reason: the charts read
+    // the ticked rows only, so a cull moves the medians and the scatter
+    // without saying so. Asked here rather than on every republish —
+    // publishSalesToCharts also runs on ordinary re-renders.
+    const culled = deselectedCount(currentRows);
+    if (culled > 0 && !confirmCulledExport(culled, currentRows.length, 'chart')) return;
     chartsBus();   // ensure we're listening before the tab asks
     window.open('charts.html', 'wps-sales-charts');
   });
@@ -3750,6 +4035,9 @@ async function handleSalesUpload({ name, text }, remember = true) {
       setSalesCount(`No data rows found in ${label}.`, true);
       return;
     }
+    // A new import is a new result set: drop the previous cull (the
+    // sidebar filters re-run runSalesAnalysis and keep it — same rows).
+    deselectedRowKeys = new Set();
     salesData = dedupAndGroupSales(parsed.rows);
     // Entry order for "Number parcels": each roll's first appearance in
     // the pasted / uploaded rows, so a pasted comp list numbers as typed.
@@ -3878,7 +4166,7 @@ function renderSalesCount() {
   // The area-filter clause rides on the sales count too — a drawn shape
   // narrows a sales comp set exactly as it narrows a property search.
   const text = lastSalesCountBase
-    ? lastSalesCountBase + shapeFilterSuffix() + drawCapSuffix()
+    ? lastSalesCountBase + shapeFilterSuffix() + drawCapSuffix() + selectionSuffix()
     : '';
   el.textContent = text;
   el.classList.toggle('results-status-error', lastSalesCountError && !!text);

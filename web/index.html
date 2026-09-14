@@ -310,17 +310,19 @@
                (server-side SoQL over property_influences), not the
                fetched page, so a search returns every matching parcel
                rather than the matches among the first N rows. -->
-          <div class="water-row">
-            <label class="water-filter">
-              <input id="water-front" type="checkbox" />
-              <span>Waterfront only</span>
-              <span class="tip">Parcels the City assesses as ADJACENT to a river, creek or retention pond — i.e. with frontage.</span>
-            </label>
-            <label class="water-filter">
-              <input id="water-near" type="checkbox" />
-              <span>Near water (no frontage)</span>
-              <span class="tip">Parcels assessed as water INFLUENCE — near the water but with a road, parkland or another parcel between. A different market from frontage.</span>
-            </label>
+          <!-- Hidden boxes remain the source of truth (the search reads them);
+               the pill is a view of them — see lib/pillBinding.js. Both = both
+               ticked (any water influence). -->
+          <input id="water-front" type="checkbox" class="pill-backing" hidden />
+          <input id="water-near" type="checkbox" class="pill-backing" hidden />
+          <div class="mode-pill-row water-row" title="Return only parcels with a water influence. Narrows the QUERY (server-side, over the City's property_influences field), so a search returns every matching parcel rather than the matches among the first N rows.">
+            <span class="mode-pill-prefix">Water Proximity:</span>
+            <div class="mode-pill" role="radiogroup" aria-label="Water influence filter" data-pill="water">
+              <button type="button" class="mode-btn active mode-btn-off" data-mode="off" aria-pressed="true" title="No water filter.">Off</button>
+              <button type="button" class="mode-btn" data-mode="waterfront" aria-pressed="false" title="Only parcels the City assesses as ADJACENT to a river, creek or retention pond — i.e. with frontage.">Waterfront</button>
+              <button type="button" class="mode-btn" data-mode="near" aria-pressed="false" title="Only parcels assessed as water INFLUENCE — near the water but with a road, parkland or another parcel between. A different market from frontage.">Near water</button>
+              <button type="button" class="mode-btn" data-mode="any" aria-pressed="false" title="Both — waterfront or near water.">Both</button>
+            </div>
           </div>
         </details>
 
@@ -339,24 +341,25 @@
              one numberable subject, since a "1" on a single parcel says
              nothing; "Entry order" additionally needs the results to have
              come from an entered list of two or more rolls. -->
+        <!-- Hidden boxes remain the source of truth (the numbering handlers and
+             the URL state read them); the pill is a view — lib/pillBinding.js.
+             main.js hides the Entry order segment (#numbering-order-label)
+             unless the results came from an entered roll list. -->
         <div id="numbering-row" class="numbering-row" hidden>
-          <label
+          <input type="checkbox" id="numbering-toggle" class="pill-backing" hidden />
+          <input type="checkbox" id="numbering-order-toggle" class="pill-backing" hidden />
+          <div
             id="numbering-toggle-label"
-            class="numbering-toggle"
-            title="Number the result parcels 1..N on the map and show a matching # column in the grid. Ordered by roll number (or by entry order, beside); a multi-parcel sale and a repeat sale of the same parcel each carry one number. The number stays fixed to a parcel through re-sorts and area filters, and joins the CSV export."
+            class="mode-pill-row numbering-toggle"
+            title="Number the result parcels 1..N on the map and show a matching # column in the grid. Ordered by roll number (or by entry order); a multi-parcel sale and a repeat sale of the same parcel each carry one number. The number stays fixed to a parcel through re-sorts and area filters, and joins the Generate Map image and the CSV export."
           >
-            <input type="checkbox" id="numbering-toggle" />
-            <span>Number parcels</span>
-          </label>
-          <label
-            id="numbering-order-label"
-            class="numbering-toggle"
-            title="Number the parcels in the order you entered them — the Roll # chips here, or the pasted / uploaded rows on Sales Analysis — instead of by roll number. Entering 01003547800 then 01003546600 makes 01003547800 #1. A multi-parcel sale still carries one number, taken from its first-entered parcel; rolls the list did not name follow, by roll number. Only offered when the results came from an entered list of two or more rolls."
-            hidden
-          >
-            <input type="checkbox" id="numbering-order-toggle" />
-            <span>Entry order</span>
-          </label>
+            <span class="mode-pill-prefix">Numbering:</span>
+            <div class="mode-pill" role="radiogroup" aria-label="Parcel numbering" data-pill="numbering">
+              <button type="button" class="mode-btn active mode-btn-off" data-mode="off" aria-pressed="true">Off</button>
+              <button type="button" class="mode-btn" data-mode="roll" aria-pressed="false" title="Number the parcels by roll number.">By roll #</button>
+              <button id="numbering-order-label" type="button" class="mode-btn" data-mode="entry" aria-pressed="false" hidden title="Number the parcels in the order you entered them — the Roll # chips here, or the pasted / uploaded rows on Sales Analysis — instead of by roll number. Entering 01003547800 then 01003546600 makes 01003547800 #1. A multi-parcel sale still carries one number, taken from its first-entered parcel; rolls the list did not name follow, by roll number. Only offered when the results came from an entered list of two or more rolls.">Entry order</button>
+            </div>
+          </div>
         </div>
         <span id="count" class="count"></span>
         </section><!-- /tab-panel-property -->
@@ -747,10 +750,14 @@
                 <input id="far-flung-km" type="number" min="0" step="1" placeholder="km" aria-label="Far-flung threshold in kilometres" />
                 <span class="far-flung-unit">km</span>
               </span>
-              <label class="far-flung-exclude" for="far-flung-exclude" title="Marking alone removes nothing — a flagged sale just gets a ⚠ on its $/Lot SF, the figure the spread invalidates. Tick Exclude to drop flagged sales from the table, the map and the CSV export. A sale whose spread can't be measured (a parcel with no geometry) is never excluded. Blank or 0 km turns the marking off entirely.">
-                <input type="checkbox" id="far-flung-exclude" />
-                <span>Exclude</span>
-              </label>
+              <input type="checkbox" id="far-flung-exclude" class="pill-backing" hidden />
+              <div class="mode-pill-row far-flung-exclude" title="Marking alone removes nothing — a flagged sale just gets a ⚠ on its $/Lot SF, the figure the spread invalidates. Exclude drops flagged sales from the table, the map and the CSV export. A sale whose spread can't be measured (a parcel with no geometry) is never excluded. Blank or 0 km turns the marking off entirely.">
+                <span class="mode-pill-prefix">Flagged:</span>
+                <div class="mode-pill compact" role="radiogroup" aria-label="Far-flung sales" data-pill="farflung">
+                  <button type="button" class="mode-btn active mode-btn-off" data-mode="keep" aria-pressed="true">Keep</button>
+                  <button type="button" class="mode-btn" data-mode="exclude" aria-pressed="false">Exclude</button>
+                </div>
+              </div>
             </div>
 
             <!-- N1 crosswalk status. Matched = the row carries an N1 ID
@@ -798,10 +805,17 @@
                the other whole-set action rather than among the filters. -->
           <div class="action-row sales-action-row">
             <button id="sales-clear" type="button" class="danger">Clear</button>
-            <label class="sales-filter-row sales-nominal-inline">
-              <input type="checkbox" id="sales-hide-sentinels" checked />
-              <span>Hide $0 / $1 non-arms-length transfers</span>
-            </label>
+            <!-- Hidden box stays the source of truth (runSalesAnalysis reads it,
+                 and it ships CHECKED — nominal transfers are hidden by default);
+                 the pill is a view — lib/pillBinding.js. -->
+            <input type="checkbox" id="sales-hide-sentinels" class="pill-backing" checked hidden />
+            <div class="mode-pill-row sales-nominal-inline" title="$0 / $1 non-arms-length transfers — family conveyances, corrective transfers — that are not market evidence. Exclude (the default) drops them from the table, the map, the charts and the CSV export; Include keeps them.">
+              <span class="mode-pill-prefix">Nominal sales:</span>
+              <div class="mode-pill compact" role="radiogroup" aria-label="Nominal sales" data-pill="nominal">
+                <button type="button" class="mode-btn" data-mode="include" aria-pressed="false">Include</button>
+                <button type="button" class="mode-btn active mode-btn-off" data-mode="exclude" aria-pressed="true">Exclude</button>
+              </div>
+            </div>
           </div>
 
           <span id="sales-count" class="count"></span>
@@ -867,7 +881,10 @@
           <a class="overlay-link secondary" data-layer-set="quick" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" title="City of Winnipeg Planning, Property &amp; Development Property Map">PP&amp;D Property Map</a>
           <a class="overlay-link secondary" data-layer-set="quick" href="https://dmis.winnipeg.ca/" target="_blank" rel="noreferrer" title="City of Winnipeg Development Management Information System (development applications, permits, plans)">DMIS</a>
         </div>
-        <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the rendered image below the table and Save Image As to drop into a report.">📸 Generate Map</button>
+        <div class="generate-map-row">
+          <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the rendered image below the table and Save Image As to drop into a report.">📸 Generate Map</button>
+          <button id="static-map-legend-btn" type="button" class="generate-map-btn generate-map-btn-legend" disabled title="Capture the current map view as a PNG with the map's visible legends drawn into it, stacked in the bottom-right corner just above the credit line — the same corner they occupy on screen. The image keeps its normal dimensions, so the legend sits over the map rather than beside it.">📸 Map w/Legend</button>
+        </div>
         <p class="overlay-note">* Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.</p>
       </aside>
 
@@ -964,20 +981,10 @@
                  active tab's action row (#numbering-row, moved between the
                  tabs by main.js) so it is found beside Search / Clear
                  rather than in the table chrome. -->
-            <!-- Include legend in map image. Hidden until at least one
-                 map legend is actually on screen — a checkbox that can't
-                 change the output is worse than no checkbox. Affects the
-                 Generate Map PNG only; the on-screen legends are governed
-                 by their own overlay buttons. -->
-            <label
-              id="legend-toggle-label"
-              class="numbering-toggle"
-              title="Draw the map's visible legends into the Generate Map image, stacked in the bottom-right corner just above the credit line — the same corner they occupy on screen. The image keeps its normal dimensions, so the legend sits over the map rather than beside it."
-              hidden
-            >
-              <input type="checkbox" id="legend-toggle" />
-              <span>Include legend in map image</span>
-            </label>
+            <!-- "Include legend in map image" used to sit here as a checkbox.
+                 It is now the sidebar's "📸 Map w/Legend" button beside
+                 Generate Map (the Manitoba pattern), so the choice is made
+                 where the capture is triggered. -->
             <div class="results-toolbar-spacer"></div>
             <div class="columns-popover-wrap">
               <button
