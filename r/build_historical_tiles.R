@@ -272,8 +272,16 @@ if (!publish_only) {
   meta$tippecanoe_flags <- HIST_TIPPECANOE_FLAGS
   tmp <- paste0(META_PATH, ".tmpwrite")
   writeLines(toJSON(meta, auto_unbox = TRUE, pretty = TRUE, null = "null", digits = NA), tmp)
-  if (file.exists(META_PATH)) file.remove(META_PATH)
-  if (!file.rename(tmp, META_PATH)) stop("rename failed: ", tmp)
+  # The repo lives under Dropbox, whose sync client briefly locks a file it
+  # has just seen change; the atomic rename lost that race once. Retry it.
+  renamed <- FALSE
+  for (attempt in 1:8) {
+    if (file.exists(META_PATH)) file.remove(META_PATH)
+    renamed <- suppressWarnings(file.rename(tmp, META_PATH))
+    if (renamed) break
+    Sys.sleep(1.5)
+  }
+  if (!renamed) stop("rename failed after retries: ", tmp)
   log("Wrote ", META_PATH)
 }
 
