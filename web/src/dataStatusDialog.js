@@ -62,7 +62,7 @@ function renderPublished($tbody, rows) {
   }
 }
 
-function renderHistorical($tbody, histIndex) {
+function renderHistorical($tbody, histIndex, histTilesMeta) {
   $tbody.textContent = '';
 
   const generated = datePart(histIndex?.generated) || null;
@@ -75,6 +75,19 @@ function renderHistorical($tbody, histIndex) {
     newest
       ? `${snaps.length} snapshot${snaps.length === 1 ? '' : 's'}, newest ${dateLabel(newest)} (${layers.join(', ')})`
       : '',
+  ]));
+
+  // The per-snapshot tile archives the overlay actually draws from
+  // (r/build_historical_tiles.R). Their size-change bands are baked against
+  // the roll of the day they were built, so that date is the one to read.
+  const tileSnaps = Object.keys(histTilesMeta?.snapshots || {}).sort();
+  const vs = tileSnaps.length ? histTilesMeta.snapshots[tileSnaps.at(-1)]?.size_change_vs : null;
+  $tbody.appendChild(rowOf([
+    'Historical tile archives',
+    histTilesMeta?.built ? dateLabel(histTilesMeta.built) : null,
+    tileSnaps.length
+      ? `${tileSnaps.length} snapshot${tileSnaps.length === 1 ? '' : 's'} on R2; size-change bands vs the ${vs || histTilesMeta.built} roll`
+      : 'not built — the overlay has no tiles to draw',
   ]));
 
   // The shard pin: an immutable commit SHA in soda.js, bumped by hand on
@@ -123,14 +136,15 @@ export function initDataStatusDialog() {
   async function load() {
     loaded = true;
     renderServices($services);   // rows appear immediately, fill per-service
-    const [pmtilesMeta, histIndex, neighbourhoodsMeta, transitMeta] = await Promise.all([
+    const [pmtilesMeta, histIndex, histTilesMeta, neighbourhoodsMeta, transitMeta] = await Promise.all([
       fetchJson(PMTILES_META_URL),
       fetchHistoricalIndex().catch(() => null),
+      fetchJson('/historical-tiles-meta.json'),
       fetchTailMeta('/wpg-neighbourhoods.geojson'),
       fetchTailMeta('/transit-routes.geojson'),
     ]);
     renderPublished($published, publishedRows({ pmtilesMeta, neighbourhoodsMeta, transitMeta }));
-    renderHistorical($historical, histIndex);
+    renderHistorical($historical, histIndex, histTilesMeta);
   }
 
   $open.addEventListener('click', () => {

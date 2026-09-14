@@ -874,15 +874,15 @@
           <details class="overlay-group-collapse" id="historical-group">
             <summary class="overlay-group-title overlay-group-summary">Historical (as-of-date)</summary>
             <div class="overlay-group-body">
-              <label class="overlay-select-field" data-layer-set="historical">
-                <span>Area</span>
-                <select id="historical-area" aria-label="Historical area (neighbourhood cluster)"></select>
-              </label>
+              <!-- The Area (neighbourhood cluster) picker is gone: the overlay
+                   streams a whole-city tile archive per snapshot
+                   (r/build_historical_tiles.R), so every neighbourhood is on
+                   screen at once from zoom 12. -->
               <label class="overlay-select-field" data-layer-set="historical">
                 <span>As of</span>
                 <select id="historical-date" aria-label="Historical snapshot date"></select>
               </label>
-              <button id="historical-toggle" type="button" class="secondary" data-layer-set="historical" aria-pressed="false" disabled title="Overlay an earlier snapshot's assessment parcels (dashed amber, tinted by size change), survey lots (dashed violet), and — where captured — the whole-city zoning as of that date, to compare against today (e.g. a lot's size/shape before a subdivision). Leave Area on 'Map view' to follow the map (zoom in, then pan/zoom to load more), or pick an Area to load a whole neighbourhood cluster. Pick a date and toggle. Click a parcel for its as-of roll / area / value, inferred lineage, and a link to the current assessment page.">Historical</button>
+              <button id="historical-toggle" type="button" class="secondary" data-layer-set="historical" aria-pressed="false" disabled title="Overlay an earlier snapshot's assessment parcels (dashed amber, tinted by size change vs today's roll), survey lots (dashed violet), and — where captured — the whole-city zoning as of that date, to compare against today (e.g. a lot's size/shape before a subdivision). The whole city loads at once; zoom to 12 or closer to see the parcels. Pick a date and toggle. Click a parcel for its as-of roll / area / value, inferred lineage, and a link to the current assessment page.">Historical</button>
             </div>
           </details>
 

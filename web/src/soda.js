@@ -1208,6 +1208,11 @@ function parcelSetCacheKey(fc) {
 
 // ---------- Historical (as-of-date) overlay — CDN fetchers ----------
 //
+// Since 2026-09-14 the parcel + survey polygons stream from per-snapshot
+// PMTiles archives on R2 (r/build_historical_tiles.R, lib/historicalTiles.js);
+// these fetchers now serve the index, the per-neighbourhood lineage files and
+// the whole-city as-of zoning. fetchHistoricalShard is kept for tooling.
+//
 // The historical shards + lineage live in the data-only repo
 // jayschellenberg/wpg-parcel-history, served free via the jsDelivr CDN. The URL
 // is PINNED to an immutable commit SHA — never @main: jsDelivr's branch-HEAD

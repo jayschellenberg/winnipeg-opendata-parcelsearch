@@ -2,7 +2,7 @@
 // disagreement means the browser 404s every shard for the affected
 // neighbourhood. r/build_historical_shards.R writes a fresh fixture file
 // on every run; this test loads it and asserts historicalSlugify() in
-// main.js produces the same outputs.
+// lib/historicalSlug.js produces the same outputs.
 //
 // Skips quietly with a TODO if the fixture is missing — typical the first
 // time CI runs against a tree that hasn't rebuilt shards yet. The fixture
@@ -14,18 +14,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-// Lift historicalSlugify out of main.js. main.js touches document at
-// import time, so we copy the function instead of importing it. THIS
-// COPY MUST STAY IDENTICAL to main.js:historicalSlugify — that's the
-// whole point of the test. If you change one, change both. The test
-// below also pins the function source as a byte-for-byte assertion.
-function historicalSlugify(x) {
-  return String(x).toUpperCase().trim()
-    .replace(/[/ ]+/g, '-')
-    .replace(/[^A-Z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+// The app's slugify lives in lib/historicalSlug.js (main.js touches document at
+// import time, so it cannot be imported here; the lib can).
+import { historicalSlugify } from '../src/lib/historicalSlug.js';
 
 let passed = 0;
 let failed = 0;
@@ -44,18 +35,6 @@ console.log('slugParity');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixturePath = path.join(here, 'slug_fixtures.json');
-const mainJsPath = path.join(here, '..', 'src', 'main.js');
-
-// Byte-for-byte guard so the in-test copy stays identical to main.js.
-test('historicalSlugify in main.js matches the in-test copy', () => {
-  const src = readFileSync(mainJsPath, 'utf8');
-  const m = src.match(/function historicalSlugify\([^)]*\)\s*\{[\s\S]*?\n\}/);
-  assert.ok(m, 'could not locate historicalSlugify in main.js');
-  const want = historicalSlugify.toString().replace(/\s+/g, ' ').trim();
-  const got = m[0].replace(/\s+/g, ' ').trim();
-  assert.equal(got, want, 'historicalSlugify drifted from the in-test copy — sync them');
-});
-
 if (!existsSync(fixturePath)) {
   console.log('  TODO slug_fixtures.json not present — run r/build_historical_shards.R to generate it');
   console.log('');

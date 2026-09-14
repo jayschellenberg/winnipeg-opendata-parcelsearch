@@ -50,3 +50,10 @@ web/public/parcels.tmpbuild.pmtiles*
 # Python bytecode from tools/
 __pycache__/
 *.pyc
+
+# Historical per-snapshot tile archives (r/build_historical_tiles.R) — served
+# from R2 like parcels.pmtiles; only the sidecar historical-tiles-meta.json is
+# tracked. hist-build/ is the GeoJSONSeq scratch the builder feeds tippecanoe.
+web/public/wpg-hist-*.pmtiles*
+web/public/hist-build/
+web/.env.local

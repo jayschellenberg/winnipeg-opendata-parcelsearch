@@ -1,0 +1,26 @@
+{
+  "snapshots": {
+    "2026-07-01": {
+      "file": "wpg-hist-2026-07-01.pmtiles",
+      "bytes": 168574465,
+      "sha256": "9a93e18066e3c267137aaa9e40450df00647d289bf706cca6044a4efcfe96104",
+      "built": "2026-09-14",
+      "layers": {
+        "parcels": 245080,
+        "survey": 262752
+      },
+      "size_change": {
+        "same": 216635,
+        "minor": 2,
+        "major": 0,
+        "gone": 115,
+        "unknown": 28328
+      },
+      "size_change_vs": "2026-09-14",
+      "size_change_vs_rolls": 245200
+    }
+  },
+  "built": "2026-09-14",
+  "archive_generated": "2026-07-10T10:45:26-0500",
+  "tippecanoe_flags": ["--maximum-zoom=18", "--minimum-zoom=11", "--simplification=2", "--full-detail=14", "--no-feature-limit", "--drop-densest-as-needed", "--maximum-tile-bytes=2000000", "--force", "--quiet"]
+}

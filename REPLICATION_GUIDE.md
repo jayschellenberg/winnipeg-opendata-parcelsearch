@@ -128,6 +128,7 @@ repo-root/
 │   ├── build_historical_shards.R   per-neighbourhood JSON shards + slug-parity fixture
 │   ├── build_lineage.R       inferred lineage between consecutive snapshots
 │   ├── build_parcel_tiles.R  → web/public/parcels.pmtiles via tippecanoe
+│   ├── build_historical_tiles.R  → one wpg-hist-<date>.pmtiles per snapshot (§8.7.1)
 │   ├── sanitize_shards.R / verify_shards.R   post-build sanity
 │   ├── scheduled_download.ps1 / refresh_assets.ps1 / setup_schedule.ps1   Task Scheduler glue
 └── web/
@@ -779,6 +780,40 @@ OSGeo4W GDAL with the ECW plugin + ~50 GB scratch. 2024 output: 16.5 GB, z12–2
 - **You can't confirm the render headlessly** ([Bug 10.10](#1010-document-visibility-blocks-maplibre-tile-loading)).
   Verify instead with an in-page range `fetch()` of the R2 URL from the deployed
   origin — a `206` + `PMTiles` magic bytes exercises CSP + CORS + R2 at once.
+
+---
+
+### 8.7.1 Historical (as-of-date) tile archives
+
+The Historical overlay used to fetch per-neighbourhood GeoJSON shards from
+the wpg-parcel-history CDN, which capped a view at ~25 neighbourhoods and
+needed an Area picker. It now streams **one whole-city PMTiles archive per
+snapshot**, built by `r/build_historical_tiles.R` from those same shards
+(so the geometry is identical) and served from the `wpg-ortho` R2 bucket as
+`wpg-hist-<YYYY-MM-DD>.pmtiles`. Layers are `parcels` and `survey` (source-
+layer names are read by `map.js`); each parcel carries the size-change band
+vs the roll of the build day (`_sizeBand`, `_histArea`, `_curArea`,
+`_deltaPct` — the same rules as `web/src/lib/sizeChange.js`) and `_nbhd`,
+the neighbourhood slug a click uses to fetch that neighbourhood's lineage
+file. Lineage and the whole-city as-of zoning still come from the CDN pin
+in `soda.js`; only the two heavy polygon layers moved.
+
+```
+Rscript r/build_historical_tiles.R                      # every snapshot in index.json
+Rscript r/build_historical_tiles.R --snapshot 2026-07-01
+Rscript r/build_historical_tiles.R --publish            # build, then rclone to R2 + size verify
+```
+
+Each run rewrites the committed sidecar `web/public/historical-tiles-meta.json`
+(built date, per-snapshot file/bytes/sha256/feature counts/size-change
+summary); the app reads it for the count line and the Data Status dialog,
+and range-probes the archive before switching the source so a snapshot with
+no published archive says so instead of drawing nothing. Rebuild after a
+shard republish (new snapshot) **and** periodically anyway, because the
+size-change bands go stale as today's roll moves. Flags mirror
+`lib_tippecanoe.R` with `--minimum-zoom=11` (the overlay draws from z12).
+Local dev: `VITE_HISTORICAL_TILES_BASE=http://localhost:5173` serves the
+archives straight out of `web/public/` (they are gitignored).
 
 ---
 
