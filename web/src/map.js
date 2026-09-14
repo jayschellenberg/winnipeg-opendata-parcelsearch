@@ -28,6 +28,30 @@ import {
   shapeClickHandled,
   isShapeDrawing,
 } from './drawShapes.js';
+import { isMeasuring, setMeasuring } from './lib/measuring.js';
+
+/**
+ * True when a map TOOL already owns this click, so the layer handlers —
+ * every popup and the row-scroll — must stand down. Two owners: the
+ * measurement panel (every click is placing a vertex) and the shape-draw
+ * tools (placing geometry, or toggling a committed shape's Include/Exclude).
+ * MapLibre dispatches a click to EVERY layer handler under the point
+ * independently — there is no propagation to stop — so without this gate a
+ * vertex click also fires whatever sits beneath it.
+ */
+function clickOwnedByTool(map, e) {
+  if (isMeasuring()) return true;
+  return shapeClickHandled(map, e);
+}
+
+/** map.on('click', layer, fn) with the tool gate applied. Every layer click
+ *  in the app goes through here, so a layer added later cannot forget it. */
+function onLayerClick(map, layerId, handler) {
+  map.on('click', layerId, (e) => {
+    if (clickOwnedByTool(map, e)) return;
+    handler(e);
+  });
+}
 import {
   CITYWIDE_PARCELS_LINE_STYLES,
   applyCitywideParcelsBasemapStyle,
@@ -1548,7 +1572,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         if (!map.isStyleLoaded()) return;
         // Stand down while an area-selection tool is armed: the hover
         // popup would sit on top of the exact point being aimed at.
-        if (isShapeDrawing()) {
+        if (isShapeDrawing() || isMeasuring()) {
           popup.remove();
           clearGroupHover();
           return;
@@ -1620,9 +1644,6 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // layers renders one combined block, identical to hover.
       const resultClickPopup = new maplibregl.Popup({ closeButton: true });
       const handleResultClick = (e) => {
-        // A click that placed shape geometry, or flipped a drawn shape's
-        // Include/Exclude, is not a parcel click.
-        if (shapeClickHandled(map, e)) return;
         const key = e.features?.[0]?.properties?._rowKey;
         if (key != null && onFeatureClick) onFeatureClick(key);
 
@@ -1644,8 +1665,8 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // Harmless and deliberate: the second pass recomputes the identical
       // HTML at the identical position, and onFeatureClick was already
       // idempotent for the same reason before the popup existed.
-      map.on('click', 'parcel-fill', handleResultClick);
-      map.on('click', 'assess-context-fill', handleResultClick);
+      onLayerClick(map, 'parcel-fill', handleResultClick);
+      onLayerClick(map, 'assess-context-fill', handleResultClick);
 
       // Click a citywide-parcels polygon → sticky popup with the
       // roll #, address, an Assessment-page link, and a GPS Coordinates
@@ -1655,8 +1676,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // active-result parcels the row click + parcel-summary card
       // already handle the interaction.
       const citywideClickPopup = new maplibregl.Popup({ closeButton: true });
-      map.on('click', 'citywide-parcels-fill', (e) => {
-        if (shapeClickHandled(map, e)) return;
+      onLayerClick(map, 'citywide-parcels-fill', (e) => {
         if (map.getLayoutProperty('citywide-parcels-fill', 'visibility') !== 'visible') return;
         // Search-result layer takes precedence.
         const overSearchResult =
@@ -1684,7 +1704,6 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
 
       const dwellingClickPopup = new maplibregl.Popup({ closeButton: true });
       const handleDwellingClick = (e) => {
-        if (shapeClickHandled(map, e)) return;
         const feature = e.features?.[0];
         if (!feature) return;
         dwellingClickPopup
@@ -1692,16 +1711,15 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
           .setHTML(dwellingUnitHtml(feature.properties, true))
           .addTo(map);
       };
-      map.on('click', 'dwelling-units-multi-circle', handleDwellingClick);
-      map.on('click', 'dwelling-units-single-label', handleDwellingClick);
-      map.on('click', 'dwelling-condo-circle', handleDwellingClick);
+      onLayerClick(map, 'dwelling-units-multi-circle', handleDwellingClick);
+      onLayerClick(map, 'dwelling-units-single-label', handleDwellingClick);
+      onLayerClick(map, 'dwelling-condo-circle', handleDwellingClick);
 
       // Click a contaminated-site circle → standalone popup with the
       // site name, address, status pill, and a link out to the
       // Manitoba registry page for that site.
       const contamPopup = new maplibregl.Popup({ closeButton: true });
-      map.on('click', 'contam-circle', (e) => {
-        if (shapeClickHandled(map, e)) return;
+      onLayerClick(map, 'contam-circle', (e) => {
         const p = e.features?.[0]?.properties;
         if (!p) return;
         contamPopup
@@ -1722,8 +1740,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // description. Skipped when the zoning layer is hidden (clicks pass
       // through to whatever's underneath, including parcel-fill above it).
       const zoningPopup = new maplibregl.Popup({ closeButton: true });
-      map.on('click', 'zoning-fill', (e) => {
-        if (shapeClickHandled(map, e)) return;
+      onLayerClick(map, 'zoning-fill', (e) => {
         // Don't intercept the click if a parcel was also under it — let the
         // parcel handler win since that's the user's primary interest.
         const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
@@ -1749,14 +1766,13 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // and an overlay still scrolls the table to the parcel's row.
       const policyPopup = new maplibregl.Popup({ closeButton: true });
       const policyClick = (htmlBuilder) => (e) => {
-        if (shapeClickHandled(map, e)) return;
         const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
         if (parcelHit.length > 0) return;
         const p = e.features?.[0]?.properties;
         if (!p) return;
         policyPopup.setLngLat(e.lngLat).setHTML(htmlBuilder(p)).addTo(map);
       };
-      map.on('click', 'secondary-plans-fill', policyClick((p) => {
+      onLayerClick(map, 'secondary-plans-fill', policyClick((p) => {
         const kind = p.plan_kind ?? 'Secondary Plan';
         const name = p.precinct_name ?? p.feature_name ?? '';
         // Open Data only publishes 16 of the City's ~42 adopted secondary
@@ -1774,20 +1790,19 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
             plans. <a href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer">See full list →</a></small>
           </div>`;
       }));
-      map.on('click', 'infill-guideline-fill', policyClick(() => `
+      onLayerClick(map, 'infill-guideline-fill', policyClick(() => `
         <div style="line-height:1.4">
           <strong>Mature Community</strong><br>
           <em>Infill Guidelines apply</em>
         </div>`));
-      map.on('click', 'malls-corridors-fill', policyClick((p) => `
+      onLayerClick(map, 'malls-corridors-fill', policyClick((p) => `
         <div style="line-height:1.4">
           <strong>${escapeHtml(p.pdo_kind ?? 'Malls and Corridors PDO')}</strong>
           ${p.feature_name ? `<br>${escapeHtml(p.feature_name)}` : ''}
         </div>`));
 
       const transitPopup = new maplibregl.Popup({ closeButton: true });
-      map.on('click', 'transit-stops-circle', (e) => {
-        if (shapeClickHandled(map, e)) return;
+      onLayerClick(map, 'transit-stops-circle', (e) => {
         const p = e.features?.[0]?.properties;
         if (!p) return;
         const code = p.stop_code ? escapeHtml(p.stop_code) : '';
@@ -1805,8 +1820,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
           </div>`;
         transitPopup.setLngLat(e.lngLat).setHTML(html).addTo(map);
       });
-      map.on('click', 'transit-routes-line', (e) => {
-        if (shapeClickHandled(map, e)) return;
+      onLayerClick(map, 'transit-routes-line', (e) => {
         const parcelHit = map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] });
         if (parcelHit.length > 0) return;
         const p = e.features?.[0]?.properties;
@@ -1833,7 +1847,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       }
 
       const hoodPopup = new maplibregl.Popup({ closeButton: true });
-      map.on('click', 'neighbourhood-clusters-fill', policyClick((p) => {
+      onLayerClick(map, 'neighbourhood-clusters-fill', policyClick((p) => {
         const list = p.neighbourhoods
           ? String(p.neighbourhoods).split(';').map((s) => escapeHtml(s.trim())).join(', ')
           : '';
@@ -1844,7 +1858,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
             ${list ? `<br><small style="color:#475569">${list}</small>` : ''}
           </div>`;
       }));
-      map.on('click', 'neighbourhoods-fill', policyClick((p) => `
+      onLayerClick(map, 'neighbourhoods-fill', policyClick((p) => `
         <div style="line-height:1.4;max-width:280px">
           <strong>Neighbourhood:</strong> ${escapeHtml(p.name || '')}
           ${p.cluster ? `<br><small>Cluster: ${escapeHtml(p.cluster)}</small>` : ''}
@@ -1858,7 +1872,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         className: 'hood-hover-popup',
       });
       const hoodHoverHandler = (labelKey) => (e) => {
-        if (isShapeDrawing()) {
+        if (isShapeDrawing() || isMeasuring()) {
           hoodHoverPopup.remove();
           return;
         }
@@ -1892,13 +1906,12 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
 
       const trafficPopup = new maplibregl.Popup({ closeButton: true });
       const trafficClick = (e) => {
-        if (shapeClickHandled(map, e)) return;
         const p = e.features?.[0]?.properties;
         if (!p) return;
         trafficPopup.setLngLat(e.lngLat).setHTML(trafficPopupHtml(p)).addTo(map);
       };
-      map.on('click', 'traffic-lines', trafficClick);
-      map.on('click', 'traffic-stations-circle', trafficClick);
+      onLayerClick(map, 'traffic-lines', trafficClick);
+      onLayerClick(map, 'traffic-stations-circle', trafficClick);
       for (const layerId of ['traffic-lines', 'traffic-stations-circle']) {
         map.on('mouseenter', layerId, () => {
           if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
@@ -1986,8 +1999,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // layers rendered under the same point.
       const histClickPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
       const wireHist = (layerId, htmlFn, deferTo = []) => {
-        map.on('click', layerId, (e) => {
-          if (shapeClickHandled(map, e)) return;
+        onLayerClick(map, layerId, (e) => {
           if (map.getLayoutProperty(layerId, 'visibility') !== 'visible') return;
           for (const other of deferTo) {
             if (map.getLayer(other)
@@ -3322,12 +3334,18 @@ class MeasureControl {
     if (open) {
       this._panel.style.display = 'block';
       this._btn.classList.add('active');
+      // Every hover and click handler reads this through isMeasuring() to
+      // stand down while the measurement owns the pointer — keep this call
+      // and the one in _close() paired, or the map stays inert after the
+      // panel closes.
+      setMeasuring(true);
     } else {
       this._close();
     }
   }
   _close() {
     this._draw.deleteAll();
+    setMeasuring(false);
     try { this._draw.changeMode('simple_select'); } catch { /* already simple_select */ }
     this._panel.style.display = 'none';
     this._btn.classList.remove('active');

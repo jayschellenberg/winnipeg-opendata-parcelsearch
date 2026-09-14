@@ -4557,3 +4557,32 @@ button.topbar-link {
 #results tbody tr.deselected > td { opacity: 0.42; }
 #results tbody tr.deselected > td.sel-col { opacity: 1; }
 #results tbody tr.deselected > td:not(.sel-col) { text-decoration: line-through; }
+
+/* Active-filter WARNING in the Sales tab's "Additional filters" summary
+   (Manitoba pattern). A chip inside the summary, visible collapsed: these
+   controls drop comps and the disclosure is closed by default. Amber, the
+   same pair the staleness banner uses, and it names each filter so a
+   glance says what is biting. */
+.sidebar details.more-filters > summary .more-filters-title { display: inline; }
+.sidebar details.more-filters > summary .sales-filters-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid #e0b34f;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  line-height: 1.35;
+  vertical-align: middle;
+}
+.sidebar details.more-filters > summary .sales-filters-badge[hidden] { display: none; }
+
+/* While the Measure panel is open the measurement owns the pointer; the
+   crosshair says so, and the bottom-right legends step aside so a vertex
+   can be placed under them. */
+body.measuring .maplibregl-canvas { cursor: crosshair !important; }

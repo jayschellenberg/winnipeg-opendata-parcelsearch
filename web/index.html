@@ -677,7 +677,17 @@
                (date, use, class, zoning). Same pattern as the property
                tab's Additional Searches. -->
           <details class="more-filters sales-filters">
-            <summary>Additional filters</summary>
+            <!-- The badge is a WARNING that names every control in here
+                 that is set. It lives inside <summary> so it shows when
+                 the group is collapsed — the case where a forgotten Street
+                 or Far-Flung Exclude silently drops comps. Filled by
+                 renderSalesFiltersBadge() in main.js, which also repeats
+                 the list on the count line above the table. -->
+            <summary><span class="more-filters-title">Additional filters</span><span
+              class="sales-filters-badge"
+              id="sales-filters-badge"
+              hidden
+            ></span></summary>
 
             <!-- Sale price range. The whole transaction's consideration,
                  so a multi-parcel sale is tested once as one deal. -->

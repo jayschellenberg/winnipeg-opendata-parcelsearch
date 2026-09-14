@@ -136,6 +136,7 @@ import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl u
 import { COLUMNS, csvSchemaForMode, buildThead, columnCellClasses } from './lib/columnsRegistry.js';
 import { assignParcelSeq, clearParcelSeq } from './lib/parcelNumbering.js';
 import { PILL_SPECS, modeFromChecked, checkedFromMode } from './lib/pillBinding.js';
+import { salesFilterChips, salesFilterChipText } from './lib/salesFilterChips.js';
 // Cell-value formatters still used by the parcel-summary card (not table cells).
 // The DOM constructors td/badgeTd/linkTd/etc are consumed inside the registry
 // render functions and never need to be imported here.
@@ -741,6 +742,66 @@ placeNumberingRow(getActiveTab());
 // Wire the Sales Analysis tab — dropzone, subject roll, sentinel
 // filter. The CSV is parsed entirely client-side; no upload.
 wireSalesTab();
+
+// ---------- "Additional filters" active-filter warning (Sales Analysis) ----------
+//
+// The disclosure is collapsed by default, so a filter set inside it can
+// drop comps with nothing on screen to say so (the Manitoba pattern,
+// 2026-09-05). Two places say so now, both fed by lib/salesFilterChips.js:
+// a warning badge in the disclosure's summary, visible open or closed,
+// naming each control that is set; and a note on the sales count line
+// (renderSalesCount), where the eye is when the results look thin.
+function readSalesFilterState() {
+  const v = (id) => document.getElementById(id)?.value;
+  return {
+    priceLow: v('sales-price-low'),
+    priceHigh: v('sales-price-high'),
+    sizeLow: v('sales-size-low'),
+    sizeHigh: v('sales-size-high'),
+    streetName: v('sales-street-name'),
+    farFlungKm: v('far-flung-km'),
+    farFlungExclude: !!document.getElementById('far-flung-exclude')?.checked,
+    n1: v('sales-n1-filter'),
+    rise: v('sales-rise-filter'),
+  };
+}
+
+/** Repaint the summary badge; returns the chips so the count line can reuse them. */
+function renderSalesFiltersBadge() {
+  const badge = document.getElementById('sales-filters-badge');
+  const chips = salesFilterChips(readSalesFilterState());
+  if (!badge) return chips;
+  if (chips.length === 0) {
+    badge.hidden = true;
+    badge.textContent = '';
+    badge.removeAttribute('title');
+    return chips;
+  }
+  badge.hidden = false;
+  badge.textContent = `⚠ ${salesFilterChipText(chips)}`;
+  badge.title = `${chips.length} additional filter${chips.length === 1 ? '' : 's'} set — `
+    + chips.map((c) => c.detail).join('; ');
+  return chips;
+}
+
+/** The "· ⚠ Additional filters: …" clause the sales count line appends. */
+function additionalFiltersSuffix() {
+  const chips = renderSalesFiltersBadge();
+  return chips.length ? ` · ⚠ Additional filters: ${salesFilterChipText(chips)}` : '';
+}
+
+// Delegated so every control in the disclosure is covered — the text and
+// number inputs (`input`), the selects (`change`) and the Flagged pill,
+// whose segments only ever `click`. Keeps the badge honest before any
+// sales are loaded too, when runSalesAnalysis's early return would
+// otherwise leave it stale.
+{
+  const group = document.querySelector('details.more-filters.sales-filters');
+  for (const evt of ['input', 'change', 'click']) {
+    group?.addEventListener(evt, () => { renderSalesFiltersBadge(); renderSalesCount(); });
+  }
+  renderSalesFiltersBadge();
+}
 
 // Topbar Data Status dialog + the tile-staleness banner. Lazy: the
 // dialog fetches nothing until first opened; the banner costs one
@@ -4166,7 +4227,7 @@ function renderSalesCount() {
   // The area-filter clause rides on the sales count too — a drawn shape
   // narrows a sales comp set exactly as it narrows a property search.
   const text = lastSalesCountBase
-    ? lastSalesCountBase + shapeFilterSuffix() + drawCapSuffix() + selectionSuffix()
+    ? lastSalesCountBase + shapeFilterSuffix() + drawCapSuffix() + selectionSuffix() + additionalFiltersSuffix()
     : '';
   el.textContent = text;
   el.classList.toggle('results-status-error', lastSalesCountError && !!text);
