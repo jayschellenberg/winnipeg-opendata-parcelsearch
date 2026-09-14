@@ -810,7 +810,11 @@ summary); the app reads it for the count line and the Data Status dialog,
 and range-probes the archive before switching the source so a snapshot with
 no published archive says so instead of drawing nothing. Rebuild after a
 shard republish (new snapshot) **and** periodically anyway, because the
-size-change bands go stale as today's roll moves. Flags mirror
+size-change bands go stale as today's roll moves: the bi-monthly
+`WpgParcelTilesBiMonthly` job (`r/rebuild_tiles.ps1`) runs
+`r/publish_historical_tiles.ps1` as its non-fatal step 7 after the citywide
+archive has been pushed, and leaves a `FAILED-historical-tiles-<date>.txt`
+marker in the archive folder if that step fails. Flags mirror
 `lib_tippecanoe.R` with `--minimum-zoom=11` (the overlay draws from z12).
 Local dev: `VITE_HISTORICAL_TILES_BASE=http://localhost:5173` serves the
 archives straight out of `web/public/` (they are gitignored).

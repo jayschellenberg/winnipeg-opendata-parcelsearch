@@ -128,7 +128,7 @@ Write-Output ''
 Write-Output "Registered:"
 Write-Output "  WpgOpenDataSemiAnnualDownload  (Jun 1 + Dec 1, 03:00)  -> data download + archive (the only job storing history)"
 Write-Output "  WpgAssetRefreshQuarterly       (quarterly, 03:30)      -> heartbeats + transit/neighbourhood refresh + auto-deploy"
-Write-Output "  WpgParcelTilesBiMonthly        (even months, 2nd, 03:00) -> citywide parcel tiles rebuild + publish + auto-deploy"
+Write-Output "  WpgParcelTilesBiMonthly        (even months, 2nd, 03:00) -> citywide parcel tiles rebuild + publish + auto-deploy, then the historical per-snapshot tile archives (non-fatal step 7)"
 Write-Output ""
 Write-Output "Verify:  schtasks /Query /TN WpgParcelTilesBiMonthly /V /FO LIST"
 Write-Output "Alerts:  powershell -ExecutionPolicy Bypass -File r\rebuild_tiles.ps1 -TestAlert"

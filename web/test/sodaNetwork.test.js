@@ -8,9 +8,8 @@
 //   1. fetchSoda retries transient 5xx / network errors (added in 559f4f8,
 //      silently removed by the 1348c06 "simplify" pass, restored in
 //      Milestone 1 — this test is what keeps it from vanishing again).
-//   2. fetchCurrentAssessmentInBbox reports `complete: false` when its page
-//      loop is cut short, so the historical overlay never marks parcels
-//      "gone" off a partial fetch.
+//   2. (retired 2026-09-14: fetchCurrentAssessmentInBbox left with the shard-era
+//      historical overlay; the size-change bands are baked into the tiles now.)
 //   3. Every spatial join asks an INTERSECTION predicate, never within_box.
 //      within_box is a containment test that drops any target geometry
 //      larger than the query box — silently, with no error and no empty
@@ -19,7 +18,6 @@
 import assert from 'node:assert/strict';
 import {
   fetchSoda,
-  fetchCurrentAssessmentInBbox,
   searchAssessmentParcelsByRolls,
   fetchSurveyOverlap,
   fetchZoningOverlap,
@@ -111,66 +109,6 @@ test('fetchSoda — clean 200 makes exactly one request', async () => {
   const calls = stubFetch([{ status: 200, json: { ok: true } }]);
   await fetchSoda('https://example.test/x.json', FAST);
   assert.equal(calls.length, 1);
-});
-
-// ---------- fetchCurrentAssessmentInBbox completeness ----------
-
-const BBOX = [-97.2, 49.8, -97.1, 49.9];
-
-test('fetchCurrentAssessmentInBbox — short page → rows + complete: true', async () => {
-  const rows = [
-    { roll_number: '01000001000', assessed_land_area: '5000' },
-    { roll_number: '01000002000', assessed_land_area: '6200' },
-  ];
-  stubFetch([{ status: 200, json: rows }]);
-  const out = await fetchCurrentAssessmentInBbox(BBOX);
-  assert.deepEqual(out.rows, rows);
-  assert.equal(out.complete, true);
-});
-
-test('fetchCurrentAssessmentInBbox — non-OK response → complete: false (never fake-complete)', async () => {
-  stubFetch([{ status: 500, text: 'blip' }]);
-  const out = await fetchCurrentAssessmentInBbox(BBOX);
-  assert.deepEqual(out.rows, []);
-  assert.equal(out.complete, false);
-});
-
-test('fetchCurrentAssessmentInBbox — thrown fetch → complete: false', async () => {
-  stubFetch([{ throw: new TypeError('fetch failed') }]);
-  const out = await fetchCurrentAssessmentInBbox(BBOX);
-  assert.deepEqual(out.rows, []);
-  assert.equal(out.complete, false);
-});
-
-test('fetchCurrentAssessmentInBbox — invalid bbox → empty + incomplete, no request', async () => {
-  const calls = stubFetch([]);
-  const out = await fetchCurrentAssessmentInBbox([1, 2, NaN, 4]);
-  assert.deepEqual(out, { rows: [], complete: false });
-  assert.equal(calls.length, 0);
-});
-
-test('fetchCurrentAssessmentInBbox — every page is ordered by roll_number (audit F1)', async () => {
-  // Without $order, Socrata's page order is replica-dependent: measured on a
-  // real cluster bbox, two unordered runs each dropped ~3.8k rolls the other
-  // run returned — every dropped roll rendered as a false grey "gone" parcel.
-  // This pins the $order param on EVERY page of the loop so a future
-  // "simplify" pass can't reintroduce it (the 1348c06 failure mode).
-  const fullPage = Array.from({ length: 5000 }, (_, i) => ({
-    roll_number: String(10000000000 + i),
-    assessed_land_area: '5000',
-  }));
-  const shortPage = [{ roll_number: '99999999999', assessed_land_area: '100' }];
-  const calls = stubFetch([
-    { status: 200, json: fullPage },
-    { status: 200, json: shortPage },
-  ]);
-  const out = await fetchCurrentAssessmentInBbox(BBOX);
-  assert.equal(calls.length, 2);
-  for (const url of calls) {
-    assert.ok(url.includes('$order=roll_number'), `page not ordered: ${url}`);
-  }
-  assert.equal(out.rows.length, 5001);
-  assert.equal(out.complete, true);
 });
 
 // ---------- paddedBoxes null-geometry guard (audit F3) ----------
@@ -387,17 +325,6 @@ test('fetchSurveyOverlap asks intersects — River Lot / Outer Two Mile parcels 
   const where = readWhere(calls[0]);
   assert.ok(!where.includes('within_box'), `still asking within_box: ${where}`);
   assert.match(where, /intersects\(location,'POLYGON\(\(/);
-});
-
-test('fetchCurrentAssessmentInBbox asks intersects — a missing roll here paints a false "gone"', async () => {
-  const calls = stubFetch([{ status: 200, json: [] }]);
-  const { rows, complete } = await fetchCurrentAssessmentInBbox([-97.20129, 49.91235, -97.19992, 49.91632]);
-  assert.deepEqual(rows, []);
-  assert.equal(complete, true);
-  const where = readWhere(calls[0]);
-  assert.ok(!where.includes('within_box'), `still asking within_box: ${where}`);
-  assert.match(where, /intersects\(geometry,'POLYGON\(\(/);
-  assert.match(String(calls[0]), /d4mq-wa44\.json/);
 });
 
 test('the padded-bbox rectangle is a rectangle, not the parcel outline', async () => {

@@ -1211,7 +1211,7 @@ function parcelSetCacheKey(fc) {
 // Since 2026-09-14 the parcel + survey polygons stream from per-snapshot
 // PMTiles archives on R2 (r/build_historical_tiles.R, lib/historicalTiles.js);
 // these fetchers now serve the index, the per-neighbourhood lineage files and
-// the whole-city as-of zoning. fetchHistoricalShard is kept for tooling.
+// the whole-city as-of zoning.
 //
 // The historical shards + lineage live in the data-only repo
 // jayschellenberg/wpg-parcel-history, served free via the jsDelivr CDN. The URL
@@ -1306,12 +1306,6 @@ export function fetchHistoricalManifest(snap) {
   return fetchHistCached(`${snap}/manifest.json`, `wpg_hist_${HIST_VER}_man_${snap}`, HISTORICAL_LONG_TTL_MS);
 }
 
-/** A parcel/survey shard FeatureCollection. layer = 'parcels' | 'survey'. */
-export function fetchHistoricalShard(snap, layer, slug) {
-  return fetchHistCached(`${snap}/${layer}/${slug}.json`,
-    `wpg_hist_${HIST_VER}_${snap}_${layer}_${slug}`, HISTORICAL_LONG_TTL_MS);
-}
-
 /** A snapshot's whole-city zoning FeatureCollection (not sharded — ~18k
  *  districts in one file). Returns null if that snapshot has no zoning layer. */
 export function fetchHistoricalZoning(snap) {
@@ -1325,83 +1319,6 @@ export function fetchHistoricalZoning(snap) {
 export function fetchHistoricalLineage(dir, slug) {
   return fetchHistCached(`${dir}/${slug}.json`,
     `wpg_hist_${HIST_VER}_${dir}_${slug}`, HISTORICAL_LONG_TTL_MS);
-}
-
-// Current assessment moves slowly; cache the size-change query for a week so a
-// repeat view of the same area (especially a fixed cluster, whose bbox is
-// identical each time) skips the paged SODA round-trip entirely.
-const CURRENT_ASMT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-/**
- * Current assessment parcels within a bbox — LEAN fields only (roll_number +
- * assessed_land_area, no geometry), for historical size-change enrichment. One
- * paged within_box query against d4mq-wa44 (.json so no geometry is parsed),
- * far cheaper than the per-feature overlap machinery. bbox is turf order:
- * [minLon, minLat, maxLon, maxLat]. Returns plain rows.
- *
- * IDB-cached by rounded bbox (~11 m): a fixed cluster or repeated view reuses the
- * cached rows instead of re-paging. Only a COMPLETE result is cached, so a run
- * cut short by a network error re-fetches next time rather than caching a partial.
- *
- * Returns { rows, complete }. `complete` is false when the page loop was cut
- * short (network error, non-OK response, or the 30-page cap) — callers MUST
- * NOT treat a missing roll as "gone" in that case, because "not fetched" and
- * "removed from the assessment roll" are indistinguishable in a partial set.
- */
-export async function fetchCurrentAssessmentInBbox(bbox4) {
-  if (!Array.isArray(bbox4) || bbox4.length < 4 || bbox4.some((n) => !Number.isFinite(n))) {
-    return { rows: [], complete: false };
-  }
-  const [minLon, minLat, maxLon, maxLat] = bbox4;
-  // Key prefix v3. v1 entries were written by an unordered page loop (see the
-  // $order note below) and can be missing thousands of rolls. v2 entries were
-  // written by a within_box query, which omitted every parcel larger than the
-  // box (see the predicate note below) — the same defect, a different cause.
-  // Neither is trustworthy, and both are cached for a week, so the key moves
-  // rather than the stale rows being served until they expire.
-  const cacheKey = `wpg_curasmt3_${[minLon, minLat, maxLon, maxLat].map((n) => n.toFixed(4)).join('_')}`;
-  const cached = await idbReadCache(cacheKey, CURRENT_ASMT_TTL_MS).catch(() => null);
-  if (cached) return { rows: cached, complete: true };   // only complete runs are cached
-  const PAD = 0.001;
-  const round = (n) => n.toFixed(6);
-  // `intersects` against the padded box as a rectangle, not within_box: a
-  // parcel LARGER than the box is not contained by it and comes back missing,
-  // which this caller reads as "the roll no longer exists" and paints as a
-  // grey gone/retired parcel. The 288,252 sf warehouse at 1347 Border St
-  // vanishes this way once the box is tighter than the parcel. The
-  // `complete` guard below cannot catch it — nothing was truncated, the
-  // predicate simply excluded it.
-  const w = minLon - PAD, s = minLat - PAD, e = maxLon + PAD, n = maxLat + PAD;
-  const rect = `POLYGON((${round(w)} ${round(s)}, ${round(e)} ${round(s)}, `
-    + `${round(e)} ${round(n)}, ${round(w)} ${round(n)}, ${round(w)} ${round(s)}))`;
-  const where = `intersects(geometry,'${rect}')`;
-  const base = ASSESS_URL.replace('.geojson', '.json');
-  const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
-  const rows = [];
-  let offset = 0;
-  let complete = false;
-  for (let page = 0; page < 30; page++) {            // cap ~150k rows
-    // $order=roll_number is load-bearing: Socrata gives NO ordering guarantee
-    // without $order, and a cluster bbox spans 4-7 pages — measured on the
-    // St. Vital South bbox, two unordered runs each returned ~4.5k duplicate
-    // rows and were missing ~3.8k rolls the other run had. Every missing roll
-    // became a false grey "gone" parcel. roll_number is unique across
-    // d4mq-wa44 (verified 245,212 = count distinct), so pages are stable.
-    const url = `${base}?$select=roll_number,assessed_land_area`
-      + `&$where=${encodeURIComponent(where)}&$order=roll_number&$limit=${SODA_PAGE_SIZE}&$offset=${offset}`;
-    let batch;
-    try {
-      const res = await fetch(url, { headers });
-      if (!res.ok) break;
-      batch = await res.json();
-    } catch { break; }
-    if (!Array.isArray(batch)) break;
-    rows.push(...batch);
-    if (batch.length < SODA_PAGE_SIZE) { complete = true; break; }  // last (short/empty) page
-    offset += batch.length;
-  }
-  if (complete) await idbWriteCache(cacheKey, rows).catch(() => {});
-  return { rows, complete };
 }
 
 /**

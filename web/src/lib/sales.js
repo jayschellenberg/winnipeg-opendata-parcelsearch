@@ -639,6 +639,10 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     // in square feet only, and an appraiser reasons about larger parcels
     // in acres. Same group-total denominator as $/Lot SF, so an assembly
     // is rated as one deal.
+    // Group SF: the same group total in square feet, i.e. the denominator
+    // $/Lot SF divides by, kept beside Acres so the rate is readable
+    // against its base (Manitoba's Group SF column, 2026-09-08).
+    if (landSf > 0) p._saleLandSf = landSf;
     if (landSf > 0) p._saleAcres = landSf / SQFT_PER_ACRE;
     if (p._salePrice && p._saleAcres > 0) p._pricePerAcre = p._salePrice / p._saleAcres;
     // Price per LOT: the consideration split across the parcels in the

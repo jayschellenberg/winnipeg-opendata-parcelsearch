@@ -690,4 +690,27 @@ Get-ChildItem $archiveRoot -File -Filter 'FAILED-tiles-*.txt' -ErrorAction Silen
   ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
 
 Log 'Pushed. Vercel will rebuild and fetch-pmtiles.mjs will pull the new asset.'
+
+# --- Step 7: historical tile archives (non-fatal) -------------------------
+# The Historical overlay's per-snapshot archives carry size-change bands
+# computed against the roll of the day they were built, so they go stale on
+# the same clock as the citywide archive. Rebuild + republish them here, after
+# the citywide job has succeeded and pushed. publish_historical_tiles.ps1
+# commits its own sidecar (web/public/historical-tiles-meta.json) and pushes.
+# Non-fatal on purpose: the citywide archive above is already live and pinned,
+# and a historical failure must not be reported as a citywide one. It leaves a
+# FAILED-historical-tiles marker beside the citywide ones so the next look at
+# the archive folder shows it, and the log says how to rerun.
+Log 'Step 7: historical tile archives (r/publish_historical_tiles.ps1)'
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'r\publish_historical_tiles.ps1') *>> $log 2>&1
+if ($LASTEXITCODE -ne 0) {
+  $marker = Join-Path $archiveRoot ("FAILED-historical-tiles-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd'))
+  "historical tile rebuild exited $LASTEXITCODE on $(Get-Date -Format 's'); rerun: powershell -File r\publish_historical_tiles.ps1 (see $log)" |
+    Set-Content -Path $marker -ErrorAction SilentlyContinue
+  Log "  historical tiles FAILED (exit $LASTEXITCODE) - citywide archive is unaffected; marker $marker; rerun r\publish_historical_tiles.ps1"
+} else {
+  Log '  historical tiles rebuilt, published and their sidecar pushed.'
+  Get-ChildItem $archiveRoot -File -Filter 'FAILED-historical-tiles-*.txt' -ErrorAction SilentlyContinue |
+    ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
+}
 Log '=== done ==='

@@ -498,6 +498,14 @@ export const COLUMNS = [
     render: (a) => td(formatDollars(a._pricePerBldgSf), 'num'),
     csv: { header: '$/Bldg SF', extract: (a) => a._pricePerBldgSf } },
 
+  // Group SF — the same group land total as Acres, in square feet: the
+  // denominator behind $/Lot SF, readable beside its rate. One figure
+  // (`_saleLandSf`) feeds both this and Acres, so they can never drift.
+  { key: 'saleLandSf',   header: 'Group SF',      mode: 'sales',  sortable: true,
+    theadTitle: 'Total land square footage of EVERY parcel in this sale (Land Actual sqft, group total) — the denominator behind $/Lot SF. On a single-parcel sale it is that parcel\'s land. Blank when no usable land area exists for the sale.',
+    render: (a) => td(formatSqFt(a._saleLandSf), 'num'),
+    csv: { header: 'Group SF', extract: (a) => (Number.isFinite(a._saleLandSf) ? Math.round(a._saleLandSf) : a._saleLandSf) } },
+
   { key: 'saleAcres',    header: 'Acres',         mode: 'sales',  sortable: true,
     theadTitle: 'Land area in acres, derived from Land Actual sqft (÷ 43,560). For multi-parcel sales, the group total.',
     render: (a) => td(formatAcres(a._saleAcres), 'num'),

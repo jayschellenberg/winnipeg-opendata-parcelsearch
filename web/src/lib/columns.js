@@ -123,7 +123,7 @@ const COMMERCIAL_SALES = [
 // building columns are noise on a land sale.
 const LAND_SALES = [
   'roll', 'address', 'cluster', 'saleDate', 'salePrice', 'swornValue',
-  'area', 'saleAcres', 'pricePerSf', 'pricePerAcre', 'pricePerLot',
+  'area', 'saleLandSf', 'saleAcres', 'pricePerSf', 'pricePerAcre', 'pricePerLot',
   // The column that keeps finished houses out of a land comp set.
   'built', 'builtDate',
   'category',

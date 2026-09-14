@@ -437,6 +437,7 @@ const SORT_KEYS = {
   n1Id:         (r) => numOrStr(r.assess?.properties?._n1Id),
   // Rank, not label text: low, mid, high, then unclassified.
   rise:         (r) => strKey(r.assess?.properties?._riseSortKey ?? '9'),
+  saleLandSf:   (r) => finiteOrNeg(r.assess?.properties?._saleLandSf),
   saleAcres:    (r) => finiteOrNeg(r.assess?.properties?._saleAcres),
   pricePerBldgSf: (r) => finiteOrNeg(r.assess?.properties?._pricePerBldgSf),
   // Rank, not text: teardown first, then confirms-vacant, then the
@@ -4518,6 +4519,7 @@ async function runSalesAnalysis() {
     const assembly = judgedAssembly(p.roll_number);
     if (assembly && p._salePrice) {
       p._pricePerSf = p._salePrice / assembly.landSf;
+      p._saleLandSf = assembly.landSf;
       p._saleAcres = assembly.landSf / 43560;
       p._pricePerAcre = p._salePrice / p._saleAcres;
       p._pricePerLot = p._salePrice / assembly.parcels;
