@@ -30,6 +30,7 @@
 import bbox from '@turf/bbox';
 import booleanIntersects from '@turf/boolean-intersects';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+import { yearSeriesFromEntries, annualizedGrowth, latestFullYear, FULL_YEAR_MIN_DAYS } from './lib/trafficSeries.js';
 import { intersect } from '@turf/intersect';
 import { area } from '@turf/area';
 import { waterTokens } from './lib/water.js';
@@ -158,7 +159,9 @@ const TRAFFIC_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // V5: V4 entries were built from a page loop ordered by count-date alone —
 // non-unique across >60k grouped rows, so pages could drop or double-count
 // study-days for up to 30 cached days. The key bump orphans them.
-const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV5';
+// V6: line features carry the per-year corridor series + growth (2026-09-14).
+const TRAFFIC_CACHE_KEY = 'trafficVolumeLinesV6';
+const TRAFFIC_STATION_SERIES_CACHE_KEY = 'trafficStationSeriesV1';
 
 /**
  * Query Survey Parcels by attribute. Any provided field is partial-matched
@@ -1439,7 +1442,11 @@ async function fetchTrafficVolumeLines() {
     fetchMidblockTrafficStudyRows(),
     fetchRoadNetwork(),
   ]);
-  const latestRows = latestTrafficRowsByCorridor(countRows);
+  // Every study for every corridor is already in hand (the daily aggregate
+  // is the whole dataset, 1997 onward), so the per-year history costs no
+  // second fetch: group the studies by corridor, then by year.
+  const corridorSeries = buildCorridorYearSeries(countRows);
+  const latestRows = latestTrafficRowsByCorridor(countRows, corridorSeries);
   const roadIndex = buildRoadIndex(roadFc);
   const fc = featureCollection(buildTrafficLineFeatures(latestRows, roadIndex), {
     source: 'Midblock Traffic Counts + Road Network',
@@ -1536,7 +1543,35 @@ async function fetchRoadNetwork() {
   });
 }
 
-function latestTrafficRowsByCorridor(rows) {
+/**
+ * Corridor key → per-year series ({year, avg, total, days, studies}[],
+ * ascending) from the study-level aggregate rows. A study's year is the
+ * year of its last count day (studies do not straddle New Year in
+ * practice); its days are the distinct count dates, so a year that holds
+ * two studies averages over both. From/to occasionally swap between
+ * studies of one corridor, which trafficCorridorKey's sorted pair absorbs.
+ */
+function buildCorridorYearSeries(rows) {
+  const entriesByKey = new Map();
+  for (const row of rows) {
+    const key = trafficCorridorKey(row);
+    if (!key) continue;
+    const year = new Date(row.max_count_date || row.min_count_date || '').getFullYear();
+    if (!Number.isFinite(year)) continue;
+    if (!entriesByKey.has(key)) entriesByKey.set(key, []);
+    entriesByKey.get(key).push({
+      year,
+      total: Number(row.sum_count_15_minutes),
+      days: trafficStudyDayCount(row),
+      studies: 1,
+    });
+  }
+  const out = new Map();
+  for (const [key, entries] of entriesByKey) out.set(key, yearSeriesFromEntries(entries));
+  return out;
+}
+
+function latestTrafficRowsByCorridor(rows, corridorSeries = new Map()) {
   const seen = new Set();
   const out = [];
   for (const row of rows) {
@@ -1547,6 +1582,7 @@ function latestTrafficRowsByCorridor(rows) {
     seen.add(key);
     row._avgDailyVolume = Math.round(avg);
     row._sampleDays = trafficStudyDayCount(row);
+    row._series = corridorSeries.get(key) || [];
     out.push(row);
   }
   return out;
@@ -1628,6 +1664,14 @@ function trafficLineProperties(row) {
     sample_days: row._sampleDays,
     interval_count: Number(row.count) || null,
     source_name: 'Midblock Traffic Counts',
+    // History. A JSON string, because MapLibre flattens nested objects on
+    // the way through a feature's properties anyway; parseSeries reads it
+    // back in the popup. Growth wants at least two sample days at each
+    // endpoint so a one-day study cannot set the trend.
+    series: JSON.stringify(row._series || []),
+    series_years: (row._series || []).length,
+    latest_year: row._series?.length ? row._series[row._series.length - 1].year : null,
+    growth_pct_yr: annualizedGrowth(row._series, { minDays: 2 })?.pct ?? null,
   };
 }
 
@@ -1655,9 +1699,15 @@ async function fetchPermanentTrafficStations() {
     $group: 'site,location',
     $order: 'site',
   });
-  const { rows } = await fetchSodaRowsPaged(PERMANENT_TRAFFIC_COUNTS_URL, params, {
-    label: 'Permanent traffic station 24h aggregate',
-  });
+  const [{ rows }, seriesBySite] = await Promise.all([
+    fetchSodaRowsPaged(PERMANENT_TRAFFIC_COUNTS_URL, params, {
+      label: 'Permanent traffic station 24h aggregate',
+    }),
+    fetchStationYearSeries().catch((err) => {
+      console.warn('traffic station history failed (non-fatal)', err);
+      return new Map();
+    }),
+  ]);
 
   const features = rows
     .filter((row) => row.location?.coordinates?.length === 2)
@@ -1666,6 +1716,10 @@ async function fetchPermanentTrafficStations() {
         min_count_date: row.min_timestamp,
         max_count_date: row.max_timestamp,
       }), 1));
+      const series = seriesBySite.get(row.site) || [];
+      // A station year is a true annual average only with near-complete
+      // coverage; the growth endpoints hold to the same bar.
+      const full = latestFullYear(series);
       return {
         type: 'Feature',
         geometry: row.location,
@@ -1679,10 +1733,52 @@ async function fetchPermanentTrafficStations() {
           count_end: row.max_timestamp,
           interval_count: Number(row.count) || null,
           source_name: 'Permanent Count Station Traffic Counts',
+          series: JSON.stringify(series),
+          series_years: series.length,
+          latest_year: series.length ? series[series.length - 1].year : null,
+          aadt: full?.avg ?? null,
+          aadt_year: full?.year ?? null,
+          growth_pct_yr: annualizedGrowth(series, { minDays: FULL_YEAR_MIN_DAYS })?.pct ?? null,
         },
       };
     });
   return featureCollection(features, { source: 'Permanent Count Station Traffic Counts' });
+}
+
+/**
+ * Site → per-year series for the permanent stations: one grouped query
+ * over the whole dataset (eight sites since late 2019, ~60 rows), cached
+ * for the traffic TTL. `days` is the distinct count dates, so
+ * total / days is a daily average whatever the coverage; the caller
+ * decides which years are complete enough to call AADT.
+ */
+async function fetchStationYearSeries() {
+  try {
+    const cached = await idbReadCache(TRAFFIC_STATION_SERIES_CACHE_KEY, TRAFFIC_CACHE_TTL_MS);
+    if (Array.isArray(cached)) return new Map(cached);
+  } catch (err) {
+    console.warn('traffic station series cache read failed; refetching', err);
+  }
+  const params = new URLSearchParams({
+    $select: 'site,date_extract_y(timestamp) AS yr,sum(total) AS total,count(distinct date_trunc_ymd(timestamp)) AS days',
+    $group: 'site,yr',
+    $order: 'site,yr',
+  });
+  const { rows } = await fetchSodaRowsPaged(PERMANENT_TRAFFIC_COUNTS_URL, params, {
+    label: 'Permanent traffic station yearly series',
+  });
+  const entriesBySite = new Map();
+  for (const row of rows) {
+    if (!row.site) continue;
+    if (!entriesBySite.has(row.site)) entriesBySite.set(row.site, []);
+    entriesBySite.get(row.site).push({ year: row.yr, total: row.total, days: row.days, studies: 1 });
+  }
+  const out = new Map();
+  for (const [site, entries] of entriesBySite) out.set(site, yearSeriesFromEntries(entries));
+  idbWriteCache(TRAFFIC_STATION_SERIES_CACHE_KEY, [...out]).catch((err) =>
+    console.warn('traffic station series cache write failed', err)
+  );
+  return out;
 }
 
 function buildRoadIndex(roadFc) {

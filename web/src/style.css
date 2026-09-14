@@ -4586,3 +4586,11 @@ button.topbar-link {
    crosshair says so, and the bottom-right legends step aside so a vertex
    can be placed under them. */
 body.measuring .maplibregl-canvas { cursor: crosshair !important; }
+
+/* Traffic popup history: a compact year table under the latest count,
+   collapsed past six years so a long bridge series does not swallow the
+   popup. */
+.maplibregl-popup-content details.traffic-history { margin: 4px 0 2px; }
+.maplibregl-popup-content details.traffic-history > summary { cursor: pointer; font-size: 12px; }
+.maplibregl-popup-content .traffic-history-table { border-collapse: collapse; margin: 3px 0; font-size: 12px; }
+.maplibregl-popup-content .traffic-history-table td { padding: 0 8px 0 0; line-height: 1.3; }

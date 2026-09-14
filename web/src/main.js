@@ -1497,6 +1497,16 @@ async function toggleTraffic() {
       const { lines, stations } = await fetchTrafficVolumes();
       setTrafficData(map, lines, stations);
       trafficLoaded = true;
+      // Print the count year on the legend title, so it rides into the Map
+      // w/Legend export the way the Manitoba app's does. Corridors show
+      // their latest study; stations their latest complete year.
+      const years = [...(lines.features || []), ...(stations.features || [])]
+        .map((f) => Number(f.properties?.latest_year))
+        .filter((y) => Number.isFinite(y));
+      const title = $trafficLegend?.querySelector('strong');
+      if (title && years.length) {
+        title.textContent = `24h Traffic · counts to ${Math.max(...years)}`;
+      }
       $trafficToggle.textContent = 'Hide Traffic';
     } catch (err) {
       console.warn('traffic overlay failed', err);

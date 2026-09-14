@@ -29,6 +29,7 @@ import {
   isShapeDrawing,
 } from './drawShapes.js';
 import { isMeasuring, setMeasuring } from './lib/measuring.js';
+import { parseSeries, annualizedGrowth, formatGrowth, FULL_YEAR_MIN_DAYS } from './lib/trafficSeries.js';
 
 /**
  * True when a map TOOL already owns this click, so the layer handlers —
@@ -2752,9 +2753,44 @@ function trafficPopupHtml(p) {
   if (p.count_start || p.count_end) {
     lines.push(`<small>Count window: ${escapeHtml(formatDate(p.count_start))} to ${escapeHtml(formatDate(p.count_end))}</small>`);
   }
+  if (isStation && p.aadt) {
+    lines.push(`AADT ${escapeHtml(String(p.aadt_year))}: <strong>${Number(p.aadt).toLocaleString('en-US')}</strong> vehicles/day`);
+  }
+  lines.push(trafficSeriesHtml(p, isStation));
   if (p.match_type) lines.push(`<small>Match: ${escapeHtml(p.match_type)}</small>`);
   if (p.source_name) lines.push(`<small>Source: ${escapeHtml(p.source_name)}</small>`);
-  return `<div style="max-width:320px;line-height:1.4">${lines.join('<br>')}</div>`;
+  return `<div style="max-width:320px;line-height:1.4">${lines.filter(Boolean).join('<br>')}</div>`;
+}
+
+/**
+ * The per-year history under a traffic popup: a compact table (year,
+ * daily average, days sampled) plus the annualized growth between the
+ * first and last defensible years. Stations use complete-coverage years
+ * only; midblock corridors are 2–7 day tube studies, so the table says
+ * "study avg" and growth needs two sample days at each end.
+ */
+function trafficSeriesHtml(p, isStation) {
+  const series = parseSeries(p.series);
+  if (!series.length) return '';
+  const growth = annualizedGrowth(series, { minDays: isStation ? FULL_YEAR_MIN_DAYS : 2 });
+  const rows = series.map((r) => {
+    const partial = isStation && r.days < FULL_YEAR_MIN_DAYS;
+    const note = isStation
+      ? (partial ? ` <small style="color:#888">(${r.days} d, partial)</small>` : '')
+      : ` <small style="color:#888">(${r.days} d${r.studies > 1 ? `, ${r.studies} studies` : ''})</small>`;
+    return `<tr><td>${r.year}</td><td style="text-align:right">${Number(r.avg).toLocaleString('en-US')}</td><td>${note}</td></tr>`;
+  });
+  const head = isStation ? 'Annual average by year' : '24-h study average by year';
+  const growthLine = growth
+    ? `<div>Growth: <strong>${escapeHtml(formatGrowth(growth))}</strong></div>`
+    : `<div><small style="color:#888">Growth: not enough years to say</small></div>`;
+  const caveat = isStation
+    ? ''
+    : `<small style="color:#888">Portable studies of a few days each — season and study length move these as much as traffic does.</small>`;
+  return `<details class="traffic-history" ${series.length <= 6 ? 'open' : ''}>`
+    + `<summary><strong>${head}</strong> · ${series.length} year${series.length === 1 ? '' : 's'}</summary>`
+    + `<table class="traffic-history-table"><tbody>${rows.join('')}</tbody></table>`
+    + growthLine + caveat + `</details>`;
 }
 
 function formatDate(value) {
