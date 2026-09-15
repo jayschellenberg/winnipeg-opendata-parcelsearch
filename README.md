@@ -43,7 +43,7 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 | `web/test/` | Unit tests, run by `npm test` |
 | `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods) |
 | `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcel polygons z8–z18, address labels, and derived dwelling-unit totals; ~100 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Rebuilt and republished automatically every two months (see [Data freshness](#data-freshness)). |
-| `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels, per-snapshot historical, and aerial-ortho PMTiles builds |
+| `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels, per-snapshot historical, and aerial-ortho PMTiles builds, the DMIS zoning-amendment scrape |
 | `tools/` | Standalone command-line tools, outside the web build. `address_aliases.py` — civic-address aliases for a property, Winnipeg or Manitoba (see [Address aliases](#address-aliases)). Python stdlib only, no dependencies. |
 | `extras/` | Early experiments kept for reference |
 

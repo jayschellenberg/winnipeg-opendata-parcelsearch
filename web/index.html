@@ -844,6 +844,30 @@
           <button id="secondary-plans-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Secondary Plans</button>
           <button id="infill-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Infill Area</button>
           <button id="malls-corridors-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
+          <!-- Zoning Changes — Off / Show / Filter (the Manitoba pattern).
+               Show paints every parcel with a known rezoning by-law or a
+               pending rezoning notice amber (citywide, and on the results);
+               Filter additionally keeps only those rows in the grid. Data:
+               web/public/zoning-amendments.json (DMIS scrape,
+               r/build_zoning_amendments.R) + live Public Notices. -->
+          <div class="mode-pill-row zoning-changes-row" title="Zoning Changes — Off: nothing. Show: highlight (amber) every parcel with an adopted rezoning by-law (City DMIS, 2001 on) or a pending rezoning notice (Public Notices, 2025 on), citywide and in the results; the by-law and its DMIS record appear in the parcel popup and the Rezoned column. Filter: Show, plus keep only those parcels in the results grid. Coverage is partial — by-laws are placed by address or street corner and some cannot be placed; see Data Status.">
+            <span class="mode-pill-prefix">Zoning Changes:</span>
+            <div class="mode-pill zoning-changes-pill" role="radiogroup" aria-label="Zoning changes mode" data-pill="zoningChanges">
+              <button type="button" class="mode-btn active mode-btn-off" data-mode="off" aria-pressed="true">Off</button>
+              <button type="button" class="mode-btn" data-mode="show" aria-pressed="false">Show</button>
+              <button type="button" class="mode-btn" data-mode="filter" aria-pressed="false">Filter</button>
+            </div>
+          </div>
+          <div class="zoning-changes-lists" id="zoning-changes-lists" hidden>
+            <details>
+              <summary id="zoning-changes-nonparcel-summary">Text &amp; area amendments</summary>
+              <ul id="zoning-changes-nonparcel"></ul>
+            </details>
+            <details>
+              <summary id="zoning-changes-unresolved-summary">By-laws not placed on a parcel</summary>
+              <ul id="zoning-changes-unresolved"></ul>
+            </details>
+          </div>
 
           <!-- Reference is collapsed by default, same reasoning as
                Historical below: seven overlays that most sessions never

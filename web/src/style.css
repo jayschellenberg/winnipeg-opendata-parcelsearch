@@ -4594,3 +4594,19 @@ body.measuring .maplibregl-canvas { cursor: crosshair !important; }
 .maplibregl-popup-content details.traffic-history > summary { cursor: pointer; font-size: 12px; }
 .maplibregl-popup-content .traffic-history-table { border-collapse: collapse; margin: 3px 0; font-size: 12px; }
 .maplibregl-popup-content .traffic-history-table td { padding: 0 8px 0 0; line-height: 1.3; }
+
+/* Zoning Changes pill (Planning group) and the amendment lists under it.
+   The pill row spans the two-column overlay grid; the details list of
+   text / area amendments is compact and links each to its DMIS record. */
+.sidebar .overlay-grid > .mode-pill-row { grid-column: 1 / -1; }
+.sidebar .overlay-grid > .zoning-changes-lists { grid-column: 1 / -1; font-size: 11.5px; color: var(--ui-ink-soft, #64748b); }
+.sidebar .zoning-changes-lists summary { cursor: pointer; padding: 2px 0; }
+.sidebar .zoning-changes-lists ul { margin: 2px 0 6px; padding-left: 16px; max-height: 220px; overflow: auto; }
+.sidebar .zoning-changes-lists li { margin: 1px 0; line-height: 1.3; }
+.sidebar .zoning-changes-lists a { color: #1d4ed8; }
+.maplibregl-popup-content .zoning-changes-block { margin-top: 5px; border-top: 1px solid #eee; padding-top: 4px; }
+.maplibregl-popup-content .zoning-changes-block .zc-pending { color: #b45309; }
+/* Inside the overlay grid, `.sidebar .overlay-grid button` stretches every
+   button to its cell; a pill segment must stay a segment. */
+.sidebar .overlay-grid .mode-pill .mode-btn { width: auto; padding: 4px 9px; font-size: 12px; }
+.sidebar .overlay-grid .mode-pill.compact .mode-btn { padding: 3px 7px; font-size: 11.5px; }

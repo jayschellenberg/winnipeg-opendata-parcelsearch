@@ -2066,6 +2066,41 @@ export async function fetchNeighbourhoodClusters() {
 // user mashes a toggle button before the first fetch completes.
 const OVERLAY_CACHE = new Map();
 
+// ---------- Zoning amendments (DMIS index + live Public Notices) ----------
+//
+// The adopted rezoning by-laws are an offline build (r/build_zoning_amendments.R
+// scrapes the City's DMIS and places each on its parcels), committed as a
+// static JSON. Pending rezonings come live from Public Notices, which the
+// City keys by roll number. lib/zoningAmendments.js merges the two.
+const ZONING_AMENDMENTS_URL = '/zoning-amendments.json';
+const PUBLIC_NOTICES_URL = 'https://data.winnipeg.ca/resource/gnxp-9hpt.json';
+const NOTICES_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** The committed by-law index, or null when it has not been built. */
+export async function fetchZoningAmendments() {
+  try {
+    const res = await fetch(ZONING_AMENDMENTS_URL, { cache: 'no-cache' });
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
+}
+
+/** Every rezoning-type Public Notice row (2025 on, roll-keyed), cached a day. */
+export async function fetchRezoningNotices() {
+  const key = 'rezoningNoticesV1';
+  try {
+    const cached = await idbReadCache(key, NOTICES_TTL_MS);
+    if (Array.isArray(cached)) return cached;
+  } catch { /* fall through to the fetch */ }
+  const params = new URLSearchParams({
+    $select: 'notice_id,notice_type,roll_number,address,description,in_date,meeting_date,decision,dmis_decision',
+    $where: "notice_type in ('REZONING','SUBDIVISION AND REZONING','ZONING AGREEMENT AMENDMENT') AND roll_number IS NOT NULL",
+    $order: 'in_date DESC',
+  });
+  const { rows } = await fetchSodaRowsPaged(PUBLIC_NOTICES_URL, params, { label: 'Public Notices rezonings' });
+  idbWriteCache(key, rows).catch(() => {});
+  return rows;
+}
+
 // ---------- Contaminated-Sites Registry overlay -----------------
 //
 // Manitoba's Sustainable Development Contaminated Sites Registry

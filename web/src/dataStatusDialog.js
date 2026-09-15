@@ -136,14 +136,31 @@ export function initDataStatusDialog() {
   async function load() {
     loaded = true;
     renderServices($services);   // rows appear immediately, fill per-service
-    const [pmtilesMeta, histIndex, histTilesMeta, neighbourhoodsMeta, transitMeta] = await Promise.all([
+    const [pmtilesMeta, histIndex, histTilesMeta, neighbourhoodsMeta, transitMeta, zoningAmend] = await Promise.all([
       fetchJson(PMTILES_META_URL),
       fetchHistoricalIndex().catch(() => null),
       fetchJson('/historical-tiles-meta.json'),
       fetchTailMeta('/wpg-neighbourhoods.geojson'),
       fetchTailMeta('/transit-routes.geojson'),
+      fetchJson('/zoning-amendments.json'),
     ]);
     renderPublished($published, publishedRows({ pmtilesMeta, neighbourhoodsMeta, transitMeta }));
+    // Zoning amendments (DMIS scrape): built date, how many by-laws were
+    // placed on parcels and how many could not be — the coverage caveat
+    // the pill's tooltip points here for.
+    {
+      const c = zoningAmend?.counts || {};
+      const conf = c.byConfidence ? Object.entries(c.byConfidence).map(([k, v]) => `${v} ${k}`).join(', ') : '';
+      $published.appendChild(rowOf([
+        'Zoning amendments (DMIS by-law scrape)',
+        zoningAmend?.generated ? dateLabel(datePart(zoningAmend.generated)) : null,
+        zoningAmend
+          ? `${c.resolvedBylaws ?? '?'} of ${c.siteSpecific ?? '?'} site-specific by-laws placed on ${c.rolls ?? '?'} parcels`
+            + `${conf ? ` (${conf})` : ''}; ${c.unresolved ?? '?'} not placed; ${c.nonParcel ?? '?'} text / area amendments listed`
+          : 'not built — run r/build_zoning_amendments.R',
+        'quarterly, with the asset refresh',
+      ]));
+    }
     renderHistorical($historical, histIndex, histTilesMeta);
   }
 

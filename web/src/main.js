@@ -83,8 +83,13 @@ import {
   fetchHistoricalIndex,
   fetchHistoricalZoning,
   fetchHistoricalLineage,
+  fetchZoningAmendments,
+  fetchRezoningNotices,
 } from './soda.js';
 import { historicalTilesUrl, sizeChangeSummaryText } from './lib/historicalTiles.js';
+import {
+  ZONING_CHANGE_MODES, buildAmendmentIndex, amendmentCellText, latestAmendmentYear, dmisRecordUrl,
+} from './lib/zoningAmendments.js';
 import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
@@ -95,6 +100,7 @@ import {
   setParcelNumberData, setParcelNumbersVisible,
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
   setHistoricalZoningData, setHistoricalZoningVisible,
+  setZoningAmendments, setZoningChangesVisible,
 } from './map.js';
 import {
   getShapes as getMapShapes,
@@ -360,6 +366,13 @@ let streetsLoaded = false;
 let streetsAutoManaged = false;
 let streetsBeforeAerial = false;
 let neighbourhoodsMode = 'off';
+// Zoning Changes pill: the user's mode (a preference, survives searches),
+// the merged amendment index once loaded, and the in-flight load so two
+// quick clicks share one fetch. Declared up here because applyUrlState
+// runs at init, before the pill's own wiring block further down.
+let zoningChangesMode = 'off';
+let zoningAmendmentsIndex = null;
+let zoningAmendmentsLoad = null;
 let neighbourhoodsLoaded = { clusters: false, individual: false };
 
 // Phase 8 TDZ audit: these three were previously declared mid-file
@@ -393,6 +406,7 @@ const SORT_KEYS = {
   address: (r) => strKey(r.assess?.properties?.full_address),
   zoning:    (r) => strKey(r.assess?.properties?.zoning_top1 ?? r.assess?.properties?.zoning),
   zoningPct: (r) => finiteOrNeg(r.assess?.properties?.zoning_top1_pct),
+  zoningChanges: (r) => finiteOrNeg(r.assess?.properties?._zoningChangesYear),
   zoning2:   (r) => strKey(r.assess?.properties?.zoning_top2),
   area:    (r) => finiteOrNeg(r.assess?.properties?.assessed_land_area),
   lat:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lat),
@@ -607,6 +621,127 @@ for (const pillEl of document.querySelectorAll('.mode-pill[data-pill]')) {
   const spec = PILL_SPECS[pillEl.dataset.pill];
   if (spec) pillPainters[pillEl.dataset.pill] = bindBackedPill(pillEl, spec);
 }
+
+// ---------- Zoning Changes pill (Off / Show / Filter) ----------
+//
+// Off: nothing. Show: the amber layers (citywide off the tile archive, and
+// again on the results) light every parcel with an adopted rezoning by-law
+// (DMIS, via r/build_zoning_amendments.R → /zoning-amendments.json) or a
+// pending rezoning notice (Public Notices, live); the popup and the Rezoned
+// column carry the detail. Filter: Show, plus the grid keeps only those
+// rows. The index loads on the first non-Off click and stays for the
+// session; the two lists under the pill (text / area amendments, and
+// by-laws that could not be placed) are the "record the rest somewhere".
+async function ensureZoningAmendments() {
+  if (zoningAmendmentsIndex) return zoningAmendmentsIndex;
+  if (!zoningAmendmentsLoad) {
+    zoningAmendmentsLoad = (async () => {
+      const [json, notices] = await Promise.all([
+        fetchZoningAmendments(),
+        fetchRezoningNotices().catch((e) => { console.warn('rezoning notices failed (non-fatal)', e); return []; }),
+      ]);
+      const index = buildAmendmentIndex(json, notices);
+      zoningAmendmentsIndex = index;
+      await mapReady;
+      setZoningAmendments(map, index);
+      renderZoningChangeLists(index, !!json);
+      return index;
+    })();
+  }
+  return zoningAmendmentsLoad;
+}
+
+function paintZoningChangesPill() {
+  for (const b of document.querySelectorAll('.zoning-changes-pill .mode-btn')) {
+    const on = b.dataset.mode === zoningChangesMode;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+}
+
+async function setZoningChangesMode(mode, { fromUrl = false } = {}) {
+  if (!ZONING_CHANGE_MODES.includes(mode)) mode = 'off';
+  const prev = zoningChangesMode;
+  zoningChangesMode = mode;
+  paintZoningChangesPill();
+  const $lists = document.getElementById('zoning-changes-lists');
+  if ($lists) $lists.hidden = mode === 'off';
+  // A restore from the shared URL runs at init, before the URL writer's own
+  // state exists (its `let` sits further down); the value came from the URL
+  // anyway, so there is nothing to write back.
+  if (!fromUrl) queueUrlWrite();
+  if (mode === 'off') {
+    mapReady.then(() => setZoningChangesVisible(map, false));
+    if (prev === 'filter' && fullRows.length > 0) renderTable(fullRows);   // lift the filter
+    refreshCount();
+    return;
+  }
+  await ensureZoningAmendments();
+  if (zoningChangesMode === 'off') return;   // flipped back off while loading
+  setZoningChangesVisible(map, true);
+  if (fullRows.length > 0) renderTable(fullRows);   // stamps the column; applies Filter
+  refreshCount();
+}
+
+/** Stamp the Rezoned cell text + newest year on each row from the index. */
+function stampZoningChanges(rows) {
+  const by = zoningAmendmentsIndex?.byRoll;
+  for (const r of rows || []) {
+    const p = r?.assess?.properties;
+    if (!p) continue;
+    const entries = by ? by.get(String(p.roll_number ?? '')) : null;
+    if (entries?.length) {
+      p._zoningChanges = amendmentCellText(entries);
+      p._zoningChangesYear = latestAmendmentYear(entries);
+    } else {
+      delete p._zoningChanges;
+      delete p._zoningChangesYear;
+    }
+  }
+}
+const rowHasZoningChange = (r) => !!r?.assess?.properties?._zoningChanges;
+
+/** The "· Zoning Changes filter: N of M" clause on the count lines. */
+function zoningChangesSuffix() {
+  if (zoningChangesMode !== 'filter' || !fullRows.length) return '';
+  return ` · Zoning Changes filter: ${currentRows.length} of ${fullRows.length} with a known amendment`;
+}
+
+function renderZoningChangeLists(index, built) {
+  const $np  = document.getElementById('zoning-changes-nonparcel');
+  const $un  = document.getElementById('zoning-changes-unresolved');
+  const $nps = document.getElementById('zoning-changes-nonparcel-summary');
+  const $uns = document.getElementById('zoning-changes-unresolved-summary');
+  if (!$np || !$un) return;
+  const li = (text, url) => {
+    const el = document.createElement('li');
+    if (url) {
+      const a = document.createElement('a');
+      a.href = url; a.target = '_blank'; a.rel = 'noreferrer'; a.textContent = text;
+      el.appendChild(a);
+    } else {
+      el.textContent = text;
+    }
+    return el;
+  };
+  $np.textContent = '';
+  $un.textContent = '';
+  const np = [...index.nonParcel].sort((a, b) => String(b.passed || '').localeCompare(String(a.passed || '')));
+  for (const e of np) $np.appendChild(li(`${e.bylaw} · ${e.passed || 'n.d.'} · ${e.subject}`, dmisRecordUrl(e)));
+  for (const e of index.unresolved) $un.appendChild(li(`${e.bylaw} · ${e.subject} — ${e.reason}`, dmisRecordUrl(e)));
+  if ($nps) {
+    $nps.textContent = built
+      ? `Text & area amendments (${np.length}) — citywide or area-wide, not mapped`
+      : 'Zoning amendments index not built yet (r/build_zoning_amendments.R)';
+  }
+  if ($uns) $uns.textContent = `By-laws not placed on a parcel (${index.unresolved.length})`;
+}
+
+document.querySelector('.zoning-changes-pill')?.addEventListener('click', (e) => {
+  const btn = e.target?.closest?.('.mode-btn');
+  if (!btn) return;
+  setZoningChangesMode(btn.dataset.mode);
+});
 
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', () => generateStaticMap());
 if ($staticMapLegendBtn) {
@@ -967,6 +1102,9 @@ function captureUrlState() {
   if (neighbourhoodMode === 'clusters' || neighbourhoodMode === 'individual') {
     s.neighbourhoodsMode = neighbourhoodMode;
   }
+  if (zoningChangesMode === 'show' || zoningChangesMode === 'filter') {
+    s.zoningChangesMode = zoningChangesMode;
+  }
 
   // "Number parcels" — emit the user's CHOICE, not whether it's currently
   // in effect. `numberable` depends on a result set the recipient hasn't
@@ -1041,6 +1179,9 @@ function applyUrlState(state) {
 
   if (state.neighbourhoodsMode === 'clusters' || state.neighbourhoodsMode === 'individual') {
     setNeighbourhoodsMode(state.neighbourhoodsMode);
+  }
+  if (state.zoningChangesMode === 'show' || state.zoningChangesMode === 'filter') {
+    setZoningChangesMode(state.zoningChangesMode, { fromUrl: true });
   }
 
   // Numbering: set the flag and the checkbox directly rather than
@@ -2477,7 +2618,7 @@ function renderCount() {
   // Culled rows are stated, always: the grid still lists them (dimmed), so
   // without this clause the map and the export would be quietly narrower
   // than the row count sitting right next to them.
-  const text = lastCountBase ? lastCountBase + shapeFilterSuffix() + selectionSuffix() : lastCountBase;
+  const text = lastCountBase ? lastCountBase + shapeFilterSuffix() + zoningChangesSuffix() + selectionSuffix() : lastCountBase;
   $count.textContent = text;
   // Phase 5: mirror the same message into the prominent status bar
   // above the results table. Hidden when text is empty so a fresh
@@ -2679,9 +2820,13 @@ let drawCapped = 0;
 function renderTable(rows) {
   fullRows = rows;
   const shapes = getMapShapes();
-  const shown = shapes.length > 0
+  const shownByShape = shapes.length > 0
     ? rows.filter((r) => passesShapeFilter(shapeRowCentroid(r), shapes))
     : rows;
+  // Zoning Changes: stamp the Rezoned cell on every row (blank when the
+  // index is not loaded), then in Filter mode keep only the rows with one.
+  stampZoningChanges(rows);
+  const shown = zoningChangesMode === 'filter' ? shownByShape.filter(rowHasZoningChange) : shownByShape;
   shapeShown = shown.length;
   shapeTotal = rows.length;
   $tbody.innerHTML = '';
@@ -3933,7 +4078,7 @@ function renderSalesCount() {
   // The area-filter clause rides on the sales count too — a drawn shape
   // narrows a sales comp set exactly as it narrows a property search.
   const text = lastSalesCountBase
-    ? lastSalesCountBase + shapeFilterSuffix() + drawCapSuffix() + selectionSuffix() + additionalFiltersSuffix()
+    ? lastSalesCountBase + shapeFilterSuffix() + drawCapSuffix() + zoningChangesSuffix() + selectionSuffix() + additionalFiltersSuffix()
     : '';
   el.textContent = text;
   el.classList.toggle('results-status-error', lastSalesCountError && !!text);

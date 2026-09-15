@@ -107,6 +107,9 @@ export const SCHEMA = {
   // --- Neighbourhoods mode (1) ---
   neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },
 
+  // --- Zoning Changes pill (1): Off is the default and is not emitted ---
+  zoningChangesMode: { param: 'zc', validate: oneOf(['show', 'filter']), format: (v) => v },
+
   // --- Sort (2) ---
   sortCol: { param: 'sc', validate: oneOf(SORT_COLS),       format: (v) => v },
   sortDir: { param: 'sd', validate: oneOf(['asc', 'desc']), format: (v) => v },

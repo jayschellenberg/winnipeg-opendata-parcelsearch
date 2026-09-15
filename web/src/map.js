@@ -30,6 +30,7 @@ import {
 } from './drawShapes.js';
 import { isMeasuring, setMeasuring } from './lib/measuring.js';
 import { parseSeries, annualizedGrowth, formatGrowth, FULL_YEAR_MIN_DAYS } from './lib/trafficSeries.js';
+import { amendmentLines } from './lib/zoningAmendments.js';
 
 /**
  * True when a map TOOL already owns this click, so the layer handlers —
@@ -1677,8 +1678,12 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // active-result parcels the row click + parcel-summary card
       // already handle the interaction.
       const citywideClickPopup = new maplibregl.Popup({ closeButton: true });
-      onLayerClick(map, 'citywide-parcels-fill', (e) => {
-        if (map.getLayoutProperty('citywide-parcels-fill', 'visibility') !== 'visible') return;
+      // One handler for the two layers that expose a NON-result parcel to a
+      // click: the citywide wash, and the amber Zoning Changes fill, which is
+      // its own hit target so a rezoned parcel opens its popup (by-law block
+      // included) without All Assessment Parcels having to be on.
+      const citywideClick = (layerId) => (e) => {
+        if (map.getLayoutProperty(layerId, 'visibility') !== 'visible') return;
         // Search-result layer takes precedence.
         const overSearchResult =
              (map.getLayer('parcel-fill')          && map.queryRenderedFeatures(e.point, { layers: ['parcel-fill'] }).length > 0)
@@ -1697,11 +1702,13 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         // polygon (bbox midpoint is a stable approximation of centroid
         // that doesn't need turf). Falls back to the click point on
         // the rare case the rendered geometry is empty.
-        const rendered = map.queryRenderedFeatures(e.point, { layers: ['citywide-parcels-fill'] })[0];
+        const rendered = map.queryRenderedFeatures(e.point, { layers: [layerId] })[0];
         const center = polygonBboxMidpoint(rendered?.geometry)
           ?? [e.lngLat.lng, e.lngLat.lat];
         wireCoordsCopy(citywideClickPopup, center);
-      });
+      };
+      onLayerClick(map, 'citywide-parcels-fill', citywideClick('citywide-parcels-fill'));
+      onLayerClick(map, 'zoning-changes-citywide-fill', citywideClick('zoning-changes-citywide-fill'));
 
       const dwellingClickPopup = new maplibregl.Popup({ closeButton: true });
       const handleDwellingClick = (e) => {
@@ -1957,6 +1964,32 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
           'text-allow-overlap': false, 'text-ignore-placement': false, 'symbol-placement': 'point',
         },
         paint: { 'text-color': '#1a1a1a', 'text-halo-color': '#ffffff', 'text-halo-width': 2.8 },
+      });
+
+      // Zoning Changes (amber): every parcel with a known rezoning by-law or
+      // a pending rezoning notice, citywide off the tile archive and again
+      // on the search results, so the highlight survives either layer being
+      // hidden. Both filter on the roll list setZoningAmendments installs;
+      // an impossible filter keeps them empty until then.
+      map.addLayer({
+        id: 'zoning-changes-citywide-line', type: 'line',
+        source: 'citywide-parcels', 'source-layer': 'parcels',
+        layout: { visibility: 'none', 'line-join': 'round' },
+        filter: ['==', ['get', 'roll_number'], '__none__'],
+        paint: { 'line-color': '#d97706', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2.2, 18, 3], 'line-opacity': 0.95 },
+      });
+      map.addLayer({
+        id: 'zoning-changes-citywide-fill', type: 'fill',
+        source: 'citywide-parcels', 'source-layer': 'parcels',
+        layout: { visibility: 'none' },
+        filter: ['==', ['get', 'roll_number'], '__none__'],
+        paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.18 },
+      }, 'zoning-changes-citywide-line');
+      map.addLayer({
+        id: 'zoning-changes-results-line', type: 'line', source: 'assess-context',
+        layout: { visibility: 'none', 'line-join': 'round' },
+        filter: ['==', ['get', 'roll_number'], '__none__'],
+        paint: { 'line-color': '#d97706', 'line-width': 3, 'line-opacity': 0.95 },
       });
 
       // The parcel + survey layers are vector tiles, one archive per snapshot
@@ -2836,6 +2869,8 @@ function citywideParcelHtml(p) {
   if (asmt) lines.push(asmt);
   const asmtClass = assessmentClassLine(p);
   if (asmtClass) lines.push(asmtClass);
+  const zc = zoningChangesHtml(roll);
+  if (zc) lines.push(zc.replace(/^<br>/, ''));
   const actions = [];
   if (roll) {
     const url = `https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
@@ -3118,7 +3153,7 @@ function popupHtml(p) {
     if (Number.isFinite(n) && n > 1) {
       lines.push(`<small>+ ${n - 1} more unit${n - 1 === 1 ? '' : 's'} at this location — see table for the full list</small>`);
     }
-    return lines.join('<br>');
+    return lines.join('<br>') + zoningChangesHtml(p.roll_number);
   }
   // Survey Parcels schema.
   const head = `<strong>Lot</strong> ${escapeHtml(p.lot ?? '')}`
@@ -3568,6 +3603,45 @@ export function setHistoricalZoningVisible(map, on) {
   for (const id of ['historical-zoning-fill', 'historical-zoning-line', 'historical-zoning-label']) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
   }
+}
+
+// ---------- Zoning Changes (amber) ----------
+//
+// The merged amendment index (lib/zoningAmendments.js buildAmendmentIndex):
+// roll → entries. Installed once by main.js; the three amber layers filter
+// on its roll list, and the assessment popups read it for their by-law
+// block. Null until the pill is first turned on.
+let zoningAmendmentsByRoll = null;
+const ZONING_CHANGE_LAYERS = ['zoning-changes-citywide-fill', 'zoning-changes-citywide-line', 'zoning-changes-results-line'];
+
+export function setZoningAmendments(map, index) {
+  zoningAmendmentsByRoll = index?.byRoll || null;
+  const rolls = index?.rolls || [];
+  const filter = rolls.length
+    ? ['in', ['to-string', ['get', 'roll_number']], ['literal', rolls]]
+    : ['==', ['get', 'roll_number'], '__none__'];
+  for (const id of ZONING_CHANGE_LAYERS) if (map.getLayer(id)) map.setFilter(id, filter);
+}
+
+export function setZoningChangesVisible(map, on) {
+  const vis = on ? 'visible' : 'none';
+  for (const id of ZONING_CHANGE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+}
+
+/** The by-law block for a parcel popup, or '' when the roll has none (or
+ *  the index has not been loaded — the pill is what loads it). */
+function zoningChangesHtml(roll) {
+  if (!zoningAmendmentsByRoll || roll == null || roll === '') return '';
+  const entries = zoningAmendmentsByRoll.get(String(roll));
+  if (!entries?.length) return '';
+  const rows = amendmentLines(entries).map((l) => {
+    const label = l.url
+      ? `<a href="${escapeHtml(l.url)}" target="_blank" rel="noreferrer">${escapeHtml(l.label)}</a>`
+      : escapeHtml(l.label);
+    return `<div${l.pending ? ' class="zc-pending"' : ''}>${label}${l.detail ? ` <small style="color:#888">${escapeHtml(l.detail)}</small>` : ''}</div>`;
+  });
+  return `<div class="zoning-changes-block"><strong style="color:#b45309">Zoning changes</strong>${rows.join('')}`
+    + `<small style="color:#888">From the City's DMIS by-law list and Public Notices; placement by address or corner — verify against the by-law.</small></div>`;
 }
 
 // Assessment page for a roll, rebuilt from the roll against the City's canonical

@@ -87,7 +87,7 @@ const RESIDENTIAL = [
 ];
 const ZONING_DETAIL = [
   'lot', 'block', 'plan', 'roll', 'address',
-  'zoning', 'zoningPct', 'zoning2', 'area',
+  'zoning', 'zoningPct', 'zoning2', 'zoningChanges', 'area',
 ];
 const SALES_DEFAULT = [
   // Category leads the classification columns because it is what the

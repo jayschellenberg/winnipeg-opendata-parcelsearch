@@ -331,18 +331,29 @@ if ($t -ne 0 -or $n -ne 0) {
   exit 1
 }
 
+# Zoning amendments: refetch the DMIS amending by-law list (new by-laws
+# since last quarter get their record pages fetched; the rest are cached)
+# and re-place everything on today's parcels. Non-fatal: a DMIS outage or
+# a geocoding hiccup must not block the transit / neighbourhood refresh,
+# and the previous committed index keeps serving.
+Log 'Rscript r/build_zoning_amendments.R --refresh'
+& Rscript (Join-Path $repo 'r/build_zoning_amendments.R') --refresh *>> $log 2>&1
+$z = $LASTEXITCODE
+if ($z -ne 0) { Log "zoning amendments rebuild failed (exit $z) - keeping the previous index (non-fatal)" }
+
 $assets = @(
   'web/public/transit-routes.geojson',
   'web/public/transit-stops.geojson',
   'web/public/wpg-neighbourhoods.geojson',
-  'web/public/wpg-neighbourhood-clusters.geojson'
+  'web/public/wpg-neighbourhood-clusters.geojson',
+  'web/public/zoning-amendments.json'
 )
 $changed = & git -C $repo status --porcelain -- $assets
 if (-not $changed) { Log 'no asset changes - nothing to deploy.'; Log '=== done ==='; exit 0 }
 
 Log 'asset(s) changed - committing + pushing (Vercel will auto-deploy)'
 & git -C $repo add -- $assets
-$msg = "Refresh transit + neighbourhood static assets (scheduled)`n`nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+$msg = "Refresh transit + neighbourhood + zoning-amendment static assets (scheduled)`n`nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 & git -C $repo commit -m $msg *>> $log 2>&1
 if ($LASTEXITCODE -ne 0) {
   $why = "git commit failed (exit $LASTEXITCODE) - nothing deployed."

@@ -315,8 +315,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 33 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 2 sort + 1 tab + 2 numbering + 1 subjectRoll + 1 salesN1 + 1 salesRise)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 33);
+test('SCHEMA — has exactly 34 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 subjectRoll + 1 salesN1 + 1 salesRise)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 34);
 });
 
 test('salesRise round-trips as the rise param; only the three bands are valid', () => {

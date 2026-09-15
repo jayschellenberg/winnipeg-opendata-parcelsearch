@@ -116,6 +116,8 @@ const PERSISTENT = {
   captureInFlight: 'transient guard around a Generate Map capture',
   urlWritePending: 'transient rAF throttle for the URL writer',
   chartsChannel: 'the BroadcastChannel to the charts tab, opened once',
+  zoningAmendmentsIndex: 'session memo for the DMIS + Public Notices amendment index; keyed by roll, not by search',
+  zoningAmendmentsLoad: 'the in-flight load of that index, shared by concurrent pill clicks',
 };
 
 console.log('main.js — what a new Search must not inherit');

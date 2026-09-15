@@ -821,6 +821,47 @@ archives straight out of `web/public/` (they are gitignored).
 
 ---
 
+### 8.7.2 Zoning amendments — the DMIS by-law scrape
+
+The City publishes no parcel-keyed zoning-amendment history (the zoning
+polygon dataset carries no by-law field; Public Notices lists rezonings
+only from 2025 on). The **Zoning Changes** pill under Planning therefore
+reads a committed index, `web/public/zoning-amendments.json`, built by
+`r/build_zoning_amendments.R` from the City's Decision Making Information
+System: every amending Land Development by-law since 2001 (~850, one HTML
+page each — subject, DAZ file number, date passed, effective date, parent
+by-law), cached under `WpgSnapshots/dmis/` so re-runs never re-hit DMIS.
+Site-specific by-laws ("Rezoning: 923 Dorchester Avenue", "Zoning Change:
+…", "Plan of Subdivision and Rezoning: …") are placed on parcels in three
+tiers, recorded as `confidence`:
+
+| tier | how | typical |
+|---|---|---|
+| `address` | civic address(es) or a range in the subject → Civic Addresses `cam2-ii3u` → point-in-polygon on `d4mq-wa44` | most |
+| `corner` | "southeast corner of X and Y" → Road Network `ngsx-caav` centrelines intersected → parcels within 25 m, quadrant applied | ~100 |
+| `correction` | "Correction to By-law No. N/YYYY" inherits N/YYYY's parcels | ~20 |
+
+Everything else — text amendments, PDOs, secondary plans, procedures —
+goes to `nonParcel` (listed under the pill, linked to DMIS); site-specific
+subjects no rule could place go to `unresolved` (listed too, and to
+`WpgSnapshots/dmis/review.csv`). Pending rezonings come live from Public
+Notices (`gnxp-9hpt`, roll-keyed) and are merged in the browser by
+`lib/zoningAmendments.js`. Show paints matching parcels amber (citywide
+off the tile archive, and on the results); Filter keeps only those rows;
+the popup and the Rezoned column carry the by-law, DAZ, date and a link.
+
+```
+Rscript r/build_zoning_amendments.R            # cached pages, live geocoding
+Rscript r/build_zoning_amendments.R --refresh  # refetch the list first
+```
+
+The quarterly `WpgAssetRefreshQuarterly` job runs it with `--refresh`
+(non-fatal) and commits the JSON with the other static assets. Coverage is
+partial by nature — the Data Status dialog reports how many by-laws were
+placed and how many were not.
+
+---
+
 ### 8.8 Streets basemap — Protomaps, self-hosted
 
 The default **Streets** basemap is a Manitoba cut of the Protomaps daily

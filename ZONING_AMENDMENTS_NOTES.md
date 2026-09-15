@@ -1,7 +1,12 @@
 # Zoning amendments — source notes (2026-09-14)
 
-Research notes for a future "zoning changed since <date>" flag in the
-Winnipeg app, kept for review. Nothing here is built yet.
+Research notes behind the Zoning Changes pill. **Built 2026-09-14**: the
+"Recommended shape" below is what shipped — `r/build_zoning_amendments.R`
+(DMIS scrape, three-tier placement, `web/public/zoning-amendments.json`),
+`web/src/lib/zoningAmendments.js` (merge with live Public Notices), the
+Off / Show / Filter pill under Planning, the Rezoned grid column, the
+popup block, and the two lists under the pill for what could not be
+mapped. See REPLICATION_GUIDE §8.7.2. The source findings below stand.
 
 ## What exists
 
