@@ -5100,7 +5100,12 @@ async function runSalesAnalysis() {
     // loses essentially all of them.
     (permitsOk ? '' : " · ⚠ PERMIT CHECK FAILED — only the roll's and SABRE's own year built are judging, which catches a small fraction, so already-built houses are still counted as Land") +
     (categoryHidden ? ` · ${categoryHidden} hidden by the category filter` : '') +
-    (clusterHidden ? ` · ${clusterHidden} hidden by the cluster filter` : '') +
+    // An empty selection is not the same finding as a narrow one, and the
+    // row count cannot tell them apart -- both read 0. Say which, and say
+    // the way back, exactly as the PUCS filter does on the pre-join path.
+    (clusterFilter.isEmptySelection()
+      ? ' · no clusters selected — click a cluster on the map, or All in the cluster picker'
+      : clusterHidden ? ` · ${clusterHidden} hidden by the cluster filter` : '') +
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
     (vacantHidden ? ` · ${vacantHidden} hidden by the ${vacantMode} filter` : '') +

@@ -71,23 +71,29 @@ export function passesSelection(selected, value) {
  * cluster on the map, where there is no checkbox to read the current state
  * off of.
  *
- * Deliberately NOT the same rule as ticking a checkbox, and the difference
- * is the whole point:
+ * ONE RULE GOVERNS BOTH PATHS: what is selected is what shows. A click on
+ * the map has to land on the same state a checkbox would, or the same
+ * picture on screen means two different things depending on how the user
+ * got there.
  *
- *   from null (no filter), clicking X gives Set([X]) — NARROWS to X. The
- *   checkbox path materializes the implicit "everything" and unticks one,
- *   because that is what unticking a ticked box means. A click on the map
- *   is a positive act: the user pointed at one cluster, and "everything
- *   except that one" is not what they asked for.
+ *   from null (no filter), clicking X gives Set([X]) — NARROWS to X. This
+ *   is the one place the paths legitimately differ, and only because the
+ *   gestures differ: unticking a ticked box means "everything except this
+ *   one", while pointing at a cluster is a positive act naming the one
+ *   the user wants.
  *
- *   removing the LAST value gives null, not an empty Set. Empty means the
- *   deliberate show-nothing the None button reaches; arriving there by
- *   clicking the only selected cluster off would empty the grid with no
- *   way to tell it apart from a filter that matched nothing. Click on,
- *   click off, back to Any — the Manitoba municipality picker's rule.
+ *   removing the LAST value gives an EMPTY SET, not null — nothing
+ *   selected, so nothing shows (Jason, 2026-09-16). An earlier version
+ *   collapsed it back to null on the theory that an empty grid needs
+ *   explaining; but unticking every box in the popover already lands on
+ *   the empty Set, so collapsing only the map path made "no clusters
+ *   selected" mean "show everything" by click and "show nothing" by
+ *   checkbox. The caller explains the empty grid instead — see the
+ *   no-clusters-selected clause on the sales count line.
  *
- *   filling the set to every option collapses to null, same as the
- *   checkbox path, so "all ticked" keeps one representation.
+ *   filling the set to every option collapses to null, matching
+ *   reconcileSelection, so "all ticked" keeps one representation. That
+ *   collapse is invisible: all-selected and no-filter show the same rows.
  *
  * Returns the unchanged selection when `value` is not on offer, so a click
  * on a cluster the loaded sales never reach is a no-op rather than a
@@ -99,7 +105,6 @@ export function toggleSelection(selected, value, options) {
   const next = new Set(selected);
   if (next.has(value)) next.delete(value);
   else next.add(value);
-  if (next.size === 0) return null;
   if (next.size === options.length) return null;
   return next;
 }

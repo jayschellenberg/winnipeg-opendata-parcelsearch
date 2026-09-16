@@ -263,9 +263,14 @@ from the filter**. Pointing at an area is how a comp search is actually reasoned
 about; finding one of 23 names in a popover is not. Selected clusters carry a
 heavy blue outline -- the selection is on the OUTLINE, not a fill, because a
 tinted cluster washes over the sales and parcels inside it that are the things
-being read. Clicking the last selected cluster off returns to Any cluster, and
-selecting every cluster on offer collapses to the same state, so "no filter" has
-one representation however you reach it.
+being read.
+
+What is selected is what shows, by click and by checkbox alike: clicking the
+last selected cluster off leaves NOTHING selected and therefore no results, the
+same state unticking every box in the picker reaches, and the count line says so
+and names the way back. Selecting every cluster on offer collapses to "Any
+cluster", which is invisible because all-selected and no-filter show the same
+rows.
 
 The picker is armed only on the Sales tab and only for a cluster the loaded
 sales actually reach. On the Property tab, and for a cluster with no sales in

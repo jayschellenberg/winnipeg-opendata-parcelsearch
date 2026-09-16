@@ -145,10 +145,16 @@ assert.deepEqual(
   new Set(['Fort Garry South']),
 );
 
-// ...and removing the LAST one goes back to "no filter", never to the
-// empty Set. Empty is the deliberate show-nothing the None button reaches;
-// arriving there by clicking would empty the grid with nothing to say why.
-assert.equal(toggleSelection(new Set(['Transcona']), 'Transcona', CL), null);
+// ...and removing the LAST one leaves the EMPTY Set: nothing selected,
+// so nothing shows. It must NOT collapse to null -- unticking every box in
+// the popover already lands on the empty Set, and collapsing only the map
+// path would make the same picture mean "show everything" by click and
+// "show nothing" by checkbox.
+const emptied = toggleSelection(new Set(['Transcona']), 'Transcona', CL);
+assert.ok(emptied instanceof Set, 'empties to a Set, not null');
+assert.equal(emptied.size, 0);
+// And it is recoverable: clicking any cluster from the empty state selects it.
+assert.deepEqual(toggleSelection(emptied, 'Transcona', CL), new Set(['Transcona']));
 
 // Filling the set to every option collapses to null, same as the checkbox
 // path -- "all selected" keeps one representation.
