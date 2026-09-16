@@ -136,7 +136,6 @@ import {
   passesRadiusFilter,
   csvGroupVacancy, passesPreJoinVacantFilter,
   saleBuildingSf, saleYearBuilt, passesRange,
-  preJoinRangePasses, csvYearBuilt, csvBuildingSf,
 } from './lib/salesFilters.js';
 import { radiusCircleFc } from './lib/radiusCircle.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
@@ -4431,30 +4430,6 @@ async function runSalesAnalysis() {
     preJoinVacantHidden = before - visibleSales.length;
   }
 
-  // Year built and building size, same treatment and the same guarantee.
-  // The export carries both for most rows, and where it does the value is
-  // BYTE-IDENTICAL to what the post-join check reads (buildSaleFeatures
-  // stamps _saleYearBuiltNumeric / _saleLivingArea straight off these
-  // fields), so cutting here cannot disagree with the check below. Where
-  // the export has nothing, preJoinRangePasses defers and the live record
-  // gets its say after the fetch.
-  const yearLo = parseBound(document.getElementById('sales-year-low')?.value);
-  const yearHi = parseBound(document.getElementById('sales-year-high')?.value);
-  const bldgLo = parseBound(document.getElementById('sales-bldg-low')?.value);
-  const bldgHi = parseBound(document.getElementById('sales-bldg-high')?.value);
-  let preJoinYearHidden = 0;
-  if (yearLo != null || yearHi != null) {
-    const before = visibleSales.length;
-    visibleSales = visibleSales.filter((s) => preJoinRangePasses(csvYearBuilt(s), yearLo, yearHi));
-    preJoinYearHidden = before - visibleSales.length;
-  }
-  let preJoinBldgHidden = 0;
-  if (bldgLo != null || bldgHi != null) {
-    const before = visibleSales.length;
-    visibleSales = visibleSales.filter((s) => preJoinRangePasses(csvBuildingSf(s), bldgLo, bldgHi));
-    preJoinBldgHidden = before - visibleSales.length;
-  }
-
   // N1 crosswalk status. Row-level (one record per roll+instrument), so
   // a multi-parcel sale matched on some rolls only keeps exactly its
   // unmatched rows — those ARE the data-entry queue being asked for.
@@ -4487,12 +4462,6 @@ async function runSalesAnalysis() {
     } else if (n1Mode !== 'any') {
       msg = `${salesData.sales.length} sales loaded, but none are N1-${n1Mode}. `
           + `CSVs without an N1 ID column read as entirely unmatched.`;
-    } else if (yearLo != null || yearHi != null) {
-      msg = `${salesData.sales.length} sales loaded, but none fall inside the year-built range `
-          + `(a sale with no year on the export or the assessment record can't be tested).`;
-    } else if (bldgLo != null || bldgHi != null) {
-      msg = `${salesData.sales.length} sales loaded, but none fall inside the building-size range `
-          + `(vacant land and anything with no floor area recorded are excluded while it's set).`;
     } else if (vacantMode !== 'all') {
       msg = `${salesData.sales.length} sales loaded, but none are ${vacantMode === 'vacant' ? 'vacant land' : 'improved'} `
           + `by the Par Use Code on the loaded rows.`;
@@ -5067,20 +5036,34 @@ async function runSalesAnalysis() {
   // happened to run.
   const vacantHidden = (visibleFeatures.length - afterVacant.length) + preJoinVacantHidden;
 
-  // Year built + building size. POST-join, because both read the same dual
-  // source their columns do — the export's value when it has one, the live
-  // record otherwise — so the filter and the cell can never disagree about
-  // a row. Missing is excluded once either is set, the standing rule here:
-  // a sale nobody recorded a year or an area for has not been checked, and
-  // an unchecked row must not seed a constrained comp set.
+  // Year built + building size. POST-JOIN ONLY, and deliberately not cut
+  // before the fetch the way vacant/improved is (Jason, 2026-09-16). Two
+  // reasons, and the second is the one that bites:
+  //
+  //   - they read a DUAL source, the export's value when it has one and the
+  //     live record otherwise, so the filter and the cell can never
+  //     disagree about a row. Only the join has the second half.
+  //   - these are the two an appraiser TUNES, nudging a bound and watching
+  //     the count. A pre-fetch cut would put a d4mq-wa44 round trip behind
+  //     every nudge; post-join they re-filter a set already in memory, so
+  //     tuning is instant. Cutting early would make the common case slower
+  //     while saving time only on the first run.
+  //
+  // Missing is excluded once either is set, the standing rule here: a sale
+  // nobody recorded a year or an area for has not been checked, and an
+  // unchecked row must not seed a constrained comp set.
+  const yearLo = parseBound(document.getElementById('sales-year-low')?.value);
+  const yearHi = parseBound(document.getElementById('sales-year-high')?.value);
+  const bldgLo = parseBound(document.getElementById('sales-bldg-low')?.value);
+  const bldgHi = parseBound(document.getElementById('sales-bldg-high')?.value);
   const afterYear = (yearLo == null && yearHi == null)
     ? afterVacant
     : afterVacant.filter((f) => passesRange(saleYearBuilt(f), yearLo, yearHi));
-  const yearHidden = (afterVacant.length - afterYear.length) + preJoinYearHidden;
+  const yearHidden = afterVacant.length - afterYear.length;
   const afterBldg = (bldgLo == null && bldgHi == null)
     ? afterYear
     : afterYear.filter((f) => passesRange(saleBuildingSf(f), bldgLo, bldgHi));
-  const bldgHidden = (afterYear.length - afterBldg.length) + preJoinBldgHidden;
+  const bldgHidden = afterYear.length - afterBldg.length;
 
   // Far-flung. The threshold MARKS; only the Exclude tick removes. The
   // span is a group property, so a flagged sale drops whole — never

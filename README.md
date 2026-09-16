@@ -249,36 +249,42 @@ PUCS, class, zoning and the Additional filters. A horizontal rule makes the
 split visible rather than something to infer from which controls happen to be
 slow.
 
-Vacant / improved, year built and building size all cut BEFORE the fetch,
-which is what makes a narrowed search faster. Every sale it removes is an assessment record never
-requested and a row never drawn, which is the expensive half of a search.
-Measured on a 9-sale set with a subject parcel: Vacant Land Only fetched 5
-rolls where All Sales fetched 9.
+Vacant / improved moved above the line because it is the cut that most
+changes what a search COSTS. Every sale it removes is an assessment record
+never requested and a row never drawn.
 
-Year built and building size work the same way: where the export carries the
-value it is BYTE-IDENTICAL to what the post-join check reads
-(`buildSaleFeatures` stamps `_saleYearBuiltNumeric` / `_saleLivingArea`
-straight off those fields), so cutting early cannot disagree with the check
-after; where it carries nothing, `preJoinRangePasses` DEFERS and the live
-record gets its say once fetched. That deferral is the inverse of the
-missing-is-excluded rule everywhere else, and deliberately so: a pre-fetch cut
-is allowed to be a performance shortcut, never a filter of its own.
+WHICH FILTERS CUT BEFORE THE FETCH. Sale date, PUCS, sale price, lot size,
+street name, N1 and vacant / improved all narrow the sale list before a single
+`d4mq-wa44` request goes out. Category, neighbourhood, class, zoning, year
+built, building size, far-flung and the subject radius run AFTER the join,
+because each reads something that does not exist until the live record is in
+hand.
+
+Year built and building size are post-join even though the export usually
+carries both, and that is a deliberate choice rather than an oversight (an
+earlier pass cut them early and was reverted, Jason 2026-09-16). They read a
+dual source — the export's value when it has one, the live record otherwise —
+so only the join has their second half; and they are the two an appraiser
+TUNES, nudging a bound while watching the count. Cutting them before the fetch
+would put a network round trip behind every nudge, making the common case
+slower to save time only on the first run.
+
+Vacant / improved does this WITHOUT changing which sales you see, which is the
+part that needed care. `saleUseCodeOf` falls back to the live record's
+`property_use_code` when an export row has none, so judging purely on the
+export would quietly drop sales the join could have classified -- a narrowing
+disguised as an optimisation. So `csvGroupVacancy` decides a sale group only
+when EVERY member carries its own Par Use Code and returns null otherwise;
+`passesPreJoinVacantFilter` FAILS OPEN on null, and the post-join check remains
+the authority. The cut can only remove rows that check would have removed
+anyway, and a test asserts the two agree on every decidable group. The count
+line reports both halves together, so a run that dropped 3,000 sales before the
+fetch does not report "3 hidden".
 
 WHAT IS STILL FULL-COST. Search always merges and parses the WHOLE archive out
 of IndexedDB before any filter runs -- the pre-fetch cuts save the
 `d4mq-wa44` round trip and the row draw, not the CSV read. On a large archive
 that parse is the floor on how fast a Search can be.
-
-It does this WITHOUT changing which sales you see. The check used to run only
-after the join, where it could fall back to the live record'''s
-property_use_code for a row whose CSV carried none; judging purely on the CSV
-would quietly drop those. So the pre-fetch cut decides a sale only when EVERY
-row in its group has its own Par Use Code, and anything less is fetched and
-judged afterwards exactly as before -- it fails open, and can only remove rows
-the post-join check would have removed anyway (`csvGroupVacancy` /
-`passesPreJoinVacantFilter`, unit-tested against `groupVacancy` for agreement).
-The count line reports both halves of the cut together, so a run that dropped
-3,000 sales before the fetch does not report "3 hidden".
 
 Search is disabled, not hidden, until the SABRE folder is connected: the row
 keeps its shape and the button says why it is unavailable.

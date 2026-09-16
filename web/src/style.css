@@ -2115,6 +2115,20 @@ body {
   justify-content: flex-start;
   gap: 6px;
 }
+/* A quarter shorter than the sidebar's standard 36px control (Jason,
+   2026-09-16). Needs the min-height AND the padding: the refresh layer
+   sets `.controls button { min-height: 36px }`, and trimming only the
+   padding leaves the min-height holding the old box open. */
+.sales-search-row #sales-db-load,
+.sales-search-row #sales-clear,
+.controls .sales-search-row button {
+  min-height: 27px;
+  height: 27px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 1;
+}
+
 /* Search is the action; Clear is the escape hatch. Equal widths made a
    destructive red button look like half the point of the row, so Search
    takes the space and Clear sits to its own size. */
