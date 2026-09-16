@@ -482,6 +482,21 @@ loaded sale, its **Sale Date**, **Sale Price** and the rate that suits it --
 corrected Category is Land. Hover and click share one builder
 (`combinedPopupHtml`), so the two can never drift apart.
 
+**Copy Roll / GPS Coordinates.** The CLICK popup ends in two copy links, on
+both tabs and on a citywide parcel outside the search: **Copy Roll** puts the
+roll number on the clipboard (for SABRE, N1, or the City's own search) and
+**GPS Coordinates** puts the parcel centroid there as `lat, lng`. Both flip to
+"Copied!" for a moment to confirm. A click over two different rolls draws one
+labelled link per roll rather than picking a winner silently -- a copied value
+is invisible until it is pasted somewhere else, so a wrong one is not noticed
+until it matters. The HOVER popup carries neither, a deliberate divergence from
+Manitoba (which emits the markup in both and wires only the sticky one): the
+pointer can leave the canvas and enter the hover popup here, and an unwired
+`href="#"` is a link that scrolls the page instead of copying. `wireCopyAnchor`
+falls back to `execCommand` both when the Clipboard API is missing and when it
+REJECTS -- an embedded webview can report clipboard-write as denied even on
+localhost.
+
 Every figure is READ from what lib/sales.js already computed for the columns of
 the same name, never recomputed. That matters more than it looks: the group-sum
 rules behind those numbers (multi-parcel land totals, the vacant-group guard on

@@ -1981,8 +1981,20 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         if (!primaryProps && !contextProps) return;
         resultClickPopup
           .setLngLat(e.lngLat)
-          .setHTML(combinedPopupHtml(primaryProps, contextProps))
+          .setHTML(combinedPopupHtml(primaryProps, contextProps, { actions: true }))
           .addTo(map);
+        // The two copy links, wired only on THIS sticky popup. The hover
+        // popup draws the same parcel through the same builder but never
+        // gets an action row (see combinedPopupHtml) — a link the pointer
+        // cannot reach without dismissing the thing it sits in is not a
+        // link. Coordinates come off the rendered polygon, the same bbox
+        // midpoint the citywide popup copies, so the two popups hand out
+        // the same point for the same parcel; the click point is the
+        // fallback for a geometry that renders empty.
+        wireRollCopy(resultClickPopup);
+        const clickedGeom = primaryHits[0]?.geometry ?? contextHits[0]?.geometry;
+        wireCoordsCopy(resultClickPopup,
+          polygonBboxMidpoint(clickedGeom) ?? [e.lngLat.lng, e.lngLat.lat]);
       };
       // Registered per layer, so a click where both overlap fires twice.
       // Harmless and deliberate: the second pass recomputes the identical
@@ -2027,6 +2039,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         const center = polygonBboxMidpoint(rendered?.geometry)
           ?? [e.lngLat.lng, e.lngLat.lat];
         wireCoordsCopy(citywideClickPopup, center);
+        wireRollCopy(citywideClickPopup);
       };
       onLayerClick(map, 'citywide-parcels-fill', citywideClick('citywide-parcels-fill'));
       onLayerClick(map, 'zoning-changes-citywide-fill', citywideClick('zoning-changes-citywide-fill'));
@@ -3245,6 +3258,9 @@ function citywideParcelHtml(p) {
   if (roll) {
     const url = `https://assessment.winnipeg.ca/AsmtPub/english/propertydetails/details.aspx?pgLang=EN&isRealtySearch=true&RollNumber=${encodeURIComponent(roll)}`;
     actions.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Assessment →</a>`);
+    // Same link, same wording as the search-result popup: a parcel outside
+    // the active search must not be the one place the roll cannot be copied.
+    actions.push(rollCopyLink(roll, false));
   }
   actions.push(`<a href="#" class="parcel-coords-copy" role="button" title="Copy parcel centroid (lat, lng) to clipboard">GPS Coordinates</a>`);
   if (actions.length) {
@@ -3312,31 +3328,33 @@ function polygonBboxMidpoint(geometry) {
 }
 
 /**
- * After a popup with a `.parcel-coords-copy` anchor is mounted,
- * wire its click to copy "lat, lng" to the clipboard with brief
- * "Copied!" feedback. Falls back to the legacy execCommand path on
- * non-secure contexts (http:// dev hosts) where navigator.clipboard
- * isn't available.
+ * Turn a popup anchor into a copy-to-clipboard button, with brief
+ * "Copied!" feedback in the link's own text.
+ *
+ * Shared by the GPS Coordinates and Copy Roll links (the Manitoba sister
+ * app's wireCopyAnchor, ported) so the fallback below is written once. That
+ * fallback is the whole reason to share rather than reimplement:
+ * navigator.clipboard needs a secure context and is simply absent on an
+ * http:// dev host, which is the one place nobody notices it missing.
  */
-function wireCoordsCopy(popup, lngLat) {
-  if (!popup || !Array.isArray(lngLat)) return;
-  const el = popup.getElement?.();
-  const anchor = el?.querySelector('.parcel-coords-copy');
-  if (!anchor) return;
-  const [lng, lat] = lngLat;
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
-  const text = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+function wireCopyAnchor(anchor, text) {
+  if (!anchor || !text) return;
   anchor.addEventListener('click', (ev) => {
     ev.preventDefault();
+    const original = anchor.textContent;
     const onSuccess = () => {
-      const original = anchor.textContent;
       anchor.textContent = 'Copied!';
       setTimeout(() => { anchor.textContent = original; }, 1500);
     };
     const onFailure = () => { anchor.textContent = 'Copy failed'; };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(onSuccess, onFailure);
-    } else {
+    // execCommand is deprecated and still the only path that works where
+    // the Clipboard API does not: it needs neither a secure context nor the
+    // clipboard-write permission. Reached BOTH when navigator.clipboard is
+    // absent (an http:// dev host) and when writeText REJECTS — an embedded
+    // webview can report clipboard-write as denied even on localhost, and
+    // the old code called that a failed copy without ever trying the path
+    // that would have worked.
+    const legacyCopy = () => {
       try {
         const ta = document.createElement('textarea');
         ta.value = text;
@@ -3344,12 +3362,45 @@ function wireCoordsCopy(popup, lngLat) {
         ta.style.opacity = '0';
         document.body.appendChild(ta);
         ta.select();
-        document.execCommand('copy');
+        const ok = document.execCommand('copy');
         document.body.removeChild(ta);
-        onSuccess();
+        if (ok) onSuccess(); else onFailure();
       } catch { onFailure(); }
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(onSuccess, legacyCopy);
+    } else {
+      legacyCopy();
     }
   });
+}
+
+/**
+ * After a popup with a `.parcel-coords-copy` anchor is mounted, wire its
+ * click to copy "lat, lng" (six decimals) to the clipboard. Scoped to THIS
+ * popup's element, so stacked popups from different layers each get their
+ * own listener.
+ */
+function wireCoordsCopy(popup, lngLat) {
+  if (!popup || !Array.isArray(lngLat)) return;
+  const [lng, lat] = lngLat;
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+  wireCopyAnchor(
+    popup.getElement?.()?.querySelector('.parcel-coords-copy'),
+    `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+  );
+}
+
+/**
+ * Wire every `.parcel-roll-copy` anchor in a mounted popup. The roll comes
+ * off the anchor's own data-roll rather than being passed in, because the
+ * popup HTML is the only thing that knows which parcels it drew — and a
+ * click over two stacked rolls draws two links.
+ */
+function wireRollCopy(popup) {
+  for (const anchor of popup?.getElement?.()?.querySelectorAll('.parcel-roll-copy') || []) {
+    wireCopyAnchor(anchor, anchor.dataset.roll || '');
+  }
 }
 
 /**
@@ -3466,7 +3517,7 @@ function assessmentClassLine(p) {
   return `<em>${escapeHtml(text)}</em>`;
 }
 
-function combinedPopupHtml(primary, context) {
+function combinedPopupHtml(primary, context, { actions: withActions = false } = {}) {
   const blocks = [];
   // Determine which schema `primary` is carrying.
   const primaryIsAssess = primary && (primary.roll_number != null || primary.full_address != null);
@@ -3483,7 +3534,45 @@ function combinedPopupHtml(primary, context) {
   if (context && (!primaryIsAssess || context.roll_number !== primary?.roll_number)) {
     blocks.push(`<div><strong style="color:#8a6500">Assessment Parcel</strong><br>${popupHtml(context)}</div>`);
   }
+  // Copy Roll + GPS Coordinates, on the CLICK popup only (Jason,
+  // 2026-09-16). Both are the plainest possible answer to "I need this
+  // parcel in the other program": the roll goes into SABRE, N1 or the
+  // City's own search, the coordinates into a report exhibit or a phone.
+  //
+  // `withActions` is the whole reason this row is a parameter rather than
+  // part of popupHtml: the HOVER popup is drawn by this same builder, and
+  // nothing wires its anchors. Manitoba emits the markup in both and wires
+  // only the sticky one; this is a DELIBERATE divergence, because the hover
+  // popup here is reachable — the pointer can leave the canvas and enter
+  // it, at which point an unwired `href="#"` is a link that scrolls the
+  // page instead of copying anything. A link that cannot work is better
+  // not drawn.
+  //
+  // When a click lands on two DIFFERENT rolls (a survey parcel over an
+  // assessment one, or two stacked assessment records) each gets its own
+  // labelled link. One "Copy Roll" that silently picks a winner is the
+  // one outcome worth avoiding: the value is invisible until it is pasted
+  // somewhere else, so a wrong one is not noticed until it matters.
+  if (withActions) {
+    const rolls = [...new Set(
+      [primary, context]
+        .map((p) => (p?.roll_number != null && p.roll_number !== '' ? String(p.roll_number) : null))
+        .filter(Boolean)
+    )];
+    const actions = rolls.map((roll) => rollCopyLink(roll, rolls.length > 1));
+    actions.push('<a href="#" class="parcel-coords-copy" role="button"'
+      + ' title="Copy parcel centroid (lat, lng) to clipboard">GPS Coordinates</a>');
+    blocks.push(`<div style="margin-top:4px">${actions.join(' &nbsp;·&nbsp; ')}</div>`);
+  }
   return blocks.join('<hr style="margin:6px 0;border:none;border-top:1px solid #ddd">');
+}
+
+/** The Copy Roll anchor. The roll rides on the anchor's own data-roll so
+ *  the wiring never has to be told which parcel the popup drew. */
+function rollCopyLink(roll, labelled) {
+  const safe = escapeHtml(roll);
+  return `<a href="#" class="parcel-roll-copy" role="button" data-roll="${safe}"`
+    + ` title="Copy roll number ${safe} to the clipboard">Copy Roll${labelled ? ` ${safe}` : ''}</a>`;
 }
 
 // Render a hover-popup HTML block from whichever schema is present.
