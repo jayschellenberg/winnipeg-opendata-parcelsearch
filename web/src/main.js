@@ -96,7 +96,7 @@ import {
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
   setCitywideParcelsVisible, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
   setContamData, setContamVisible, setWaterInfluenceVisible,
-  setSubjectData,
+  setSubjectData, setSubjectRadiusData,
   setParcelNumberData, setParcelNumbersVisible,
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
   setHistoricalZoningData, setHistoricalZoningVisible,
@@ -135,6 +135,7 @@ import {
   parseRadiusKm,
   passesRadiusFilter,
 } from './lib/salesFilters.js';
+import { radiusCircleFc } from './lib/radiusCircle.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
 import {
@@ -1338,8 +1339,13 @@ async function runSearch() {
   document.body.classList.remove('subject-set');
   setColumnMode('property');
   // Clear the sales-tab subject highlight when switching to a
-  // property search so the blue parcel doesn't linger on the map.
-  mapReady.then(() => setSubjectData(map, null));
+  // property search so the blue parcel doesn't linger on the map. The
+  // radius ring goes with it: a ring with no subject on screen is a
+  // circle drawn around nothing.
+  mapReady.then(() => {
+    setSubjectData(map, null);
+    setSubjectRadiusData(map, null);
+  });
   const inputs = {
     lot: $lot.value.trim(),
     block: $block.value.trim(),
@@ -4542,9 +4548,23 @@ async function runSalesAnalysis() {
   // feature (not just the centroid) so the polygon outline lights
   // up — appraisers like to see the subject's footprint, not just
   // a point. Clear the layer when no subject is set.
+  // Radius, read HERE rather than down beside the filter that uses it,
+  // because the ring and the filter must come from one value. Two reads
+  // of the same input is how a map ends up drawing 2 km while the grid
+  // filters at 5 — the input can change between them, and a reader has
+  // no way to tell which number won.
+  const radiusKm = parseRadiusKm(document.getElementById('sales-radius-km')?.value);
+
   mapReady.then(() => {
     setSubjectData(map, subjectFeature
       ? { type: 'FeatureCollection', features: [subjectFeature] }
+      : null);
+    // The ring is drawn only when the radius is actually FILTERING, so
+    // the same condition governs the picture and the rows. With no
+    // subject the radius is ignored (see updateRadiusNote), and drawing
+    // a ring then would assert a limit that is not being applied.
+    setSubjectRadiusData(map, subjectCentroid
+      ? radiusCircleFc(subjectCentroid, radiusKm)
       : null);
   });
 
@@ -5052,7 +5072,6 @@ async function runSalesAnalysis() {
   // shown" — which reads as "no comps near your subject" when what
   // happened is that no subject was named. The note beside the input
   // says so instead.
-  const radiusKm = parseRadiusKm(document.getElementById('sales-radius-km')?.value);
   const radiusActive = radiusKm != null && subjectCentroid != null;
   const finalFeatures = radiusActive
     ? afterFarFlung.filter((f) => passesRadiusFilter(f, radiusKm))

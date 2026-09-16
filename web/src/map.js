@@ -1397,6 +1397,48 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         },
       });
 
+      // Radius ring (sales tab) — the "within N km of the subject"
+      // boundary, drawn as a real polygon so it keeps meaning N km at
+      // every zoom. A MapLibre `circle` layer could not do this job: its
+      // radius is in screen pixels, so it would silently mean a different
+      // distance each time the user zoomed.
+      //
+      // Added BEFORE the subject and result layers so it sits underneath
+      // them. It is an annotation over the whole neighbourhood, and the
+      // parcels and sales inside it are what is being read; a ring drawn
+      // on top would cross them.
+      map.addSource('subject-radius', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'subject-radius-fill',
+        type: 'fill',
+        source: 'subject-radius',
+        paint: {
+          // Barely there. The ring's job is to show WHERE the edge is;
+          // shading its whole interior at any strength would tint every
+          // comp inside the search — the opposite of helpful.
+          'fill-color': '#1e6fd9',
+          'fill-opacity': 0.05,
+        },
+      });
+      map.addLayer({
+        id: 'subject-radius-line',
+        type: 'line',
+        source: 'subject-radius',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          // Dashed, and in the subject's own blue: dashes read as "a
+          // boundary I drew" rather than as a feature on the ground, and
+          // the colour ties the ring to the parcel it is measured from.
+          'line-color': '#1e6fd9',
+          'line-width': 2,
+          'line-opacity': 0.85,
+          'line-dasharray': [3, 2],
+        },
+      });
+
       // Subject parcel (sales tab) — separate source / layers so the
       // blue highlight stands out against the yellow sale-results
       // highlight. Drawn AFTER assess-context-line so the blue
@@ -2570,6 +2612,19 @@ function clearAssessGroupState(map) {
  */
 export function setSubjectData(map, fc) {
   const src = map.getSource('subject');
+  if (src) src.setData(fc || { type: 'FeatureCollection', features: [] });
+}
+
+/**
+ * Push the "within N km of the subject" ring onto its own layer. Pass
+ * null to clear it.
+ *
+ * Cleared rather than hidden, so there is one way for the ring to be
+ * absent. A hidden-but-populated layer is how a stale 2 km ring survives
+ * a change to 5 km and reappears later claiming the wrong distance.
+ */
+export function setSubjectRadiusData(map, fc) {
+  const src = map.getSource('subject-radius');
   if (src) src.setData(fc || { type: 'FeatureCollection', features: [] });
 }
 
