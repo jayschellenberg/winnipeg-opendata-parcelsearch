@@ -249,11 +249,25 @@ PUCS, class, zoning and the Additional filters. A horizontal rule makes the
 split visible rather than something to infer from which controls happen to be
 slow.
 
-Vacant / improved moved above the line because it is the cut that actually
-makes a run faster. Every sale it removes is an assessment record never
+Vacant / improved, year built and building size all cut BEFORE the fetch,
+which is what makes a narrowed search faster. Every sale it removes is an assessment record never
 requested and a row never drawn, which is the expensive half of a search.
 Measured on a 9-sale set with a subject parcel: Vacant Land Only fetched 5
 rolls where All Sales fetched 9.
+
+Year built and building size work the same way: where the export carries the
+value it is BYTE-IDENTICAL to what the post-join check reads
+(`buildSaleFeatures` stamps `_saleYearBuiltNumeric` / `_saleLivingArea`
+straight off those fields), so cutting early cannot disagree with the check
+after; where it carries nothing, `preJoinRangePasses` DEFERS and the live
+record gets its say once fetched. That deferral is the inverse of the
+missing-is-excluded rule everywhere else, and deliberately so: a pre-fetch cut
+is allowed to be a performance shortcut, never a filter of its own.
+
+WHAT IS STILL FULL-COST. Search always merges and parses the WHOLE archive out
+of IndexedDB before any filter runs -- the pre-fetch cuts save the
+`d4mq-wa44` round trip and the row draw, not the CSV read. On a large archive
+that parse is the floor on how fast a Search can be.
 
 It does this WITHOUT changing which sales you see. The check used to run only
 after the join, where it could fall back to the live record'''s

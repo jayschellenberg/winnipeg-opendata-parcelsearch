@@ -25,6 +25,7 @@ import {
   saleClusterOf, passesClusterFilter, UNASSIGNED_CLUSTER,
   csvGroupVacancy, passesPreJoinVacantFilter, bareUseCode,
   saleBuildingSf, saleYearBuilt,
+  preJoinRangePasses, csvYearBuilt, csvBuildingSf,
   parseRadiusKm, passesRadiusFilter,
 } from '../src/lib/salesFilters.js';
 
@@ -719,6 +720,70 @@ test('passesRange over both — missing is excluded once a bound is set', () => 
   // Both bounds blank is a complete no-op, even for the unmeasurable row.
   assert.equal(passesRange(saleYearBuilt(unknown), null, null), true);
   assert.equal(passesRange(saleBuildingSf(unknown), null, null), true);
+});
+
+
+// ---- pre-join year / building size ----------------------------------------
+// Same safety property as the pre-join vacancy cut: it may only remove sales
+// the post-join check would also have removed. It saves a fetch; it must
+// never change the answer.
+
+test('csvYearBuilt — the export’s oldest year, sentinels rejected', () => {
+  assert.equal(csvYearBuilt({ yearBuiltNumeric: 1911 }), 1911);
+  assert.equal(csvYearBuilt({ yearBuiltNumeric: '1974' }), 1974);
+  for (const v of [0, null, undefined, '', 'n/a', 1500, 9999]) {
+    assert.equal(csvYearBuilt({ yearBuiltNumeric: v }), null, JSON.stringify(v));
+  }
+  assert.equal(csvYearBuilt(null), null);
+});
+
+test('csvBuildingSf — positive areas only', () => {
+  assert.equal(csvBuildingSf({ livingArea: 1836 }), 1836);
+  for (const v of [0, -5, null, undefined, '', 'x']) {
+    assert.equal(csvBuildingSf({ livingArea: v }), null, JSON.stringify(v));
+  }
+});
+
+test('preJoinRangePasses — both bounds blank is a no-op', () => {
+  assert.equal(preJoinRangePasses(1950, null, null), true);
+  assert.equal(preJoinRangePasses(null, null, null), true);
+});
+
+test('preJoinRangePasses — a value the export HAS is cut normally', () => {
+  assert.equal(preJoinRangePasses(1940, 1950, 1970), false);
+  assert.equal(preJoinRangePasses(1960, 1950, 1970), true);
+  assert.equal(preJoinRangePasses(1980, 1950, 1970), false);
+  // Inclusive at both ends, matching passesRange post-join.
+  assert.equal(preJoinRangePasses(1950, 1950, 1970), true);
+  assert.equal(preJoinRangePasses(1970, 1950, 1970), true);
+});
+
+test('preJoinRangePasses — DEFERS when the export has nothing', () => {
+  // The safety property. The live record may still classify this sale, so
+  // the pre-fetch cut must not be the reason it disappears. Note this is
+  // the OPPOSITE of the post-join rule, where missing is excluded.
+  assert.equal(preJoinRangePasses(null, 1950, 1970), true);
+  assert.equal(preJoinRangePasses(csvYearBuilt({ yearBuiltNumeric: 0 }), 1950, 1970), true);
+  assert.equal(preJoinRangePasses(csvBuildingSf({ livingArea: 0 }), 1000, 2000), true);
+});
+
+test('pre-join and post-join agree wherever the export carries the value', () => {
+  // The pre-join reader and the post-join reader must see the SAME number
+  // for a sale the export describes — buildSaleFeatures stamps
+  // _saleYearBuiltNumeric / _saleLivingArea straight off these fields, and
+  // the post-join accessors prefer that side. If they ever diverge, a row
+  // could be cut before the fetch that the check would have kept.
+  for (const [year, area] of [[1911, 1836], [2002, 900], [1974, 12000]]) {
+    const sale = { yearBuiltNumeric: year, livingArea: area };
+    const feature = { properties: { _saleYearBuiltNumeric: year, _saleLivingArea: area } };
+    assert.equal(csvYearBuilt(sale), saleYearBuilt(feature));
+    assert.equal(csvBuildingSf(sale), saleBuildingSf(feature));
+    // And therefore the same verdict against any bounds.
+    for (const [lo, hi] of [[1950, 1970], [null, 1990], [1900, null]]) {
+      assert.equal(preJoinRangePasses(csvYearBuilt(sale), lo, hi),
+        passesRange(saleYearBuilt(feature), lo, hi), `year ${year} in ${lo}-${hi}`);
+    }
+  }
 });
 
 console.log('');

@@ -136,6 +136,7 @@ import {
   passesRadiusFilter,
   csvGroupVacancy, passesPreJoinVacantFilter,
   saleBuildingSf, saleYearBuilt, passesRange,
+  preJoinRangePasses, csvYearBuilt, csvBuildingSf,
 } from './lib/salesFilters.js';
 import { radiusCircleFc } from './lib/radiusCircle.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
@@ -4189,14 +4190,18 @@ async function handleSalesUpload({ name, text }, remember = true) {
     // THIS CSV's crosswalk column, not a standing preference.
     const $n1 = document.getElementById('sales-n1-filter');
     if ($n1) $n1.value = 'any';
-    const $rise = document.getElementById('sales-rise-filter');
-    if ($rise) $rise.value = 'any';
-    // Same reasoning for the other narrowing controls: they describe the
-    // previous comp set, not a standing preference. Far-flung is left
-    // alone — its threshold is a judgement about what counts as
-    // scattered, which does carry across uploads.
-    const $vacant = document.getElementById('vacant-improved');
-    if ($vacant) $vacant.value = 'all';
+    // Vacant / improved is NOT reset, and must never be again (Jason,
+    // 2026-09-16). It used to be, on the reasoning that it described the
+    // previous comp set — true when it lived below the results as a
+    // display filter. It is now a PRE-SEARCH input sitting above the
+    // Search button, and this line ran on every Search: the user picked
+    // Vacant Land Only, pressed Search, and the act of searching silently
+    // put it back to All Sales *before* runSalesAnalysis read it. The
+    // dropdown visibly snapped back and the whole archive was fetched.
+    // Year built and Bldg size were never reset and must stay that way for
+    // the same reason. Far-flung is left alone too — its threshold is a
+    // judgement about what counts as scattered, which carries across
+    // loads.
     rebuildPucsFilter();
     // Same reasoning for drawn area shapes: a stale include shape over
     // the previous CSV's neighbourhood would filter the new sale set to
@@ -4426,6 +4431,30 @@ async function runSalesAnalysis() {
     preJoinVacantHidden = before - visibleSales.length;
   }
 
+  // Year built and building size, same treatment and the same guarantee.
+  // The export carries both for most rows, and where it does the value is
+  // BYTE-IDENTICAL to what the post-join check reads (buildSaleFeatures
+  // stamps _saleYearBuiltNumeric / _saleLivingArea straight off these
+  // fields), so cutting here cannot disagree with the check below. Where
+  // the export has nothing, preJoinRangePasses defers and the live record
+  // gets its say after the fetch.
+  const yearLo = parseBound(document.getElementById('sales-year-low')?.value);
+  const yearHi = parseBound(document.getElementById('sales-year-high')?.value);
+  const bldgLo = parseBound(document.getElementById('sales-bldg-low')?.value);
+  const bldgHi = parseBound(document.getElementById('sales-bldg-high')?.value);
+  let preJoinYearHidden = 0;
+  if (yearLo != null || yearHi != null) {
+    const before = visibleSales.length;
+    visibleSales = visibleSales.filter((s) => preJoinRangePasses(csvYearBuilt(s), yearLo, yearHi));
+    preJoinYearHidden = before - visibleSales.length;
+  }
+  let preJoinBldgHidden = 0;
+  if (bldgLo != null || bldgHi != null) {
+    const before = visibleSales.length;
+    visibleSales = visibleSales.filter((s) => preJoinRangePasses(csvBuildingSf(s), bldgLo, bldgHi));
+    preJoinBldgHidden = before - visibleSales.length;
+  }
+
   // N1 crosswalk status. Row-level (one record per roll+instrument), so
   // a multi-parcel sale matched on some rolls only keeps exactly its
   // unmatched rows — those ARE the data-entry queue being asked for.
@@ -4458,6 +4487,12 @@ async function runSalesAnalysis() {
     } else if (n1Mode !== 'any') {
       msg = `${salesData.sales.length} sales loaded, but none are N1-${n1Mode}. `
           + `CSVs without an N1 ID column read as entirely unmatched.`;
+    } else if (yearLo != null || yearHi != null) {
+      msg = `${salesData.sales.length} sales loaded, but none fall inside the year-built range `
+          + `(a sale with no year on the export or the assessment record can't be tested).`;
+    } else if (bldgLo != null || bldgHi != null) {
+      msg = `${salesData.sales.length} sales loaded, but none fall inside the building-size range `
+          + `(vacant land and anything with no floor area recorded are excluded while it's set).`;
     } else if (vacantMode !== 'all') {
       msg = `${salesData.sales.length} sales loaded, but none are ${vacantMode === 'vacant' ? 'vacant land' : 'improved'} `
           + `by the Par Use Code on the loaded rows.`;
@@ -5038,18 +5073,14 @@ async function runSalesAnalysis() {
   // a row. Missing is excluded once either is set, the standing rule here:
   // a sale nobody recorded a year or an area for has not been checked, and
   // an unchecked row must not seed a constrained comp set.
-  const yearLo = parseBound(document.getElementById('sales-year-low')?.value);
-  const yearHi = parseBound(document.getElementById('sales-year-high')?.value);
-  const bldgLo = parseBound(document.getElementById('sales-bldg-low')?.value);
-  const bldgHi = parseBound(document.getElementById('sales-bldg-high')?.value);
   const afterYear = (yearLo == null && yearHi == null)
     ? afterVacant
     : afterVacant.filter((f) => passesRange(saleYearBuilt(f), yearLo, yearHi));
-  const yearHidden = afterVacant.length - afterYear.length;
+  const yearHidden = (afterVacant.length - afterYear.length) + preJoinYearHidden;
   const afterBldg = (bldgLo == null && bldgHi == null)
     ? afterYear
     : afterYear.filter((f) => passesRange(saleBuildingSf(f), bldgLo, bldgHi));
-  const bldgHidden = afterYear.length - afterBldg.length;
+  const bldgHidden = (afterYear.length - afterBldg.length) + preJoinBldgHidden;
 
   // Far-flung. The threshold MARKS; only the Exclude tick removes. The
   // span is a group property, so a flagged sale drops whole — never
