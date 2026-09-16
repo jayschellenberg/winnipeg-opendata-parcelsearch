@@ -324,9 +324,19 @@ allowances and the city edge all leave slivers a centroid can land in.
     house numbers matched off the front of `full_address`, and capped at 40
     streets a run: this is a nicety, not the analysis.
 
-Past 1 km, `(no cluster)` is still the honest answer and still a tickable
-option. Neither fallback marks its result as inferred -- Jason's call; a
-placement is a placement.
+What neither fallback can place lands in one of TWO named, tickable buckets,
+split apart on 2026-09-16 because one label was answering two different
+questions and telling them apart meant inspecting the rows:
+
+  - `(outside Winnipeg)` -- a real coordinate further from every
+    neighbourhood than the cap. In practice an MLS row for an out-of-town
+    property, so bad data identifies itself on import.
+  - `(no cluster)` -- nothing to place it with at all.
+
+Neither is auto-assigned to the nearest Winnipeg cluster, and that is what
+the cap is FOR: an out-of-town comp wearing a local label reads as a local
+comp, and nothing on the row would contradict it. Neither fallback marks its
+result as inferred -- Jason's call; a placement is a placement.
 
 The boundaries are ALWAYS DRAWN on the Sales Analysis tab, the way the Manitoba
 app always draws its municipality boundaries on its own Sales tab, and they are

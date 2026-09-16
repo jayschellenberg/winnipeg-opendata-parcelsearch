@@ -495,6 +495,24 @@ export function isFarFlung(spreadKm, thresholdKm) {
  */
 export const UNASSIGNED_CLUSTER = '(no cluster)';
 
+/**
+ * A sale whose centroid is real but lies further from every neighbourhood
+ * than the placement cap — in practice an MLS row for a property outside
+ * the city.
+ *
+ * Split out of (no cluster) on 2026-09-16 because that one label was
+ * answering two different questions: "this is not in Winnipeg" and "there
+ * was nothing to place it with". Jason found three unplaced sales and had
+ * to inspect the rows to learn which. Naming it makes an out-of-town row
+ * self-identifying on import, and keeps the genuinely unplaceable ones a
+ * separate, smaller problem.
+ *
+ * Deliberately NOT auto-assigned to the nearest Winnipeg cluster. That is
+ * what the cap exists to prevent: an out-of-town comp labelled Transcona
+ * looks like a Transcona comp, and nothing on the row would say otherwise.
+ */
+export const OUTSIDE_CITY_CLUSTER = '(outside Winnipeg)';
+
 /** A sale's neighbourhood cluster, as the filter and the Cluster column
  *  both read it. Never returns blank — see UNASSIGNED_CLUSTER. */
 export function saleClusterOf(feature) {

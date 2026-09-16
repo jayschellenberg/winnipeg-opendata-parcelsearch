@@ -134,7 +134,7 @@ import {
   resolveMixedSales,
   groupSpreadKm, isFarFlung,
   passesClusterFilter,
-  saleClusterOf,
+  saleClusterOf, OUTSIDE_CITY_CLUSTER,
   parseRadiusKm,
   passesRadiusFilter,
   csvGroupSaleType, passesPreJoinSaleTypeFilter,
@@ -5227,7 +5227,13 @@ async function runSalesAnalysis() {
       for (const f of unplaced) {
         const c = featureCentroid(f);
         if (!c) continue;
-        f.properties._cluster = nearestCluster(index, c[0], c[1], CLUSTER_NEAR_KM)?.cluster || '';
+        // Past the cap the sale is not unplaceable, it is ELSEWHERE — a
+        // real coordinate too far from any Winnipeg neighbourhood to be
+        // one. Saying so is the whole point of not assigning it: an
+        // out-of-town comp wearing a Winnipeg cluster reads as a local
+        // comp, and nothing on the row would contradict it.
+        f.properties._cluster = nearestCluster(index, c[0], c[1], CLUSTER_NEAR_KM)?.cluster
+          || OUTSIDE_CITY_CLUSTER;
       }
       // 2. It has NO centroid at all, because its roll matched no live
       //    record. Nothing on the feature can place it, so fall back to
@@ -5590,9 +5596,13 @@ async function placeSalesByAddress(features, index) {
     for (const { f, num } of byStreet.get(street)) {
       const pt = points.get(num);
       if (!pt) continue;
+      // Same split as the centroid path: an address that resolved to a
+      // point outside the city is elsewhere, not unplaceable.
       const cluster = clusterForPoint(index, pt[0], pt[1])
-        || nearestCluster(index, pt[0], pt[1], CLUSTER_NEAR_KM)?.cluster;
-      if (cluster) { f.properties._cluster = cluster; placed += 1; }
+        || nearestCluster(index, pt[0], pt[1], CLUSTER_NEAR_KM)?.cluster
+        || OUTSIDE_CITY_CLUSTER;
+      f.properties._cluster = cluster;
+      if (cluster !== OUTSIDE_CITY_CLUSTER) placed += 1;
     }
   }));
   return placed;

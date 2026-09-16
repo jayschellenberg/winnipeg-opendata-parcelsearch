@@ -24,7 +24,7 @@ import {
   csvGroupSaleType, passesPreJoinSaleTypeFilter,
   groupSpreadKm, isFarFlung,
   isLandSetUseCode, resolveMixedSales,
-  saleClusterOf, passesClusterFilter, UNASSIGNED_CLUSTER,
+  saleClusterOf, passesClusterFilter, UNASSIGNED_CLUSTER, OUTSIDE_CITY_CLUSTER,
   saleBuildingSf, saleYearBuilt,
   parseRadiusKm, passesRadiusFilter,
 } from '../src/lib/salesFilters.js';
@@ -666,6 +666,21 @@ test('passesClusterFilter — only ticked clusters pass', () => {
 test('passesClusterFilter — the unassigned bucket is tickable like any other', () => {
   assert.equal(passesClusterFilter(clu(''), new Set([UNASSIGNED_CLUSTER])), true);
   assert.equal(passesClusterFilter(clu(''), new Set(['Transcona'])), false);
+});
+
+test('the two unplaced buckets are distinct and both tickable', () => {
+  // One label used to answer two questions — "not in Winnipeg" and "nothing
+  // to place it with" — and telling them apart meant inspecting the rows.
+  assert.notEqual(OUTSIDE_CITY_CLUSTER, UNASSIGNED_CLUSTER);
+  // Both are ordinary values as far as the filter is concerned, so both
+  // appear in the picker and can be ticked like any neighbourhood.
+  assert.equal(saleClusterOf(clu(OUTSIDE_CITY_CLUSTER)), OUTSIDE_CITY_CLUSTER);
+  assert.equal(passesClusterFilter(clu(OUTSIDE_CITY_CLUSTER),
+    new Set([OUTSIDE_CITY_CLUSTER])), true);
+  // Ticking one must not bring the other.
+  assert.equal(passesClusterFilter(clu(OUTSIDE_CITY_CLUSTER),
+    new Set([UNASSIGNED_CLUSTER])), false);
+  assert.equal(passesClusterFilter(clu(''), new Set([OUTSIDE_CITY_CLUSTER])), false);
 });
 
 test('passesClusterFilter — empty Set is a deliberate show-nothing', () => {
