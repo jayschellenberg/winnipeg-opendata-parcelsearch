@@ -4500,11 +4500,42 @@ button.topbar-link {
    chip field carries its own `flex: 0 0 auto` from .field.chip-input-field,
    which beats a bare `> *` and made it eat the whole row while the radius
    collapsed to zero width. */
-.sales-subject-pair > .field.chip-input-field,
-.sales-subject-pair > .sales-radius-row {
-  flex: 1 1 50%;
+/* 70 / 30, not half and half: the roll box holds an 11-digit number and
+   can carry several as chips, while the radius holds one or two
+   characters (Jason, 2026-09-16). */
+.sales-subject-pair > .field.chip-input-field {
+  flex: 1 1 70%;
   min-width: 0;
   width: auto;
+}
+.sales-subject-pair > .sales-radius-row {
+  flex: 1 1 30%;
+  min-width: 0;
+  width: auto;
+  /* Tighter than the 6px elsewhere: three items in a 30% column, and the
+     gaps were costing more than the number they separate. */
+  gap: 4px;
+  /* The row wraps by default, which in a 30% column put "≤", the box and
+     "km" on three separate lines. Here the three ARE the control and must
+     stay on one. */
+  flex-wrap: nowrap;
+}
+.sales-subject-pair .sales-radius-op,
+.sales-subject-pair .sales-radius-unit {
+  flex: 0 0 auto;
+}
+/* The radius input gives up its pinned 68px inside the pair and takes
+   whatever the column has left, so "≤" and "km" always fit beside it
+   rather than wrapping to a second line. */
+.sales-subject-pair .sales-radius-row .sales-radius-input,
+.controls .sales-subject-pair .sales-radius-row input[type="number"].sales-radius-input {
+  /* basis 0, not auto: from `auto` the box starts at its content width,
+     grew to the whole column and pushed the unit onto a second line. */
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  padding-left: 5px;
+  padding-right: 3px;
 }
 
 /* Radius from the subject parcel. The label is the operator itself --
