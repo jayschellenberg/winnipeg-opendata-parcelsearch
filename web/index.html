@@ -489,36 +489,50 @@
             </div>
           </details>
 
-          <span class="field chip-input-field">
-            <div class="chip-input" data-target="subject-roll">
-              <input id="subject-roll" type="hidden" />
-              <input
-                class="chip-input-text"
-                type="text"
-                placeholder="Subject roll # (for Dist km)"
-                autocomplete="off"
-                aria-label="Subject roll number"
-              />
-            </div>
-            <span class="tip">Subject parcel roll #. Once set, every loaded sale row gets a Dist (km) value (centroid-to-centroid) and a Sale/Asmt ratio relative to the subject's assessment. Press Enter or comma to commit; leave blank to skip distance math.</span>
-          </span>
+          <!-- Subject roll and its radius share one row at half width
+               each: the radius is meaningless without the roll, and
+               reading them as one control is the point. The placeholder
+               drops "(for Dist km)" at this width — the info icon carries
+               it, and a truncated hint is worse than a short one. -->
+          <div class="sales-subject-pair">
+            <span class="field chip-input-field">
+              <div class="chip-input" data-target="subject-roll">
+                <input id="subject-roll" type="hidden" />
+                <input
+                  class="chip-input-text"
+                  type="text"
+                  placeholder="Subject roll #"
+                  autocomplete="off"
+                  aria-label="Subject roll number"
+                />
+              </div>
+              <span class="tip">Subject parcel roll #. Once set, every loaded sale row gets a Dist (km) value (centroid-to-centroid) and a Sale/Asmt ratio relative to the subject's assessment, and the radius box beside this one becomes live. Press Enter or comma to commit; leave blank to skip distance math.</span>
+            </span>
 
-          <!-- Radius from the subject parcel. Lives HERE, beside the
-               subject roll rather than down in Additional filters,
-               because it is meaningless without one - and because a
-               filter that can empty the comp set must not be able to
-               hide behind a collapsed disclosure. Blank or 0 = off. -->
-          <div class="sales-radius-row">
-            <span class="sales-range-label">Within:</span>
-            <input
-              type="number" min="0" step="0.5"
-              id="sales-radius-km" class="sales-radius-input"
-              placeholder="km" aria-label="Radius from the subject parcel, in kilometres"
-              title="Keep only sales within this many kilometres of the subject parcel, measured centroid to centroid - the same figure the Dist (km) column shows. Inclusive at the boundary. Needs a subject roll: with none set the radius is ignored rather than emptying the grid. Blank or 0 = no limit. A sale whose roll found no live record has no centroid to measure and is excluded while this is set."
-            />
-            <span class="sales-radius-unit">km of subject</span>
-            <span id="sales-radius-note" class="sales-radius-note" hidden></span>
+            <!-- Radius from the subject parcel. Lives HERE, beside the roll
+                 it measures from rather than down in Additional filters,
+                 because it is meaningless without one — and because a
+                 filter that can empty the comp set must not be able to hide
+                 behind a collapsed disclosure. Blank or 0 = off.
+
+                 The label is the operator itself. "Within" cost more width
+                 than it earned at half a row, and "≤ 3 km" is how the
+                 constraint would be written down anyway. It is aria-hidden
+                 because the input already carries a spoken label. -->
+            <div class="sales-radius-row">
+              <span class="sales-radius-op" aria-hidden="true">&#8804;</span>
+              <input
+                type="number" min="0" step="0.5"
+                id="sales-radius-km" class="sales-radius-input"
+                aria-label="Radius from the subject parcel, in kilometres"
+                title="Keep only sales within this many kilometres of the subject parcel, measured centroid to centroid — the same figure the Dist (km) column shows, and the same circle drawn on the map. Inclusive at the boundary. Needs a subject roll: with none set the radius is ignored rather than emptying the grid. Blank or 0 = no limit. A sale whose roll found no live record has no centroid to measure and is excluded while this is set."
+              />
+              <span class="sales-radius-unit">km</span>
+            </div>
           </div>
+          <!-- Full width, under the pair: it is a sentence, and neither
+               half of the row above has room for one. -->
+          <span id="sales-radius-note" class="sales-radius-note" hidden></span>
 
           <!-- Date presets. One click fills the From/To inputs below and
                dispatches 'change' so a loaded CSV re-filters immediately.
@@ -751,6 +765,44 @@
           </div>
 
 
+          <!-- Building age and floor area. Display-side filters: both read
+               the same dual source their COLUMNS do (the sales CSV's value
+               when it has one, else the live assessment record), so a row
+               showing 1962 can never be missing from a 1950-1970 search. -->
+          <div class="sales-range-row">
+            <span class="sales-range-label">Year built:</span>
+            <input
+              type="number" min="1700" max="2200" step="1"
+              id="sales-year-low" class="sales-range-input"
+              placeholder="From" aria-label="Earliest year built"
+              title="Earliest year built. Empty = no lower limit. A multi-section sale is tested on its OLDEST year, the same figure the Year Built column sorts by. A sale with no year on either the export or the assessment record can't be tested and is excluded while this is set."
+            />
+            <span class="sales-range-sep" aria-hidden="true">&#8211;</span>
+            <input
+              type="number" min="1700" max="2200" step="1"
+              id="sales-year-high" class="sales-range-input"
+              placeholder="To" aria-label="Latest year built"
+              title="Latest year built. Empty = no upper limit."
+            />
+          </div>
+
+          <div class="sales-range-row">
+            <span class="sales-range-label">Bldg size (sf):</span>
+            <input
+              type="number" min="0" step="1"
+              id="sales-bldg-low" class="sales-range-input"
+              placeholder="Min" aria-label="Minimum building size in square feet"
+              title="Minimum building floor area in square feet, from the export's Living Area when it has one and the assessment record otherwise — the same figure the Living Area column shows. Empty = no lower limit. A sale with no floor area on either source is excluded while this is set, which includes vacant land."
+            />
+            <span class="sales-range-sep" aria-hidden="true">&#8211;</span>
+            <input
+              type="number" min="0" step="1"
+              id="sales-bldg-high" class="sales-range-input"
+              placeholder="Max" aria-label="Maximum building size in square feet"
+              title="Maximum building floor area in square feet. Empty = no upper limit."
+            />
+          </div>
+
           <!-- Charts + the far-flung tally: both are about results that
                already exist, so they stay on the display side. -->
           <div class="sales-vacant-row">
@@ -844,64 +896,53 @@
               />
             </div>
 
-            <!-- Far-Flung. Marks multi-parcel sales whose own parcels lie
+            <!-- Far-Flung + N1 share one row at half width each. Far-Flung
+                 wraps its threshold and its Keep/Exclude pill inside its own
+                 column instead of spanning the panel.
+
+                 Far-Flung marks multi-parcel sales whose own parcels lie
                  farther apart than the threshold (largest centroid-to-
                  centroid gap inside the one transaction) — a scattered
                  portfolio whose blended $/Lot SF is not a local comp.
-                 Distinct from Dist (km), which measures distance to the
-                 SUBJECT. No default: Manitoba's calibrated 30 km came off
-                 rural portfolio sales and would never fire inside a city
-                 roughly that wide, so the threshold starts blank (off)
-                 and is Jason's to tune. -->
-            <div class="far-flung-controls-row">
-              <span class="far-flung-field">
-                <label for="far-flung-km">Far-Flung &gt;</label>
-                <input id="far-flung-km" type="number" min="0" step="1" placeholder="km" aria-label="Far-flung threshold in kilometres" />
-                <span class="far-flung-unit">km</span>
-              </span>
-              <input type="checkbox" id="far-flung-exclude" class="pill-backing" hidden />
-              <div class="mode-pill-row far-flung-exclude" title="Marking alone removes nothing — a flagged sale just gets a ⚠ on its $/Lot SF, the figure the spread invalidates. Exclude drops flagged sales from the table, the map and the CSV export. A sale whose spread can't be measured (a parcel with no geometry) is never excluded. Blank or 0 km turns the marking off entirely.">
-                <span class="mode-pill-prefix">Flagged:</span>
-                <div class="mode-pill compact" role="radiogroup" aria-label="Far-flung sales" data-pill="farflung">
-                  <button type="button" class="mode-btn active mode-btn-off" data-mode="keep" aria-pressed="true">Keep</button>
-                  <button type="button" class="mode-btn" data-mode="exclude" aria-pressed="false">Exclude</button>
+                 Distinct from the subject radius, which measures distance
+                 to the SUBJECT. No default: Manitoba's calibrated 30 km came
+                 off rural portfolio sales and would never fire inside a city
+                 roughly that wide, so it starts blank (off).
+
+                 N1 is the crosswalk status. Matched = the row carries an N1
+                 ID (already in the comp database); Unmatched = blank, the
+                 data-entry queue. Row-level on purpose: a multi-parcel sale
+                 matched on some rolls only shows exactly its unmatched
+                 rows. -->
+            <div class="sales-filter-pair sales-tune-pair">
+              <div class="far-flung-controls-row">
+                <span class="far-flung-field">
+                  <label for="far-flung-km">Far-Flung &gt;</label>
+                  <input id="far-flung-km" type="number" min="0" step="1" placeholder="km" aria-label="Far-flung threshold in kilometres" />
+                  <span class="far-flung-unit">km</span>
+                </span>
+                <input type="checkbox" id="far-flung-exclude" class="pill-backing" hidden />
+                <div class="mode-pill-row far-flung-exclude" title="Marking alone removes nothing — a flagged sale just gets a ⚠ on its $/Lot SF, the figure the spread invalidates. Exclude drops flagged sales from the table, the map and the CSV export. A sale whose spread can't be measured (a parcel with no geometry) is never excluded. Blank or 0 km turns the marking off entirely.">
+                  <span class="mode-pill-prefix">Flagged:</span>
+                  <div class="mode-pill compact" role="radiogroup" aria-label="Far-flung sales" data-pill="farflung">
+                    <button type="button" class="mode-btn active mode-btn-off" data-mode="keep" aria-pressed="true">Keep</button>
+                    <button type="button" class="mode-btn" data-mode="exclude" aria-pressed="false">Exclude</button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- N1 crosswalk status. Matched = the row carries an N1 ID
-                 (already in the comp database); Unmatched = blank — the
-                 data-entry queue. Row-level on purpose: a multi-parcel
-                 sale matched on some rolls only shows exactly its
-                 unmatched rows. -->
-            <div class="sales-n1-row">
-              <span class="sales-range-label">N1:</span>
-              <select
-                id="sales-n1-filter"
-                aria-label="N1 match filter"
-                title="Filter by N1 crosswalk status. Matched = sale carries an N1 ID; Unmatched = no N1 record linked yet — the data-entry queue. CSVs without an N1 ID column read as entirely unmatched."
-              >
-                <option value="any" selected>Any</option>
-                <option value="matched">Matched</option>
-                <option value="unmatched">Unmatched</option>
-              </select>
-            </div>
-            <!-- Rise: storey band of apartment / office sales, from the
-                 offline RESAPStoreys lookup (see lib/riseLookup.js).
-                 Missing is excluded once set, like the other narrowing
-                 filters. -->
-            <div class="sales-n1-row">
-              <span class="sales-range-label">Rise:</span>
-              <select
-                id="sales-rise-filter"
-                aria-label="Rise (storey band) filter"
-                title="Filter apartment and office sales by storey band. Apartments: Low-rise = 1–3 storeys, Mid-rise = 4+ (no High-rise band). Offices: Low-rise 1–4, Mid-rise 5–9, High-rise 10+. Sales the lookup does not classify are excluded while a band is set."
-              >
-                <option value="any" selected>Any</option>
-                <option value="low">Low-rise</option>
-                <option value="mid">Mid-rise</option>
-                <option value="high">High-rise</option>
-              </select>
+              <div class="sales-n1-row">
+                <span class="sales-range-label">N1:</span>
+                <select
+                  id="sales-n1-filter"
+                  aria-label="N1 match filter"
+                  title="Filter by N1 crosswalk status. Matched = sale carries an N1 ID; Unmatched = no N1 record linked yet — the data-entry queue. CSVs without an N1 ID column read as entirely unmatched."
+                >
+                  <option value="any" selected>Any</option>
+                  <option value="matched">Matched</option>
+                  <option value="unmatched">Unmatched</option>
+                </select>
+              </div>
             </div>
           </details>
 

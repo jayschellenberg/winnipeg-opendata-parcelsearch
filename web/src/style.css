@@ -4489,10 +4489,31 @@ button.topbar-link {
   letter-spacing: -0.1px;
 }
 
-/* Radius from the subject parcel. Sits between the subject-roll chip and
-   the date presets, so it borrows the range rows' fixed label column and
-   the far-flung field's pinned input width -- the number is at most a few
-   characters and a full-width box would read as the panel's main event. */
+/* Subject roll + its radius, half a row each. The radius is meaningless
+   without the roll, so reading them as one control is the point. */
+.sales-subject-pair {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+/* Both halves named explicitly, and at class-on-class specificity: the
+   chip field carries its own `flex: 0 0 auto` from .field.chip-input-field,
+   which beats a bare `> *` and made it eat the whole row while the radius
+   collapsed to zero width. */
+.sales-subject-pair > .field.chip-input-field,
+.sales-subject-pair > .sales-radius-row {
+  flex: 1 1 50%;
+  min-width: 0;
+  width: auto;
+}
+
+/* Radius from the subject parcel. The label is the operator itself --
+   "Within" cost more width than it earned at half a row. */
+.sales-radius-op {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: var(--color-neutral-600, #52525b);
+}
 .sales-radius-row {
   display: flex;
   flex-wrap: wrap;
@@ -4534,10 +4555,11 @@ button.topbar-link {
    subject roll) or is actually removing sales. Amber rather than red:
    it is a caveat about the filter, not a failure of the run. */
 .sales-radius-note {
-  flex: 1 0 100%;
+  display: block;
   color: #8a4b08;
   font-size: 11.5px;
   line-height: 1.35;
+  margin-top: 2px;
 }
 .sales-radius-note[hidden] {
   display: none;
@@ -4749,3 +4771,38 @@ body.measuring .maplibregl-canvas { cursor: crosshair !important; }
    button to its cell; a pill segment must stay a segment. */
 .sidebar .overlay-grid .mode-pill .mode-btn { width: auto; padding: 4px 9px; font-size: 12px; }
 .sidebar .overlay-grid .mode-pill.compact .mode-btn { padding: 3px 7px; font-size: 11.5px; }
+
+
+/* Far-Flung + N1 share a row inside Additional filters. Far-Flung carries
+   a labelled number AND a two-segment pill, which is more than a half
+   column fits on one line -- so inside its column it stacks, and the
+   pieces shrink to match. Without the explicit wrap it pushed N1 off the
+   row entirely and the pair silently became two full-width rows again. */
+.sales-tune-pair {
+  align-items: flex-start;
+  margin-top: 6px;
+}
+.sales-tune-pair > .far-flung-controls-row,
+.sales-tune-pair > .sales-n1-row {
+  flex: 1 1 50%;
+  min-width: 0;
+  margin-top: 0;
+}
+.sales-tune-pair > .far-flung-controls-row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.sales-tune-pair .far-flung-field {
+  width: 100%;
+}
+.sales-tune-pair .far-flung-field label {
+  white-space: nowrap;
+}
+.sales-tune-pair .far-flung-exclude {
+  flex-wrap: wrap;
+}
+.sales-tune-pair > .sales-n1-row select {
+  flex: 1 1 auto;
+  min-width: 0;
+}

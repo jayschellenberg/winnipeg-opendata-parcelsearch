@@ -621,3 +621,53 @@ export function passesPreJoinVacantFilter(sale, verdicts, mode) {
   if (v == null) return true;
   return v === mode;
 }
+
+
+/* ---------------------------------------------------------------------
+ * Building age and floor area — POST-JOIN, and dual-source.
+ *
+ * Both read exactly what the Year Built and Living Area COLUMNS show:
+ * the sales CSV's own value when it has one, otherwise the live
+ * assessment record. That is the design constraint. Filtering on a
+ * different source from the one on screen produces the worst kind of bug
+ * — a row visibly holding 1962 vanishing from a 1950-1970 search — and it
+ * is why these are not pre-join despite the CSV usually carrying both.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Building floor area in square feet for a joined sale feature, or null.
+ *
+ * Mirrors livingAreaOf in lib/columnsRegistry.js. Per ROW rather than
+ * summed over the sale group, because that is what the Living Area cell
+ * on this row shows — unlike the lot-size filter, whose group sum is the
+ * denominator $/Lot SF actually divides by.
+ */
+export function saleBuildingSf(feature) {
+  const p = feature?.properties || {};
+  const sale = Number(p._saleLivingArea);
+  if (Number.isFinite(sale) && sale > 0) return sale;
+  const live = Number(p.total_living_area);
+  return Number.isFinite(live) && live > 0 ? live : null;
+}
+
+/**
+ * Year built as a NUMBER, or null.
+ *
+ * The CSV side is `_saleYearBuiltNumeric`, which lib/sales.js already
+ * defines as the OLDEST year across a multi-section sale and documents as
+ * being for "the grid's sort and any year filter" — this is that filter.
+ * The display string it sits beside ("1911, 1913, 1954") cannot be
+ * compared numerically, which is exactly why the numeric twin exists.
+ *
+ * Guards the roll's "unknown" sentinels the same way the popup does: 0
+ * and blank mean nobody recorded a year, and letting 0 through would put
+ * every unknown-age building inside any range starting at 0.
+ */
+export function saleYearBuilt(feature) {
+  const p = feature?.properties || {};
+  for (const raw of [p._saleYearBuiltNumeric, p.year_built]) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 1700 && n <= 2200) return n;
+  }
+  return null;
+}

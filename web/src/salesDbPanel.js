@@ -125,15 +125,28 @@ export function initSalesDbPanel({ onLoad, setStatus, getDateWindow } = {}) {
         : 'Connect the SABRE export folder above first.';
     }
     if ($status) {
+      // Collapsed by default now, so this line is usually the ONLY thing
+      // the panel says — and the question it has to answer is "is my
+      // archive current?". Row and file counts cannot answer that; the
+      // newest sale date can, and a stale one is visible at a glance
+      // without opening anything (Jason, 2026-09-16).
       $status.textContent = connected
         ? `${fmtN(info.files)} file${info.files === 1 ? '' : 's'} · ${fmtN(info.rows)} rows`
+          + (info.maxSaleDate ? ` · to ${dateLabel(info.maxSaleDate)}` : '')
         : 'Not connected';
+      $status.title = connected && info.maxSaleDate
+        ? `Newest sale in the connected export folder: ${dateLabel(info.maxSaleDate)}. Open Coverage for the per-file ranges.`
+        : '';
     }
     if (connected && $daterangeHint) {
       const win = getDateWindow?.() || {};
       $daterangeHint.hidden = !!(win.from || win.to);
     }
-    steerOpen(connected);
+    // Collapsed by default, connected or not. This is setup, and the one
+    // fact worth seeing every session is already on the summary line
+    // above. steerOpen still honours a manual open — it gives up the
+    // moment the user works the disclosure themselves.
+    steerOpen(false);
     renderFreshness();
     return info;
   }

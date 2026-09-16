@@ -24,6 +24,7 @@ import {
   isLandSetUseCode, resolveMixedSales,
   saleClusterOf, passesClusterFilter, UNASSIGNED_CLUSTER,
   csvGroupVacancy, passesPreJoinVacantFilter, bareUseCode,
+  saleBuildingSf, saleYearBuilt,
   parseRadiusKm, passesRadiusFilter,
 } from '../src/lib/salesFilters.js';
 
@@ -665,6 +666,59 @@ test('pre-join and post-join agree wherever the CSV can decide', () => {
     if (verdict == null) continue;
     assert.equal(verdict, post.get(key), `group ${key}`);
   }
+});
+
+
+// ---- year built / building size -------------------------------------------
+// Both must read the SAME dual source their columns do, or a row visibly
+// showing 1962 can go missing from a 1950-1970 search — the worst kind of
+// filter bug, because the evidence against it is right there on screen.
+
+const feat = (props) => ({ properties: props });
+
+test('saleBuildingSf — the export wins, the live record backs it up', () => {
+  assert.equal(saleBuildingSf(feat({ _saleLivingArea: 2140, total_living_area: 9999 })), 2140);
+  assert.equal(saleBuildingSf(feat({ total_living_area: 1836 })), 1836);
+  assert.equal(saleBuildingSf(feat({ _saleLivingArea: 0, total_living_area: 1836 })), 1836);
+});
+
+test('saleBuildingSf — nothing to measure comes back null, never 0', () => {
+  // 0 would slip every vacant lot into a range starting at 0.
+  for (const p of [{}, { _saleLivingArea: 0 }, { total_living_area: '' },
+    { _saleLivingArea: null, total_living_area: 0 }, { total_living_area: 'n/a' }]) {
+    assert.equal(saleBuildingSf(feat(p)), null, JSON.stringify(p));
+  }
+  assert.equal(saleBuildingSf(null), null);
+});
+
+test('saleYearBuilt — numeric, export first, oldest year of a multi-section sale', () => {
+  // _saleYearBuiltNumeric is already the OLDEST year (lib/sales.js), which
+  // is what makes a range test meaningful on a sale spanning 1911-1962.
+  assert.equal(saleYearBuilt(feat({ _saleYearBuiltNumeric: 1911, year_built: 1962 })), 1911);
+  assert.equal(saleYearBuilt(feat({ year_built: 1962 })), 1962);
+  assert.equal(saleYearBuilt(feat({ year_built: '2002' })), 2002);
+});
+
+test('saleYearBuilt — the roll’s unknown sentinels are not years', () => {
+  for (const p of [{}, { year_built: 0 }, { year_built: '' }, { _saleYearBuiltNumeric: 0 },
+    { year_built: 'n/a' }, { year_built: 1500 }, { year_built: 9999 }]) {
+    assert.equal(saleYearBuilt(feat(p)), null, JSON.stringify(p));
+  }
+});
+
+test('saleYearBuilt — a junk export value falls through to the live record', () => {
+  assert.equal(saleYearBuilt(feat({ _saleYearBuiltNumeric: 0, year_built: 1974 })), 1974);
+});
+
+test('passesRange over both — missing is excluded once a bound is set', () => {
+  const old = feat({ year_built: 1940 });
+  const unknown = feat({});
+  assert.equal(passesRange(saleYearBuilt(old), 1930, 1950), true);
+  assert.equal(passesRange(saleYearBuilt(old), 1950, null), false);
+  assert.equal(passesRange(saleYearBuilt(unknown), 1930, 1950), false);
+  // Both bounds blank is a complete no-op, even for the unmeasurable row.
+  assert.equal(passesRange(saleYearBuilt(unknown), null, null), true);
+  assert.equal(passesRange(saleBuildingSf(unknown), null, null), true);
 });
 
 console.log('');

@@ -158,11 +158,6 @@ export const SCHEMA = {
   // states are shareable.
   salesN1: { param: 'n1', validate: oneOf(['matched', 'unmatched']), format: (v) => v },
 
-  // --- Rise filter (Sales tab) ---
-  // Storey band of apartment / office sales from the offline lookup.
-  // 'any' is the default and never emitted.
-  salesRise: { param: 'rise', validate: oneOf(['low', 'mid', 'high']), format: (v) => v },
-
   // --- Radius from the subject parcel (Sales tab) ---
   // Kilometres, decimals allowed. Blank / 0 is "no limit" and is never
   // emitted, so the lower bound is the smallest meaningful radius rather

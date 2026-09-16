@@ -47,7 +47,7 @@ import {
 } from './lib/permitEvidence.js';
 import { yieldToPaint } from './lib/yieldToPaint.js';
 import { judgedVerdict, judgedAssembly, saleJudgement } from './lib/saleJudgements.js';
-import { loadRiseLookup, stampRise, passesRiseFilter } from './lib/riseLookup.js';
+import { loadRiseLookup, stampRise } from './lib/riseLookup.js';
 import { initDataStatusDialog, initStalenessBanner } from './dataStatusDialog.js';
 import { initSalesDbPanel } from './salesDbPanel.js';
 import bbox from '@turf/bbox';
@@ -135,6 +135,7 @@ import {
   parseRadiusKm,
   passesRadiusFilter,
   csvGroupVacancy, passesPreJoinVacantFilter,
+  saleBuildingSf, saleYearBuilt, passesRange,
 } from './lib/salesFilters.js';
 import { radiusCircleFc } from './lib/radiusCircle.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
@@ -906,7 +907,7 @@ function readSalesFilterState() {
     farFlungKm: v('far-flung-km'),
     farFlungExclude: !!document.getElementById('far-flung-exclude')?.checked,
     n1: v('sales-n1-filter'),
-    rise: v('sales-rise-filter'),
+
   };
 }
 
@@ -1147,10 +1148,6 @@ function captureUrlState() {
   const n1Val = document.getElementById('sales-n1-filter')?.value;
   if (n1Val === 'matched' || n1Val === 'unmatched') s.salesN1 = n1Val;
 
-  // Rise filter (Sales tab). Same rule: 'any' stays out of the URL.
-  const riseVal = document.getElementById('sales-rise-filter')?.value;
-  if (riseVal === 'low' || riseVal === 'mid' || riseVal === 'high') s.salesRise = riseVal;
-
   return s;
 }
 
@@ -1242,10 +1239,6 @@ function applyUrlState(state) {
     if (el) el.value = state.salesN1;
   }
 
-  if ('salesRise' in state) {
-    const el = document.getElementById('sales-rise-filter');
-    if (el) el.value = state.salesRise;
-  }
 }
 
 // rAF-coalesced replaceState. A rapid sequence of edits collapses
@@ -3867,15 +3860,6 @@ function wireSalesTab() {
     });
   }
 
-  // Rise (storey band) filter. Shareable via ?rise=.
-  const $riseFilter = document.getElementById('sales-rise-filter');
-  if ($riseFilter) {
-    $riseFilter.addEventListener('change', () => {
-      queueUrlWrite();
-      if (salesData) runSalesAnalysis();
-    });
-  }
-
   // Lot-size range + street name. 'input' rather than 'change' so the
   // set narrows as you type — these two are the filters you tune by
   // watching the count, unlike the date pickers which commit once.
@@ -3891,7 +3875,12 @@ function wireSalesTab() {
     clearTimeout(filterTimer);
     filterTimer = setTimeout(() => runSalesAnalysis(), 300);
   };
-  for (const el of [$sizeLow, $sizeHigh, $street, $priceLow, $priceHigh]) {
+  const $yearLow  = document.getElementById('sales-year-low');
+  const $yearHigh = document.getElementById('sales-year-high');
+  const $bldgLow  = document.getElementById('sales-bldg-low');
+  const $bldgHigh = document.getElementById('sales-bldg-high');
+  for (const el of [$sizeLow, $sizeHigh, $street, $priceLow, $priceHigh,
+    $yearLow, $yearHigh, $bldgLow, $bldgHigh]) {
     if (el) el.addEventListener('input', rerunSoon);
   }
 
@@ -4446,13 +4435,6 @@ async function runSalesAnalysis() {
     visibleSales = visibleSales.filter((s) => (n1Mode === 'matched' ? !!s.n1Id : !s.n1Id));
   }
 
-  // Rise (storey band). Pre-join and row-level like N1; a sale the
-  // lookup does not classify fails an active band rather than slipping
-  // into it unchecked — lib/riseLookup.js carries the rule.
-  const riseMode = document.getElementById('sales-rise-filter')?.value || 'any';
-  if (riseMode !== 'any') {
-    visibleSales = visibleSales.filter((s) => passesRiseFilter(s, riseLookup, riseMode));
-  }
 
 
   if (!visibleSales.length) {
@@ -4473,11 +4455,6 @@ async function runSalesAnalysis() {
       // has no size to test and drops out silently otherwise.
       msg = `${salesData.sales.length} sales loaded, but none fall inside the lot-size range `
           + `(sales missing Land Actual sqft can't be measured and are excluded while it's set).`;
-    } else if (riseMode !== 'any') {
-      msg = riseLookup
-        ? `${salesData.sales.length} sales loaded, but none are ${riseMode}-rise apartments or offices `
-          + `(only RESAP/RESAM and CMOFF/CMOMC/CMOGV/CMFBK sales carry a rise band).`
-        : `${salesData.sales.length} sales loaded, but the rise lookup could not be fetched — set Rise back to Any.`;
     } else if (n1Mode !== 'any') {
       msg = `${salesData.sales.length} sales loaded, but none are N1-${n1Mode}. `
           + `CSVs without an N1 ID column read as entirely unmatched.`;
@@ -5055,6 +5032,25 @@ async function runSalesAnalysis() {
   // happened to run.
   const vacantHidden = (visibleFeatures.length - afterVacant.length) + preJoinVacantHidden;
 
+  // Year built + building size. POST-join, because both read the same dual
+  // source their columns do — the export's value when it has one, the live
+  // record otherwise — so the filter and the cell can never disagree about
+  // a row. Missing is excluded once either is set, the standing rule here:
+  // a sale nobody recorded a year or an area for has not been checked, and
+  // an unchecked row must not seed a constrained comp set.
+  const yearLo = parseBound(document.getElementById('sales-year-low')?.value);
+  const yearHi = parseBound(document.getElementById('sales-year-high')?.value);
+  const bldgLo = parseBound(document.getElementById('sales-bldg-low')?.value);
+  const bldgHi = parseBound(document.getElementById('sales-bldg-high')?.value);
+  const afterYear = (yearLo == null && yearHi == null)
+    ? afterVacant
+    : afterVacant.filter((f) => passesRange(saleYearBuilt(f), yearLo, yearHi));
+  const yearHidden = afterVacant.length - afterYear.length;
+  const afterBldg = (bldgLo == null && bldgHi == null)
+    ? afterYear
+    : afterYear.filter((f) => passesRange(saleBuildingSf(f), bldgLo, bldgHi));
+  const bldgHidden = afterYear.length - afterBldg.length;
+
   // Far-flung. The threshold MARKS; only the Exclude tick removes. The
   // span is a group property, so a flagged sale drops whole — never
   // part of one, which would silently corrupt its $/Lot SF.
@@ -5066,7 +5062,7 @@ async function runSalesAnalysis() {
   // collapses, clearing the very flag this exists to raise — and _farFlung
   // rides to the charts page, where "Drop far-flung" is on by default.
   const spanByGroup = groupSpreadKm(saleFc.features, featureCentroid, haversineKm);
-  for (const f of afterVacant) {
+  for (const f of afterBldg) {
     const span = spanByGroup.get(String(f.properties._saleInstrument ?? ''));
     f.properties._saleGroupSpanKm = span;
     f.properties._farFlung = isFarFlung(span, farFlungKm);
@@ -5074,13 +5070,13 @@ async function runSalesAnalysis() {
   // Tally off the PRE-exclusion set: counting what survived would report
   // "none flagged" at the moment six sales are being hidden.
   const flaggedSales = new Set(
-    afterVacant.filter((f) => f.properties._farFlung)
+    afterBldg.filter((f) => f.properties._farFlung)
       .map((f) => String(f.properties._saleInstrument ?? ''))
   ).size;
   const afterFarFlung = farFlungKm != null && farFlungExclude
-    ? afterVacant.filter((f) => !f.properties._farFlung)
-    : afterVacant;
-  const farFlungHidden = afterVacant.length - afterFarFlung.length;
+    ? afterBldg.filter((f) => !f.properties._farFlung)
+    : afterBldg;
+  const farFlungHidden = afterBldg.length - afterFarFlung.length;
   updateFarFlungCount(flaggedSales, farFlungKm, farFlungExclude);
 
   // Radius from the subject. Last, because it is the cut an appraiser
@@ -5172,6 +5168,8 @@ async function runSalesAnalysis() {
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
     (vacantHidden ? ` · ${vacantHidden} hidden by the ${vacantMode} filter` : '') +
+    (yearHidden ? ` · ${yearHidden} hidden by the year-built filter` : '') +
+    (bldgHidden ? ` · ${bldgHidden} hidden by the building-size filter` : '') +
     (farFlungHidden ? ` · ${farFlungHidden} far-flung excluded` : '') +
     // Loud when the radius is set but can't run: the user typed a limit
     // and it is doing nothing, which is the one radius state they cannot

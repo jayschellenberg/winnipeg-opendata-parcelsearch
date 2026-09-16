@@ -20,7 +20,6 @@
  *   streetName                 text input
  *   farFlungKm, farFlungExclude (boolean)
  *   n1 ('any'|'matched'|'unmatched')
- *   rise ('any'|'low'|'mid'|'high')
  */
 
 function text(v) {
@@ -46,8 +45,6 @@ export function rangeLabel(lo, hi, unit = '', fmt = String) {
   if (hi != null) return `≤ ${fmt(hi)}${u}`;
   return '';
 }
-
-const RISE_LABEL = { low: 'Low-rise', mid: 'Mid-rise', high: 'High-rise' };
 
 /**
  * One chip per Additional-filters control that is away from its default.
@@ -87,10 +84,12 @@ export function salesFilterChips(s = {}) {
   if (n1 === 'matched') push('n1', 'N1 matched', 'N1 crosswalk: matched sales only');
   else if (n1 === 'unmatched') push('n1', 'N1 unmatched', 'N1 crosswalk: unmatched sales only');
 
-  const rise = text(s.rise);
-  if (RISE_LABEL[rise]) {
-    push('rise', RISE_LABEL[rise], `Rise: ${RISE_LABEL[rise].toLowerCase()} apartment / office sales only; unclassified sales are dropped`);
-  }
+  // Year built and Bldg size are deliberately NOT chipped. This badge
+  // exists to warn about filters the collapsed disclosure HIDES; those two
+  // sit above it, in plain sight, and the count line already names each by
+  // how many sales it removed. A chip for them would be a warning about
+  // something visible, under a heading ("Additional filters") they are not
+  // part of.
 
   return chips;
 }

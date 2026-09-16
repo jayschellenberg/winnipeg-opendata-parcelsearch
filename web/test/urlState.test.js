@@ -315,17 +315,16 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 35 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 subjectRoll + 1 salesN1 + 1 salesRise + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 35);
+test('SCHEMA — has exactly 34 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 34);
 });
 
-test('salesRise round-trips as the rise param; only the three bands are valid', () => {
-  assert.equal(encodeState({ salesRise: 'mid' }), 'rise=mid');
-  assert.deepEqual(decodeState('?rise=low'), { salesRise: 'low' });
-  assert.deepEqual(decodeState('?rise=high'), { salesRise: 'high' });
-  // 'any' is the default and never a URL state; garbage is dropped.
-  assert.deepEqual(decodeState('?rise=any'), {});
-  assert.deepEqual(decodeState('?rise=tower'), {});
+test('the retired rise param is no longer honoured', () => {
+  // The Rise FILTER was removed (the Rise column stays), so an old shared
+  // link carrying ?rise= must decode to nothing rather than to a key
+  // applyUrlState no longer knows how to apply.
+  assert.deepEqual(decodeState('?rise=low'), {});
+  assert.deepEqual(decodeState('?rise=mid'), {});
 });
 
 test('numberingOrder ("Entry order") round-trips as the no param', () => {

@@ -366,6 +366,18 @@ name for it (`RESSD` / Detached Single Dwelling), from the same table
 anyone can choose from, and the appraiser is looking for a use, not a
 mnemonic. Codes the table has never seen render bare rather than vanishing.
 
+**Year built and building size.** Two range boxes above the Charts button,
+outside the Additional-filters disclosure because they are everyday cuts rather
+than tune-later ones. Both read the SAME dual source their columns do -- the
+export's value when it has one, the live assessment record otherwise -- so a row
+visibly showing 1962 can never go missing from a 1950-1970 search. A
+multi-section sale is tested on its OLDEST year, the figure `lib/sales.js`
+already computes for the Year Built column's sort. Missing is excluded once
+either is set, which for building size includes every vacant lot; the count line
+names how many each removed. They are deliberately NOT in the disclosure's
+warning badge: that badge exists to flag filters the collapsed disclosure
+HIDES, and these are in plain sight.
+
 **What the parcel popup says.** Hover or click a parcel and the popup carries,
 beyond the roll / address / use / zoning / size block: **Year Built** and
 **Living Area** off the assessment record, on both tabs; and for a parcel with a
@@ -396,9 +408,9 @@ building heights, and a model on assessed value, land area, units and
 zoning where neither exists; the cell tooltip names the storey count and
 which of those spoke. Apartments band at 1–3 (low-rise / garden) vs 4+;
 offices at 1–4 / 5–9 / 10+. Because the lookup covers parcels rather than
-sales, a sale in a new export classifies as soon as it is imported. The
-filter is row-level and excludes unclassified sales while a band is set,
-shareable as `?rise=`. Rebuild the lookup after a new parcel snapshot:
+sales, a sale in a new export classifies as soon as it is imported. The Rise FILTER was
+retired on 2026-09-16 (with its `?rise=` param); the COLUMN and the lookup
+behind it stay. Rebuild the lookup after a new parcel snapshot:
 
 ```bash
 python RESAPStoreys/build_resap_storeys.py --group apartment && python RESAPStoreys/build_resap_storeys.py --group office && python RESAPStoreys/build_rise_lookup.py

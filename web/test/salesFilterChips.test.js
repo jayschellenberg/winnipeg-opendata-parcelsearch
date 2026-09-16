@@ -17,7 +17,8 @@ function test(name, fn) {
 function defaults(overrides = {}) {
   return {
     priceLow: '', priceHigh: '', sizeLow: '', sizeHigh: '', streetName: '',
-    farFlungKm: '', farFlungExclude: false, n1: 'any', rise: 'any',
+    farFlungKm: '', farFlungExclude: false, n1: 'any',
+    yearLow: '', yearHigh: '', bldgLow: '', bldgHigh: '',
     ...overrides,
   };
 }
@@ -61,19 +62,31 @@ test('Far-Flung counts only when Exclude is on with a positive threshold', () =>
   assert.equal(chips[0].label, 'Far-Flung > 15 km excluded');
 });
 
-test('N1 and Rise selects count when moved off Any', () => {
+test('the N1 select counts when moved off Any', () => {
   assert.equal(salesFilterChips(defaults({ n1: 'matched' }))[0].label, 'N1 matched');
   assert.equal(salesFilterChips(defaults({ n1: 'unmatched' }))[0].label, 'N1 unmatched');
-  assert.equal(salesFilterChips(defaults({ rise: 'mid' }))[0].label, 'Mid-rise');
-  assert.deepEqual(salesFilterChips(defaults({ rise: 'bogus' })), []);
+});
+
+test('a retired control contributes nothing', () => {
+  // The Rise filter is gone; a stale snapshot key must not resurrect a chip.
+  assert.deepEqual(salesFilterChips(defaults({ rise: 'mid' })), []);
+});
+
+test('controls OUTSIDE the disclosure are not chipped', () => {
+  // Year built and Bldg size live above the disclosure, always visible, and
+  // the count line names each by how many sales it removed. A chip would be
+  // a warning about something the user can already see, filed under a
+  // heading it is not part of.
+  assert.deepEqual(salesFilterChips(defaults({ yearLow: '1950', yearHigh: '1970' })), []);
+  assert.deepEqual(salesFilterChips(defaults({ bldgLow: '1200', bldgHigh: '2500' })), []);
 });
 
 test('chips come out in control order, top of the disclosure to bottom', () => {
   const chips = salesFilterChips(defaults({
-    rise: 'high', n1: 'matched', farFlungExclude: true, farFlungKm: '30',
+    n1: 'matched', farFlungExclude: true, farFlungKm: '30',
     streetName: 'A', sizeLow: '1', priceLow: '1',
   }));
-  assert.deepEqual(keys(chips), ['price', 'size', 'street', 'farFlung', 'n1', 'rise']);
+  assert.deepEqual(keys(chips), ['price', 'size', 'street', 'farFlung', 'n1']);
   assert.ok(chips.every((c) => c.active));
 });
 
