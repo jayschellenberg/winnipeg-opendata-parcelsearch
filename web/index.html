@@ -817,6 +817,19 @@
                  this tab (Jason, 2026-09-16). -->
             <button
               type="button"
+              id="criteria-save"
+              class="secondary"
+              title="Save every setting on this tab — subject roll and radius, the date window, vacant/improved, the multi-selects, the year and size bands, and the Additional filters — to a small .yml file you can keep beside the job and re-load months later against a newer archive. It is plain text: open it in any editor, delete the lines you do not care about, and it still loads."
+            >💾 Save search</button>
+            <button
+              type="button"
+              id="criteria-load"
+              class="secondary"
+              title="Load a .yml search saved earlier. Anything the file does not mention is left as it is now, so a trimmed file is a partial recipe rather than a broken one."
+            >📂 Load search</button>
+            <input id="criteria-file" type="file" accept=".yml,.yaml,.txt" hidden />
+            <button
+              type="button"
               id="sales-export"
               class="secondary"
               title="Download every sale currently shown as a CSV — all fields, including columns hidden in the Columns picker, and the sales-mode columns ($/Lot SF, $/Bldg SF, Category, Cluster, Dist…). Culled rows are excluded, and you are asked first if any are."

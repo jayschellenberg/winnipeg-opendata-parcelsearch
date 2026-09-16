@@ -168,6 +168,14 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange, ord
   // not come from a checkbox. Without it a map click would move the filter
   // and leave every box in the popover showing the previous state.
   let lastCounts = new Map();
+  // A selection restored from a saved search BEFORE any options exist.
+  // Held rather than applied, because reconcileSelection against an empty
+  // option list keeps nothing and lands on the empty Set — "show nothing"
+  // — which is how loading a saved search before pressing Search used to
+  // guarantee an empty grid. `hasPending` is separate from the value
+  // because null is itself a meaningful selection (no filter).
+  let pending = null;
+  let hasPending = false;
 
   const noop = {
     setOptions: () => {}, getSelected: () => null,
@@ -304,14 +312,51 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange, ord
         $btn.setAttribute('aria-expanded', 'false');
         return;
       }
-      selected = reconcileSelection(selected, options);
+      // A selection restored from a saved search wins over whatever was
+      // showing: it was chosen for THIS search, and it has been waiting
+      // for the options to exist.
+      if (hasPending) {
+        selected = pending == null ? null : reconcileSelection(new Set(pending), options);
+        pending = null;
+        hasPending = false;
+      } else {
+        selected = reconcileSelection(selected, options);
+      }
       $btn.disabled = false;
       syncLabel();
       render(counts);
     },
     getSelected: () => selected,
+    // Clears the ACTIVE selection but deliberately NOT a pending restore.
+    // handleSalesUpload calls this on every load to drop the previous
+    // CSV's picks — and that load is exactly the event that finally gives
+    // a saved search its options. Clearing pending here made loading a
+    // search and then loading sales silently discard the search.
     reset() { selected = null; },
     isEmptySelection: () => selected != null && selected.size === 0,
+
+    /**
+     * Put a selection back from outside — the saved-search loader.
+     * Reconciled against the options on offer, so a saved code the current
+     * CSV does not carry is dropped rather than filtering to nothing. Does
+     * NOT fire onChange: the loader restores a dozen controls and then runs
+     * the analysis once, instead of once per control.
+     */
+    setSelected(next) {
+      if (options.length === 0) {
+        // Nothing to reconcile against yet — hold it for the first
+        // setOptions rather than reconciling it away to nothing.
+        pending = next == null ? null : [...next];
+        hasPending = true;
+        selected = null;
+        syncLabel();
+        return;
+      }
+      hasPending = false;
+      selected = next == null ? null : reconcileSelection(new Set(next), options);
+      syncLabel();
+      render(lastCounts);
+    },
 
     /** Is this value on offer right now? Lets a caller ask before acting —
      *  the map picker uses it to decide whether a click is a selection or

@@ -52,6 +52,17 @@ export function initChipInput(wrapperEl, { onEnterEmpty } = {}) {
       .filter(Boolean);
   }
 
+  // Re-read the hidden input and repaint. The chip list is INTERNAL state
+  // seeded once at init, so a caller that sets `hidden.value` itself — the
+  // saved-search loader does — would otherwise move the filter while the
+  // chips on screen went on showing the old roll. Deliberately a custom
+  // event rather than listening to 'input': sync() dispatches 'input'
+  // itself, and listening to it would loop.
+  hidden.addEventListener('chip-input:reseed', () => {
+    values = parseList(hidden.value);
+    render();
+  });
+
   function sync() {
     hidden.value = values.join(',');
     // Dispatch input + change so any listeners (URL state writer,

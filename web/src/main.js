@@ -148,6 +148,10 @@ import { COLUMNS, csvSchemaForMode, buildThead, columnCellClasses } from './lib/
 import { assignParcelSeq, clearParcelSeq } from './lib/parcelNumbering.js';
 import { PILL_SPECS, modeFromChecked, checkedFromMode } from './lib/pillBinding.js';
 import { salesFilterChips, salesFilterChipText } from './lib/salesFilterChips.js';
+import {
+  serializeCriteria, parseCriteria, describeCriteria,
+  SCALAR_FIELDS, LIST_FIELDS, FLAG_FIELDS,
+} from './lib/searchCriteria.js';
 // Cell-value formatters still used by the parcel-summary card (not table cells).
 // The DOM constructors td/badgeTd/linkTd/etc are consumed inside the registry
 // render functions and never need to be imported here.
@@ -548,6 +552,23 @@ $search.addEventListener('click', runSearch);
 $clear.addEventListener('click', clearAll);
 $export.addEventListener('click', exportCsv);
 $salesExport?.addEventListener('click', exportCsv);
+document.getElementById('criteria-save')?.addEventListener('click', saveCriteria);
+document.getElementById('criteria-load')?.addEventListener('click', () => {
+  document.getElementById('criteria-file')?.click();
+});
+document.getElementById('criteria-file')?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  // Reset the input so re-picking the SAME file fires 'change' again —
+  // reloading the search you just loaded is a reasonable thing to want.
+  e.target.value = '';
+  if (!file) return;
+  try {
+    await loadCriteriaText(await file.text(), file.name);
+  } catch (err) {
+    console.warn('Search load failed:', err);
+    setSalesCount(`Couldn't read ${file.name}: ${err.message || 'unknown error'}.`, true);
+  }
+});
 $zoningToggle.addEventListener('click', toggleZoning);
 $trafficToggle.addEventListener('click', toggleTraffic);
 $surveyToggle.addEventListener('click', () => toggleLayer('survey'));
@@ -4137,6 +4158,103 @@ function saleClassOf(f) {
   const p = f?.properties || {};
   if (p._noLiveMatch) return '(no live match)';
   return p.property_class_1 || '(blank)';
+}
+
+/* ---------------------------------------------------------------------
+ * Save / load a search as a .yml file.
+ *
+ * The URL already shares a VIEW (lib/urlState.js). This is the other job:
+ * a search re-run months later on a newer archive, filed beside the job.
+ *
+ * lib/searchCriteria.js owns the format and the tri-state rules; this half
+ * owns only the DOM — which element each key reads from, and putting the
+ * values back without firing a dozen separate re-runs.
+ * ------------------------------------------------------------------ */
+
+/** The multi-selects by their file key. */
+function criteriaFilterByKey(name) {
+  return { cluster: clusterFilter, category: categoryFilter, pucs: pucsFilter,
+    class: classFilter, zoning: zoningFilter }[name] || null;
+}
+
+function collectCriteria() {
+  const scalars = {};
+  for (const f of SCALAR_FIELDS) {
+    scalars[f.key] = (document.getElementById(f.id)?.value ?? '').trim();
+  }
+  const flags = {};
+  for (const f of FLAG_FIELDS) {
+    flags[f.key] = !!document.getElementById(f.id)?.checked;
+  }
+  const lists = {};
+  for (const f of LIST_FIELDS) {
+    const sel = criteriaFilterByKey(f.filter)?.getSelected?.();
+    lists[f.key] = sel == null ? null : [...sel];
+  }
+  return { scalars, flags, lists, meta: { savedAt: today() } };
+}
+
+function saveCriteria() {
+  const text = serializeCriteria(collectCriteria());
+  const blob = new Blob([text], { type: 'text/yaml;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `wps-search-${today()}.yml`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setSalesCount(`Saved this search as ${a.download}.`);
+}
+
+/**
+ * Put a loaded search back on the controls.
+ *
+ * Values are assigned WITHOUT dispatching, then the analysis runs once at
+ * the end. Dispatching per control would fire a dozen overlapping
+ * runSalesAnalysis calls, each re-fetching, and the race guard would throw
+ * away all but the last — slow, and it would flash the grid a dozen times
+ * on the way.
+ *
+ * A key the file omits is LEFT ALONE rather than cleared, so a hand-trimmed
+ * file reads as "set these, leave the rest" instead of silently resetting
+ * everything it did not mention.
+ */
+function applyCriteria(parsed) {
+  for (const f of SCALAR_FIELDS) {
+    if (!(f.key in parsed.scalars)) continue;
+    const el = document.getElementById(f.id);
+    if (el) el.value = parsed.scalars[f.key];
+  }
+  for (const f of FLAG_FIELDS) {
+    if (!(f.key in parsed.flags)) continue;
+    const el = document.getElementById(f.id);
+    if (el) el.checked = parsed.flags[f.key];
+  }
+  for (const f of LIST_FIELDS) {
+    if (!(f.key in parsed.lists)) continue;
+    criteriaFilterByKey(f.filter)?.setSelected?.(parsed.lists[f.key]);
+  }
+  // The chip input caches its own list, so tell it to re-read.
+  document.getElementById('subject-roll')
+    ?.dispatchEvent(new Event('chip-input:reseed'));
+  // The pills are views over the hidden checkboxes; repaint them by hand
+  // since nothing dispatched a change.
+  pillPainters.nominal?.();
+  pillPainters.farflung?.();
+  renderSalesFiltersBadge();
+  queueUrlWrite();
+}
+
+async function loadCriteriaText(text, label) {
+  const parsed = parseCriteria(text);
+  applyCriteria(parsed);
+  const skipped = parsed.unknown.length
+    ? ` · ignored ${parsed.unknown.length} unknown setting${parsed.unknown.length === 1 ? '' : 's'} (${parsed.unknown.join(', ')})`
+    : '';
+  setSalesCount(`Loaded ${label}: ${describeCriteria(parsed)}.${skipped}`);
+  if (salesData) await runSalesAnalysis();
 }
 
 // Cap the uploaded sales CSV so a huge file can't read-into-memory / hang the
