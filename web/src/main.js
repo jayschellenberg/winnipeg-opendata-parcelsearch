@@ -3450,6 +3450,14 @@ function publishSalesToCharts(rows) {
           _pricePerSf: p._pricePerSf,
           _pricePerAcre: p._pricePerAcre,
           _pricePerLot: p._pricePerLot,
+          // The building side, for the Buildings charts. The payload is a
+          // WHITELIST — a field not named here simply is not on the other
+          // tab, which is how the building charts came up empty the first
+          // time they were wired.
+          _pricePerBldgSf: p._pricePerBldgSf,
+          _saleLivingArea: p._saleLivingArea,
+          _saleYearBuiltNumeric: p._saleYearBuiltNumeric,
+          year_built: p.year_built,
           _saleUseCode: p._saleUseCode,
           property_use_code: p.property_use_code,
           _saleZoning: p._saleZoning,
@@ -4052,11 +4060,31 @@ function saleCategoryOf(f) {
   return f?.properties?._saleCategory || UNCLASSIFIED_CATEGORY;
 }
 
-/** Rebuild the PUCS options from the loaded CSV. Counts are per SALE,
- *  not per raw row — dedup has already collapsed component rows. */
-function rebuildPucsFilter() {
+/**
+ * Rebuild the PUCS options. Counts are per SALE, not per raw row — dedup
+ * has already collapsed component rows.
+ *
+ * `narrowed` is the sale list after every OTHER pre-join filter has run
+ * (date, price, lot size, street, N1, vacant/improved), so the number
+ * beside each code is what picking it would actually get you. Choosing
+ * Improved Only used to leave VRES1 sitting there at 13,529 — a count
+ * from a set the user had already excluded (Jason, 2026-09-16).
+ *
+ * EVERY code the CSV carries stays on the list even at zero, and that is
+ * the part that makes this safe. Tallying a picker from a narrowed set is
+ * ordinarily how you build a list the user cannot tick back out of:
+ * options vanish, reconcileSelection drops them, and the selection
+ * silently widens. Seeding every code at 0 first means the option list is
+ * identical run to run — only the numbers move — so nothing can vanish
+ * and no selection can be dropped. Zero rows render dimmed.
+ *
+ * Called with no argument (on upload) it counts the whole CSV, which is
+ * the right answer before any filter has run.
+ */
+function rebuildPucsFilter(narrowed) {
   const counts = new Map();
-  for (const s of salesData?.sales || []) {
+  for (const s of salesData?.sales || []) counts.set(s.useCode || '(blank)', 0);
+  for (const s of narrowed || salesData?.sales || []) {
     const k = s.useCode || '(blank)';
     counts.set(k, (counts.get(k) || 0) + 1);
   }
@@ -4374,13 +4402,6 @@ async function runSalesAnalysis() {
   const hiddenWithSworn = hideSentinels
     ? salesData.sales.filter((s) => s.salePrice <= 1 && s.swornValue > 1).length
     : 0;
-  // PUCS multi-select. null = no filter; empty Set = "no codes
-  // selected" which we treat as a deliberate "show nothing" (the
-  // status message hints to use the All button).
-  const pucsSelected = pucsFilter.getSelected();
-  if (pucsSelected != null) {
-    visibleSales = visibleSales.filter((s) => pucsSelected.has(s.useCode || '(blank)'));
-  }
   // Sale-date range. CSV dates are ISO YYYY-MM-DD so lexical >= / <=
   // comparison works without parsing.
   const dateFrom = (document.getElementById('sales-date-from')?.value || '').trim();
@@ -4437,6 +4458,16 @@ async function runSalesAnalysis() {
   const n1Mode = document.getElementById('sales-n1-filter')?.value || 'any';
   if (n1Mode !== 'any') {
     visibleSales = visibleSales.filter((s) => (n1Mode === 'matched' ? !!s.n1Id : !s.n1Id));
+  }
+
+  // PUCS multi-select, LAST in the pre-join chain so its counts can be
+  // taken from what every other filter left — see rebuildPucsFilter.
+  // null = no filter; empty Set = "no codes selected", a deliberate
+  // "show nothing" (the status message hints to use the All button).
+  rebuildPucsFilter(visibleSales);
+  const pucsSelected = pucsFilter.getSelected();
+  if (pucsSelected != null) {
+    visibleSales = visibleSales.filter((s) => pucsSelected.has(s.useCode || '(blank)'));
   }
 
 

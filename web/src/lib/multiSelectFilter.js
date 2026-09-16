@@ -194,6 +194,16 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange, ord
     const open = $popover.classList.toggle('open');
     $btn.setAttribute('aria-expanded', String(open));
   });
+  // Every click that STARTS inside the popover stops here, so the
+  // document-level dismiss handler below never sees it. This is
+  // load-bearing, not tidiness: All, None and (once the options are
+  // re-tallied on each run) the checkboxes all lead to render(), which
+  // wipes and rebuilds the popover's children. By the time the click
+  // reached the document the element it started on had been REMOVED from
+  // the DOM, so `$popover.contains(e.target)` answered false and the
+  // popover shut the list the user was working in. Guarding the container
+  // once immunises every control in it, including ones added later.
+  $popover.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', (e) => {
     if (!$popover.classList.contains('open')) return;
     if ($popover.contains(e.target) || $btn.contains(e.target)) return;
@@ -266,7 +276,12 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange, ord
       }
       const count = document.createElement('span');
       count.className = 'sales-pucs-popover-count';
-      count.textContent = String(counts.get(value) ?? 0);
+      const n = counts.get(value) ?? 0;
+      count.textContent = String(n);
+      // Zero means "nothing left under the OTHER filters", not "not a real
+      // option" — the row stays and stays tickable, but it should not read
+      // as an equal choice.
+      item.classList.toggle('is-empty', n === 0);
       item.appendChild(cb);
       item.appendChild(text);
       if ($desc) item.appendChild($desc);

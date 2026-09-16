@@ -2129,14 +2129,20 @@ body {
   line-height: 1;
 }
 
-/* Search is the action; Clear is the escape hatch. Equal widths made a
-   destructive red button look like half the point of the row, so Search
-   takes the space and Clear sits to its own size. */
-.sales-search-row #sales-db-load {
-  flex: 1 1 auto;
+/* A quarter of the row each, so the pair occupies half of it and the
+   rest is deliberate empty space (Jason, 2026-09-16). The row is the
+   divider between the fetch-time controls and the display filters, and a
+   pair of buttons floating in white space reads as a boundary far better
+   than a full-width bar does. */
+.sales-search-row {
+  justify-content: flex-start;
 }
+.sales-search-row #sales-db-load,
 .sales-search-row #sales-clear {
-  flex: 0 0 auto;
+  flex: 0 0 25%;
+  min-width: 0;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 /* The rule under them makes the fetch / filter split visible rather than
@@ -4850,4 +4856,12 @@ body.measuring .maplibregl-canvas { cursor: crosshair !important; }
 .sales-tune-pair > .sales-n1-row select {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+
+/* A picker option the other filters have emptied. Stays listed and stays
+   tickable — a vanishing option is one the user cannot tick back — but
+   should not read as an equal choice. */
+.sales-pucs-popover-item.is-empty {
+  opacity: 0.45;
 }

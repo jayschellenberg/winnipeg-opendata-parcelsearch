@@ -56,6 +56,25 @@ export function saleRecordsFromRows(rows, { parseDate } = {}) {
       pricePerSf: Number.isFinite(Number(p._pricePerSf)) ? Number(p._pricePerSf) : null,
       pricePerAcre: Number.isFinite(Number(p._pricePerAcre)) ? Number(p._pricePerAcre) : null,
       pricePerLot: Number.isFinite(Number(p._pricePerLot)) ? Number(p._pricePerLot) : null,
+      // --- the building side ------------------------------------------
+      // Derived the same way landSf is: back out of the RATE rather than
+      // re-reading the area, so the x axis and the y axis of the
+      // "$/Bldg SF by building size" chart are guaranteed to describe the
+      // same denominator. lib/sales.js sums living area across a
+      // multi-parcel sale and withholds the rate entirely on a vacant
+      // group, so a null here is a sale with no building to rate.
+      pricePerBldgSf: Number.isFinite(Number(p._pricePerBldgSf)) ? Number(p._pricePerBldgSf) : null,
+      bldgSf: Number(p._pricePerBldgSf) > 0 ? price / Number(p._pricePerBldgSf) : null,
+      // Numeric, and the OLDEST year of a multi-section sale — the same
+      // figure the grid sorts Year Built by. The display string ("1911,
+      // 1913, 1954") cannot go on an axis.
+      yearBuilt: (() => {
+        for (const raw of [p._saleYearBuiltNumeric, p.year_built]) {
+          const n = Number(raw);
+          if (Number.isFinite(n) && n >= 1700 && n <= 2200) return n;
+        }
+        return null;
+      })(),
       useCode: p._saleUseCode || p.property_use_code || '',
       zoning: p._saleZoning || p.zoning || '',
       lots: Number(p._saleGroupSize) || 1,

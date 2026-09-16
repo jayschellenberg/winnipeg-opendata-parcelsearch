@@ -115,3 +115,38 @@ body {
   line-height: 1.6;
   color: var(--ui-muted);
 }
+
+
+/* Land / Buildings switch. The two sets divide a price by different
+   denominators, so this is a mode, not a filter — hence a segmented pair
+   rather than another checkbox in the row of them. */
+.charts-mode {
+  display: inline-flex;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-right: 4px;
+}
+.charts-mode-btn {
+  appearance: none;
+  border: 0;
+  background: #fff;
+  color: #475569;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.charts-mode-btn + .charts-mode-btn {
+  border-left: 1px solid #cbd5e1;
+}
+.charts-mode-btn:hover:not(.is-on) {
+  background: #f1f5f9;
+}
+.charts-mode-btn.is-on {
+  background: #1e293b;
+  color: #fff;
+}
+.charts-opt[hidden] {
+  display: none;
+}

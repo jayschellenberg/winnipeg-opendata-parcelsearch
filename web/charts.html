@@ -3,21 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Land Sales Charts — Winnipeg Parcel Search</title>
+    <title>Sales Charts — Winnipeg Parcel Search</title>
     <link rel="stylesheet" href="./src/charts/charts.css" />
   </head>
   <body>
     <header class="charts-header">
-      <h1>Land Sales Charts</h1>
+      <h1 id="charts-title">Land Sales Charts</h1>
       <p class="charts-sub" id="charts-sub">Waiting for the Sales Analysis tab…</p>
     </header>
 
     <div class="charts-bar">
-      <label class="charts-opt" title="Restrict to vacant-land sales — any Property Use Code starting with V (VRES1, VCOMM, VINDU, VAGRI, VAPRK, VRES2) plus CNVAC. Untick to chart every sale currently shown in the grid.">
+      <!-- Land and Buildings are two different jobs with two different
+           denominators, so they get two sets of charts rather than one set
+           that half-applies. The options beside this switch belong to the
+           land charts and hide in Buildings mode. -->
+      <div class="charts-mode" role="radiogroup" aria-label="Chart set">
+        <button type="button" id="mode-land" class="charts-mode-btn is-on" aria-pressed="true">Land</button>
+        <button type="button" id="mode-bldg" class="charts-mode-btn" aria-pressed="false">Buildings</button>
+      </div>
+      <label class="charts-opt land-opt" title="Restrict to vacant-land sales — any Property Use Code starting with V (VRES1, VCOMM, VINDU, VAGRI, VAPRK, VRES2) plus CNVAC. Untick to chart every sale currently shown in the grid.">
         <input type="checkbox" id="land-only" checked />
         <span>Land sales only</span>
       </label>
-      <label class="charts-opt" title="Leave out vacant-coded sales the permit record shows were ALREADY BUILT when they sold — a new-construction permit closed 6+ months before the sale date, so a finished house changed hands with the lot. Their rates are house prices, not land prices, and they run roughly 3x a genuine lot.">
+      <label class="charts-opt land-opt" title="Leave out vacant-coded sales the permit record shows were ALREADY BUILT when they sold — a new-construction permit closed 6+ months before the sale date, so a finished house changed hands with the lot. Their rates are house prices, not land prices, and they run roughly 3x a genuine lot.">
         <input type="checkbox" id="drop-built" checked />
         <span>Exclude already-built</span>
       </label>
@@ -38,7 +46,8 @@
       Each point is one SALE, not one parcel — a multi-parcel assembly is a
       single transaction, and counting it once per lot would weight it
       several times over in every trendline. Rates use the group's total
-      land. This is a research aid, not an authoritative record.
+      land, or its total building area on the Buildings charts. This is a
+      research aid, not an authoritative record.
     </p>
 
     <script type="module" src="./src/charts/main.js"></script>

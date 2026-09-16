@@ -8,7 +8,22 @@
  * with it — which is why "Freeze" exists for when you want them to sit
  * still while reading or screenshotting.
  *
- * Three charts, chosen for land work and deliberately non-overlapping:
+ * TWO SETS, switched at the top. Land and Buildings divide a price by
+ * different denominators and answer different questions, so they are two
+ * sets rather than one that half-applies. The three option checkboxes
+ * belong to the land set and hide in Buildings mode — "Land sales only"
+ * would empty it, and "Exclude already-built" exists to keep house prices
+ * OUT of land rates, which is precisely what the building charts want in.
+ *
+ * BUILDINGS (Jason, 2026-09-16):
+ *   - $/Bldg SF over time        — market conditions for improved stock
+ *   - $/Bldg SF by year built    — the age/obsolescence curve
+ *   - $/Bldg SF by building size — the size-adjustment curve
+ *   A sale with no building rate is not in these at all: lib/sales.js
+ *   withholds $/Bldg SF on a vacant group rather than inventing one, so
+ *   vacant land drops out without needing a filter of its own.
+ *
+ * LAND — three charts, chosen for land work and deliberately non-overlapping:
  *   - $/Lot SF over time   — the market-conditions view
  *   - $/Acre vs lot size   — the size-adjustment curve, at the unit
  *                            larger parcels are actually quoted in.
@@ -43,12 +58,16 @@ const $grid = document.getElementById('charts-grid');
 const $sub = document.getElementById('charts-sub');
 const $status = document.getElementById('charts-status');
 const $landOnly = document.getElementById('land-only');
+const $modeLand = document.getElementById('mode-land');
+const $modeBldg = document.getElementById('mode-bldg');
+const $title = document.getElementById('charts-title');
 const $dropFarFlung = document.getElementById('drop-far-flung');
 const $dropBuilt = document.getElementById('drop-built');
 const $freeze = document.getElementById('freeze');
 
 let records = [];
 let received = false;
+let mode = 'land';   // 'land' | 'bldg'
 
 // --- options persistence ----------------------------------------------------
 // The three filters are ways of working and persist. `freeze` deliberately
@@ -64,6 +83,7 @@ function readOpts() {
     // which leaves the markup's checked default in place — the safe way
     // round, since the old charts were quietly INCLUDING these.
     if (typeof raw.dropBuilt === 'boolean') $dropBuilt.checked = raw.dropBuilt;
+    if (raw.mode === 'land' || raw.mode === 'bldg') mode = raw.mode;
   } catch { /* defaults already in the markup */ }
 }
 function writeOpts() {
@@ -72,6 +92,7 @@ function writeOpts() {
       landOnly: $landOnly.checked,
       dropFarFlung: $dropFarFlung.checked,
       dropBuilt: $dropBuilt.checked,
+      mode,
     }));
   } catch { /* storage disabled — options just don't persist */ }
 }
@@ -147,14 +168,88 @@ function scatterCard({ title, rows, xOf, yOf, xFormat, yFormat, xLabel, yLabel, 
   return wrap;
 }
 
+/** Reflect the mode in the switch, the heading and which options apply. */
+function syncMode() {
+  $modeLand.classList.toggle('is-on', mode === 'land');
+  $modeBldg.classList.toggle('is-on', mode === 'bldg');
+  $modeLand.setAttribute('aria-pressed', String(mode === 'land'));
+  $modeBldg.setAttribute('aria-pressed', String(mode === 'bldg'));
+  if ($title) $title.textContent = mode === 'bldg' ? 'Building Sales Charts' : 'Land Sales Charts';
+  for (const el of document.querySelectorAll('.land-opt')) {
+    el.hidden = mode === 'bldg';
+  }
+}
+
+/**
+ * The building charts. Every point needs a $/Bldg SF, and that alone does
+ * the filtering vacant land would otherwise need: lib/sales.js declines to
+ * compute the rate for a vacant group rather than dividing by a living
+ * area the parcel does not have.
+ */
+function renderBuildings(filtered) {
+  const rated = filtered.filter((r) => Number(r.pricePerBldgSf) > 0);
+  const noun = rated.length === 1 ? 'sale' : 'sales';
+  $sub.textContent = rated.length
+    ? `${rated.length} improved ${noun} with a building rate, from the current grid filter.`
+    : 'No sales in the current grid filter have a $/Bldg SF.';
+  if (!rated.length) {
+    $grid.appendChild(emptyCard(
+      'Nothing to chart',
+      'These charts need $/Bldg SF, which needs a building area — from the export\u2019s '
+      + 'Living Area or the assessment record. Vacant land has none by design. Widen the '
+      + 'grid filter, or switch back to the Land charts.',
+    ));
+    return;
+  }
+  const dated = rated.filter((r) => Number.isFinite(r.date));
+  $grid.appendChild(scatterCard({
+    title: '$/Bldg SF over time',
+    rows: dated,
+    xOf: (r) => r.date,
+    yOf: (r) => r.pricePerBldgSf,
+    xFormat: fmtAxisDate,
+    yFormat: fmtAxisMoney,
+    xLabel: 'Sale date',
+    yLabel: '$ per building SF',
+    overTime: true,
+  }));
+  $grid.appendChild(scatterCard({
+    title: '$/Bldg SF by year built',
+    rows: rated,
+    xOf: (r) => r.yearBuilt,
+    yOf: (r) => r.pricePerBldgSf,
+    // A year is not a quantity: no thousands separator, or 1962 reads
+    // as 1,962 on the axis.
+    xFormat: (v) => String(Math.round(v)),
+    yFormat: fmtAxisMoney,
+    xLabel: 'Year built (oldest section)',
+    yLabel: '$ per building SF',
+  }));
+  $grid.appendChild(scatterCard({
+    title: '$/Bldg SF by building size',
+    rows: rated,
+    xOf: (r) => r.bldgSf,
+    yOf: (r) => r.pricePerBldgSf,
+    xFormat: (v) => Math.round(v).toLocaleString('en-CA'),
+    yFormat: fmtAxisMoney,
+    xLabel: 'Building size (SF, group total)',
+    yLabel: '$ per building SF',
+  }));
+}
+
 function render() {
+  syncMode();
   // Counted, not just dropped. A chart that silently sheds half its
   // sales reads as a thin market rather than a cleaned one, and the
   // header has to be able to say which happened.
   let builtSeen = 0;
+  const landMode = mode === 'land';
   const filtered = records.filter((r) => {
-    if ($landOnly.checked && !r.isLand) return false;
+    // Far-flung is a statement about the SALE (a scattered portfolio deal
+    // whose blended rate is not a local comp), so it applies to both sets.
     if ($dropFarFlung.checked && r.farFlung) return false;
+    if (!landMode) return true;
+    if ($landOnly.checked && !r.isLand) return false;
     if (r.alreadyBuilt) {
       builtSeen += 1;
       if ($dropBuilt.checked) return false;
@@ -165,6 +260,10 @@ function render() {
   $grid.textContent = '';
   if (!received) {
     $sub.textContent = 'Waiting for the Sales Analysis tab…';
+    return;
+  }
+  if (!landMode) {
+    renderBuildings(filtered);
     return;
   }
   const noun = filtered.length === 1 ? 'sale' : 'sales';
@@ -247,6 +346,8 @@ channel.postMessage({ type: 'request' });
 for (const el of [$landOnly, $dropFarFlung, $dropBuilt]) {
   el.addEventListener('change', () => { writeOpts(); render(); });
 }
+$modeLand.addEventListener('click', () => { mode = 'land'; writeOpts(); render(); });
+$modeBldg.addEventListener('click', () => { mode = 'bldg'; writeOpts(); render(); });
 $freeze.addEventListener('change', () => {
   $status.textContent = $freeze.checked
     ? 'Frozen — updates from the Sales Analysis tab are paused.'
