@@ -100,6 +100,10 @@ const PER_RESULT = [
   'lastFullSurveyFc', 'lastFullAssessFc', 'lastSurveyFc', 'lastCountBase',
   'drawCapped',
   'deselectedRowKeys',   // row culling belongs to the result set it was done on
+  // The map's sale-category colour assignment describes the sale set it
+  // was built for; a property search clears it so the previous comp
+  // search's colours cannot sit over unrelated parcels.
+  'categoryColorSlots',
 ];
 
 // State that SURVIVES a search on purpose. Listed with the reason, so the

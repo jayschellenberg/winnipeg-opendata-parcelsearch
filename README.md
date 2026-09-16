@@ -398,6 +398,31 @@ names how many each removed. They are deliberately NOT in the disclosure's
 warning badge: that badge exists to flag filters the collapsed disclosure
 HIDES, and these are in plain sight.
 
+**Sales on the map: dots at city zoom, parcels up close.** At a whole-city
+view a lot is sub-pixel, so the sales also publish as POINTS and draw as
+circles that do not shrink with the parcel. The circles fade out over z13-15
+exactly as the polygons become large enough to read, so there is one symbol
+per sale at any zoom.
+
+Both carry the same colour, by appraisal CATEGORY, and the assignment follows
+whatever the search left rather than a fixed scheme. It is STICKY: a category
+keeps its colour for as long as it is on screen. That is the rule that makes
+the map readable -- if ticking one more category re-dealt the others, every
+colour would mean something different from one click to the next.
+
+FIVE colours plus a neutral grey, and the number is measured rather than
+chosen. A map is an all-pairs case (any two categories can sit side by side),
+so every pair must separate, and every colour must also stay inside a
+lightness band and above a chroma floor. Run through the dataviz validator at
+`--pairs all`: thirteen colours fails at normal-vision deltaE 7.1 (red vs
+orange), six fails at 14.4 (brown vs orange), five passes at 18+ with the
+worst CVD pair at 7.7 -- legal because the hover names the category and the
+exact Par Use Code, and the legend lists every colour in use. Green is absent
+on purpose: every failing pair at six involved it, and dropping it is what
+bought the fifth slot. Past five, categories share the grey and the legend
+says which. The polygon fill falls back to the Manitoba yellow wherever there
+is no category, so a Property Search result is untouched.
+
 **What the parcel popup says.** Hover or click a parcel and the popup carries,
 beyond the roll / address / use / zoning / size block: **Year Built** and
 **Living Area** off the assessment record, on both tabs; and for a parcel with a

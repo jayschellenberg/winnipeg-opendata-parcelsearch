@@ -4865,3 +4865,39 @@ body.measuring .maplibregl-canvas { cursor: crosshair !important; }
 .sales-pucs-popover-item.is-empty {
   opacity: 0.45;
 }
+
+
+/* Sale-category legend. Reuses .map-legend for the box; these are the
+   rows inside it. Which categories appear depends on the search, so the
+   list is rebuilt per run — see renderCategoryLegend in main.js. */
+.sales-category-legend .map-legend-title {
+  font-weight: 600;
+  font-size: 11.5px;
+  margin-bottom: 4px;
+  color: var(--ui-ink, #151916);
+}
+.map-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+/* A ring, matching the white stroke the dots carry on the map, so the
+   swatch is the same object as the thing it explains. */
+.map-legend-swatch {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #fff, 0 0 0 1.6px rgba(0,0,0,0.25);
+}
+.map-legend-label {
+  color: var(--ui-ink-soft, #3f3f46);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sales-category-legend {
+  max-width: 220px;
+}

@@ -1337,7 +1337,17 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         // imagery. The group cue lives entirely on the outline below,
         // which draws at 75% and stays true.
         paint: {
-          'fill-color': '#ffea00',
+          // Category colour on a sale, the Manitoba yellow on everything
+          // else. `coalesce` rather than a mode flag: only sale features
+          // carry `_catColor`, so a Property Search result keeps the
+          // yellow it has always had with no state to keep in sync.
+          //
+          // The note above still stands — a 30% fill is a poor carrier for
+          // a SUBTLE cue. These are not subtle: five hues validated to
+          // separate at all-pairs distance, with a legend and the hover
+          // popup naming the category. What the note rules out is telling
+          // sale GROUPS apart by fill, and that is still not attempted.
+          'fill-color': ['coalesce', ['get', '_catColor'], '#ffea00'],
           'fill-opacity': assessFillOpacity(assessFillState),
         },
       });
@@ -1467,6 +1477,54 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         paint: {
           'line-color': '#0c3a78',
           'line-width': 3.5,
+        },
+      });
+
+      // Sale dots. At city zoom a parcel polygon is sub-pixel — Jason's
+      // screenshot of a whole-city view showed the sales as hairline
+      // slivers — so the same sales are ALSO published as points and drawn
+      // as circles that do not shrink with the lot.
+      //
+      // Circles and shapes are the same sales, so only one may be visible
+      // at a time: the circles fade out over z13–15 exactly as the
+      // polygons become large enough to read. Opacity rather than a
+      // min/max zoom pair so the handover is a crossfade instead of a pop.
+      map.addSource('sales-points', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'sales-points-circle',
+        type: 'circle',
+        source: 'sales-points',
+        paint: {
+          'circle-color': ['coalesce', ['get', '_catColor'], '#8c8c8c'],
+          // Big enough to find at z9 without merging into a blob where
+          // sales cluster downtown.
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            9, 3.5,
+            12, 5,
+            14, 6.5,
+          ],
+          'circle-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            13, 0.9,
+            15, 0,
+          ],
+          // A white ring is what keeps two adjacent dots readable as two,
+          // and lifts any of the five hues off the basemap.
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': [
+            'interpolate', ['linear'], ['zoom'],
+            9, 0.8,
+            13, 1.2,
+          ],
+          'circle-stroke-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            13, 0.9,
+            15, 0,
+          ],
         },
       });
 
@@ -2623,6 +2681,18 @@ export function setSubjectData(map, fc) {
  * absent. A hidden-but-populated layer is how a stale 2 km ring survives
  * a change to 5 km and reappears later claiming the wrong distance.
  */
+/**
+ * Push the sale dots. Pass null to clear.
+ *
+ * Cleared rather than hidden, for the same reason the radius ring is: a
+ * hidden-but-populated layer is how the PREVIOUS search's dots survive
+ * and reappear over the next one.
+ */
+export function setSalesPointsData(map, fc) {
+  const src = map.getSource('sales-points');
+  if (src) src.setData(fc || { type: 'FeatureCollection', features: [] });
+}
+
 export function setSubjectRadiusData(map, fc) {
   const src = map.getSource('subject-radius');
   if (src) src.setData(fc || { type: 'FeatureCollection', features: [] });

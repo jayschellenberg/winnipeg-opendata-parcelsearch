@@ -96,7 +96,7 @@ import {
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
   setCitywideParcelsVisible, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
   setContamData, setContamVisible, setWaterInfluenceVisible,
-  setSubjectData, setSubjectRadiusData,
+  setSubjectData, setSubjectRadiusData, setSalesPointsData,
   setParcelNumberData, setParcelNumbersVisible,
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
   setHistoricalZoningData, setHistoricalZoningVisible,
@@ -137,6 +137,9 @@ import {
   csvGroupVacancy, passesPreJoinVacantFilter,
   saleBuildingSf, saleYearBuilt, passesRange,
 } from './lib/salesFilters.js';
+import {
+  assignCategoryColors, colorForSlot, legendRows,
+} from './lib/categoryColors.js';
 import { radiusCircleFc } from './lib/radiusCircle.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
@@ -1365,7 +1368,12 @@ async function runSearch() {
   mapReady.then(() => {
     setSubjectData(map, null);
     setSubjectRadiusData(map, null);
+    // The sale dots go with them: a property search is not a sale set, and
+    // leaving them would put the last comp search's colours over it.
+    setSalesPointsData(map, null);
   });
+  categoryColorSlots = new Map();
+  renderCategoryLegend();
   const inputs = {
     lot: $lot.value.trim(),
     block: $block.value.trim(),
@@ -1940,6 +1948,75 @@ function applyNeighbourhoodVisibility() {
     NEIGHBOURHOOD_INDIVIDUAL_LAYERS,
     neighbourhoodsMode === 'individual',
   );
+}
+
+/*
+ * The colour each sale CATEGORY currently holds on the map. Kept between
+ * runs so the assignment can be sticky — see assignCategoryColors: a
+ * filter change must not repaint categories that are still on screen.
+ */
+let categoryColorSlots = new Map();
+
+/**
+ * Colour the sales, publish them as points, and rebuild the legend.
+ *
+ * Points as well as polygons because at city zoom a lot is sub-pixel: the
+ * dots are the same sales at a size that does not depend on the parcel.
+ * map.js crossfades between them over z13–15.
+ *
+ * Returns nothing; stamps `_catColor` on each feature, which is what both
+ * the circle layer and the polygon fill read.
+ */
+function paintSalesByCategory(features) {
+  // Present categories in the fixed vocabulary order, so the same search
+  // assigns the same colours whichever order the rows happened to arrive.
+  const seen = new Set(features.map((f) => saleCategoryOf(f)));
+  const present = [...PUCS_CATEGORY_ORDER, UNCLASSIFIED_CATEGORY].filter((c) => seen.has(c));
+  for (const c of seen) if (!present.includes(c)) present.push(c);
+
+  categoryColorSlots = assignCategoryColors(present, categoryColorSlots);
+
+  const points = [];
+  for (const f of features) {
+    const colour = colorForSlot(categoryColorSlots.get(saleCategoryOf(f)));
+    f.properties._catColor = colour;
+    const c = featureCentroid(f);
+    if (!c) continue;
+    points.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: c },
+      // Only what the circle layer paints with. The popup comes off the
+      // polygon underneath, so the dot carries no attributes of its own.
+      properties: { _catColor: colour },
+    });
+  }
+  mapReady.then(() => setSalesPointsData(map, { type: 'FeatureCollection', features: points }));
+  renderCategoryLegend();
+}
+
+/** The map legend for the current colour assignment. Hidden when nothing
+ *  is coloured — an empty legend box is worse than none. */
+function renderCategoryLegend() {
+  const box = document.getElementById('sales-category-legend');
+  const rows = document.getElementById('sales-category-legend-rows');
+  if (!box || !rows) return;
+  const list = document.body.classList.contains('sales-mode')
+    ? legendRows(categoryColorSlots) : [];
+  rows.textContent = '';
+  for (const r of list) {
+    const row = document.createElement('div');
+    row.className = 'map-legend-row';
+    const sw = document.createElement('span');
+    sw.className = 'map-legend-swatch';
+    sw.style.background = r.color;
+    const label = document.createElement('span');
+    label.className = 'map-legend-label';
+    label.textContent = r.label;
+    row.appendChild(sw);
+    row.appendChild(label);
+    rows.appendChild(row);
+  }
+  box.hidden = list.length === 0;
 }
 
 /*
@@ -5375,6 +5452,9 @@ async function runSalesAnalysis() {
 
   // Draw matched parcels on the map. Repeat sales share one polygon;
   // setParcels' geometry-hash dedupe draws it once.
+  // Colour + the dot layer, before setParcels so the polygons go to the
+  // map already carrying `_catColor`.
+  paintSalesByCategory(finalFeatures);
   const mappable = {
     type: 'FeatureCollection',
     features: finalFeatures.filter((f) => f.geometry),
