@@ -398,16 +398,6 @@ export function groupVacancy(features) {
   return byGroup;
 }
 
-/**
- * Keep sales matching the vacant/improved mode. 'all' (or anything
- * unrecognised) is off. A sale whose vacancy is unknown drops out of
- * BOTH narrowed modes — it has not been checked either way.
- */
-export function passesVacantFilter(feature, mode, vacancyByGroup) {
-  if (mode !== 'vacant' && mode !== 'improved') return true;
-  const key = String(feature?.properties?._saleInstrument ?? '');
-  return vacancyByGroup.get(key) === mode;
-}
 
 /**
  * How far apart the parcels of each multi-parcel sale lie, in km,
@@ -582,45 +572,7 @@ export function passesRadiusFilter(feature, radiusKm) {
  * afterwards exactly as before. Same sales, most of the speed.
  * ------------------------------------------------------------------ */
 
-/**
- * Vacancy per SALE GROUP from the CSV's own Par Use Codes.
- *
- * @param {Map<string, object[]>} groups instrument -> SaleRecords
- * @returns {Map<string, 'vacant'|'improved'|null>} null = undecidable
- *   here, because at least one row in the group carries no use code.
- */
-export function csvGroupVacancy(groups) {
-  const out = new Map();
-  for (const [key, members] of groups || []) {
-    const list = Array.isArray(members) ? members : [];
-    let decidable = list.length > 0;
-    let allVacant = true;
-    for (const m of list) {
-      const code = bareUseCode(m?.useCode);
-      if (!code) { decidable = false; break; }
-      // One improved parcel makes the whole transaction an improved
-      // sale — the same group rule groupVacancy applies post-join.
-      if (!isVacantUseCode(code)) allVacant = false;
-    }
-    out.set(String(key), decidable ? (allVacant ? 'vacant' : 'improved') : null);
-  }
-  return out;
-}
 
-/**
- * Keep this sale through the PRE-JOIN vacancy cut.
- *
- * Fails open by design, and that is the whole safety property: a group
- * this cannot decide passes here and meets the real check after the
- * join. The only rows it removes are ones the post-join check would have
- * removed anyway.
- */
-export function passesPreJoinVacantFilter(sale, verdicts, mode) {
-  if (mode !== 'vacant' && mode !== 'improved') return true;
-  const v = verdicts?.get?.(String(sale?.instrument ?? ''));
-  if (v == null) return true;
-  return v === mode;
-}
 
 
 /* ---------------------------------------------------------------------
@@ -672,3 +624,142 @@ export function saleYearBuilt(feature) {
   return null;
 }
 
+
+
+/* ---------------------------------------------------------------------
+ * RESIDENTIAL vs NON-RESIDENTIAL, among the improved sales.
+ *
+ * "Improved Only" split in two on 2026-09-16 (Jason): a house comp and a
+ * strip-mall comp are different searches, and the Par Use Code already
+ * carries the distinction.
+ *
+ * THE RULE IS A CODE TEST, not the appraisal category, because the
+ * category collapses distinctions this needs (Condominium holds both
+ * Condo Apartment and Condo-Office) and keeps ones it does not.
+ * ------------------------------------------------------------------ */
+
+/* Codes that start with RES but are NOT residential for this purpose. The
+ * second bucket is named Non-Res/MIXED, and these are exactly the mixed
+ * and institutional ones hiding behind a residential prefix (Jason's
+ * call): Residential Multiple Use and Residential/Commercial Split are
+ * Mixed-Use, Residential Group Care is Special Purpose. */
+const RES_PREFIX_EXCEPTIONS = new Set(['RESMU', 'RESPL', 'RESGC']);
+
+/* Condo codes that ARE residential. The RES prefix does not reach them —
+ * the City files condos under CN — so they are named. CNCMP (Condo
+ * Complex) and CNCST (Condo Cost) are deliberately absent: they describe
+ * the filing, not the use. CNVAC never reaches here; it is vacant. */
+const RES_CONDO_CODES = new Set(['CNAPT', 'CNRES', 'CNDRH']);
+
+/**
+ * Is this use code residential — houses, apartments and residential
+ * condos?
+ *
+ * A blank code is NOT residential and not anything else: it is unknown,
+ * and the group rules below keep unknown out of both buckets rather than
+ * guessing. Callers must not read `false` here as "commercial".
+ */
+export function isResidentialUseCode(code) {
+  const c = bareUseCode(code);
+  if (!c) return false;
+  if (RES_CONDO_CODES.has(c)) return true;
+  return c.startsWith('RES') && !RES_PREFIX_EXCEPTIONS.has(c);
+}
+
+/**
+ * What the vacant/improved control is choosing between, per SALE GROUP:
+ *
+ *   'vacant'            every parcel carries a vacant code
+ *   'improved-res'      improved, and every CODED parcel is residential
+ *   'improved-nonres'   improved, and at least one coded parcel is not
+ *   'unknown'           no parcel in the group carries any code
+ *
+ * TWO GROUP RULES, both "the wider answer wins", both inherited from the
+ * vacancy logic they extend:
+ *
+ *   one improved parcel makes the transaction improved — the buyer bought
+ *   an improvement; and
+ *   one NON-residential parcel makes it non-residential. Five houses sold
+ *   with a store is not a residential comp, and the blended rate on every
+ *   row is partly the store's.
+ *
+ * @param {Array} features joined sale features
+ * @returns {Map<string, 'vacant'|'improved-res'|'improved-nonres'|'unknown'>}
+ */
+export function groupSaleType(features) {
+  const vacancy = groupVacancy(features);
+  const nonResByGroup = new Map();
+  for (const f of features || []) {
+    const key = String(f?.properties?._saleInstrument ?? '');
+    const code = saleUseCodeOf(f);
+    if (!code || isVacantUseCode(code)) continue;   // vacant parcels do not type the sale
+    if (!isResidentialUseCode(code)) nonResByGroup.set(key, true);
+  }
+  const out = new Map();
+  for (const [key, verdict] of vacancy) {
+    if (verdict !== 'improved') { out.set(key, verdict); continue; }
+    out.set(key, nonResByGroup.get(key) ? 'improved-nonres' : 'improved-res');
+  }
+  return out;
+}
+
+/**
+ * Keep sales matching the selected mode.
+ *
+ * UNKNOWN PASSES EVERY MODE (Jason, 2026-09-16: "include blank in all
+ * searches"). This inverts the missing-is-excluded rule the rest of this
+ * file follows, deliberately and only here: a sale nobody coded is a sale
+ * an appraiser should still SEE and judge, not one that quietly vanishes
+ * from every narrowed view. Hiding it would make a thin comp set look like
+ * a thin market.
+ *
+ * 'all' (or anything unrecognised) is off.
+ */
+export function passesSaleTypeFilter(feature, mode, typeByGroup) {
+  if (mode !== 'vacant' && mode !== 'improved-res' && mode !== 'improved-nonres') return true;
+  const verdict = typeByGroup?.get?.(String(feature?.properties?._saleInstrument ?? ''));
+  if (verdict === 'unknown' || verdict == null) return true;
+  return verdict === mode;
+}
+
+/**
+ * The same verdict from the CSV's own Par Use Codes, for the PRE-FETCH
+ * cut. null = this group cannot be decided here, so it is fetched and
+ * judged after the join (see passesPreJoinSaleTypeFilter).
+ *
+ * @param {Map<string, object[]>} groups instrument -> SaleRecords
+ */
+export function csvGroupSaleType(groups) {
+  const out = new Map();
+  for (const [key, members] of groups || []) {
+    const list = Array.isArray(members) ? members : [];
+    let decidable = list.length > 0;
+    let allVacant = true;
+    let anyNonRes = false;
+    let anyCoded = false;
+    for (const m of list) {
+      const code = bareUseCode(m?.useCode);
+      if (!code) { decidable = false; break; }
+      anyCoded = true;
+      if (isVacantUseCode(code)) continue;
+      allVacant = false;
+      if (!isResidentialUseCode(code)) anyNonRes = true;
+    }
+    if (!decidable || !anyCoded) { out.set(String(key), null); continue; }
+    if (allVacant) { out.set(String(key), 'vacant'); continue; }
+    out.set(String(key), anyNonRes ? 'improved-nonres' : 'improved-res');
+  }
+  return out;
+}
+
+/**
+ * The pre-fetch cut. FAILS OPEN on a group the export cannot decide — the
+ * live record may still classify it, so this may only remove rows the
+ * post-join check would also remove.
+ */
+export function passesPreJoinSaleTypeFilter(sale, verdicts, mode) {
+  if (mode !== 'vacant' && mode !== 'improved-res' && mode !== 'improved-nonres') return true;
+  const v = verdicts?.get?.(String(sale?.instrument ?? ''));
+  if (v == null) return true;
+  return v === mode;
+}

@@ -19,11 +19,12 @@ import {
   saleAddressText, normalizeStreetQuery, passesStreetFilter,
   salePriceOf, passesRange, passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
-  saleUseCodeOf, isVacantUseCode, groupVacancy, passesVacantFilter,
+  saleUseCodeOf, isVacantUseCode, groupVacancy,
+  isResidentialUseCode, groupSaleType, passesSaleTypeFilter,
+  csvGroupSaleType, passesPreJoinSaleTypeFilter,
   groupSpreadKm, isFarFlung,
   isLandSetUseCode, resolveMixedSales,
   saleClusterOf, passesClusterFilter, UNASSIGNED_CLUSTER,
-  csvGroupVacancy, passesPreJoinVacantFilter, bareUseCode,
   saleBuildingSf, saleYearBuilt,
   parseRadiusKm, passesRadiusFilter,
 } from '../src/lib/salesFilters.js';
@@ -327,14 +328,151 @@ test('groupVacancy — a blank code does not downgrade a known verdict', () => {
   assert.equal(groupVacancy([useCode('RESMC', 'A'), useCode('', 'A')]).get('A'), 'improved');
 });
 
-test('passesVacantFilter — unknown drops out of BOTH narrowed modes', () => {
-  const v = groupVacancy([useCode('VCOMM', 'A'), useCode('RESMC', 'B'), useCode('', 'C')]);
-  assert.equal(passesVacantFilter(useCode('VCOMM', 'A'), 'all', v), true, 'all is off');
-  assert.equal(passesVacantFilter(useCode('VCOMM', 'A'), 'vacant', v), true);
-  assert.equal(passesVacantFilter(useCode('VCOMM', 'A'), 'improved', v), false);
-  assert.equal(passesVacantFilter(useCode('RESMC', 'B'), 'improved', v), true);
-  assert.equal(passesVacantFilter(useCode('', 'C'), 'vacant', v), false);
-  assert.equal(passesVacantFilter(useCode('', 'C'), 'improved', v), false);
+// A SaleRecord as the CSV side sees it (instrument + its Par Use Code),
+// for the pre-join half of the sale-type rules.
+const useRec = (instrument, useCode) => ({ instrument, useCode });
+
+// ---- sale type: vacant / improved-res / improved-nonres -------------------
+// "Improved Only" split in two on 2026-09-16. Two rules carry the weight:
+// the Res code set (a prefix test with named exceptions, not the appraisal
+// category), and UNKNOWN PASSING EVERY MODE — the one place in this file
+// where missing is INCLUDED rather than excluded.
+
+test('isResidentialUseCode — the RES prefix, minus the mixed and institutional', () => {
+  for (const c of ['RESSD', 'RESAP', 'RESDU', 'RESMC', 'RESTR', 'RESRH']) {
+    assert.equal(isResidentialUseCode(c), true, c);
+  }
+  // Named exceptions: mixed-use and group care merely START with RES, and
+  // the second bucket is called Non-Res/MIXED.
+  for (const c of ['RESMU', 'RESPL', 'RESGC']) {
+    assert.equal(isResidentialUseCode(c), false, `${c} is mixed / institutional`);
+  }
+});
+
+test('isResidentialUseCode — the residential condos, and only those', () => {
+  for (const c of ['CNAPT', 'CNRES', 'CNDRH']) {
+    assert.equal(isResidentialUseCode(c), true, c);
+  }
+  // CNCMP / CNCST describe the filing, not the use; the rest are commercial.
+  for (const c of ['CNCMP', 'CNCST', 'CNSTO', 'CNCOM', 'CNIND', 'CNOFF']) {
+    assert.equal(isResidentialUseCode(c), false, c);
+  }
+});
+
+test('isResidentialUseCode — blank is not residential AND not commercial', () => {
+  // False here means "not residential", never "commercial" — the group
+  // rules keep an uncoded sale out of both buckets rather than guessing.
+  for (const c of ['', null, undefined, '   ']) assert.equal(isResidentialUseCode(c), false);
+  // The full "CODE - NAME" form the live record uses still resolves.
+  assert.equal(isResidentialUseCode('RESSD - DETACHED SINGLE DWELLING'), true);
+});
+
+test('groupSaleType — vacancy first, then the residential split', () => {
+  const t = groupSaleType([
+    useCode('VCOMM', 'A'), useCode('VINDU', 'A'),    // all vacant
+    useCode('RESSD', 'B'), useCode('RESDU', 'B'),    // all residential
+    useCode('CMOFF', 'C'),                            // commercial
+    useCode('', 'D'),                                 // nothing to read
+  ]);
+  assert.equal(t.get('A'), 'vacant');
+  assert.equal(t.get('B'), 'improved-res');
+  assert.equal(t.get('C'), 'improved-nonres');
+  assert.equal(t.get('D'), 'unknown');
+});
+
+test('groupSaleType — ONE non-residential parcel types the whole sale', () => {
+  // Five houses sold with a store is not a residential comp, and the
+  // blended rate on every row is partly the store's. Same shape as "one
+  // improved parcel makes the transaction improved".
+  const t = groupSaleType([
+    useCode('RESSD', 'A'), useCode('RESSD', 'A'), useCode('CMRST', 'A'),
+  ]);
+  assert.equal(t.get('A'), 'improved-nonres');
+});
+
+test('groupSaleType — a vacant parcel does not type an improved sale', () => {
+  // The vacant lot in a land-and-house assembly must not drag the sale to
+  // non-residential just because VCOMM is not a RES code.
+  const t = groupSaleType([useCode('RESSD', 'A'), useCode('VCOMM', 'A')]);
+  assert.equal(t.get('A'), 'improved-res');
+});
+
+test('groupSaleType — a blank parcel does not type an improved sale either', () => {
+  assert.equal(groupSaleType([useCode('RESSD', 'A'), useCode('', 'A')]).get('A'), 'improved-res');
+});
+
+test('groupSaleType — the RES-prefixed exceptions land in non-res', () => {
+  const t = groupSaleType([useCode('RESMU', 'A'), useCode('RESPL', 'B'), useCode('RESGC', 'C')]);
+  assert.equal(t.get('A'), 'improved-nonres');
+  assert.equal(t.get('B'), 'improved-nonres');
+  assert.equal(t.get('C'), 'improved-nonres');
+});
+
+test('passesSaleTypeFilter — UNKNOWN PASSES EVERY MODE', () => {
+  // Jason, 2026-09-16: "include blank in all searches". The inverse of the
+  // missing-is-excluded rule everywhere else here, and only here: a sale
+  // nobody coded should still be SEEN and judged, not vanish from every
+  // narrowed view and make a thin comp set look like a thin market.
+  const t = groupSaleType([useCode('', 'Z')]);
+  for (const mode of ['all', 'vacant', 'improved-res', 'improved-nonres']) {
+    assert.equal(passesSaleTypeFilter(useCode('', 'Z'), mode, t), true, mode);
+  }
+  // A group the map has never heard of passes too, for the same reason.
+  assert.equal(passesSaleTypeFilter(useCode('', 'MISSING'), 'vacant', t), true);
+});
+
+test('passesSaleTypeFilter — each mode keeps only its own', () => {
+  const t = groupSaleType([useCode('VCOMM', 'A'), useCode('RESSD', 'B'), useCode('CMOFF', 'C')]);
+  const F = { A: useCode('VCOMM', 'A'), B: useCode('RESSD', 'B'), C: useCode('CMOFF', 'C') };
+  assert.equal(passesSaleTypeFilter(F.A, 'all', t), true, 'all is off');
+  assert.equal(passesSaleTypeFilter(F.A, 'vacant', t), true);
+  assert.equal(passesSaleTypeFilter(F.A, 'improved-res', t), false);
+  assert.equal(passesSaleTypeFilter(F.B, 'improved-res', t), true);
+  assert.equal(passesSaleTypeFilter(F.B, 'improved-nonres', t), false);
+  assert.equal(passesSaleTypeFilter(F.C, 'improved-nonres', t), true);
+  assert.equal(passesSaleTypeFilter(F.C, 'improved-res', t), false);
+  // The retired 'improved' value is no longer a mode; it filters nothing.
+  assert.equal(passesSaleTypeFilter(F.A, 'improved', t), true);
+});
+
+test('csvGroupSaleType — same verdicts from the export, null when it cannot tell', () => {
+  const g = (rows) => { const m = new Map(); for (const r of rows) {
+    if (!m.has(r.instrument)) m.set(r.instrument, []); m.get(r.instrument).push(r); } return m; };
+  const t = csvGroupSaleType(g([
+    useRec('A', 'VCOMM'), useRec('A', 'VAGRI'),
+    useRec('B', 'RESSD'), useRec('B', 'CNAPT'),
+    useRec('C', 'RESSD'), useRec('C', 'CMOFF'),
+    useRec('D', 'RESSD'), useRec('D', ''),       // one blank -> undecidable
+  ]));
+  assert.equal(t.get('A'), 'vacant');
+  assert.equal(t.get('B'), 'improved-res');
+  assert.equal(t.get('C'), 'improved-nonres');
+  assert.equal(t.get('D'), null, 'a blank row means the live record may still decide');
+});
+
+test('passesPreJoinSaleTypeFilter — FAILS OPEN, so it can only remove what the post-join check would', () => {
+  const g = new Map([['D', null], ['B', 'improved-res']]);
+  for (const mode of ['vacant', 'improved-res', 'improved-nonres']) {
+    assert.equal(passesPreJoinSaleTypeFilter({ instrument: 'D' }, g, mode), true, mode);
+  }
+  assert.equal(passesPreJoinSaleTypeFilter({ instrument: 'B' }, g, 'improved-res'), true);
+  assert.equal(passesPreJoinSaleTypeFilter({ instrument: 'B' }, g, 'improved-nonres'), false);
+  assert.equal(passesPreJoinSaleTypeFilter({ instrument: 'B' }, g, 'all'), true);
+});
+
+test('pre-join and post-join agree on every decidable group', () => {
+  const rows = [
+    ['A', 'VCOMM'], ['A', 'VAGRI'], ['B', 'RESSD'], ['B', 'CNDRH'],
+    ['C', 'RESSD'], ['C', 'CMRST'], ['E', 'RESMU'],
+  ];
+  const groups = new Map();
+  for (const [i, c] of rows) { if (!groups.has(i)) groups.set(i, []); groups.get(i).push(useRec(i, c)); }
+  const csv = csvGroupSaleType(groups);
+  const post = groupSaleType(rows.map(([i, c]) => useCode(c, i)));
+  for (const [key, verdict] of csv) {
+    if (verdict == null) continue;
+    assert.equal(verdict, post.get(key), `group ${key}`);
+  }
 });
 
 // ---- Far-flung ------------------------------------------------------------
@@ -575,98 +713,6 @@ test('passesRadiusFilter — a sale on top of the subject is inside every radius
 });
 
 
-// ---- pre-join vacancy ------------------------------------------------------
-// The safety property, and the only one that really matters: this cut may
-// only remove sales the POST-join check would also have removed. It saves a
-// fetch; it must never change the answer.
-
-const useRec = (instrument, useCode) => ({ instrument, useCode });
-const useGroups = (...recs) => {
-  const g = new Map();
-  for (const r of recs) {
-    if (!g.has(r.instrument)) g.set(r.instrument, []);
-    g.get(r.instrument).push(r);
-  }
-  return g;
-};
-
-test('bareUseCode — one spelling for both the CSV and the live record', () => {
-  assert.equal(bareUseCode('VCOMM'), 'VCOMM');
-  assert.equal(bareUseCode('VCOMM - VACANT COMMERCIAL'), 'VCOMM');
-  assert.equal(bareUseCode(' ressd '), 'RESSD');
-  assert.equal(bareUseCode(null), '');
-});
-
-test('csvGroupVacancy — all-vacant vs any-improved, judged per GROUP', () => {
-  const v = csvGroupVacancy(useGroups(
-    useRec('A', 'VCOMM'), useRec('A', 'VRES1'),
-    useRec('B', 'VCOMM'), useRec('B', 'RESSD'),
-    useRec('C', 'CMOFF'),
-  ));
-  assert.equal(v.get('A'), 'vacant');
-  // One improved parcel makes the whole transaction improved, exactly as
-  // groupVacancy rules post-join.
-  assert.equal(v.get('B'), 'improved');
-  assert.equal(v.get('C'), 'improved');
-});
-
-test('csvGroupVacancy — one missing code makes the whole group undecidable', () => {
-  const v = csvGroupVacancy(useGroups(
-    useRec('D', 'VCOMM'), useRec('D', ''),
-    useRec('E', null),
-  ));
-  // NOT 'vacant'. The live record may yet classify the blank row, and
-  // deciding here would drop a sale the post-join check could have kept.
-  assert.equal(v.get('D'), null);
-  assert.equal(v.get('E'), null);
-});
-
-test('csvGroupVacancy — junk input never throws', () => {
-  for (const g of [null, undefined, new Map()]) {
-    assert.equal(csvGroupVacancy(g).size, 0);
-  }
-});
-
-test('passesPreJoinVacantFilter — mode all is a no-op', () => {
-  const v = csvGroupVacancy(useGroups(useRec('A', 'RESSD')));
-  assert.equal(passesPreJoinVacantFilter(useRec('A', 'RESSD'), v, 'all'), true);
-  assert.equal(passesPreJoinVacantFilter(useRec('A', 'RESSD'), v, 'anything'), true);
-});
-
-test('passesPreJoinVacantFilter — decided groups are cut, matching the mode', () => {
-  const v = csvGroupVacancy(useGroups(useRec('A', 'VCOMM'), useRec('B', 'RESSD')));
-  assert.equal(passesPreJoinVacantFilter(useRec('A', 'VCOMM'), v, 'vacant'), true);
-  assert.equal(passesPreJoinVacantFilter(useRec('B', 'RESSD'), v, 'vacant'), false);
-  assert.equal(passesPreJoinVacantFilter(useRec('B', 'RESSD'), v, 'improved'), true);
-  assert.equal(passesPreJoinVacantFilter(useRec('A', 'VCOMM'), v, 'improved'), false);
-});
-
-test('passesPreJoinVacantFilter — FAILS OPEN on an undecidable group', () => {
-  // The safety property. An undecidable group survives BOTH modes here and
-  // is judged for real after the join; the optimisation can never be the
-  // reason a sale disappears.
-  const v = csvGroupVacancy(useGroups(useRec('D', 'VCOMM'), useRec('D', '')));
-  assert.equal(passesPreJoinVacantFilter(useRec('D', 'VCOMM'), v, 'vacant'), true);
-  assert.equal(passesPreJoinVacantFilter(useRec('D', 'VCOMM'), v, 'improved'), true);
-  // An instrument the map has never heard of also passes.
-  assert.equal(passesPreJoinVacantFilter(useRec('Z', 'VCOMM'), v, 'vacant'), true);
-  assert.equal(passesPreJoinVacantFilter({}, v, 'vacant'), true);
-  assert.equal(passesPreJoinVacantFilter(useRec('A', 'X'), null, 'vacant'), true);
-});
-
-test('pre-join and post-join agree wherever the CSV can decide', () => {
-  // Same groups expressed both ways; the two implementations must return
-  // the same verdict for every decidable group.
-  const recs = [useRec('A', 'VCOMM'), useRec('A', 'VAGRI'), useRec('B', 'VCOMM'), useRec('B', 'INWWH')];
-  const csv = csvGroupVacancy(useGroups(...recs));
-  const post = groupVacancy(recs.map((r) => ({
-    properties: { _saleInstrument: r.instrument, _saleUseCode: r.useCode },
-  })));
-  for (const [key, verdict] of csv) {
-    if (verdict == null) continue;
-    assert.equal(verdict, post.get(key), `group ${key}`);
-  }
-});
 
 
 // ---- year built / building size -------------------------------------------

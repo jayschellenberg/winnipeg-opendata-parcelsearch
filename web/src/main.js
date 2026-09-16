@@ -127,14 +127,14 @@ import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
   passesPriceFilter,
   saleZoningCodes, passesZoningFilter,
-  groupVacancy, passesVacantFilter, isVacantUseCode, isLandSetUseCode, saleUseCodeOf,
+  groupSaleType, passesSaleTypeFilter, isVacantUseCode, isLandSetUseCode, saleUseCodeOf,
   resolveMixedSales,
   groupSpreadKm, isFarFlung,
   passesClusterFilter,
   saleClusterOf,
   parseRadiusKm,
   passesRadiusFilter,
-  csvGroupVacancy, passesPreJoinVacantFilter,
+  csvGroupSaleType, passesPreJoinSaleTypeFilter,
   saleBuildingSf, saleYearBuilt, passesRange,
 } from './lib/salesFilters.js';
 import {
@@ -4299,10 +4299,25 @@ function saveCriteria() {
  * everything it did not mention.
  */
 function applyCriteria(parsed) {
+  // Returns the settings it could not apply, so the caller can say so.
+  // Values a <select> no longer offers are REPORTED, not assigned. A
+  // browser silently ignores an out-of-range select value, so assigning
+  // one leaves the control on whatever it happened to show and the search
+  // runs as something the file never asked for. "Improved Only" split into
+  // two on 2026-09-16, so every search saved before that carries exactly
+  // such a value.
+  const stale = [];
   for (const f of SCALAR_FIELDS) {
     if (!(f.key in parsed.scalars)) continue;
     const el = document.getElementById(f.id);
-    if (el) el.value = parsed.scalars[f.key];
+    if (!el) continue;
+    const want = parsed.scalars[f.key];
+    if (el.tagName === 'SELECT' && want !== ''
+        && ![...el.options].some((o) => o.value === want)) {
+      stale.push(`${f.key}: ${want}`);
+      continue;
+    }
+    el.value = want;
   }
   for (const f of FLAG_FIELDS) {
     if (!(f.key in parsed.flags)) continue;
@@ -4322,17 +4337,32 @@ function applyCriteria(parsed) {
   pillPainters.farflung?.();
   renderSalesFiltersBadge();
   queueUrlWrite();
+  return stale;
 }
 
 async function loadCriteriaText(text, label) {
   const parsed = parseCriteria(text);
-  applyCriteria(parsed);
+  const stale = applyCriteria(parsed) || [];
   const skipped = parsed.unknown.length
     ? ` · ignored ${parsed.unknown.length} unknown setting${parsed.unknown.length === 1 ? '' : 's'} (${parsed.unknown.join(', ')})`
     : '';
-  setSalesCount(`Loaded ${label}: ${describeCriteria(parsed)}.${skipped}`);
+  // Named loudly: a retired option means the search is NOT the one that was
+  // saved, and the difference is invisible on the controls.
+  const staleNote = stale.length
+    ? ` · ⚠ ${stale.length} setting${stale.length === 1 ? '' : 's'} no longer offered and left unset (${stale.join(', ')})`
+    : '';
+  setSalesCount(`Loaded ${label}: ${describeCriteria(parsed)}.${skipped}${staleNote}`);
   if (salesData) await runSalesAnalysis();
 }
+
+/* How each sale-type mode reads in a sentence. The option VALUES are
+ * terse because they also travel in saved searches; the count line and the
+ * empty-set message need prose. */
+const SALE_TYPE_LABEL = {
+  vacant: 'vacant land',
+  'improved-res': 'improved residential',
+  'improved-nonres': 'improved non-residential / mixed',
+};
 
 // Cap the uploaded sales CSV so a huge file can't read-into-memory / hang the
 // tab. A sales-comparable export is realistically well under this; the limit
@@ -4646,9 +4676,9 @@ async function runSalesAnalysis() {
   const vacantMode = document.getElementById('vacant-improved')?.value || 'all';
   let preJoinVacantHidden = 0;
   if (vacantMode !== 'all') {
-    const csvVerdicts = csvGroupVacancy(salesData.groups);
+    const csvVerdicts = csvGroupSaleType(salesData.groups);
     const before = visibleSales.length;
-    visibleSales = visibleSales.filter((s) => passesPreJoinVacantFilter(s, csvVerdicts, vacantMode));
+    visibleSales = visibleSales.filter((s) => passesPreJoinSaleTypeFilter(s, csvVerdicts, vacantMode));
     preJoinVacantHidden = before - visibleSales.length;
   }
 
@@ -4695,7 +4725,7 @@ async function runSalesAnalysis() {
       msg = `${salesData.sales.length} sales loaded, but none are N1-${n1Mode}. `
           + `CSVs without an N1 ID column read as entirely unmatched.`;
     } else if (vacantMode !== 'all') {
-      msg = `${salesData.sales.length} sales loaded, but none are ${vacantMode === 'vacant' ? 'vacant land' : 'improved'} `
+      msg = `${salesData.sales.length} sales loaded, but none are ${SALE_TYPE_LABEL[vacantMode] || vacantMode} `
           + `by the Par Use Code on the loaded rows.`;
     } else if (dateFrom || dateTo) {
       msg = `${salesData.sales.length} sales loaded, but none fall inside the selected date range.`;
@@ -5258,10 +5288,10 @@ async function runSalesAnalysis() {
   // assembly as a clean vacant sale while its rows still carry a $/Lot SF
   // computed over all three parcels and the whole price. Class and zoning
   // could do the same in principle; they just never split on this axis.
-  const vacancyByGroup = groupVacancy(saleFc.features);
+  const vacancyByGroup = groupSaleType(saleFc.features);
   const afterVacant = vacantMode === 'all'
     ? visibleFeatures
-    : visibleFeatures.filter((f) => passesVacantFilter(f, vacantMode, vacancyByGroup));
+    : visibleFeatures.filter((f) => passesSaleTypeFilter(f, vacantMode, vacancyByGroup));
   // Both halves of the cut. Counting only the post-join removals would
   // report "3 hidden" on a run that actually dropped 3,000 before the
   // fetch — a filter must account for everything it removed, wherever it
@@ -5413,7 +5443,7 @@ async function runSalesAnalysis() {
       : clusterHidden ? ` · ${clusterHidden} hidden by the neighbourhood filter` : '') +
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
-    (vacantHidden ? ` · ${vacantHidden} hidden by the ${vacantMode} filter` : '') +
+    (vacantHidden ? ` · ${vacantHidden} hidden by the ${SALE_TYPE_LABEL[vacantMode] || vacantMode} filter` : '') +
     (yearHidden ? ` · ${yearHidden} hidden by the year-built filter` : '') +
     (bldgHidden ? ` · ${bldgHidden} hidden by the building-size filter` : '') +
     (farFlungHidden ? ` · ${farFlungHidden} far-flung excluded` : '') +

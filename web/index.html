@@ -574,11 +574,12 @@
                row never drawn, which is the expensive half of a run. -->
           <div class="sales-prefetch-row">
             <span class="sales-range-label">Sales:</span>
-            <label class="vacant-only-label" for="vacant-improved" title="Vacant / improved from the assessment Property Use Code. Vacant Land Only keeps sales where EVERY parcel in the sale carries a vacant code; Improved Only keeps sales where at least one parcel does not. Applied BEFORE the live-data fetch wherever the loaded rows carry their own Par Use Code, so narrowing here makes the search itself faster; a sale whose rows are missing that code is still fetched and judged afterwards, so the results are the same either way. The code is the assessor's classification at the time of the record — verify before relying on it for a land comp.">
+            <label class="vacant-only-label" for="vacant-improved" title="Sale type from the Property Use Code. Vacant Land Only keeps sales where EVERY parcel carries a vacant code. Improved – Res/Apt keeps improved sales whose coded parcels are all residential: any RES code except RESMU, RESPL and RESGC, plus the residential condos CNAPT, CNRES and CNDRH. Improved – Non-Res/Mixed keeps the rest of the improved sales, including the mixed-use and group-care codes that merely start with RES. One non-residential parcel types the whole sale non-residential, the same way one improved parcel types it improved. A sale with no use code on ANY parcel is shown under every option rather than hidden. Applied BEFORE the live-data fetch wherever the loaded rows carry their own Par Use Code, so narrowing here makes the search itself faster; a sale whose rows are missing that code is still fetched and judged afterwards, so the results are the same either way. The code is the assessor's classification at the time of the record — verify before relying on it for a land comp.">
               <select id="vacant-improved">
                 <option value="all" selected>All Sales</option>
                 <option value="vacant">Vacant Land Only</option>
-                <option value="improved">Improved Only</option>
+                <option value="improved-res">Improved &ndash; Res/Apt</option>
+                <option value="improved-nonres">Improved &ndash; Non-Res/Mixed</option>
               </select>
             </label>
           </div>
