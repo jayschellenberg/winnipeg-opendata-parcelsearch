@@ -134,6 +134,7 @@ import {
   saleClusterOf,
   parseRadiusKm,
   passesRadiusFilter,
+  csvGroupVacancy, passesPreJoinVacantFilter,
 } from './lib/salesFilters.js';
 import { radiusCircleFc } from './lib/radiusCircle.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
@@ -4422,6 +4423,20 @@ async function runSalesAnalysis() {
     visibleSales = visibleSales.filter((s) => passesPriceFilter(s, priceLo, priceHi));
   }
 
+  // Vacant / improved, PRE-JOIN — the cut that actually makes a search
+  // faster. Every sale removed here is an assessment record never
+  // requested and a row never drawn; the post-join check below still
+  // runs and remains the authority, so this can only remove rows that
+  // check would have removed anyway (see csvGroupVacancy).
+  const vacantMode = document.getElementById('vacant-improved')?.value || 'all';
+  let preJoinVacantHidden = 0;
+  if (vacantMode !== 'all') {
+    const csvVerdicts = csvGroupVacancy(salesData.groups);
+    const before = visibleSales.length;
+    visibleSales = visibleSales.filter((s) => passesPreJoinVacantFilter(s, csvVerdicts, vacantMode));
+    preJoinVacantHidden = before - visibleSales.length;
+  }
+
   // N1 crosswalk status. Row-level (one record per roll+instrument), so
   // a multi-parcel sale matched on some rolls only keeps exactly its
   // unmatched rows — those ARE the data-entry queue being asked for.
@@ -4466,6 +4481,9 @@ async function runSalesAnalysis() {
     } else if (n1Mode !== 'any') {
       msg = `${salesData.sales.length} sales loaded, but none are N1-${n1Mode}. `
           + `CSVs without an N1 ID column read as entirely unmatched.`;
+    } else if (vacantMode !== 'all') {
+      msg = `${salesData.sales.length} sales loaded, but none are ${vacantMode === 'vacant' ? 'vacant land' : 'improved'} `
+          + `by the Par Use Code on the loaded rows.`;
     } else if (dateFrom || dateTo) {
       msg = `${salesData.sales.length} sales loaded, but none fall inside the selected date range.`;
     } else if (pucsSelected) {
@@ -5027,12 +5045,15 @@ async function runSalesAnalysis() {
   // assembly as a clean vacant sale while its rows still carry a $/Lot SF
   // computed over all three parcels and the whole price. Class and zoning
   // could do the same in principle; they just never split on this axis.
-  const vacantMode = document.getElementById('vacant-improved')?.value || 'all';
   const vacancyByGroup = groupVacancy(saleFc.features);
   const afterVacant = vacantMode === 'all'
     ? visibleFeatures
     : visibleFeatures.filter((f) => passesVacantFilter(f, vacantMode, vacancyByGroup));
-  const vacantHidden = visibleFeatures.length - afterVacant.length;
+  // Both halves of the cut. Counting only the post-join removals would
+  // report "3 hidden" on a run that actually dropped 3,000 before the
+  // fetch — a filter must account for everything it removed, wherever it
+  // happened to run.
+  const vacantHidden = (visibleFeatures.length - afterVacant.length) + preJoinVacantHidden;
 
   // Far-flung. The threshold MARKS; only the Exclude tick removes. The
   // span is a group property, so a flagged sale drops whole — never

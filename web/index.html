@@ -409,8 +409,10 @@
                 Set a Sale date range below before searching, or the whole
                 archive loads at once.
               </p>
+              <!-- Search now lives below, on the pre-search divider row: it
+                   is the everyday action and belongs with the inputs that
+                   decide what it loads. What is left here is setup -->
               <div class="sales-db-actions">
-                <button type="button" id="sales-db-load">🔍 Search</button>
                 <button type="button" id="sales-db-refresh" class="secondary" title="Re-read changed CSV files from the connected folder">🔄 Reload</button>
                 <button type="button" id="sales-db-forget" class="secondary danger" title="Disconnect the sales database from this browser. The folder on disk is untouched.">🔌 Disconnect</button>
                 <button type="button" id="sales-db-coverage" class="secondary" title="Per-file row counts and sale-date ranges — spot gaps in the backfill">📅 Coverage</button>
@@ -546,6 +548,59 @@
             <span class="sales-date-sep" aria-hidden="true">–</span>
             <input type="date" id="sales-date-to" class="sales-date-input" aria-label="Sale date to" />
           </div>
+
+          <!-- Vacant / improved, from the assessor's own Property Use Code.
+               Winnipeg classifies vacancy directly (VRES1, VCOMM, VINDU,
+               VAGRI, VAPRK, VRES2, CNVAC), so unlike the Manitoba app there
+               is no buildings-value threshold to tune.
+
+               ABOVE the Search button on purpose: this is the cut that
+               decides what gets FETCHED, not just what gets shown. Every
+               roll it removes is an assessment record never requested and a
+               row never drawn, which is the expensive half of a run. -->
+          <div class="sales-prefetch-row">
+            <span class="sales-range-label">Sales:</span>
+            <label class="vacant-only-label" for="vacant-improved" title="Vacant / improved from the assessment Property Use Code. Vacant Land Only keeps sales where EVERY parcel in the sale carries a vacant code; Improved Only keeps sales where at least one parcel does not. Applied BEFORE the live-data fetch wherever the loaded rows carry their own Par Use Code, so narrowing here makes the search itself faster; a sale whose rows are missing that code is still fetched and judged afterwards, so the results are the same either way. The code is the assessor's classification at the time of the record — verify before relying on it for a land comp.">
+              <select id="vacant-improved">
+                <option value="all" selected>All Sales</option>
+                <option value="vacant">Vacant Land Only</option>
+                <option value="improved">Improved Only</option>
+              </select>
+            </label>
+          </div>
+
+          <!-- Nominal transfers are also a pre-fetch cut, so they belong in
+               this group rather than down among the display filters.
+               Hidden box stays the source of truth (runSalesAnalysis reads
+               it, and it ships CHECKED — nominal transfers are hidden by
+               default); the pill is a view — lib/pillBinding.js. -->
+          <div class="sales-prefetch-row">
+            <input type="checkbox" id="sales-hide-sentinels" class="pill-backing" checked hidden />
+            <div class="mode-pill-row sales-nominal-inline" title="$0 / $1 non-arms-length transfers — family conveyances, corrective transfers — that are not market evidence. Exclude (the default) drops them before the live-data fetch, so they cost nothing to skip; Include keeps them.">
+              <span class="mode-pill-prefix">Nominal sales:</span>
+              <div class="mode-pill compact" role="radiogroup" aria-label="Nominal sales" data-pill="nominal">
+                <button type="button" class="mode-btn" data-mode="include" aria-pressed="false">Include</button>
+                <button type="button" class="mode-btn active mode-btn-off" data-mode="exclude" aria-pressed="true">Exclude</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- THE DIVIDER. Everything above costs a fetch; everything below
+               re-filters what is already loaded, instantly. The panel used
+               to interleave the two with nothing to mark the boundary.
+
+               Search is disabled until the SABRE folder is connected
+               (salesDbPanel.js) rather than hidden, so the row keeps its
+               shape and the button can say why it is unavailable. Clear is
+               the same hard reset as the Property tab's: a reload of the
+               bare URL, so every filter, the loaded CSV, the subject roll
+               and the map all go back to first-load rather than leaving a
+               stale corner of state behind. -->
+          <div class="action-row sales-search-row">
+            <button type="button" id="sales-db-load" disabled title="Connect the SABRE export folder above first.">🔍 Search</button>
+            <button id="sales-clear" type="button" class="danger">Clear</button>
+          </div>
+          <hr class="sales-phase-rule" aria-hidden="true" />
 
           <!-- PUCS + assessment-class multi-selects, one row at half
                width each (Manitoba's .class-row layout). Both are the
@@ -696,19 +751,9 @@
           </div>
 
 
-          <!-- Vacant / improved, from the assessor's own Property Use
-               Code. Winnipeg classifies vacancy directly (VRES1, VCOMM,
-               VINDU, VAGRI, VAPRK, VRES2, CNVAC), so unlike the Manitoba
-               app there is no buildings-value threshold to tune — hence
-               no equivalent of its Bldg Threshold input. -->
+          <!-- Charts + the far-flung tally: both are about results that
+               already exist, so they stay on the display side. -->
           <div class="sales-vacant-row">
-            <label class="vacant-only-label" for="vacant-improved" title="Vacant / improved from the assessment Property Use Code. Vacant Land Only keeps sales where EVERY parcel in the sale carries a vacant code; Improved Only keeps sales where at least one parcel does not. Sales with no use code on any parcel drop out of both. The code is the assessor's classification at the time of the record — verify before relying on it for a land comp.">
-              <select id="vacant-improved">
-                <option value="all" selected>All Sales</option>
-                <option value="vacant">Vacant Land Only</option>
-                <option value="improved">Improved Only</option>
-              </select>
-            </label>
             <!-- Opens the land-sales charts in a second tab. The tab
                  tracks these filters live over a BroadcastChannel, so
                  narrowing the grid narrows the scatter. -->
@@ -859,28 +904,6 @@
               </select>
             </div>
           </details>
-
-          <!-- Clear. Same hard reset as the Property tab's Clear: a
-               reload of the bare URL, so every filter, the loaded CSV,
-               the subject roll and the map all go back to first-load
-               rather than leaving a stale corner of state behind. -->
-          <!-- Clear + the nominal-transfer toggle share a row (MB pattern):
-               the toggle governs the whole result set, so it belongs beside
-               the other whole-set action rather than among the filters. -->
-          <div class="action-row sales-action-row">
-            <button id="sales-clear" type="button" class="danger">Clear</button>
-            <!-- Hidden box stays the source of truth (runSalesAnalysis reads it,
-                 and it ships CHECKED — nominal transfers are hidden by default);
-                 the pill is a view — lib/pillBinding.js. -->
-            <input type="checkbox" id="sales-hide-sentinels" class="pill-backing" checked hidden />
-            <div class="mode-pill-row sales-nominal-inline" title="$0 / $1 non-arms-length transfers — family conveyances, corrective transfers — that are not market evidence. Exclude (the default) drops them from the table, the map, the charts and the CSV export; Include keeps them.">
-              <span class="mode-pill-prefix">Nominal sales:</span>
-              <div class="mode-pill compact" role="radiogroup" aria-label="Nominal sales" data-pill="nominal">
-                <button type="button" class="mode-btn" data-mode="include" aria-pressed="false">Include</button>
-                <button type="button" class="mode-btn active mode-btn-off" data-mode="exclude" aria-pressed="true">Exclude</button>
-              </div>
-            </div>
-          </div>
 
           <span id="sales-count" class="count"></span>
         </section><!-- /tab-panel-sales -->

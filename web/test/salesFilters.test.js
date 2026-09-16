@@ -23,6 +23,7 @@ import {
   groupSpreadKm, isFarFlung,
   isLandSetUseCode, resolveMixedSales,
   saleClusterOf, passesClusterFilter, UNASSIGNED_CLUSTER,
+  csvGroupVacancy, passesPreJoinVacantFilter, bareUseCode,
   parseRadiusKm, passesRadiusFilter,
 } from '../src/lib/salesFilters.js';
 
@@ -570,6 +571,100 @@ test('passesRadiusFilter — missing is excluded (no live match = no centroid)',
 
 test('passesRadiusFilter — a sale on top of the subject is inside every radius', () => {
   assert.equal(passesRadiusFilter(away(0), 0.5), true);
+});
+
+
+// ---- pre-join vacancy ------------------------------------------------------
+// The safety property, and the only one that really matters: this cut may
+// only remove sales the POST-join check would also have removed. It saves a
+// fetch; it must never change the answer.
+
+const useRec = (instrument, useCode) => ({ instrument, useCode });
+const useGroups = (...recs) => {
+  const g = new Map();
+  for (const r of recs) {
+    if (!g.has(r.instrument)) g.set(r.instrument, []);
+    g.get(r.instrument).push(r);
+  }
+  return g;
+};
+
+test('bareUseCode — one spelling for both the CSV and the live record', () => {
+  assert.equal(bareUseCode('VCOMM'), 'VCOMM');
+  assert.equal(bareUseCode('VCOMM - VACANT COMMERCIAL'), 'VCOMM');
+  assert.equal(bareUseCode(' ressd '), 'RESSD');
+  assert.equal(bareUseCode(null), '');
+});
+
+test('csvGroupVacancy — all-vacant vs any-improved, judged per GROUP', () => {
+  const v = csvGroupVacancy(useGroups(
+    useRec('A', 'VCOMM'), useRec('A', 'VRES1'),
+    useRec('B', 'VCOMM'), useRec('B', 'RESSD'),
+    useRec('C', 'CMOFF'),
+  ));
+  assert.equal(v.get('A'), 'vacant');
+  // One improved parcel makes the whole transaction improved, exactly as
+  // groupVacancy rules post-join.
+  assert.equal(v.get('B'), 'improved');
+  assert.equal(v.get('C'), 'improved');
+});
+
+test('csvGroupVacancy — one missing code makes the whole group undecidable', () => {
+  const v = csvGroupVacancy(useGroups(
+    useRec('D', 'VCOMM'), useRec('D', ''),
+    useRec('E', null),
+  ));
+  // NOT 'vacant'. The live record may yet classify the blank row, and
+  // deciding here would drop a sale the post-join check could have kept.
+  assert.equal(v.get('D'), null);
+  assert.equal(v.get('E'), null);
+});
+
+test('csvGroupVacancy — junk input never throws', () => {
+  for (const g of [null, undefined, new Map()]) {
+    assert.equal(csvGroupVacancy(g).size, 0);
+  }
+});
+
+test('passesPreJoinVacantFilter — mode all is a no-op', () => {
+  const v = csvGroupVacancy(useGroups(useRec('A', 'RESSD')));
+  assert.equal(passesPreJoinVacantFilter(useRec('A', 'RESSD'), v, 'all'), true);
+  assert.equal(passesPreJoinVacantFilter(useRec('A', 'RESSD'), v, 'anything'), true);
+});
+
+test('passesPreJoinVacantFilter — decided groups are cut, matching the mode', () => {
+  const v = csvGroupVacancy(useGroups(useRec('A', 'VCOMM'), useRec('B', 'RESSD')));
+  assert.equal(passesPreJoinVacantFilter(useRec('A', 'VCOMM'), v, 'vacant'), true);
+  assert.equal(passesPreJoinVacantFilter(useRec('B', 'RESSD'), v, 'vacant'), false);
+  assert.equal(passesPreJoinVacantFilter(useRec('B', 'RESSD'), v, 'improved'), true);
+  assert.equal(passesPreJoinVacantFilter(useRec('A', 'VCOMM'), v, 'improved'), false);
+});
+
+test('passesPreJoinVacantFilter — FAILS OPEN on an undecidable group', () => {
+  // The safety property. An undecidable group survives BOTH modes here and
+  // is judged for real after the join; the optimisation can never be the
+  // reason a sale disappears.
+  const v = csvGroupVacancy(useGroups(useRec('D', 'VCOMM'), useRec('D', '')));
+  assert.equal(passesPreJoinVacantFilter(useRec('D', 'VCOMM'), v, 'vacant'), true);
+  assert.equal(passesPreJoinVacantFilter(useRec('D', 'VCOMM'), v, 'improved'), true);
+  // An instrument the map has never heard of also passes.
+  assert.equal(passesPreJoinVacantFilter(useRec('Z', 'VCOMM'), v, 'vacant'), true);
+  assert.equal(passesPreJoinVacantFilter({}, v, 'vacant'), true);
+  assert.equal(passesPreJoinVacantFilter(useRec('A', 'X'), null, 'vacant'), true);
+});
+
+test('pre-join and post-join agree wherever the CSV can decide', () => {
+  // Same groups expressed both ways; the two implementations must return
+  // the same verdict for every decidable group.
+  const recs = [useRec('A', 'VCOMM'), useRec('A', 'VAGRI'), useRec('B', 'VCOMM'), useRec('B', 'INWWH')];
+  const csv = csvGroupVacancy(useGroups(...recs));
+  const post = groupVacancy(recs.map((r) => ({
+    properties: { _saleInstrument: r.instrument, _saleUseCode: r.useCode },
+  })));
+  for (const [key, verdict] of csv) {
+    if (verdict == null) continue;
+    assert.equal(verdict, post.get(key), `group ${key}`);
+  }
 });
 
 console.log('');

@@ -2091,6 +2091,48 @@ body {
   color: var(--ui-ink, #151916);
 }
 
+/* The pre-search group: the controls that decide what a Search FETCHES,
+   as opposed to the pickers below the rule, which re-filter what is
+   already loaded. Same row idiom as .sales-range-row so the block reads
+   as one thing, and the label column lines their controls up. */
+.sales-prefetch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12.5px;
+}
+.sales-prefetch-row > .vacant-only-label,
+.sales-prefetch-row > .vacant-only-label > select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Search + Clear, the boundary between the two halves of the panel. */
+.sales-search-row {
+  margin-top: 8px;
+  justify-content: flex-start;
+  gap: 6px;
+}
+/* Search is the action; Clear is the escape hatch. Equal widths made a
+   destructive red button look like half the point of the row, so Search
+   takes the space and Clear sits to its own size. */
+.sales-search-row #sales-db-load {
+  flex: 1 1 auto;
+}
+.sales-search-row #sales-clear {
+  flex: 0 0 auto;
+}
+
+/* The rule under them makes the fetch / filter split visible rather than
+   something the user has to infer from which controls happen to be slow. */
+.sales-phase-rule {
+  border: 0;
+  border-top: 1px solid var(--ui-line, #e4e4e7);
+  margin: 10px 0 2px;
+}
+
 .sales-street-row {
   display: flex;
 }

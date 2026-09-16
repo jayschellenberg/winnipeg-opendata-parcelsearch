@@ -112,6 +112,18 @@ export function initSalesDbPanel({ onLoad, setStatus, getDateWindow } = {}) {
     const connected = info.present;
     if ($empty) $empty.hidden = connected;
     if ($ready) $ready.hidden = !connected;
+    // Search now sits outside this block, on the pre-search divider row, so
+    // it is no longer hidden along with $ready when nothing is connected.
+    // Disabled rather than hidden on purpose: the row keeps its shape, and a
+    // greyed button with a reason is easier to act on than one that is not
+    // there. Re-enabling is this function's job on every render, so a
+    // connect or disconnect anywhere keeps it honest.
+    if ($load) {
+      $load.disabled = !connected;
+      $load.title = connected
+        ? 'Load every sale in the connected export folder that falls inside the filters above.'
+        : 'Connect the SABRE export folder above first.';
+    }
     if ($status) {
       $status.textContent = connected
         ? `${fmtN(info.files)} file${info.files === 1 ? '' : 's'} · ${fmtN(info.rows)} rows`

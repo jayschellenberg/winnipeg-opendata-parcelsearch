@@ -241,6 +241,34 @@ is row-level, so a multi-parcel sale matched on only some of its rolls shows
 exactly the rows that still need doing. A CSV with no N1 ID column reads as
 entirely unmatched, which is the truth.
 
+**The panel has two halves, and the Search button is the line between them.**
+Everything ABOVE it decides what a search FETCHES -- the sale date range, the
+vacant / improved cut and the nominal-transfer toggle. Everything BELOW it
+re-filters what is already loaded and costs nothing: neighbourhood, category,
+PUCS, class, zoning and the Additional filters. A horizontal rule makes the
+split visible rather than something to infer from which controls happen to be
+slow.
+
+Vacant / improved moved above the line because it is the cut that actually
+makes a run faster. Every sale it removes is an assessment record never
+requested and a row never drawn, which is the expensive half of a search.
+Measured on a 9-sale set with a subject parcel: Vacant Land Only fetched 5
+rolls where All Sales fetched 9.
+
+It does this WITHOUT changing which sales you see. The check used to run only
+after the join, where it could fall back to the live record'''s
+property_use_code for a row whose CSV carried none; judging purely on the CSV
+would quietly drop those. So the pre-fetch cut decides a sale only when EVERY
+row in its group has its own Par Use Code, and anything less is fetched and
+judged afterwards exactly as before -- it fails open, and can only remove rows
+the post-join check would have removed anyway (`csvGroupVacancy` /
+`passesPreJoinVacantFilter`, unit-tested against `groupVacancy` for agreement).
+The count line reports both halves of the cut together, so a run that dropped
+3,000 sales before the fetch does not report "3 hidden".
+
+Search is disabled, not hidden, until the SABRE folder is connected: the row
+keeps its shape and the button says why it is unavailable.
+
 **Where, not what: neighbourhood and radius.** Two location filters narrow a
 comp set the way an appraiser actually reasons about one.
 

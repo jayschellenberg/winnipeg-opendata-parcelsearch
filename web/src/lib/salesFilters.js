@@ -249,10 +249,13 @@ const VACANT_EXTRA_CODES = new Set(['CNVAC']);
 /** The bare 5-char use code for a joined sale feature, preferring the
  *  CSV's own Par Use Code and falling back to the live record. '' when
  *  neither is present. */
+export function bareUseCode(raw) {
+  return String(raw ?? '').trim().toUpperCase().split(/[\s-]/)[0];
+}
+
 export function saleUseCodeOf(feature) {
   const p = feature?.properties || {};
-  const raw = p._saleUseCode || p.property_use_code || '';
-  return String(raw).trim().toUpperCase().split(/[\s-]/)[0];
+  return bareUseCode(p._saleUseCode || p.property_use_code || '');
 }
 
 /** True when the code is one the assessor marks vacant. */
@@ -556,4 +559,65 @@ export function passesRadiusFilter(feature, radiusKm) {
   // in the set — the exact inversion of the missing-is-excluded rule.
   if (typeof d !== 'number' || !Number.isFinite(d)) return false;
   return d <= radiusKm;
+}
+
+
+/* ---------------------------------------------------------------------
+ * PRE-JOIN vacancy — the same question groupVacancy answers, asked early
+ * enough to save the work.
+ *
+ * WHY. Vacant/improved used to be judged only after the d4mq-wa44 join,
+ * so choosing "Vacant Land Only" still fetched an assessment record for
+ * every improved sale and drew it before throwing it away. That is the
+ * expensive half of a run. The CSV usually carries its own Par Use Code,
+ * which is the same signal — so where it does, the answer is available
+ * before a single request goes out.
+ *
+ * WHY IT DOES NOT SIMPLY REPLACE THE POST-JOIN CHECK. saleUseCodeOf
+ * falls back to the live record's property_use_code when the CSV row has
+ * none. Judging purely on the CSV would therefore silently drop sales
+ * that the live record could have classified — a narrowing disguised as
+ * an optimisation. So this only decides a group when EVERY member has a
+ * code of its own; anything less defers, gets fetched, and is judged
+ * afterwards exactly as before. Same sales, most of the speed.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Vacancy per SALE GROUP from the CSV's own Par Use Codes.
+ *
+ * @param {Map<string, object[]>} groups instrument -> SaleRecords
+ * @returns {Map<string, 'vacant'|'improved'|null>} null = undecidable
+ *   here, because at least one row in the group carries no use code.
+ */
+export function csvGroupVacancy(groups) {
+  const out = new Map();
+  for (const [key, members] of groups || []) {
+    const list = Array.isArray(members) ? members : [];
+    let decidable = list.length > 0;
+    let allVacant = true;
+    for (const m of list) {
+      const code = bareUseCode(m?.useCode);
+      if (!code) { decidable = false; break; }
+      // One improved parcel makes the whole transaction an improved
+      // sale — the same group rule groupVacancy applies post-join.
+      if (!isVacantUseCode(code)) allVacant = false;
+    }
+    out.set(String(key), decidable ? (allVacant ? 'vacant' : 'improved') : null);
+  }
+  return out;
+}
+
+/**
+ * Keep this sale through the PRE-JOIN vacancy cut.
+ *
+ * Fails open by design, and that is the whole safety property: a group
+ * this cannot decide passes here and meets the real check after the
+ * join. The only rows it removes are ones the post-join check would have
+ * removed anyway.
+ */
+export function passesPreJoinVacantFilter(sale, verdicts, mode) {
+  if (mode !== 'vacant' && mode !== 'improved') return true;
+  const v = verdicts?.get?.(String(sale?.instrument ?? ''));
+  if (v == null) return true;
+  return v === mode;
 }
