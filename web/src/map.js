@@ -61,6 +61,25 @@ function clickOwnedByTool(map, e) {
  */
 let clusterPickerOwns = () => false;
 
+/*
+ * Layers that count as A PROPERTY being under the cursor: the search
+ * results, the sales-mode context fabric, and the citywide wash. Anything
+ * belonging to the neighbourhood backdrop has to defer to these — they are
+ * the subject of the map, and the backdrop is the paper it is drawn on.
+ */
+const PARCEL_CONTENT_LAYERS = ['parcel-fill', 'assess-context-fill', 'citywide-parcels-fill'];
+
+/** Is any parcel layer drawn at this point? Honours layer visibility, so a
+ *  hidden layer never counts. */
+function parcelAt(map, point) {
+  for (const id of PARCEL_CONTENT_LAYERS) {
+    if (!map.getLayer(id)) continue;
+    if (map.getLayoutProperty(id, 'visibility') === 'none') continue;
+    if (map.queryRenderedFeatures(point, { layers: [id] }).length > 0) return true;
+  }
+  return false;
+}
+
 const CLUSTER_FILL = 'neighbourhood-clusters-fill';
 const CLUSTER_SRC  = 'wpg-neighbourhood-clusters';
 const CLUSTER_LABEL_SRC = 'wpg-neighbourhood-cluster-labels';
@@ -93,13 +112,15 @@ export function setClusterSelection(map, selected, all) {
     if (!map.getSource?.(src)) continue;
     try { map.removeFeatureState({ source: src }); } catch { /* source not ready */ }
   }
+  // No filter: every boundary sits at its resting weight and nothing is
+  // marked either way. This is the common case and it costs nothing.
   if (!selected) return;
   for (const name of all || []) {
-    if (selected.has(name)) continue;
+    const state = selected.has(name) ? { on: true } : { off: true };
     for (const src of [CLUSTER_SRC, CLUSTER_LABEL_SRC]) {
       if (!map.getSource?.(src)) continue;
-      try { map.setFeatureState({ source: src, id: String(name) }, { off: true }); }
-      catch { /* a name with no polygon simply doesn't fade */ }
+      try { map.setFeatureState({ source: src, id: String(name) }, state); }
+      catch { /* a name with no polygon simply doesn't change */ }
     }
   }
 }
@@ -121,14 +142,7 @@ export function wireClusterPicker(map, onToggle, { isArmed } = {}) {
   clusterPickerOwns = (name) => {
     try { return Boolean(isArmed?.(name)); } catch { return false; }
   };
-  const contentOwns = (point) => {
-    for (const id of ['parcel-fill', 'assess-context-fill']) {
-      if (!map.getLayer(id)) continue;
-      if (map.getLayoutProperty(id, 'visibility') === 'none') continue;
-      if (map.queryRenderedFeatures(point, { layers: [id] }).length > 0) return true;
-    }
-    return false;
-  };
+  const contentOwns = (point) => parcelAt(map, point);
   let hovered = null;
   const dropHover = () => {
     if (hovered != null) {
@@ -169,6 +183,7 @@ import {
   applyCitywideParcelsBasemapStyle,
 } from './lib/citywideParcelsStyle.js';
 import { formatDollars } from './lib/cells.js';
+import { buildingLines, saleLines } from './lib/salePopupLines.js';
 import { assessFillOpacity } from './lib/assessFillOpacity.js';
 import { badgeRadius, calloutOffset, solveCalloutSlots } from './lib/calloutPlacement.js';
 
@@ -928,14 +943,37 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
           // Slate rather than the old saturated blue: this is context, and
           // a coloured line competes with the zoning, transit and sale
           // colours that carry actual meaning.
+          //
+          // THREE states, not two. `on` is set only once a filter is
+          // actually narrowing (see setClusterSelection), so:
+          //
+          //   no filter    — the resting hairline, which is the weight
+          //                  Jason approved and must not change
+          //   on           — a filter is running and this one is IN it:
+          //                  step up slightly, so what is still in play
+          //                  reads at a glance
+          //   off          — excluded: stay faint
+          //
+          // The resting and `on` weights are deliberately close. The point
+          // is to notice the difference when scanning the city, not to
+          // turn the backdrop into the loudest thing on the map again.
           'line-color': [
-            'case', ['boolean', ['feature-state', 'off'], false], '#cbd5e1', '#94a3b8',
+            'case',
+            ['boolean', ['feature-state', 'off'], false], '#cbd5e1',
+            ['boolean', ['feature-state', 'on'], false], '#64748b',
+            '#94a3b8',
           ],
           'line-width': [
-            'case', ['boolean', ['feature-state', 'off'], false], 0.8, 1.3,
+            'case',
+            ['boolean', ['feature-state', 'off'], false], 0.8,
+            ['boolean', ['feature-state', 'on'], false], 2,
+            1.3,
           ],
           'line-opacity': [
-            'case', ['boolean', ['feature-state', 'off'], false], 0.4, 0.75,
+            'case',
+            ['boolean', ['feature-state', 'off'], false], 0.4,
+            ['boolean', ['feature-state', 'on'], false], 0.9,
+            0.75,
           ],
         },
       });
@@ -965,7 +1003,10 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         },
         paint: {
           'text-color': [
-            'case', ['boolean', ['feature-state', 'off'], false], '#cbd5e1', '#8a97a8',
+            'case',
+            ['boolean', ['feature-state', 'off'], false], '#cbd5e1',
+            ['boolean', ['feature-state', 'on'], false], '#64748b',
+            '#8a97a8',
           ],
           'text-halo-color': '#ffffff',
           'text-halo-width': 1.6,
@@ -2070,6 +2111,15 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       });
       const hoodHoverHandler = (labelKey) => (e) => {
         if (isShapeDrawing() || isMeasuring()) {
+          hoodHoverPopup.remove();
+          return;
+        }
+        // A property under the cursor owns the hover (Jason, 2026-09-16).
+        // These boundaries blanket the city and are the lowest vector layer
+        // on the map, so without this the neighbourhood name tags along
+        // beside — and sometimes on top of — the parcel popup the user is
+        // actually reading.
+        if (parcelAt(map, e.point)) {
           hoodHoverPopup.remove();
           return;
         }
@@ -3321,6 +3371,12 @@ function popupHtml(p) {
     lines.push(...useAndZoningLines(p));
     const size = parcelSizeLine(p);
     if (size) lines.push(size);
+    // What is standing on it, beside the size it stands on. Assessment
+    // -record fields, so these show on both tabs; absent ones simply
+    // don't appear.
+    for (const { label, value } of buildingLines(p)) {
+      lines.push(`<strong>${escapeHtml(label)}</strong> ${escapeHtml(value)}`);
+    }
     // Dwelling units: dwelling_units is text-typed; coerce defensively.
     // Show even when 0 because vacant lot is a meaningful state.
     if (p.dwelling_units != null && p.dwelling_units !== '') {
@@ -3338,6 +3394,14 @@ function popupHtml(p) {
     if (asmt) lines.push(asmt);
     const asmtClass = assessmentClassLine(p);
     if (asmtClass) lines.push(asmtClass);
+    // The sale, last, for the same reason the assessment is late in the
+    // list: the popup reads description first and money after it. Only
+    // present on a parcel carrying a loaded sale, so the Property tab
+    // never shows an empty heading. lib/salePopupLines.js picks $/Bldg SF
+    // or the land pair off the corrected Category.
+    for (const { label, value } of saleLines(p, formatDollars)) {
+      lines.push(`<strong>${escapeHtml(label)}</strong> ${escapeHtml(value)}`);
+    }
     // For multi-unit buildings (condos, strip malls) the same polygon
     // covers many roll numbers. dedupeByGeometryHash in main.js stamps
     // _unitCount on the representative feature so the popup can flag

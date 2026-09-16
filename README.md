@@ -271,12 +271,21 @@ are one control with one state, so neither can show a picture the other would
 read differently.
 
 Because it is always on, the layer's resting state is a whisper -- a slate
-hairline, a barely-there fill and small grey names. Hover is the only assertive
-state, so the cursor has feedback. A deselected neighbourhood goes fainter
-still rather than disappearing, which would read as a rendering failure. The
-fill never carries the state strongly: a cluster is a big polygon with the sales
-and parcels being read inside it, and a tint strong enough to notice is a tint
+hairline, a barely-there fill and small grey names. There are THREE weights,
+not two: at rest (nothing filtering) every boundary sits at that hairline; once
+a filter is actually narrowing, the neighbourhoods still IN it step up slightly
+so what is in play reads at a glance, while the excluded ones go fainter still
+rather than disappearing, which would read as a rendering failure. Resting and
+stepped-up are deliberately close -- the point is to notice the difference while
+scanning the city, not to make the backdrop the loudest thing on the map again.
+Hover is the only assertive state, so the cursor has feedback. The fill never
+carries the state strongly: a cluster is a big polygon with the sales and
+parcels being read inside it, and a tint strong enough to notice is a tint
 strong enough to get in the way.
+
+The neighbourhood name that follows the cursor stands down whenever a parcel is
+drawn under it, so it never tags along beside the parcel popup you are actually
+reading.
 
 Clicking the last selected neighbourhood off leaves NOTHING selected and
 therefore no results, the same state unticking every box reaches, and the count
@@ -328,6 +337,25 @@ name for it (`RESSD` / Detached Single Dwelling), from the same table
 `lib/pucs.js` feeds the **Use** column. 57 bare five-letter codes is not a list
 anyone can choose from, and the appraiser is looking for a use, not a
 mnemonic. Codes the table has never seen render bare rather than vanishing.
+
+**What the parcel popup says.** Hover or click a parcel and the popup carries,
+beyond the roll / address / use / zoning / size block: **Year Built** and
+**Living Area** off the assessment record, on both tabs; and for a parcel with a
+loaded sale, its **Sale Date**, **Sale Price** and the rate that suits it --
+**$/Bldg SF** for anything improved, **$/Lot SF** and **$/Acre** when the
+corrected Category is Land. Hover and click share one builder
+(`combinedPopupHtml`), so the two can never drift apart.
+
+Every figure is READ from what lib/sales.js already computed for the columns of
+the same name, never recomputed. That matters more than it looks: the group-sum
+rules behind those numbers (multi-parcel land totals, the vacant-group guard on
+$/Bldg SF, the assembly corrections) exist in one place, and a popup doing its
+own division would be a second implementation destined to disagree. It also
+means a figure the grid withholds -- a mixed sale's land rates, say -- is
+withheld here for free. The rules are unit-tested in
+`lib/salePopupLines.js` / `test/salePopupLines.test.js`, which is also why they
+live outside map.js: that file pulls in maplibre, turf and mapbox-gl-draw and
+cannot be loaded under node.
 
 **Rise (storey band).** Neither SABRE nor the assessment roll says how
 tall an apartment or office building is — `building_type` is only filled
