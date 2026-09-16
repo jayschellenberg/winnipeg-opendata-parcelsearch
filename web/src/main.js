@@ -101,6 +101,7 @@ import {
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
   setHistoricalZoningData, setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
+  setClusterSelection, wireClusterPicker,
 } from './map.js';
 import {
   getShapes as getMapShapes,
@@ -1884,6 +1885,74 @@ function setNeighbourhoodLayerVisibility(layerIds, visible) {
   }
 }
 
+/*
+ * The cluster outlines have TWO owners now, and they must not fight.
+ *
+ *   - the Map Layers "Neighbourhoods" button, which cycles Off ->
+ *     Clusters -> Neighbourhoods and governs both levels everywhere;
+ *   - the Sales Analysis tab, where the clusters are the filter's own
+ *     selection surface and are therefore always drawn, exactly the way
+ *     the Manitoba app always draws its municipality boundaries on its
+ *     Sales tab.
+ *
+ * So visibility is computed from both rather than assigned by whichever
+ * ran last. Without this, cycling the button to Off while on the Sales tab
+ * would hide the thing the user is meant to be clicking, and switching
+ * tabs would silently undo a Clusters selection the button had made.
+ *
+ * Only the CLUSTER level is forced. The 235 individual neighbourhoods stay
+ * entirely the button's business — they are reference, not a control.
+ */
+let salesClusterBackdrop = false;
+
+function applyNeighbourhoodVisibility() {
+  setNeighbourhoodLayerVisibility(
+    NEIGHBOURHOOD_CLUSTER_LAYERS,
+    neighbourhoodsMode === 'clusters' || salesClusterBackdrop,
+  );
+  setNeighbourhoodLayerVisibility(
+    NEIGHBOURHOOD_INDIVIDUAL_LAYERS,
+    neighbourhoodsMode === 'individual',
+  );
+}
+
+/** Fetch the 23 cluster polygons + their label points once. Shares the
+ *  `neighbourhoodsLoaded` latch with the toggle, so whichever asks first
+ *  pays and the other gets it free. */
+async function ensureClusterOverlayData() {
+  if (neighbourhoodsLoaded.clusters) return true;
+  const fc = await fetchNeighbourhoodClusters();
+  setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
+  setOverlayData(map, 'wpg-neighbourhood-cluster-labels', buildLabelPointFc(fc, 'cluster'));
+  neighbourhoodsLoaded.clusters = true;
+  return true;
+}
+
+/** Repaint the map's cluster outlines from the picker's selection. */
+function paintClusterSelection() {
+  mapReady.then(() => setClusterSelection(map, clusterFilter.getSelected()));
+}
+
+/**
+ * Turn the always-on cluster backdrop on for the Sales tab and off
+ * everywhere else.
+ *
+ * Non-fatal on a fetch failure: the Sales tab still works without the
+ * boundaries — the picker in the sidebar is unaffected — so a missing
+ * geojson costs the map affordance and nothing else.
+ */
+async function syncClusterBackdrop(tab) {
+  const on = tab === 'sales';
+  salesClusterBackdrop = on;
+  await mapReady;
+  if (on) {
+    try { await ensureClusterOverlayData(); }
+    catch (err) { console.warn('cluster backdrop fetch failed (map picker unavailable):', err); }
+  }
+  applyNeighbourhoodVisibility();
+  if (on) paintClusterSelection();
+}
+
 function renderNeighbourhoodButton() {
   if (!$neighbourhoodsToggle) return;
   $neighbourhoodsToggle.dataset.mode = neighbourhoodsMode;
@@ -1920,8 +1989,7 @@ async function setNeighbourhoodsMode(mode) {
   renderNeighbourhoodButton();
   await mapReady;
 
-  setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS, mode === 'clusters');
-  setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, mode === 'individual');
+  applyNeighbourhoodVisibility();
 
   if (mode === 'off') return;
 
@@ -1948,8 +2016,9 @@ async function setNeighbourhoodsMode(mode) {
     console.warn(`neighbourhoods (${mode}) fetch failed`, err);
     neighbourhoodsMode = 'off';
     renderNeighbourhoodButton();
-    setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_CLUSTER_LAYERS, false);
-    setNeighbourhoodLayerVisibility(NEIGHBOURHOOD_INDIVIDUAL_LAYERS, false);
+    // Through applyNeighbourhoodVisibility, so a failed INDIVIDUAL fetch
+    // cannot take the Sales tab's cluster backdrop down with it.
+    applyNeighbourhoodVisibility();
   } finally {
     $neighbourhoodsToggle.disabled = false;
   }
@@ -3885,7 +3954,10 @@ const clusterFilter = createMultiSelectFilter({
   btnId: 'cluster-filter-btn',
   popoverId: 'cluster-filter-popover',
   label: 'cluster',
-  onChange: () => runSalesAnalysis(),
+  // Paint BEFORE the re-run, not after: runSalesAnalysis awaits the live
+  // fetch, and the map should follow the click immediately rather than a
+  // few seconds later when the grid catches up.
+  onChange: () => { paintClusterSelection(); runSalesAnalysis(); },
 });
 
 /**
@@ -3902,7 +3974,35 @@ function rebuildClusterFilter(features) {
     counts.set(c, (counts.get(c) || 0) + 1);
   }
   clusterFilter.setOptions(counts);
+  // A new CSV can drop a cluster the old selection named; setOptions
+  // reconciles that away, so the map has to be repainted from what
+  // survived rather than from what was clicked.
+  paintClusterSelection();
 }
+
+/*
+ * Click a cluster on the map to add or remove it from the filter — the
+ * Manitoba municipality gesture, ported. Pointing at an area is how an
+ * appraiser thinks about a comp search; finding one of 23 names in a
+ * popover is not.
+ *
+ * Armed only on the Sales tab, and only for a cluster the loaded sales
+ * actually reach. Both halves matter: on the Property tab the clusters are
+ * reference and a click should still explain them, and a cluster with no
+ * sales in the set has nothing to filter, so the layer's ordinary info
+ * popup answers instead of the click doing nothing at all.
+ *
+ * (no cluster) is deliberately unreachable this way — it is the bucket for
+ * parcels that fall outside every polygon, so there is no polygon to click.
+ * It stays tickable in the popover.
+ */
+mapReady.then(() => {
+  wireClusterPicker(map, (name) => clusterFilter.toggleValue(name), {
+    isArmed: (name) => getActiveTab() === 'sales' && clusterFilter.hasOption(name),
+  });
+  onTabChange(syncClusterBackdrop);
+  syncClusterBackdrop(getActiveTab());
+});
 
 /**
  * Rebuild the category options from the joined, permit-corrected set.

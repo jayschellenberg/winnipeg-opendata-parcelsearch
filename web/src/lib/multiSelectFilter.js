@@ -67,6 +67,44 @@ export function passesSelection(selected, value) {
 }
 
 /**
+ * The selection after toggling one value — the gesture behind clicking a
+ * cluster on the map, where there is no checkbox to read the current state
+ * off of.
+ *
+ * Deliberately NOT the same rule as ticking a checkbox, and the difference
+ * is the whole point:
+ *
+ *   from null (no filter), clicking X gives Set([X]) — NARROWS to X. The
+ *   checkbox path materializes the implicit "everything" and unticks one,
+ *   because that is what unticking a ticked box means. A click on the map
+ *   is a positive act: the user pointed at one cluster, and "everything
+ *   except that one" is not what they asked for.
+ *
+ *   removing the LAST value gives null, not an empty Set. Empty means the
+ *   deliberate show-nothing the None button reaches; arriving there by
+ *   clicking the only selected cluster off would empty the grid with no
+ *   way to tell it apart from a filter that matched nothing. Click on,
+ *   click off, back to Any — the Manitoba municipality picker's rule.
+ *
+ *   filling the set to every option collapses to null, same as the
+ *   checkbox path, so "all ticked" keeps one representation.
+ *
+ * Returns the unchanged selection when `value` is not on offer, so a click
+ * on a cluster the loaded sales never reach is a no-op rather than a
+ * filter that can match nothing.
+ */
+export function toggleSelection(selected, value, options) {
+  if (!options.includes(value)) return selected;
+  if (selected == null) return new Set([value]);
+  const next = new Set(selected);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  if (next.size === 0) return null;
+  if (next.size === options.length) return null;
+  return next;
+}
+
+/**
  * Wire a button + popover pair into a working multi-select.
  *
  * @param {Object} opts
@@ -122,10 +160,15 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange, ord
   const $popover = document.getElementById(popoverId);
   let selected = null;      // tri-state, see the header
   let options = [];
+  // Held so toggleValue can repaint the checkboxes after a change that did
+  // not come from a checkbox. Without it a map click would move the filter
+  // and leave every box in the popover showing the previous state.
+  let lastCounts = new Map();
 
   const noop = {
     setOptions: () => {}, getSelected: () => null,
     reset: () => {}, isEmptySelection: () => false,
+    hasOption: () => false, toggleValue: () => false,
   };
   if (!$btn || !$popover) return noop;
 
@@ -230,6 +273,7 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange, ord
 
   return {
     setOptions(counts) {
+      lastCounts = counts;
       options = sortOptions([...counts.keys()], order);
       if (options.length === 0) {
         $btn.disabled = true;
@@ -249,5 +293,25 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange, ord
     getSelected: () => selected,
     reset() { selected = null; },
     isEmptySelection: () => selected != null && selected.size === 0,
+
+    /** Is this value on offer right now? Lets a caller ask before acting —
+     *  the map picker uses it to decide whether a click is a selection or
+     *  should fall through to the layer's ordinary info popup. */
+    hasOption: (value) => options.includes(value),
+
+    /**
+     * Toggle one value from outside the popover (a click on the map).
+     * Repaints the checkboxes and the button, then fires onChange exactly
+     * as a checkbox would. Returns false — changing nothing — when the
+     * value is not on offer.
+     */
+    toggleValue(value) {
+      if (!options.includes(value)) return false;
+      selected = toggleSelection(selected, value, options);
+      syncLabel();
+      render(lastCounts);
+      onChange?.();
+      return true;
+    },
   };
 }

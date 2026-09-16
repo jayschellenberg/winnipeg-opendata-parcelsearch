@@ -48,6 +48,98 @@ function clickOwnedByTool(map, e) {
 
 /** map.on('click', layer, fn) with the tool gate applied. Every layer click
  *  in the app goes through here, so a layer added later cannot forget it. */
+/*
+ * Neighbourhood-cluster picker — clicking a cluster toggles it in the Sales
+ * Analysis cluster filter, the same gesture the Manitoba app's municipality
+ * backdrop uses. The map drives the sidebar, rather than the other way
+ * round, so a comp area can be chosen by pointing at it instead of by
+ * finding one of 23 names in a list.
+ *
+ * `clusterPickerOwns(name)` is read by the layer's ordinary info popup so
+ * the two never both fire; it answers false until wireClusterPicker runs,
+ * which keeps the Property tab's behaviour exactly as it was.
+ */
+let clusterPickerOwns = () => false;
+
+const CLUSTER_FILL = 'neighbourhood-clusters-fill';
+const CLUSTER_SRC  = 'wpg-neighbourhood-clusters';
+
+/**
+ * Paint the filter's selection onto the cluster outlines.
+ *
+ * Clears every feature-state first rather than diffing: 23 polygons is
+ * nothing, and a diff would need the previous selection kept in sync
+ * through reloads, tab switches and URL restores — three places it could
+ * silently drift out of step with the picker it is supposed to mirror.
+ *
+ * @param {Set<string>|null} names the ticked clusters; null (no filter)
+ *   clears the paint, because "everything" highlighted is the same
+ *   picture as nothing highlighted and only the louder one is a lie.
+ */
+export function setClusterSelection(map, names) {
+  if (!map?.getSource?.(CLUSTER_SRC)) return;
+  try { map.removeFeatureState({ source: CLUSTER_SRC }); } catch { /* source not ready */ }
+  if (!names || names.size === 0) return;
+  for (const name of names) {
+    try { map.setFeatureState({ source: CLUSTER_SRC, id: String(name) }, { selected: true }); }
+    catch { /* a name with no polygon simply doesn't light up */ }
+  }
+}
+
+/**
+ * Wire click-to-toggle and hover on the cluster fill.
+ *
+ * `isArmed(name)` decides, per cluster, whether this picker takes the
+ * click — the caller answers "yes" only on the Sales tab and only for a
+ * cluster the loaded sales actually reach. `onToggle(name)` does the work.
+ *
+ * The picker stands down when a measurement or a draw tool owns the
+ * pointer, and whenever a parcel or a sale is drawn at that point: these
+ * boundaries are the lowest vector layer on the map and MapLibre fires
+ * every layer's handler under the cursor, so a click aimed at a sale must
+ * not also re-filter the whole comp set behind it.
+ */
+export function wireClusterPicker(map, onToggle, { isArmed } = {}) {
+  clusterPickerOwns = (name) => {
+    try { return Boolean(isArmed?.(name)); } catch { return false; }
+  };
+  const contentOwns = (point) => {
+    for (const id of ['parcel-fill', 'assess-context-fill']) {
+      if (!map.getLayer(id)) continue;
+      if (map.getLayoutProperty(id, 'visibility') === 'none') continue;
+      if (map.queryRenderedFeatures(point, { layers: [id] }).length > 0) return true;
+    }
+    return false;
+  };
+  let hovered = null;
+  const dropHover = () => {
+    if (hovered != null) {
+      try { map.setFeatureState({ source: CLUSTER_SRC, id: hovered }, { hover: false }); } catch { /* gone */ }
+      hovered = null;
+    }
+  };
+  map.on('mousemove', CLUSTER_FILL, (e) => {
+    const name = e.features?.[0]?.properties?.cluster;
+    if (name == null || !clusterPickerOwns(String(name)) || contentOwns(e.point)) { dropHover(); return; }
+    if (hovered !== String(name)) {
+      dropHover();
+      hovered = String(name);
+      try { map.setFeatureState({ source: CLUSTER_SRC, id: hovered }, { hover: true }); } catch { /* gone */ }
+    }
+  });
+  map.on('mouseleave', CLUSTER_FILL, dropHover);
+  // Through onLayerClick, not map.on, so the measure/draw gate runs exactly
+  // once for this click. Calling clickOwnedByTool here as well would invoke
+  // shapeClickHandled a SECOND time and flip a committed shape's
+  // Include/Exclude twice on the one click.
+  onLayerClick(map, CLUSTER_FILL, (e) => {
+    const name = e.features?.[0]?.properties?.cluster;
+    if (name == null || !clusterPickerOwns(String(name))) return;
+    if (contentOwns(e.point)) return;
+    onToggle?.(String(name));
+  });
+}
+
 function onLayerClick(map, layerId, handler) {
   map.on('click', layerId, (e) => {
     if (clickOwnedByTool(map, e)) return;
@@ -751,13 +843,37 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // build-neighbourhoods-geojson.mjs. The user-facing button
       // cycles Off -> Clusters -> Neighbourhoods -> Off.
       map.addSource('wpg-neighbourhoods', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addSource('wpg-neighbourhood-clusters', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      // promoteId makes the cluster NAME the feature id, so feature-state
+      // can be set straight from the filter's selection without keeping a
+      // name -> index map in sync with every reload. The 23 names are
+      // unique, which is what makes this safe.
+      map.addSource('wpg-neighbourhood-clusters', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        promoteId: 'cluster',
+      });
       map.addSource('wpg-neighbourhood-cluster-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addSource('wpg-neighbourhood-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({
         id: 'neighbourhood-clusters-fill', type: 'fill', source: 'wpg-neighbourhood-clusters',
         layout: { visibility: 'none' },
-        paint: { 'fill-color': '#0ea5e9', 'fill-opacity': 0.06 },
+        paint: {
+          'fill-color': [
+            'case', ['boolean', ['feature-state', 'selected'], false], '#1d4ed8', '#0ea5e9',
+          ],
+          // Selection is carried by the OUTLINE below, not by this fill.
+          // A cluster is a big polygon with the sales dots and parcels the
+          // user is actually reading inside it; tinting it to "selected"
+          // strength washes over exactly the thing being looked at. The
+          // fill stays a whisper — just enough that the cursor has
+          // something to land on and hover has somewhere to show.
+          'fill-opacity': [
+            'case',
+            ['boolean', ['feature-state', 'selected'], false], 0.12,
+            ['boolean', ['feature-state', 'hover'], false], 0.10,
+            0.06,
+          ],
+        },
       });
       map.addLayer({
         id: 'neighbourhood-clusters-line-casing', type: 'line', source: 'wpg-neighbourhood-clusters',
@@ -767,7 +883,17 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       map.addLayer({
         id: 'neighbourhood-clusters-line', type: 'line', source: 'wpg-neighbourhood-clusters',
         layout: { visibility: 'none', 'line-join': 'round' },
-        paint: { 'line-color': '#0369a1', 'line-width': 2.5, 'line-opacity': 0.95 },
+        paint: {
+          // Two states readable at any zoom by weight and hue alone, so a
+          // selected cluster is findable while zoomed out to the whole city.
+          'line-color': [
+            'case', ['boolean', ['feature-state', 'selected'], false], '#1d4ed8', '#0369a1',
+          ],
+          'line-width': [
+            'case', ['boolean', ['feature-state', 'selected'], false], 4.5, 2.5,
+          ],
+          'line-opacity': 0.95,
+        },
       });
       map.addLayer({
         id: 'neighbourhood-clusters-label', type: 'symbol', source: 'wpg-neighbourhood-cluster-labels',
@@ -1778,6 +1904,9 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         if (parcelHit.length > 0) return;
         const p = e.features?.[0]?.properties;
         if (!p) return;
+        // The cluster picker owns this click when it is armed for this
+        // cluster — see wireClusterPicker.
+        if (p.cluster != null && clusterPickerOwns(String(p.cluster))) return;
         policyPopup.setLngLat(e.lngLat).setHTML(htmlBuilder(p)).addTo(map);
       };
       onLayerClick(map, 'secondary-plans-fill', policyClick((p) => {
@@ -1855,6 +1984,13 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       }
 
       const hoodPopup = new maplibregl.Popup({ closeButton: true });
+      // On the Sales tab a cluster click SELECTS rather than explains, so
+      // the info popup stands down for exactly the clusters the picker will
+      // accept. A cluster the loaded sales never reach is not one of those:
+      // there the popup still fires, which is the honest answer to a click
+      // that could not have filtered anything ("Cluster: Seven Oaks West,
+      // 11 neighbourhoods") instead of a silent no-op the user reads as a
+      // broken control.
       onLayerClick(map, 'neighbourhood-clusters-fill', policyClick((p) => {
         const list = p.neighbourhoods
           ? String(p.neighbourhoods).split(';').map((s) => escapeHtml(s.trim())).join(', ')
@@ -1901,10 +2037,15 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       map.on('mousemove', 'neighbourhood-clusters-fill', hoodHoverHandler('cluster'));
       map.on('mousemove', 'neighbourhoods-fill', hoodHoverHandler('name'));
       for (const layerId of ['neighbourhood-clusters-fill', 'neighbourhoods-fill']) {
-        map.on('mouseenter', layerId, () => {
-          if (map.getLayoutProperty(layerId, 'visibility') === 'visible') {
-            map.getCanvas().style.cursor = 'help';
-          }
+        // `help` says "this will explain itself"; `pointer` says "this will
+        // do something". A cluster the picker is armed for does the second,
+        // so the cursor has to change with it or the only affordance for
+        // click-to-filter is knowing it exists.
+        map.on('mouseenter', layerId, (e) => {
+          if (map.getLayoutProperty(layerId, 'visibility') !== 'visible') return;
+          const name = e.features?.[0]?.properties?.cluster;
+          const armed = name != null && clusterPickerOwns(String(name));
+          map.getCanvas().style.cursor = armed ? 'pointer' : 'help';
         });
         map.on('mouseleave', layerId, () => {
           map.getCanvas().style.cursor = '';

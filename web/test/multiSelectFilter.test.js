@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
   reconcileSelection,
   selectionLabel,
-  passesSelection, sortOptions,
+  passesSelection, sortOptions, toggleSelection,
 } from '../src/lib/multiSelectFilter.js';
 
 // ---- passesSelection ------------------------------------------------------
@@ -121,5 +121,46 @@ assert.equal(selectionLabel('PUCS', null, 7, describe), 'Any PUCS');
 assert.equal(selectionLabel('PUCS', new Set(), 7, describe), 'None');
 // No describe = the old behaviour, unchanged.
 assert.equal(selectionLabel('class', new Set(['OTHER']), 3), 'OTHER');
+
+
+// ---- toggleSelection (click a cluster on the map) -------------------------
+// Not the same rule as ticking a checkbox, and the gap is the point: a map
+// click is a positive act ("show me THIS one"), where unticking a box is a
+// subtractive one ("all except this").
+const CL = ['Fort Garry South', 'Transcona', 'Point Douglas North'];
+
+// From no filter, clicking NARROWS to the one clicked -- it does not
+// materialize "everything" and remove one.
+assert.deepEqual(toggleSelection(null, 'Transcona', CL), new Set(['Transcona']));
+
+// Clicking a second adds it.
+assert.deepEqual(
+  toggleSelection(new Set(['Transcona']), 'Fort Garry South', CL),
+  new Set(['Transcona', 'Fort Garry South']),
+);
+
+// Clicking a selected one removes it...
+assert.deepEqual(
+  toggleSelection(new Set(['Transcona', 'Fort Garry South']), 'Transcona', CL),
+  new Set(['Fort Garry South']),
+);
+
+// ...and removing the LAST one goes back to "no filter", never to the
+// empty Set. Empty is the deliberate show-nothing the None button reaches;
+// arriving there by clicking would empty the grid with nothing to say why.
+assert.equal(toggleSelection(new Set(['Transcona']), 'Transcona', CL), null);
+
+// Filling the set to every option collapses to null, same as the checkbox
+// path -- "all selected" keeps one representation.
+assert.equal(
+  toggleSelection(new Set(['Transcona', 'Fort Garry South']), 'Point Douglas North', CL),
+  null,
+);
+
+// A cluster the loaded sales never reach is a no-op: the selection comes
+// back untouched (identity), not an empty or widened one.
+const held = new Set(['Transcona']);
+assert.equal(toggleSelection(held, 'Seven Oaks West', CL), held);
+assert.equal(toggleSelection(null, 'Seven Oaks West', CL), null);
 
 console.log('multiSelectFilter.test.js: all assertions passed');

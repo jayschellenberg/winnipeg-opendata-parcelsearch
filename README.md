@@ -256,6 +256,33 @@ city-edge parcels genuinely exist) collect under a named `(no cluster)`
 option, tickable like any other, so they can never drop out of a search
 unseen.
 
+The cluster boundaries are ALWAYS DRAWN on the Sales Analysis tab, the way the
+Manitoba app always draws its municipality boundaries on its own Sales tab, and
+they are a control rather than decoration: **click a cluster to add or remove it
+from the filter**. Pointing at an area is how a comp search is actually reasoned
+about; finding one of 23 names in a popover is not. Selected clusters carry a
+heavy blue outline -- the selection is on the OUTLINE, not a fill, because a
+tinted cluster washes over the sales and parcels inside it that are the things
+being read. Clicking the last selected cluster off returns to Any cluster, and
+selecting every cluster on offer collapses to the same state, so "no filter" has
+one representation however you reach it.
+
+The picker is armed only on the Sales tab and only for a cluster the loaded
+sales actually reach. On the Property tab, and for a cluster with no sales in
+the set, a click still opens the layer's ordinary info popup naming the cluster
+and its neighbourhoods -- an honest answer beats a silent no-op that reads as a
+broken control. The cursor says which you will get (`pointer` vs `help`). A
+click also stands down wherever a parcel or sale is drawn on top, since these
+boundaries are the lowest vector layer on the map and a click aimed at a sale
+must not re-filter the whole comp set behind it.
+
+Visibility has two owners that cooperate rather than overwrite: the Map Layers
+**Neighbourhoods** button (Off / Clusters / Neighbourhoods, both levels,
+everywhere) and the Sales tab's always-on backdrop. Cycling the button to Off
+while on the Sales tab therefore leaves the clusters up -- hiding the thing you
+are meant to be clicking would be the bug. The 235 individual neighbourhoods
+stay entirely the button's business; they are reference, not a control.
+
 The **radius** field beside the subject roll keeps only sales within N km of
 the subject, measured centroid to centroid -- the same figure the **Dist (km)**
 column shows, so the filter and the column can never disagree about how far
