@@ -2,7 +2,7 @@
 // shifted results grid depends on.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildClusterIndex, clusterForPoint, clusterForFeature } from '../src/lib/clusters.js';
+import { buildClusterIndex, clusterForPoint, clusterForFeature, nearestCluster, clusterForPointOrNearest } from '../src/lib/clusters.js';
 import { COLUMNS, columnCellClasses } from '../src/lib/columnsRegistry.js';
 
 // ---- columnCellClasses: the shift bug ------------------------------------
@@ -84,5 +84,73 @@ assert.equal(
   const all = new Set(index.map((e) => e.cluster));
   assert.ok(all.size >= 20, `${all.size} distinct clusters in the index`);
 }
+
+
+
+// ---- nearest-cluster fallback ---------------------------------------------
+// The 235 neighbourhoods do not tile the city: rail corridors, river lots and
+// the city edge leave gaps, and a centroid in one of them gets nothing from
+// containment. Jason, 2026-09-16: place those by proximity, capped.
+
+// A 0.01 deg square (~1.1 km tall) with its west edge on lon -97.00.
+const SQUARE = {
+  type: 'FeatureCollection',
+  features: [{
+    type: 'Feature',
+    properties: { name: 'Sq', cluster: 'Squareville' },
+    geometry: { type: 'Polygon', coordinates: [[
+      [-97.00, 49.90], [-96.99, 49.90], [-96.99, 49.91], [-97.00, 49.91], [-97.00, 49.90],
+    ]] },
+  }, {
+    type: 'Feature',
+    properties: { name: 'Far', cluster: 'Faraway' },
+    geometry: { type: 'Polygon', coordinates: [[
+      [-96.00, 49.90], [-95.99, 49.90], [-95.99, 49.91], [-96.00, 49.91], [-96.00, 49.90],
+    ]] },
+  }],
+};
+const SQ_INDEX = buildClusterIndex(SQUARE);
+
+// nearestCluster — a point just outside takes the adjacent cluster
+  // ~140 m west of the square's west edge, level with its middle.
+  const hit1 = nearestCluster(SQ_INDEX, -97.002, 49.905, 1);
+  assert.equal(hit1?.cluster, 'Squareville');
+  assert.ok(hit1.distanceKm > 0.1 && hit1.distanceKm < 0.2, `got ${hit1.distanceKm} km`);
+
+// nearestCluster — measured to the BOUNDARY, not to a vertex
+  // Level with the middle of the west edge, where there is no vertex. A
+  // vertex test would report the distance to a corner (~600 m) instead of
+  // the ~140 m to the edge itself.
+  const hit2 = nearestCluster(SQ_INDEX, -97.002, 49.905, 1);
+  assert.ok(hit2.distanceKm < 0.25, `vertex-distance bug: ${hit2.distanceKm} km`);
+
+// nearestCluster — the cap is enforced
+  // ~1.4 km west of the edge.
+  assert.equal(nearestCluster(SQ_INDEX, -97.02, 49.905, 1), null);
+  assert.equal(nearestCluster(SQ_INDEX, -97.02, 49.905, 2)?.cluster, 'Squareville');
+
+// nearestCluster — a zero or negative cap disables it entirely
+  for (const cap of [0, -1, NaN, null]) {
+    assert.equal(nearestCluster(SQ_INDEX, -97.002, 49.905, cap), null, String(cap));
+  }
+
+// nearestCluster — picks the closer of two, never the first listed
+  // Just west of Faraway, which is second in the index and 1 degree east.
+  const hit3 = nearestCluster(SQ_INDEX, -96.002, 49.905, 1);
+  assert.equal(hit3?.cluster, 'Faraway');
+
+// nearestCluster — junk input never throws
+  for (const args of [[null, -97, 49.9], [SQ_INDEX, NaN, 49.9], [SQ_INDEX, -97, null], [undefined, 0, 0]]) {
+    assert.equal(nearestCluster(...args, 1), null);
+  }
+
+// clusterForPointOrNearest — containment wins, proximity only fills gaps
+  // Inside the square: the containment answer, with no proximity search.
+  assert.equal(clusterForPointOrNearest(SQ_INDEX, -96.995, 49.905, 1), 'Squareville');
+  // In the gap: the proximity answer.
+  assert.equal(clusterForPointOrNearest(SQ_INDEX, -97.002, 49.905, 1), 'Squareville');
+  // Nowhere near anything: still null, which is what keeps (no cluster)
+  // an honest bucket rather than a rounding error.
+  assert.equal(clusterForPointOrNearest(SQ_INDEX, -98.5, 49.905, 1), null);
 
 console.log('clusters.test.js: all assertions passed');

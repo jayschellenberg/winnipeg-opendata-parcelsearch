@@ -309,6 +309,25 @@ or a centroid outside every neighbourhood -- city-edge parcels genuinely exist)
 collect under a named `(no cluster)` option, tickable like any other, so they
 can never drop out of a search unseen.
 
+TWO FALLBACKS fill that bucket in before it is shown (2026-09-16), because the
+235 neighbourhoods do not tile the city: rail corridors, river lots, road
+allowances and the city edge all leave slivers a centroid can land in.
+
+  - a centroid inside no polygon takes the cluster whose BOUNDARY is nearest,
+    capped at 1 km. Boundary, not centroid and not nearest vertex: a centroid
+    test hands a sliver between two long neighbourhoods to whichever is
+    rounder, and a vertex test overestimates along a straight run, where the
+    nearest point of a 400 m segment is usually in its middle.
+  - a sale with NO centroid at all -- its roll matched no live record -- is
+    placed from the export's own street address through the civic-address
+    layer (`cam2-ii3u`). One request per STREET rather than per sale, with the
+    house numbers matched off the front of `full_address`, and capped at 40
+    streets a run: this is a nicety, not the analysis.
+
+Past 1 km, `(no cluster)` is still the honest answer and still a tickable
+option. Neither fallback marks its result as inferred -- Jason's call; a
+placement is a placement.
+
 The boundaries are ALWAYS DRAWN on the Sales Analysis tab, the way the Manitoba
 app always draws its municipality boundaries on its own Sales tab, and they are
 a control rather than decoration: **everything starts selected, and clicking a

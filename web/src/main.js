@@ -85,6 +85,7 @@ import {
   fetchHistoricalLineage,
   fetchZoningAmendments,
   fetchRezoningNotices,
+  searchAddresses,
 } from './soda.js';
 import { historicalTilesUrl, sizeChangeSummaryText } from './lib/historicalTiles.js';
 import {
@@ -119,7 +120,9 @@ import {
 } from './lib/shapeFilter.js';
 import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
-import { buildClusterIndex, clusterForFeature } from './lib/clusters.js';
+import {
+  buildClusterIndex, clusterForFeature, clusterForPoint, nearestCluster,
+} from './lib/clusters.js';
 import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
 import { createStreetSuggest, buildStreetIndex } from './lib/streetSuggest.js';
 import { createMapAddressSearch } from './lib/mapAddressSearch.js';
@@ -5207,8 +5210,35 @@ async function runSalesAnalysis() {
     await yieldToPaint();
     const index = await clusterIndex();
     if (index) {
+      const unplaced = [];
       for (const f of saleFc.features) {
         f.properties._cluster = clusterForFeature(index, f) || '';
+        if (!f.properties._cluster) unplaced.push(f);
+      }
+      // Two reasons a sale reaches here unplaced, and they need different
+      // answers (Jason, 2026-09-16).
+      //
+      // 1. It HAS a centroid, but the centroid sits in a gap. The 235
+      //    neighbourhoods do not tile the city: rail corridors, river
+      //    lots, road allowances and the city edge all leave slivers.
+      //    Placed by nearest boundary, capped at 1 km so a parcel
+      //    genuinely outside the city stays unplaced rather than being
+      //    dragged into a cluster it is nowhere near.
+      for (const f of unplaced) {
+        const c = featureCentroid(f);
+        if (!c) continue;
+        f.properties._cluster = nearestCluster(index, c[0], c[1], CLUSTER_NEAR_KM)?.cluster || '';
+      }
+      // 2. It has NO centroid at all, because its roll matched no live
+      //    record. Nothing on the feature can place it, so fall back to
+      //    the sale's own street address through the civic-address layer
+      //    — a second, weaker source, used only where the first has
+      //    nothing to say. Bounded and non-fatal: see placeSalesByAddress.
+      const addressable = unplaced.filter((f) => !f.properties._cluster && !featureCentroid(f));
+      if (addressable.length) {
+        setResultsProgress(`Placing ${addressable.length} sale${addressable.length === 1 ? '' : 's'} by address…`);
+        await yieldToPaint();
+        await placeSalesByAddress(addressable, index);
       }
     }
   } catch (err) {
@@ -5499,6 +5529,73 @@ async function runSalesAnalysis() {
   // work it describes.
   renderSalesCount();
   publishSalesToCharts(rows);
+}
+
+/* How far outside every neighbourhood a centroid may sit and still be
+ * placed. 1 km bridges the corridors and city-edge slivers without
+ * reaching across open country; past it, (no cluster) is the honest
+ * answer and stays a tickable option in the picker. */
+const CLUSTER_NEAR_KM = 1;
+
+/* The most distinct STREETS the address fallback will look up in one run.
+ * One request per street, not per sale — a street query returns every
+ * civic address on it and the numbers are matched here — so this is
+ * already a big reduction, but an archive-wide load with thousands of
+ * unmatched rolls could still spread over hundreds of streets, and the
+ * placement is a nicety rather than the analysis. Capped, and the cap is
+ * REPORTED rather than silent. */
+const CLUSTER_ADDRESS_STREET_CAP = 40;
+
+/**
+ * Place sales that carry no centroid, using the export's own street
+ * number and name against the civic-address layer (cam2-ii3u).
+ *
+ * Grouped by STREET so one request serves every sale on it. Entirely
+ * best-effort: a failed lookup leaves the sales as (no cluster), which is
+ * exactly where they already were.
+ *
+ * @returns {number} how many sales it managed to place
+ */
+async function placeSalesByAddress(features, index) {
+  const byStreet = new Map();
+  for (const f of features) {
+    const street = String(f.properties._saleStreetName ?? '').trim().toUpperCase();
+    const num = String(f.properties._saleStreetNumber ?? '').trim();
+    if (!street || !num) continue;
+    if (!byStreet.has(street)) byStreet.set(street, []);
+    byStreet.get(street).push({ f, num });
+  }
+  const streets = [...byStreet.keys()].slice(0, CLUSTER_ADDRESS_STREET_CAP);
+  let placed = 0;
+  await Promise.all(streets.map(async (street) => {
+    let fc;
+    try {
+      fc = await searchAddresses({ addressStreet: street });
+    } catch (err) {
+      console.warn(`address lookup failed for ${street}:`, err);
+      return;
+    }
+    // number -> [lon, lat]. The number comes off the FRONT of
+    // full_address, because searchAddresses selects only
+    // `full_address,point` — there is no street_number on what comes
+    // back, and reading one would silently match nothing.
+    const points = new Map();
+    for (const p of fc?.features || []) {
+      const g = p?.geometry;
+      if (g?.type !== 'Point') continue;
+      const n = /^(\d+)/.exec(String(p?.properties?.full_address ?? '').trim())?.[1];
+      if (!n) continue;
+      if (!points.has(n)) points.set(n, g.coordinates);
+    }
+    for (const { f, num } of byStreet.get(street)) {
+      const pt = points.get(num);
+      if (!pt) continue;
+      const cluster = clusterForPoint(index, pt[0], pt[1])
+        || nearestCluster(index, pt[0], pt[1], CLUSTER_NEAR_KM)?.cluster;
+      if (cluster) { f.properties._cluster = cluster; placed += 1; }
+    }
+  }));
+  return placed;
 }
 
 // Neighbourhood-cluster index, built once from the committed

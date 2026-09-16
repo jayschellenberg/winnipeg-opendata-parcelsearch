@@ -97,3 +97,103 @@ export function clusterForFeature(index, feature) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   return clusterForPoint(index, lon, lat);
 }
+
+
+/* ---------------------------------------------------------------------
+ * NEAREST-cluster fallback, for a point that lands inside no polygon.
+ *
+ * The 235 neighbourhoods do not tile the city exactly: rail corridors,
+ * river lots, road allowances and the city edge all leave gaps, and a
+ * parcel centroid in one of them gets no cluster from containment alone.
+ * Jason, 2026-09-16: place those by proximity instead, capped so a parcel
+ * genuinely out in the sticks is left unplaced rather than dragged into a
+ * cluster it is nowhere near.
+ *
+ * DISTANCE IS TO THE BOUNDARY, not to a centroid and not to the nearest
+ * vertex. A centroid test would hand a sliver between two long
+ * neighbourhoods to whichever happens to be rounder; a vertex test
+ * overestimates along a straight run — the nearest point of a 400 m
+ * boundary segment is usually in its middle, where there is no vertex.
+ * ------------------------------------------------------------------ */
+
+/** Metres per degree at this latitude, for a local flat approximation.
+ *  Good to a fraction of a percent over the ~1 km this is used for, and
+ *  it keeps the inner loop to arithmetic. */
+function degScale(lat) {
+  const rad = (lat * Math.PI) / 180;
+  return { x: 111320 * Math.cos(rad), y: 110540 };
+}
+
+/** Square of the distance in metres from P to segment AB, all in degrees. */
+function segDistSqM(px, py, ax, ay, bx, by, scale) {
+  const pxm = px * scale.x, pym = py * scale.y;
+  const axm = ax * scale.x, aym = ay * scale.y;
+  const bxm = bx * scale.x, bym = by * scale.y;
+  const dx = bxm - axm, dy = bym - aym;
+  const lenSq = dx * dx + dy * dy;
+  let t = lenSq > 0 ? (((pxm - axm) * dx + (pym - aym) * dy) / lenSq) : 0;
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  const cx = axm + t * dx, cy = aym + t * dy;
+  return (pxm - cx) ** 2 + (pym - cy) ** 2;
+}
+
+/** Walk every ring of a geometry, calling back with each segment. */
+function eachSegment(coords, fn, depth = 0) {
+  if (!Array.isArray(coords) || !coords.length) return;
+  if (typeof coords[0][0] === 'number') {
+    for (let i = 0; i < coords.length - 1; i++) {
+      fn(coords[i], coords[i + 1]);
+    }
+    return;
+  }
+  for (const part of coords) eachSegment(part, fn, depth + 1);
+}
+
+/**
+ * The cluster whose boundary is closest to [lon, lat], or null when the
+ * closest is further than `maxKm`.
+ *
+ * Only worth calling when clusterForPoint has already returned null — a
+ * point INSIDE a polygon is zero metres from its boundary set, so this
+ * would answer the same thing much more slowly.
+ *
+ * @param {Array} index  from buildClusterIndex
+ * @param {number} maxKm cap; 0 or negative disables the fallback entirely
+ * @returns {{cluster: string, distanceKm: number}|null}
+ */
+export function nearestCluster(index, lon, lat, maxKm = 1) {
+  if (!Array.isArray(index) || !Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  if (!Number.isFinite(maxKm) || maxKm <= 0) return null;
+  const scale = degScale(lat);
+  const capM = maxKm * 1000;
+  const capSq = capM * capM;
+  // Degrees of slack to reject a polygon on its bbox before touching its
+  // rings — the whole point of the bbox is to skip most of the 235.
+  const padX = capM / Math.max(scale.x, 1);
+  const padY = capM / scale.y;
+  let best = null;
+  let bestSq = Infinity;
+  for (const e of index) {
+    const [minX, minY, maxX, maxY] = e.bbox;
+    if (lon < minX - padX || lon > maxX + padX) continue;
+    if (lat < minY - padY || lat > maxY + padY) continue;
+    let localSq = Infinity;
+    eachSegment(e.feature?.geometry?.coordinates, (a, b) => {
+      const d = segDistSqM(lon, lat, a[0], a[1], b[0], b[1], scale);
+      if (d < localSq) localSq = d;
+    });
+    if (localSq < bestSq) { bestSq = localSq; best = e.cluster; }
+  }
+  if (best == null || bestSq > capSq) return null;
+  return { cluster: best, distanceKm: Math.sqrt(bestSq) / 1000 };
+}
+
+/**
+ * Containment first, proximity second — the whole placement rule in one
+ * call. Returns null when the point is nowhere near the city.
+ */
+export function clusterForPointOrNearest(index, lon, lat, maxKm = 1) {
+  const inside = clusterForPoint(index, lon, lat);
+  if (inside) return inside;
+  return nearestCluster(index, lon, lat, maxKm)?.cluster ?? null;
+}
