@@ -112,6 +112,7 @@ const PERSISTENT = {
   lastChartRows: 'the charts tab mirrors the sales set; a property search does not publish to it',
   riseLookup: 'session memo for the storey-band lookup; refetching it per search would be waste',
   _clusterIndex: 'session memo for the neighbourhood-cluster index, built once',
+  allClusterNames: 'the 23 cluster names off the static geojson, built once; a property search neither changes nor consumes them',
   zoningMode: 'an overlay preference (shaded / labels / off), not a property of the results',
   captureInFlight: 'transient guard around a Generate Map capture',
   urlWritePending: 'transient rAF throttle for the URL writer',

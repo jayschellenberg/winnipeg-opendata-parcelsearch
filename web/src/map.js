@@ -63,26 +63,44 @@ let clusterPickerOwns = () => false;
 
 const CLUSTER_FILL = 'neighbourhood-clusters-fill';
 const CLUSTER_SRC  = 'wpg-neighbourhood-clusters';
+const CLUSTER_LABEL_SRC = 'wpg-neighbourhood-cluster-labels';
 
 /**
- * Paint the filter's selection onto the cluster outlines.
+ * Paint the filter's selection onto the cluster boundaries and names.
+ *
+ * Inverted on purpose: the state written is `off`, not `selected`.
+ * Everything starts selected, so the common case is that NOTHING needs
+ * marking — and a null selection (no filter) then has nothing to paint at
+ * all rather than needing all 23 lit up to look normal. It also means a
+ * cluster only ever changes appearance when it is genuinely excluded.
+ *
+ * Both sources are written, so a name fades with its boundary.
  *
  * Clears every feature-state first rather than diffing: 23 polygons is
  * nothing, and a diff would need the previous selection kept in sync
  * through reloads, tab switches and URL restores — three places it could
  * silently drift out of step with the picker it is supposed to mirror.
  *
- * @param {Set<string>|null} names the ticked clusters; null (no filter)
- *   clears the paint, because "everything" highlighted is the same
- *   picture as nothing highlighted and only the louder one is a lie.
+ * @param {Set<string>|null} selected the clusters still in the filter;
+ *   null means no filter, so nothing is faded.
+ * @param {string[]} all every cluster on the map, needed because the ones
+ *   to fade are the complement of `selected` and the filter only knows
+ *   about clusters the loaded sales reach.
  */
-export function setClusterSelection(map, names) {
+export function setClusterSelection(map, selected, all) {
   if (!map?.getSource?.(CLUSTER_SRC)) return;
-  try { map.removeFeatureState({ source: CLUSTER_SRC }); } catch { /* source not ready */ }
-  if (!names || names.size === 0) return;
-  for (const name of names) {
-    try { map.setFeatureState({ source: CLUSTER_SRC, id: String(name) }, { selected: true }); }
-    catch { /* a name with no polygon simply doesn't light up */ }
+  for (const src of [CLUSTER_SRC, CLUSTER_LABEL_SRC]) {
+    if (!map.getSource?.(src)) continue;
+    try { map.removeFeatureState({ source: src }); } catch { /* source not ready */ }
+  }
+  if (!selected) return;
+  for (const name of all || []) {
+    if (selected.has(name)) continue;
+    for (const src of [CLUSTER_SRC, CLUSTER_LABEL_SRC]) {
+      if (!map.getSource?.(src)) continue;
+      try { map.setFeatureState({ source: src, id: String(name) }, { off: true }); }
+      catch { /* a name with no polygon simply doesn't fade */ }
+    }
   }
 }
 
@@ -852,47 +870,73 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         data: { type: 'FeatureCollection', features: [] },
         promoteId: 'cluster',
       });
-      map.addSource('wpg-neighbourhood-cluster-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      // Same promoteId as the polygons: the label points carry `cluster`
+      // (buildLabelPointFc copies it), so the NAME can fade with its
+      // boundary. Without this the outlines would dim on deselection while
+      // the names stayed at full strength — the loudest thing on the layer
+      // still shouting about a cluster that is no longer contributing.
+      map.addSource('wpg-neighbourhood-cluster-labels', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        promoteId: 'cluster',
+      });
       map.addSource('wpg-neighbourhood-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({
         id: 'neighbourhood-clusters-fill', type: 'fill', source: 'wpg-neighbourhood-clusters',
         layout: { visibility: 'none' },
         paint: {
-          'fill-color': [
-            'case', ['boolean', ['feature-state', 'selected'], false], '#1d4ed8', '#0ea5e9',
-          ],
-          // Selection is carried by the OUTLINE below, not by this fill.
-          // A cluster is a big polygon with the sales dots and parcels the
-          // user is actually reading inside it; tinting it to "selected"
-          // strength washes over exactly the thing being looked at. The
-          // fill stays a whisper — just enough that the cursor has
-          // something to land on and hover has somewhere to show.
+          'fill-color': '#64748b',
+          // This layer is ALWAYS on over the Sales tab, so its resting
+          // state has to be a whisper — the sales and parcels inside it
+          // are what is being read, and a tint strong enough to notice is
+          // a tint strong enough to get in the way. Three states:
+          //
+          //   hover        — the only assertive one, so the cursor has
+          //                  feedback that it is over something clickable
+          //   selected     — the resting whisper (everything starts here)
+          //   deselected   — fainter still: this cluster is contributing
+          //                  no sales, and the map should say so quietly
+          //                  rather than by disappearing, which would read
+          //                  as a rendering failure.
           'fill-opacity': [
             'case',
-            ['boolean', ['feature-state', 'selected'], false], 0.12,
-            ['boolean', ['feature-state', 'hover'], false], 0.10,
-            0.06,
+            ['boolean', ['feature-state', 'hover'], false], 0.14,
+            ['boolean', ['feature-state', 'off'], false], 0.015,
+            0.05,
           ],
         },
       });
       map.addLayer({
         id: 'neighbourhood-clusters-line-casing', type: 'line', source: 'wpg-neighbourhood-clusters',
         layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.7 },
+        // A white casing is what made these outlines pop off the basemap.
+        // Kept, because without it the hairline disappears over dark
+        // basemap features, but taken right down: its job now is
+        // legibility, not emphasis.
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 2.5,
+          'line-opacity': [
+            'case', ['boolean', ['feature-state', 'off'], false], 0.25, 0.45,
+          ],
+        },
       });
       map.addLayer({
         id: 'neighbourhood-clusters-line', type: 'line', source: 'wpg-neighbourhood-clusters',
         layout: { visibility: 'none', 'line-join': 'round' },
         paint: {
-          // Two states readable at any zoom by weight and hue alone, so a
-          // selected cluster is findable while zoomed out to the whole city.
+          // Slate rather than the old saturated blue: this is context, and
+          // a coloured line competes with the zoning, transit and sale
+          // colours that carry actual meaning.
           'line-color': [
-            'case', ['boolean', ['feature-state', 'selected'], false], '#1d4ed8', '#0369a1',
+            'case', ['boolean', ['feature-state', 'off'], false], '#cbd5e1', '#94a3b8',
           ],
           'line-width': [
-            'case', ['boolean', ['feature-state', 'selected'], false], 4.5, 2.5,
+            'case', ['boolean', ['feature-state', 'off'], false], 0.8, 1.3,
           ],
-          'line-opacity': 0.95,
+          'line-opacity': [
+            'case', ['boolean', ['feature-state', 'off'], false], 0.4, 0.75,
+          ],
         },
       });
       map.addLayer({
@@ -900,12 +944,19 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         layout: {
           visibility: 'none',
           'text-field': ['get', 'cluster'],
+          // Still Semibold: the glyph server (demotiles.maplibre.org) is
+          // only documented to carry that stack, and a missing fontstack
+          // drops the labels silently rather than falling back. The weight
+          // comes off through SIZE and COLOUR below instead — 23 names at
+          // 20px in dark blue was the single loudest thing on a layer that
+          // is now always on, and they are here to tell you where you are,
+          // not to be read first.
           'text-font': ['Open Sans Semibold'],
           'text-size': [
             'interpolate', ['linear'], ['zoom'],
-            9, 15,
-            12, 20,
-            15, 22,
+            9, 10,
+            12, 13,
+            15, 15,
           ],
           'text-anchor': 'center',
           'text-allow-overlap': false,
@@ -913,9 +964,11 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
           'symbol-placement': 'point',
         },
         paint: {
-          'text-color': '#0c4a6e',
+          'text-color': [
+            'case', ['boolean', ['feature-state', 'off'], false], '#cbd5e1', '#8a97a8',
+          ],
           'text-halo-color': '#ffffff',
-          'text-halo-width': 2.5,
+          'text-halo-width': 1.6,
         },
       });
       map.addLayer({

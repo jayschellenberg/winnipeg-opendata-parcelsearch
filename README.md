@@ -241,39 +241,51 @@ is row-level, so a multi-parcel sale matched on only some of its rolls shows
 exactly the rows that still need doing. A CSV with no N1 ID column reads as
 entirely unmatched, which is the truth.
 
-**Where, not what: cluster and radius.** Two location filters narrow a comp
-set the way an appraiser actually reasons about one.
+**Where, not what: neighbourhood and radius.** Two location filters narrow a
+comp set the way an appraiser actually reasons about one.
 
-The **cluster** picker lists the City's neighbourhood clusters (Fort Garry
-South, Point Douglas North, Transcona ...) present in the loaded sales, each
-with its count. A parcel's cluster comes from a point-in-polygon of its
-centroid against `public/wpg-neighbourhoods.geojson`, never from the
-assessment record's `neighbourhood_area` -- that field is truncated to 20
-characters, so a name join leaves ~13,000 parcels unmatched and gains a new
-casualty every time the City truncates something differently. Parcels the
-lookup cannot place (no centroid, or a centroid outside every neighbourhood --
-city-edge parcels genuinely exist) collect under a named `(no cluster)`
-option, tickable like any other, so they can never drop out of a search
-unseen.
+The **Any neighbourhood** picker lists the City's neighbourhood CLUSTERS (Fort
+Garry South, Point Douglas North, Transcona ...) present in the loaded sales,
+each with its count. The label says "neighbourhood" because that is what these
+areas are called out loud; the code, the data and the grid's **Cluster** column
+keep the precise word, since each of the 23 groups about ten of the City's 235
+actual neighbourhoods. The CSV export header stays `Cluster` too -- renaming an
+exported header breaks whatever downstream already reads it.
 
-The cluster boundaries are ALWAYS DRAWN on the Sales Analysis tab, the way the
-Manitoba app always draws its municipality boundaries on its own Sales tab, and
-they are a control rather than decoration: **click a cluster to add or remove it
-from the filter**. Pointing at an area is how a comp search is actually reasoned
-about; finding one of 23 names in a popover is not. Selected clusters carry a
-heavy blue outline -- the selection is on the OUTLINE, not a fill, because a
-tinted cluster washes over the sales and parcels inside it that are the things
-being read.
+A parcel's cluster comes from a point-in-polygon of its centroid against
+`public/wpg-neighbourhoods.geojson`, never from the assessment record's
+`neighbourhood_area` -- that field is truncated to 20 characters, so a name join
+leaves ~13,000 parcels unmatched and gains a new casualty every time the City
+truncates something differently. Parcels the lookup cannot place (no centroid,
+or a centroid outside every neighbourhood -- city-edge parcels genuinely exist)
+collect under a named `(no cluster)` option, tickable like any other, so they
+can never drop out of a search unseen.
 
-What is selected is what shows, by click and by checkbox alike: clicking the
-last selected cluster off leaves NOTHING selected and therefore no results, the
-same state unticking every box in the picker reaches, and the count line says so
-and names the way back. Selecting every cluster on offer collapses to "Any
-cluster", which is invisible because all-selected and no-filter show the same
-rows.
+The boundaries are ALWAYS DRAWN on the Sales Analysis tab, the way the Manitoba
+app always draws its municipality boundaries on its own Sales tab, and they are
+a control rather than decoration: **everything starts selected, and clicking a
+neighbourhood switches it OFF** -- its sales leave the grid and its outline and
+name fade back. Clicking it again brings it back. That is exactly what unticking
+and re-ticking its box in the picker does, deliberately: the map and the popover
+are one control with one state, so neither can show a picture the other would
+read differently.
 
-The picker is armed only on the Sales tab and only for a cluster the loaded
-sales actually reach. On the Property tab, and for a cluster with no sales in
+Because it is always on, the layer's resting state is a whisper -- a slate
+hairline, a barely-there fill and small grey names. Hover is the only assertive
+state, so the cursor has feedback. A deselected neighbourhood goes fainter
+still rather than disappearing, which would read as a rendering failure. The
+fill never carries the state strongly: a cluster is a big polygon with the sales
+and parcels being read inside it, and a tint strong enough to notice is a tint
+strong enough to get in the way.
+
+Clicking the last selected neighbourhood off leaves NOTHING selected and
+therefore no results, the same state unticking every box reaches, and the count
+line says so and names the way back. Selecting every one on offer collapses to
+"Any neighbourhood", which is invisible because all-selected and no-filter show
+the same rows.
+
+The picker is armed only on the Sales tab and only for a neighbourhood the
+loaded sales actually reach. On the Property tab, and for one with no sales in
 the set, a click still opens the layer's ordinary info popup naming the cluster
 and its neighbourhoods -- an honest answer beats a silent no-op that reads as a
 broken control. The cursor says which you will get (`pointer` vs `help`). A
@@ -284,9 +296,11 @@ must not re-filter the whole comp set behind it.
 Visibility has two owners that cooperate rather than overwrite: the Map Layers
 **Neighbourhoods** button (Off / Clusters / Neighbourhoods, both levels,
 everywhere) and the Sales tab's always-on backdrop. Cycling the button to Off
-while on the Sales tab therefore leaves the clusters up -- hiding the thing you
-are meant to be clicking would be the bug. The 235 individual neighbourhoods
-stay entirely the button's business; they are reference, not a control.
+while on the Sales tab therefore leaves the boundaries up -- hiding the thing you
+are meant to be clicking would be the bug. Both paths load through one function,
+so the 23 names the fade needs are filled in whichever way the data arrives. The
+235 individual neighbourhoods stay entirely the button's business; they are
+reference, not a control.
 
 The **radius** field beside the subject roll keeps only sales within N km of
 the subject, measured centroid to centroid -- the same figure the **Dist (km)**

@@ -124,40 +124,44 @@ assert.equal(selectionLabel('class', new Set(['OTHER']), 3), 'OTHER');
 
 
 // ---- toggleSelection (click a cluster on the map) -------------------------
-// Not the same rule as ticking a checkbox, and the gap is the point: a map
-// click is a positive act ("show me THIS one"), where unticking a box is a
-// subtractive one ("all except this").
+// EXACTLY the checkbox rule: everything starts selected and a click
+// DESELECTS. The map and the popover are one control with one state, so
+// neither can show a picture the other would read differently.
 const CL = ['Fort Garry South', 'Transcona', 'Point Douglas North'];
 
-// From no filter, clicking NARROWS to the one clicked -- it does not
-// materialize "everything" and remove one.
-assert.deepEqual(toggleSelection(null, 'Transcona', CL), new Set(['Transcona']));
-
-// Clicking a second adds it.
+// From no filter, the implicit "everything" is materialized and the clicked
+// one comes OUT -- the same thing unticking one box does. It does not
+// narrow to the one clicked.
 assert.deepEqual(
-  toggleSelection(new Set(['Transcona']), 'Fort Garry South', CL),
-  new Set(['Transcona', 'Fort Garry South']),
+  toggleSelection(null, 'Transcona', CL),
+  new Set(['Fort Garry South', 'Point Douglas North']),
 );
 
-// Clicking a selected one removes it...
+// Clicking another takes that one out too.
 assert.deepEqual(
-  toggleSelection(new Set(['Transcona', 'Fort Garry South']), 'Transcona', CL),
-  new Set(['Fort Garry South']),
+  toggleSelection(new Set(['Fort Garry South', 'Point Douglas North']), 'Fort Garry South', CL),
+  new Set(['Point Douglas North']),
 );
 
-// ...and removing the LAST one leaves the EMPTY Set: nothing selected,
-// so nothing shows. It must NOT collapse to null -- unticking every box in
-// the popover already lands on the empty Set, and collapsing only the map
-// path would make the same picture mean "show everything" by click and
-// "show nothing" by checkbox.
+// Clicking a deselected one puts it back.
+assert.deepEqual(
+  toggleSelection(new Set(['Point Douglas North']), 'Transcona', CL),
+  new Set(['Point Douglas North', 'Transcona']),
+);
+
+// Taking the LAST one out leaves the EMPTY Set: nothing selected, nothing
+// shown. It must NOT collapse to null -- unticking every box already lands
+// on the empty Set, and collapsing only the map path would make the same
+// picture mean "show everything" by click and "show nothing" by checkbox.
 const emptied = toggleSelection(new Set(['Transcona']), 'Transcona', CL);
 assert.ok(emptied instanceof Set, 'empties to a Set, not null');
 assert.equal(emptied.size, 0);
 // And it is recoverable: clicking any cluster from the empty state selects it.
 assert.deepEqual(toggleSelection(emptied, 'Transcona', CL), new Set(['Transcona']));
 
-// Filling the set to every option collapses to null, same as the checkbox
-// path -- "all selected" keeps one representation.
+// Putting the last missing one back collapses to null -- "all selected"
+// keeps one representation, and it is invisible because all-selected and
+// no-filter show the same rows.
 assert.equal(
   toggleSelection(new Set(['Transcona', 'Fort Garry South']), 'Point Douglas North', CL),
   null,

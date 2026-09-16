@@ -1916,6 +1916,15 @@ function applyNeighbourhoodVisibility() {
   );
 }
 
+/*
+ * Every cluster ON THE MAP, which is not the same list as the picker's
+ * options: the picker only knows the clusters the loaded sales reach.
+ * The map has to fade the COMPLEMENT of the selection, so it needs the
+ * full catalogue — otherwise a cluster with no sales would be
+ * indistinguishable from one the user deliberately switched off.
+ */
+let allClusterNames = [];
+
 /** Fetch the 23 cluster polygons + their label points once. Shares the
  *  `neighbourhoodsLoaded` latch with the toggle, so whichever asks first
  *  pays and the other gets it free. */
@@ -1924,13 +1933,17 @@ async function ensureClusterOverlayData() {
   const fc = await fetchNeighbourhoodClusters();
   setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
   setOverlayData(map, 'wpg-neighbourhood-cluster-labels', buildLabelPointFc(fc, 'cluster'));
+  allClusterNames = (fc?.features || [])
+    .map((f) => f?.properties?.cluster)
+    .filter((n) => typeof n === 'string' && n !== '');
   neighbourhoodsLoaded.clusters = true;
   return true;
 }
 
-/** Repaint the map's cluster outlines from the picker's selection. */
+/** Repaint the map's cluster outlines and names from the picker's
+ *  selection. Deselected clusters fade; a null selection fades nothing. */
 function paintClusterSelection() {
-  mapReady.then(() => setClusterSelection(map, clusterFilter.getSelected()));
+  mapReady.then(() => setClusterSelection(map, clusterFilter.getSelected(), allClusterNames));
 }
 
 /**
@@ -2000,10 +2013,13 @@ async function setNeighbourhoodsMode(mode) {
   $neighbourhoodsToggle.textContent = 'Loading...';
   try {
     if (mode === 'clusters') {
-      const fc = await fetchNeighbourhoodClusters();
-      setOverlayData(map, 'wpg-neighbourhood-clusters', fc);
-      setOverlayData(map, 'wpg-neighbourhood-cluster-labels',
-        buildLabelPointFc(fc, 'cluster'));
+      // Through the shared loader, NOT a second copy of the same three
+      // lines. The duplicate used to set the loaded latch without filling
+      // allClusterNames, so turning Clusters on from the Map Layers button
+      // BEFORE visiting the Sales tab left the catalogue empty -- the
+      // backdrop then short-circuited on the latch, and deselecting a
+      // neighbourhood filtered the grid while nothing on the map faded.
+      await ensureClusterOverlayData();
     } else {
       const fc = await fetchNeighbourhoods();
       setOverlayData(map, 'wpg-neighbourhoods', fc);
@@ -3953,7 +3969,14 @@ const categoryFilter = createMultiSelectFilter({
 const clusterFilter = createMultiSelectFilter({
   btnId: 'cluster-filter-btn',
   popoverId: 'cluster-filter-popover',
-  label: 'cluster',
+  // "Neighbourhood" in the UI, `cluster` everywhere in the code and in the
+  // data (Jason, 2026-09-16). The City's own name for these 23 areas is
+  // neighbourhood CLUSTER — each groups about ten of the 235 actual
+  // neighbourhoods — but nobody says "cluster" out loud, so the label
+  // follows the user and the identifiers follow the source data. The grid
+  // column and the CSV header stay "Cluster" deliberately: renaming an
+  // exported header breaks whatever downstream already reads it.
+  label: 'neighbourhood',
   // Paint BEFORE the re-run, not after: runSalesAnalysis awaits the live
   // fetch, and the map should follow the click immediately rather than a
   // few seconds later when the grid catches up.
@@ -5104,8 +5127,8 @@ async function runSalesAnalysis() {
     // row count cannot tell them apart -- both read 0. Say which, and say
     // the way back, exactly as the PUCS filter does on the pre-join path.
     (clusterFilter.isEmptySelection()
-      ? ' · no clusters selected — click a cluster on the map, or All in the cluster picker'
-      : clusterHidden ? ` · ${clusterHidden} hidden by the cluster filter` : '') +
+      ? ' · no neighbourhoods selected — click one on the map, or All in the neighbourhood picker'
+      : clusterHidden ? ` · ${clusterHidden} hidden by the neighbourhood filter` : '') +
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
     (vacantHidden ? ` · ${vacantHidden} hidden by the ${vacantMode} filter` : '') +

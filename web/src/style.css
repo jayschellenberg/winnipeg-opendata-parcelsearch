@@ -4418,13 +4418,33 @@ button.topbar-link {
 /* Category picker sits on its own full-width row above the PUCS/class
    pair — the names ("Retail-Commercial", "Special Purpose") are longer
    than a half-width trigger can show without truncating to uselessness. */
-.sales-category-filter,
+/* Category is no longer full width -- it pairs with Neighbourhood at half
+   each -- so only the genuinely full-width pickers claim the row. Leaving
+   .sales-category-filter here would set width:100%% against the pair's
+   flex-basis:50%%, which flex resolves in the pair's favour but only by
+   accident of the main axis. */
 .sales-filter-full {
   width: 100%;
 }
-.sales-category-filter .sales-pucs-btn,
 .sales-filter-full .sales-pucs-btn {
   width: 100%;
+}
+/* Both halves of a pair let their trigger fill the half. */
+.sales-filter-pair > .sales-pucs-filter .sales-pucs-btn {
+  width: 100%;
+}
+/* "Any neighbourhood" is the longest default label in the panel and it
+   overran a half-width trigger by about 5px, ellipsising to "Any
+   neighbourhoo...". Rather than widen the control -- these two are meant to
+   share one row -- the paired triggers give the text those pixels back from
+   their own padding and gap. Applied to ALL FOUR paired triggers, not just
+   the offender, so the row stays visually uniform. */
+.sales-filter-pair > .sales-pucs-filter .sales-pucs-btn,
+.controls .sales-filter-pair > .sales-pucs-filter .sales-pucs-btn {
+  padding-left: 6px;
+  padding-right: 6px;
+  gap: 3px;
+  letter-spacing: -0.1px;
 }
 
 /* Radius from the subject parcel. Sits between the subject-roll chip and
