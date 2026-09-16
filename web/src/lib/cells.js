@@ -9,7 +9,7 @@
 //   - No reach into main.js state. Pass in what you need.
 
 import { assessmentUrl } from './links.js';
-import { addressListTooltip } from './addressFormat.js';
+import { addressListTooltip, properCaseAddress } from './addressFormat.js';
 
 /** Default empty-cell content — keeps a single source of truth. */
 const EMPTY = '—';        // em-dash
@@ -128,8 +128,12 @@ export function truncatedTd(value, maxChars, className) {
  * address parcel behaves exactly like truncatedTd.
  */
 export function addressTd(value, maxChars, className) {
-  const el = truncatedTd(value, maxChars, className);
-  const tip = addressListTooltip(value);
+  // Cased for reading here, at the last possible moment: the raw capitals
+  // are what every key, dedupe and lookup upstream runs on, and the cell
+  // and its hover must agree, so both are built from the same cased string.
+  const shown = properCaseAddress(value);
+  const el = truncatedTd(shown, maxChars, className);
+  const tip = addressListTooltip(shown);
   if (tip) {
     el.title = tip;
     el.style.cursor = 'help';

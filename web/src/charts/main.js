@@ -49,6 +49,7 @@ import {
 import {
   drawChart, fmtAxisMoney, fmtAxisDate, fmtMoney,
 } from '../lib/chartRender.js';
+import { properCaseAddress } from '../lib/addressFormat.js';
 import './charts.css';
 
 const CHANNEL = 'wps-sales-charts';
@@ -133,7 +134,7 @@ function scatterCard({ title, rows, xOf, yOf, xFormat, yFormat, xLabel, yLabel, 
       : 'No sales in the current filter have the figures this chart needs.');
   }
   for (const p of points) {
-    p.label = `${p.rec.address || p.rec.roll}\n${fmtMoney(p.rec.price)}`
+    p.label = `${properCaseAddress(p.rec.address) || p.rec.roll}\n${fmtMoney(p.rec.price)}`
       + `${p.rec.lots > 1 ? ` · ${p.rec.lots} parcels` : ''}`;
   }
 

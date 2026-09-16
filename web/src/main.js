@@ -145,11 +145,12 @@ import {
 } from './lib/categoryColors.js';
 import { radiusCircleFc } from './lib/radiusCircle.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
-import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
+import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures, saleKey } from './lib/sales.js';
 import {
   saleCategory, pucsName, PUCS_CATEGORY_ORDER, UNCLASSIFIED_CATEGORY,
 } from './lib/pucs.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
+import { properCaseAddress } from './lib/addressFormat.js';
 import { COLUMNS, csvSchemaForMode, buildThead, columnCellClasses } from './lib/columnsRegistry.js';
 import { assignParcelSeq, clearParcelSeq } from './lib/parcelNumbering.js';
 import { PILL_SPECS, modeFromChecked, checkedFromMode } from './lib/pillBinding.js';
@@ -3256,7 +3257,7 @@ function showParcelSummary(a, s) {
   const $asmt     = document.getElementById('ps-asmt');
   const $coords   = document.getElementById('ps-coords');
   if ($title)   $title.textContent   = roll ? `Roll ${roll}` : 'Selected parcel';
-  if ($address) $address.textContent = a?.full_address || '—';
+  if ($address) $address.textContent = properCaseAddress(a?.full_address) || '—';
   if ($area)    $area.textContent    = formatSqFt(a?.assessed_land_area) ? `${formatSqFt(a?.assessed_land_area)} sf` : '—';
   if ($zoning) {
     const code = stripZoningCode(a?.zoning_top1 ?? a?.zoning);
@@ -3395,7 +3396,7 @@ function exportCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `winnipeg-parcels-${today()}.csv`;
+  a.download = `winnipeg-parcels-${nowStamp()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -3425,6 +3426,21 @@ function today() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * Date AND time, for the CSV export's filename (Jason, 2026-09-16).
+ *
+ * A date alone means every export of the day lands as "…(1).csv",
+ * "…(2).csv" in Downloads, in an order that says nothing about which
+ * filter produced which file. Local time, to the second — two exports a
+ * minute apart is ordinary when the second one is the same comp set with
+ * one bound nudged, so minutes are not enough to keep them apart.
+ */
+function nowStamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${today()}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 // The Verify-this checklist writes one `wps_verify_v1:<roll>` key per parcel
@@ -3769,6 +3785,28 @@ function wrapToWidth(ctx, text, maxWidth) {
 // drops a CSV. The shape is:
 //   { sales: SaleRecord[], rolls: Set<string>, groups: Map<inst, SaleRecord[]> }
 let salesData = null;
+
+/*
+ * Post-join verdicts by sale key: what the last completed search decided a
+ * sale's category and neighbourhood were.
+ *
+ * It exists for ONE job — letting the PUCS counts reflect the Category and
+ * Neighbourhood pickers (Jason, 2026-09-16). Both of those are post-join:
+ * they read the permit record and the parcel centroid, neither of which
+ * exists until the roll has been fetched. The PUCS options, by contrast,
+ * are tallied pre-join, before the fetch that would produce those verdicts
+ * — so without a cache the number beside a code could only ever describe
+ * the whole archive, and narrowing to Land in St Boniface left every count
+ * unchanged.
+ *
+ * ACCUMULATES rather than being replaced each run, and that is the point: a
+ * sale the PUCS filter excluded this time was never re-fetched, so the only
+ * verdict anyone has for it is the one an earlier, wider run recorded. A
+ * verdict never expires while the archive is loaded because it does not
+ * depend on any filter. Cleared when a new CSV replaces the archive, since
+ * the keys then describe sales that are gone.
+ */
+const saleVerdictCache = new Map();
 
 // The PUCS and assessment-class multi-selects own their own selection
 // state — see pucsFilter / classFilter below and lib/multiSelectFilter.js
@@ -4177,6 +4215,13 @@ function saleCategoryOf(f) {
  * Improved Only used to leave VRES1 sitting there at 13,529 — a count
  * from a set the user had already excluded (Jason, 2026-09-16).
  *
+ * The Category and Neighbourhood pickers narrow it too, even though both
+ * are post-join — their verdicts come from saleVerdictCache, and
+ * passesCachedCategoryAndCluster says what happens to a sale no run has
+ * judged yet. Same reasoning as the pre-join cuts: a count taken from a set
+ * the user has already excluded is a wrong number, and Land / St Boniface
+ * is the cut an appraiser makes FIRST.
+ *
  * EVERY code the CSV carries stays on the list even at zero, and that is
  * the part that makes this safe. Tallying a picker from a narrowed set is
  * ordinarily how you build a list the user cannot tick back out of:
@@ -4192,10 +4237,37 @@ function rebuildPucsFilter(narrowed) {
   const counts = new Map();
   for (const s of salesData?.sales || []) counts.set(s.useCode || '(blank)', 0);
   for (const s of narrowed || salesData?.sales || []) {
+    if (!passesCachedCategoryAndCluster(s)) continue;
     const k = s.useCode || '(blank)';
     counts.set(k, (counts.get(k) || 0) + 1);
   }
   pucsFilter.setOptions(counts);
+}
+
+/**
+ * Does this raw sale survive the Category and Neighbourhood pickers?
+ *
+ * Both are post-join, so the answer comes from the verdict the last search
+ * that actually fetched this sale recorded (saleVerdictCache) rather than
+ * from anything on the sale itself.
+ *
+ * A sale with NO cached verdict counts. It has never been fetched, so
+ * nothing knows what it is or where it is, and the honest reading of an
+ * unanswered question is not "excluded" — dropping it would understate a
+ * code on the first search after an upload, which is exactly when the
+ * counts are being read to decide what to search for. The counts are
+ * therefore an upper bound while the cache is cold and exact once the
+ * archive has been searched once.
+ */
+function passesCachedCategoryAndCluster(sale) {
+  const categorySelected = categoryFilter.getSelected();
+  const clusterSelected = clusterFilter.getSelected();
+  if (categorySelected == null && clusterSelected == null) return true;
+  const verdict = saleVerdictCache.get(saleKey(sale.roll, sale.instrument));
+  if (!verdict) return true;
+  if (categorySelected != null && !categorySelected.has(verdict.category)) return false;
+  if (clusterSelected != null && !clusterSelected.has(verdict.cluster)) return false;
+  return true;
 }
 
 /**
@@ -4438,6 +4510,7 @@ async function handleSalesUpload({ name, text }, remember = true) {
     // sidebar filters re-run runSalesAnalysis and keep it — same rows).
     deselectedRowKeys = new Set();
     salesData = dedupAndGroupSales(parsed.rows);
+    saleVerdictCache.clear();
     // Entry order for "Number parcels": each roll's first appearance in
     // the pasted / uploaded rows, so a pasted comp list numbers as typed.
     salesRollOrder = buildEnteredRollOrder(salesData.sales.map((s) => s.roll));
@@ -5277,6 +5350,18 @@ async function runSalesAnalysis() {
   // tallying a picker from its own filtered output shrinks its option list
   // on every change, and the user could never tick back what they
   // unticked.
+  // Both verdicts are final here — category has taken its mixed-sale
+  // correction and the clusters are assigned — so this is where the PUCS
+  // counts get told about them. See saleVerdictCache.
+  for (const f of saleFc.features) {
+    const key = f.properties?._saleKey;
+    if (!key) continue;
+    saleVerdictCache.set(key, {
+      category: saleCategoryOf(f),
+      cluster: saleClusterOf(f),
+    });
+  }
+
   rebuildCategoryFilter(saleFc.features);
   const categorySelected = categoryFilter.getSelected();
   const afterCategory = categorySelected == null

@@ -34,6 +34,7 @@ export const MAP_ADDRESS_MIN_QUERY = 3;
 export const MAP_ADDRESS_LIMIT = 8;
 /** Typing pause before a query goes out. */
 export const MAP_ADDRESS_DEBOUNCE_MS = 180;
+import { properCaseAddress } from './addressFormat.js';
 
 /**
  * Split typed text into a leading civic number and the rest.
@@ -173,7 +174,7 @@ export function createMapAddressSearch({ inputId, listId, fetchAddresses, onPick
   function accept(entry) {
     const fields = addressToFields(entry);
     if (!fields) return;
-    $input.value = entry.full_address;
+    $input.value = properCaseAddress(entry.full_address);
     close();
     $input.blur();
     onPick?.(fields, entry);
@@ -193,7 +194,7 @@ export function createMapAddressSearch({ inputId, listId, fetchAddresses, onPick
       row.id = `${listId}-opt-${i}`;
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', 'false');
-      row.textContent = entry.full_address;
+      row.textContent = properCaseAddress(entry.full_address);
       row.addEventListener('click', () => accept(entry));
       $list.appendChild(row);
     });

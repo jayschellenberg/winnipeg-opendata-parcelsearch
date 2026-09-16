@@ -533,6 +533,16 @@ function parcelLandSf(g, liveByRoll) {
   return { sf: 0, fellBack: false, unusable: sabre > 0 || live > 0, sabre, live };
 }
 
+/**
+ * A sale's identity: normalized roll + instrument, the same pair
+ * dedupAndGroupSales collapses component rows onto. Exported so a caller
+ * holding a raw sale record and a caller holding a built feature can name
+ * the same sale — see `_saleKey` below.
+ */
+export function saleKey(roll, instrument) {
+  return `${normalizeRoll(roll)}|${String(instrument ?? '').trim()}`;
+}
+
 export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
   const features = [];
   for (const sale of visibleSales) {
@@ -555,6 +565,12 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     p._saleDate = sale.saleDate;
     p._salePrice = sale.salePrice > 0 ? sale.salePrice : null;
     p._saleInstrument = sale.instrument;
+    // Stamped so post-join verdicts (category, neighbourhood) can be read
+    // back against the raw sale record they belong to. The feature's own
+    // roll_number comes from the LIVE record when there is one, which is
+    // not always spelled the way the CSV spells it, so the key is built
+    // from the sale rather than from the feature.
+    p._saleKey = saleKey(sale.roll, sale.instrument);
     p._saleGroupSize = group.length;
     p._saleUseCode = sale.useCode;
     p._salePropertyType = sale.propertyType;

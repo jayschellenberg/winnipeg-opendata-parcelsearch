@@ -67,6 +67,16 @@ The **first** entry is the assessment record's own address and the only one
 winnipegassessment.com can be searched by; hovering a multi-address cell says
 so and lists the rest.
 
+Addresses are shown in **Proper Case** — "1636 McCreary Road", not the
+CAPITALS both datasets publish. Display only: every key, dedupe and lookup
+still runs on the raw uppercase, so casing can never decide whether two
+entries are the same address. `properCaseAddress` in
+[`lib/addressFormat.js`](web/src/lib/addressFormat.js) keeps directionals
+(`AVE E`), ordinals (`3rd`), unit and civic numbers, and the Mc streets
+(McPhillips, McDermot) out of a blanket capitalize-each-word, and leaves any
+word a source had already cased alone. The map's own parcel LABELS stay
+uppercase — a MapLibre style expression has no case function.
+
 [`tools/address_aliases.py`](tools/address_aliases.py) answers the same question
 from the command line, for Winnipeg and (with `--mb`) for the rest of Manitoba —
 see [tools/ADDRESS_ALIASES.md](tools/ADDRESS_ALIASES.md). It is a standalone
@@ -414,6 +424,18 @@ name for it (`RESSD` / Detached Single Dwelling), from the same table
 `lib/pucs.js` feeds the **Use** column. 57 bare five-letter codes is not a list
 anyone can choose from, and the appraiser is looking for a use, not a
 mnemonic. Codes the table has never seen render bare rather than vanishing.
+
+**PUCS counts.** The number beside each code is what picking it would
+actually get you: it is tallied from the sale list every OTHER filter has
+already left, including **Category** and **Neighbourhood** (Jason,
+2026-09-16). Those two are post-join -- a sale's category is only final after
+the permit pass and its cluster after the centroid lookup -- so their verdicts
+are cached per sale as each search completes and read back when the counts are
+built. A sale no search has fetched yet has no verdict and is counted, which
+makes the numbers an upper bound on a cold cache and exact once the archive
+has been searched once. Every code stays on the list at zero rather than
+vanishing, so a count can never take away an option you need in order to tick
+it back.
 
 **Year built and building size.** Two range boxes above the Charts button,
 outside the Additional-filters disclosure because they are everyday cuts rather

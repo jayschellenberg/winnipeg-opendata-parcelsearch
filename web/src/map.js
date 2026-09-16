@@ -185,6 +185,7 @@ import {
 import { formatDollars } from './lib/cells.js';
 import { buildingLines, saleLines } from './lib/salePopupLines.js';
 import { assessFillOpacity } from './lib/assessFillOpacity.js';
+import { properCaseAddress } from './lib/addressFormat.js';
 import { badgeRadius, calloutOffset, solveCalloutSlots } from './lib/calloutPlacement.js';
 
 // mapbox-gl-draw was written against the Mapbox GL `mapboxgl-*` DOM
@@ -3217,7 +3218,7 @@ function citywideParcelHtml(p) {
   const address = p.full_address || null;
   const lines = [];
   if (roll) lines.push(`<strong>Roll #</strong> ${rollDetailLink(roll, `Open Roll ${roll} on the City assessment site`)}`);
-  if (address) lines.push(escapeHtml(address));
+  if (address) lines.push(escapeHtml(properCaseAddress(address)));
   lines.push(...useAndZoningLines(p));
   // Size sits between the use codes and the unit count, the same slot it
   // occupies in the hover popup, so the two popups read in one order:
@@ -3492,7 +3493,7 @@ function popupHtml(p) {
   if (p.roll_number != null || p.full_address != null) {
     const lines = [];
     if (p.roll_number) lines.push(`<strong>Roll #</strong> ${rollDetailLink(p.roll_number, `Open Roll ${p.roll_number} on the City assessment site`)}`);
-    if (p.full_address) lines.push(escapeHtml(p.full_address));
+    if (p.full_address) lines.push(escapeHtml(properCaseAddress(p.full_address)));
     lines.push(...useAndZoningLines(p));
     const size = parcelSizeLine(p);
     if (size) lines.push(size);
@@ -4102,7 +4103,7 @@ function historicalParcelHtml(p, snap, lineageRec = null) {
       ? `<a href="${url}" target="_blank" rel="noreferrer" title="Open Roll ${escapeHtml(String(roll))} on the City assessment site">${escapeHtml(String(roll))}</a>`
       : escapeHtml(String(roll))));
   }
-  if (p.full_address)         lines.push(escapeHtml(p.full_address));
+  if (p.full_address)         lines.push(escapeHtml(properCaseAddress(p.full_address)));
   if (p.neighbourhood_area)   lines.push(`<em>${escapeHtml(p.neighbourhood_area)}</em>`);
   if (p.zoning)               lines.push(`<strong>Zoning</strong> ${escapeHtml(p.zoning)}`);
   if (p.assessed_land_area)   lines.push(`<strong>Land area</strong> ${fmtSqftHist(p.assessed_land_area)}`);

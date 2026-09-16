@@ -9,6 +9,7 @@ import {
   unitPrefixBaseKey,
   dedupeAddresses,
   addressListTooltip,
+  properCaseAddress,
 } from '../src/lib/addressFormat.js';
 
 // ---- normalizeAddressKey --------------------------------------------------
@@ -182,5 +183,34 @@ assert.equal(
   addressListTooltip('400 HARGRAVE STREET,,440 HARGRAVE ST').split('\n')[3],
   'Also on this parcel (1):',
 );
+
+// ---- properCaseAddress ----------------------------------------------------
+// A DISPLAY transform only: the keys above still uppercase, so casing can
+// never move an address into or out of a dedupe bucket.
+assert.equal(properCaseAddress('1347 BORDER STREET'), '1347 Border Street');
+assert.equal(properCaseAddress('407 LYNDALE DR, 409 LYNDALE DRIVE'),
+  '407 Lyndale Dr, 409 Lyndale Drive');
+// Directionals are abbreviations, not words.
+assert.equal(properCaseAddress('9 PORTAGE AVE E'), '9 Portage Ave E');
+assert.equal(properCaseAddress('450 PORTAGE AVE NW'), '450 Portage Ave NW');
+// Ordinals lowercase their suffix rather than capitalizing it.
+assert.equal(properCaseAddress('221 3RD ST'), '221 3rd St');
+// The Mc streets. "Mcphillips" is a misspelling, not a casing choice.
+assert.equal(properCaseAddress('1636 MCCREARY ROAD'), '1636 McCreary Road');
+assert.equal(properCaseAddress('2200 MCPHILLIPS ST'), '2200 McPhillips St');
+// Unit and civic numbers are identifiers — left exactly as written.
+assert.equal(properCaseAddress('1000 ALDGATE RD UNIT 101'), '1000 Aldgate Rd Unit 101');
+assert.equal(properCaseAddress('610-1000 ALDGATE ROAD'), '610-1000 Aldgate Road');
+assert.equal(properCaseAddress('116 A-45 GILLSON STREET'), '116 A-45 Gillson Street');
+// Apostrophes don't start a new word.
+assert.equal(properCaseAddress("1200 ST MARY'S RD"), "1200 St Mary's Rd");
+// Anything a source already cased is left alone, so a correct name can't be
+// un-corrected by a second pass.
+assert.equal(properCaseAddress('2200 McPhillips St'), '2200 McPhillips St');
+assert.equal(properCaseAddress(properCaseAddress('1636 MCCREARY ROAD')), '1636 McCreary Road');
+// Empty in, empty out — the cell helpers test for '' to draw the em-dash.
+assert.equal(properCaseAddress(''), '');
+assert.equal(properCaseAddress(null), '');
+assert.equal(properCaseAddress(undefined), '');
 
 console.log('addressFormat.test.js: all assertions passed');

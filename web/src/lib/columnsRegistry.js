@@ -25,6 +25,7 @@ import {
   waterOf, waterLoaded, waterColor, waterCellText, waterTooltip, waterCsvCells,
 } from './water.js';
 import { pucsName, UNCLASSIFIED_CATEGORY } from './pucs.js';
+import { properCaseAddress } from './addressFormat.js';
 
 /**
  * New-construction verdict on a vacant-coded sale.
@@ -264,7 +265,7 @@ export const COLUMNS = [
       + 'City address dataset). The first is the only one winnipegassessment.com can be searched by — '
       + 'hover a multi-address cell to see the split.',
     render: (a) => addressTd(a.full_address, 40),
-    csv: { header: 'Full Address', extract: (a) => a.full_address } },
+    csv: { header: 'Full Address', extract: (a) => properCaseAddress(a.full_address) } },
 
   { key: 'saleDate',     header: 'Sale Date',     mode: 'sales',  sortable: true,
     theadTitle: 'Sale date from the uploaded CSV',
@@ -309,22 +310,34 @@ export const COLUMNS = [
     render: (a) => badgeTd(a._saleCategory || UNCLASSIFIED_CATEGORY, 'badge-category'),
     csv: { header: 'Category', extract: (a) => a._saleCategory || UNCLASSIFIED_CATEGORY } },
 
-  // Rise. The storey band of an apartment or office parcel, from the
-  // offline RESAPStoreys lookup (OpenStreetMap levels, Overture heights,
-  // a model where neither exists) — the sub-type neither SABRE nor the
-  // roll can supply. Blank on every other use, and blank with a tooltip
-  // on an apartment/office the lookup does not carry. See lib/riseLookup.js.
-  { key: 'rise',         header: 'Rise',          mode: 'sales',  sortable: true,
-    theadTitle: 'Storey band for apartment (RESAP/RESAM) and office (CMOFF/CMOMC/CMOGV/CMFBK) sales, from the offline RESAPStoreys lookup. '
-      + 'Apartments: Low-rise / garden = 1–3 storeys, Mid/high-rise = 4+. Offices: Low-rise 1–4, Mid-rise 5–9, High-rise 10+. '
-      + 'Hover a cell for the storey count and its source (OpenStreetMap, Overture Maps height, or a model estimate). '
-      + 'Blank = not an apartment or office, or a parcel the lookup does not carry.',
-    render: (a) => {
-      const cell = td(a._rise || null);
-      if (a._riseTitle) cell.title = a._riseTitle;
-      return cell;
-    },
-    csv: { header: 'Rise', extract: (a) => a._rise } },
+  // The head of the grid is the comp itself, in the order it is read
+  // (Jason, 2026-09-16): what it is (Category), whether it is already in
+  // N1, what it sold for, and the rate that follows. Sworn rides with Sale
+  // Price rather than being sorted away from it — the two are one figure
+  // and its contradiction, and the nominal-transfer flag is worthless if it
+  // sits off-screen from the price it contradicts.
+  { key: 'n1Id',         header: 'N1 ID',         mode: 'sales',  sortable: true,
+    theadTitle: 'Narrative1 comp-database ID from the offline SABRE crosswalk. '
+      + 'Blank = not matched to an N1 record yet (or the CSV carries no N1 ID '
+      + 'column) — filter to Unmatched under Additional filters to work the '
+      + 'data-entry queue.',
+    render: (a) => td(a._n1Id != null ? String(a._n1Id) : null, 'num'),
+    csv: { header: 'N1 ID', extract: (a) => a._n1Id } },
+
+  { key: 'salePrice',    header: 'Sale Price',    mode: 'sales',  sortable: true,
+    theadTitle: 'Sold price from the uploaded CSV',
+    render: (a) => td(formatDollars(a._salePrice), swornCellClass(a)),
+    csv: { header: 'Sale Price', extract: (a) => a._salePrice } },
+
+  { key: 'swornValue',   header: 'Sworn',         mode: 'sales',  sortable: true,
+    theadTitle: 'Sworn (declared land-transfer) value from the CSV. Normally equals the Sale Price; where it does not — a $1 sale price against a large sworn value — the transfer is non-arms-length. Never substituted into Sale Price.',
+    render: (a) => td(formatDollars(a._saleSwornValue), swornCellClass(a)),
+    csv: { header: 'Sworn Value', extract: (a) => a._saleSwornValue } },
+
+  { key: 'pricePerBldgSf', header: '$/Bldg SF',   mode: 'sales',  sortable: true,
+    theadTitle: 'Sale price ÷ building area (Living Area from the export, else the live record). For multi-parcel sales, divides by the group total. Blank on vacant land, which has no building to rate.',
+    render: (a) => td(formatDollars(a._pricePerBldgSf), 'num'),
+    csv: { header: '$/Bldg SF', extract: (a) => a._pricePerBldgSf } },
 
   // Living Area and Year Built are dual-source: the sales CSV value when
   // there is one, otherwise the live assessment record. That makes them
@@ -340,16 +353,6 @@ export const COLUMNS = [
     render: (a) => td(yearBuiltOf(a)),
     csv: { header: 'Year Built', extract: (a) => yearBuiltOf(a) } },
 
-  { key: 'buildingType', header: 'Building',      mode: 'always', sortable: true,
-    theadTitle: 'Building type from the assessment record (ONE STOREY, TWO STOREY, BUNGALOW…)',
-    render: (a) => truncatedTd(a.building_type, 18),
-    csv: { header: 'Building Type', extract: (a) => a.building_type } },
-
-  { key: 'rooms',        header: 'Rooms',         mode: 'always', sortable: true,
-    theadTitle: 'Room count from the assessment record',
-    render: (a) => td(a.rooms != null ? String(a.rooms) : null, 'num'),
-    csv: { header: 'Rooms', extract: (a) => a.rooms } },
-
   { key: 'dwellingUnits', header: 'DU',           mode: 'always', sortable: true,
     theadTitle: 'Dwelling units on the parcel (assessment record). 0 = vacant lot.',
     render: (a) => td(a.dwelling_units != null ? String(a.dwelling_units) : null, 'num'),
@@ -359,25 +362,10 @@ export const COLUMNS = [
     render: (a) => td(formatSqFt(a.assessed_land_area), 'num'),
     csv: { header: 'Lot Size (sf)', extract: (a) => a.assessed_land_area } },
 
-  { key: 'propertyType', header: 'Property Type', mode: 'sales',  sortable: true,
-    theadTitle: 'High-level property type from the CSV (Residential / Industrial / Commercial)',
-    render: (a) => badgeTd(a._salePropertyType || null, propertyTypeBadgeClass(a._salePropertyType)),
-    csv: { header: 'Property Type', extract: (a) => a._salePropertyType } },
-
   { key: 'groupSize',    header: 'Group #',       mode: 'sales',  sortable: true,
     theadTitle: 'Number of parcels in the same sale (1 = single-parcel sale). Multi-parcel sales aggregate $/Lot SF and Sale/Asmt across the group.',
     render: (a) => td(a._saleGroupSize != null ? String(a._saleGroupSize) : null, 'num'),
     csv: { header: 'Group #', extract: (a) => a._saleGroupSize } },
-
-  { key: 'salePrice',    header: 'Sale Price',    mode: 'sales',  sortable: true,
-    theadTitle: 'Sold price from the uploaded CSV',
-    render: (a) => td(formatDollars(a._salePrice), swornCellClass(a)),
-    csv: { header: 'Sale Price', extract: (a) => a._salePrice } },
-
-  { key: 'swornValue',   header: 'Sworn',         mode: 'sales',  sortable: true,
-    theadTitle: 'Sworn (declared land-transfer) value from the CSV. Normally equals the Sale Price; where it does not — a $1 sale price against a large sworn value — the transfer is non-arms-length. Never substituted into Sale Price.',
-    render: (a) => td(formatDollars(a._saleSwornValue), swornCellClass(a)),
-    csv: { header: 'Sworn Value', extract: (a) => a._saleSwornValue } },
 
   // Units. HOW MANY suite labels the sale carries, not the largest one.
   // Reading the largest as a total reported unit 103 of 255 PEGUIS as a
@@ -493,11 +481,6 @@ export const COLUMNS = [
     render: (a) => farFlungTd(a),
     csv: { header: '$/Lot SF', extract: (a) => a._pricePerSf } },
 
-  { key: 'pricePerBldgSf', header: '$/Bldg SF',   mode: 'sales',  sortable: true,
-    theadTitle: 'Sale price ÷ building area (Living Area from the export, else the live record). For multi-parcel sales, divides by the group total. Blank on vacant land, which has no building to rate.',
-    render: (a) => td(formatDollars(a._pricePerBldgSf), 'num'),
-    csv: { header: '$/Bldg SF', extract: (a) => a._pricePerBldgSf } },
-
   // Group SF — the same group land total as Acres, in square feet: the
   // denominator behind $/Lot SF, readable beside its rate. One figure
   // (`_saleLandSf`) feeds both this and Acres, so they can never drift.
@@ -537,13 +520,42 @@ export const COLUMNS = [
     render: (a) => td(a._saleInstrument || null),
     csv: { header: 'Instrument', extract: (a) => a._saleInstrument } },
 
-  { key: 'n1Id',         header: 'N1 ID',         mode: 'sales',  sortable: true,
-    theadTitle: 'Narrative1 comp-database ID from the offline SABRE crosswalk. '
-      + 'Blank = not matched to an N1 record yet (or the CSV carries no N1 ID '
-      + 'column) — filter to Unmatched under Additional filters to work the '
-      + 'data-entry queue.',
-    render: (a) => td(a._n1Id != null ? String(a._n1Id) : null, 'num'),
-    csv: { header: 'N1 ID', extract: (a) => a._n1Id } },
+  // Rise, Property Type, Building and Rooms sit here, past the rates:
+  // they describe the THING rather than the deal, and the head of the grid
+  // is for the deal (Jason, 2026-09-16). Rise leads them because it is the
+  // sub-type an apartment or office comp search narrows on.
+
+  // Rise. The storey band of an apartment or office parcel, from the
+  // offline RESAPStoreys lookup (OpenStreetMap levels, Overture heights,
+  // a model where neither exists) — the sub-type neither SABRE nor the
+  // roll can supply. Blank on every other use, and blank with a tooltip
+  // on an apartment/office the lookup does not carry. See lib/riseLookup.js.
+  { key: 'rise',         header: 'Rise',          mode: 'sales',  sortable: true,
+    theadTitle: 'Storey band for apartment (RESAP/RESAM) and office (CMOFF/CMOMC/CMOGV/CMFBK) sales, from the offline RESAPStoreys lookup. '
+      + 'Apartments: Low-rise / garden = 1–3 storeys, Mid/high-rise = 4+. Offices: Low-rise 1–4, Mid-rise 5–9, High-rise 10+. '
+      + 'Hover a cell for the storey count and its source (OpenStreetMap, Overture Maps height, or a model estimate). '
+      + 'Blank = not an apartment or office, or a parcel the lookup does not carry.',
+    render: (a) => {
+      const cell = td(a._rise || null);
+      if (a._riseTitle) cell.title = a._riseTitle;
+      return cell;
+    },
+    csv: { header: 'Rise', extract: (a) => a._rise } },
+
+  { key: 'propertyType', header: 'Property Type', mode: 'sales',  sortable: true,
+    theadTitle: 'High-level property type from the CSV (Residential / Industrial / Commercial)',
+    render: (a) => badgeTd(a._salePropertyType || null, propertyTypeBadgeClass(a._salePropertyType)),
+    csv: { header: 'Property Type', extract: (a) => a._salePropertyType } },
+
+  { key: 'buildingType', header: 'Building',      mode: 'always', sortable: true,
+    theadTitle: 'Building type from the assessment record (ONE STOREY, TWO STOREY, BUNGALOW…)',
+    render: (a) => truncatedTd(a.building_type, 18),
+    csv: { header: 'Building Type', extract: (a) => a.building_type } },
+
+  { key: 'rooms',        header: 'Rooms',         mode: 'always', sortable: true,
+    theadTitle: 'Room count from the assessment record',
+    render: (a) => td(a.rooms != null ? String(a.rooms) : null, 'num'),
+    csv: { header: 'Rooms', extract: (a) => a.rooms } },
 
   { key: 'lot',          header: 'Lot',           mode: 'always', sortable: true,
     render: (_a, s) => truncatedTd(s.lot, 10),
@@ -624,6 +636,7 @@ export const COLUMNS = [
     theadTitle: 'Run this parcel through the Manitoba flood-screening tool',
     render: (a) => linkTd(floodToolUrl(a), 'Flood'),
     csv: { header: 'Flood URL', extract: (a) => floodToolUrl(a) } },
+
   { key: 'lat',          header: 'Lat',           mode: 'always', sortable: true,
     render: (a) => td(formatCoord(a.centroid_lat), 'num'),
     csv: { header: 'Lat', extract: (a) => a.centroid_lat } },

@@ -168,3 +168,53 @@ export function addressListTooltip(joined) {
     ...others,
   ].join('\n');
 }
+
+/*
+ * Proper Case for display (Jason, 2026-09-16).
+ *
+ * Both address sources publish in CAPITALS — "1636 MCCREARY ROAD" — which
+ * is how they are stored, matched and deduped above, and none of that
+ * changes: normalizeAddressKey still uppercases, so casing can never
+ * affect whether two entries are judged the same address. This is a
+ * DISPLAY transform, applied at the point a cell, a popup or a tooltip is
+ * built, and nothing downstream reads its output.
+ *
+ * Word by word rather than a blanket lower-then-capitalize, because four
+ * kinds of token do not survive that treatment:
+ *
+ *   - directionals    "PORTAGE AVE E" must not become "Portage Ave e"
+ *   - ordinals        "3RD ST" is "3rd St", not "3Rd St"
+ *   - anything with a digit  civic numbers, unit numbers, "1000B" — left
+ *                     exactly as written, because a unit label is an
+ *                     identifier and not a word
+ *   - Mc names        Winnipeg has McPhillips, McDermot, McGregor and
+ *                     McCreary; "Mcphillips" is a misspelling of a street
+ *                     name, not a casing choice
+ *
+ * A word that already carries a lowercase letter is left alone: it came
+ * from a source that had already cased it, and second-guessing that would
+ * turn a correct "McPhillips" back into "Mcphillips".
+ */
+
+/** Tokens that are abbreviations, not words, and stay in capitals. */
+const KEEP_UPPER = new Set(['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW', 'PTH', 'PR']);
+
+function properCaseWord(word) {
+  if (/[a-z]/.test(word)) return word;          // already cased by its source
+  if (/^\d+(ST|ND|RD|TH)$/.test(word)) return word.toLowerCase();  // 3RD → 3rd
+  if (/\d/.test(word)) return word;             // civic / unit / highway number
+  if (KEEP_UPPER.has(word)) return word;
+  if (/^MC[A-Z]{3,}$/.test(word)) return `Mc${word[2]}${word.slice(3).toLowerCase()}`;
+  return word[0] + word.slice(1).toLowerCase();
+}
+
+/**
+ * A civic address (or a comma-joined list of them) cased for reading.
+ * Punctuation, separators and spacing are preserved exactly — only the
+ * letters inside each word change.
+ */
+export function properCaseAddress(raw) {
+  const s = String(raw ?? '');
+  if (!s) return s;
+  return s.replace(/[A-Za-z0-9'’]+/g, properCaseWord);
+}
