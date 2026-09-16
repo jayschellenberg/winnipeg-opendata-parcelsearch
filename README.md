@@ -241,6 +241,48 @@ is row-level, so a multi-parcel sale matched on only some of its rolls shows
 exactly the rows that still need doing. A CSV with no N1 ID column reads as
 entirely unmatched, which is the truth.
 
+**Where, not what: cluster and radius.** Two location filters narrow a comp
+set the way an appraiser actually reasons about one.
+
+The **cluster** picker lists the City's neighbourhood clusters (Fort Garry
+South, Point Douglas North, Transcona ...) present in the loaded sales, each
+with its count. A parcel's cluster comes from a point-in-polygon of its
+centroid against `public/wpg-neighbourhoods.geojson`, never from the
+assessment record's `neighbourhood_area` -- that field is truncated to 20
+characters, so a name join leaves ~13,000 parcels unmatched and gains a new
+casualty every time the City truncates something differently. Parcels the
+lookup cannot place (no centroid, or a centroid outside every neighbourhood --
+city-edge parcels genuinely exist) collect under a named `(no cluster)`
+option, tickable like any other, so they can never drop out of a search
+unseen.
+
+The **radius** field beside the subject roll keeps only sales within N km of
+the subject, measured centroid to centroid -- the same figure the **Dist (km)**
+column shows, so the filter and the column can never disagree about how far
+away a comp is. Decimals work; blank or 0 is off; the boundary is inclusive.
+With no subject roll set the radius is IGNORED rather than applied, and says
+so beside the input and on the count line: every row would otherwise fail for
+want of a distance and the empty grid would read as "no comps nearby" when
+what happened is that nothing said where "nearby" was. A sale whose roll found
+no live record has no centroid and is excluded while the radius is set --
+missing is excluded, the same rule the size and street filters follow.
+Shareable as `?rad=`, and both filters report what they removed on the count
+line above the table.
+
+Both are row-level, like Category, Class and Zoning and unlike the group
+properties (lot size, vacancy, far-flung). Where a parcel sits is a fact about
+the PARCEL, not about the transaction, and it is what the Cluster and Dist
+cells on that row show -- so filtering row-level keeps the filter and the grid
+saying the same thing. A multi-parcel sale straddling a cluster boundary can
+show some of its rows and not others; judging it per group would instead leave
+rows on screen that visibly contradict the filter that kept them.
+
+**PUCS names.** The PUCS picker lists each Par Use Code with the City's own
+name for it (`RESSD` / Detached Single Dwelling), from the same table
+`lib/pucs.js` feeds the **Use** column. 57 bare five-letter codes is not a list
+anyone can choose from, and the appraiser is looking for a use, not a
+mnemonic. Codes the table has never seen render bare rather than vanishing.
+
 **Rise (storey band).** Neither SABRE nor the assessment roll says how
 tall an apartment or office building is — `building_type` is only filled
 for houses and `number_floors_condo` only for condo suites — so the

@@ -464,3 +464,96 @@ export function isFarFlung(spreadKm, thresholdKm) {
   if (spreadKm == null || !Number.isFinite(spreadKm)) return false;
   return spreadKm > thresholdKm;
 }
+
+/* ---------------------------------------------------------------------
+ * LOCATION predicates — neighbourhood cluster and radius-from-subject.
+ *
+ * Both run POST-JOIN, for the same reason the vacancy and far-flung
+ * tests do: what they read is stamped onto the joined feature rather
+ * than carried by the CSV. `_cluster` comes from a point-in-polygon of
+ * the parcel centroid against wpg-neighbourhoods.geojson (lib/clusters
+ * .js); `_dist` is the centroid-to-centroid km to the subject parcel,
+ * and exists only once a subject roll is set.
+ *
+ * ROW-LEVEL, NOT GROUP-LEVEL, and deliberately so. The rule this file
+ * follows for a group property (lot size, vacancy, far-flung) is "judge
+ * the transaction as a whole", because those three are properties OF the
+ * deal. Where a parcel sits is not: it is a property of the parcel, and
+ * it is what the Cluster and Dist (km) columns show on that parcel's own
+ * row. Filtering row-level keeps the filter and the column saying the
+ * same thing — tick Fort Garry South and every row left is a row whose
+ * Cluster cell reads Fort Garry South. Judging per group would leave
+ * rows on screen that visibly contradict the filter that kept them.
+ *
+ * The cost is that a multi-parcel sale straddling a boundary can show
+ * some of its rows and not others, while the $/Lot SF on those rows is
+ * still the whole group's. That is already how the category, class and
+ * zoning filters behave, and it is the lesser evil: the alternative
+ * silently widens the search past what the user asked for.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Where a sale with no cluster is filed. Named and tickable rather than
+ * blank, for the same reason UNCLASSIFIED_CATEGORY is: a parcel the
+ * point-in-polygon can't place (no centroid, or a centroid outside every
+ * neighbourhood — city-edge parcels genuinely exist) must stay VISIBLE
+ * in the picker. A blank option would quietly fail every cluster filter
+ * and drop those sales out of comp searches with nothing to say why.
+ */
+export const UNASSIGNED_CLUSTER = '(no cluster)';
+
+/** A sale's neighbourhood cluster, as the filter and the Cluster column
+ *  both read it. Never returns blank — see UNASSIGNED_CLUSTER. */
+export function saleClusterOf(feature) {
+  const c = String(feature?.properties?._cluster ?? '').trim();
+  return c === '' ? UNASSIGNED_CLUSTER : c;
+}
+
+/**
+ * Does this feature sit in one of the ticked clusters? `selected` is the
+ * multi-select tri-state: null = no filter, empty Set = show nothing.
+ */
+export function passesClusterFilter(feature, selected) {
+  if (selected == null) return true;
+  return selected.has(saleClusterOf(feature));
+}
+
+/**
+ * Parse the radius input into a positive distance in kilometres, or null
+ * when the filter is off.
+ *
+ * Blank, zero and negative all mean OFF rather than "0 km", matching
+ * parseBound and the far-flung threshold. A 0 km radius would otherwise
+ * be a filter that can only ever match the subject itself, which is
+ * never what typing a 0 into a half-finished number field meant.
+ */
+export function parseRadiusKm(value) {
+  const n = parseBound(value);
+  return n != null && n > 0 ? n : null;
+}
+
+/**
+ * Is this sale within `radiusKm` of the subject parcel?
+ *
+ * Reads `_dist`, the same centroid-to-centroid figure the Dist (km)
+ * column shows, so the filter can never disagree with the number on
+ * screen. Inclusive at the boundary — "within 2 km" includes 2.00 km.
+ *
+ * MISSING IS EXCLUDED, the standard rule here: a sale whose roll found
+ * no live record has no centroid and therefore no distance, and a
+ * radius search must not seed a comp set with rows nobody measured.
+ * Callers are responsible for not applying this at all when no subject
+ * roll is set — with no subject NOTHING has a distance, and silently
+ * emptying the grid would read as "no comps nearby" rather than as
+ * "you haven't said what nearby means".
+ */
+export function passesRadiusFilter(feature, radiusKm) {
+  if (radiusKm == null) return true;
+  const d = feature?.properties?._dist;
+  // Typed rather than coerced. Number(null) is 0 and Number('') is 0, so
+  // a coercing test would read "never measured" as "zero kilometres from
+  // the subject" and hand back the unmeasured rows as the CLOSEST comps
+  // in the set — the exact inversion of the missing-is-excluded rule.
+  if (typeof d !== 'number' || !Number.isFinite(d)) return false;
+  return d <= radiusKm;
+}

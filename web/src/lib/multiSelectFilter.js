@@ -45,10 +45,19 @@ export function reconcileSelection(selected, options) {
  * "Filter by PU…" and the control stopped saying anything. `noun` is
  * the bare word ("PUCS", "class"), not a sentence.
  */
-export function selectionLabel(noun, selected, total) {
+export function selectionLabel(noun, selected, total, describe = null) {
   if (selected == null) return `Any ${noun}`;
   if (selected.size === 0) return 'None';
-  if (selected.size === 1) return [...selected][0];
+  if (selected.size === 1) {
+    const only = [...selected][0];
+    // With exactly one value ticked the closed button is the only thing
+    // saying what the filter is doing, so spell the code out where the
+    // caller can: "RESSD" names nothing, "RESSD · Detached Single
+    // Dwelling" names the thing. Codes with no description (and every
+    // picker that passes none) read exactly as before.
+    const desc = describe ? describe(only) : '';
+    return desc ? `${only} · ${desc}` : only;
+  }
   return `${selected.size} of ${total}`;
 }
 
@@ -100,7 +109,15 @@ export function sortOptions(values, order) {
   });
 }
 
-export function createMultiSelectFilter({ btnId, popoverId, label, onChange, order }) {
+/**
+ * @param {(value: string) => string} [describe] Plain-language name for an
+ *   option value, shown beside it in the popover and on the button when
+ *   exactly one is ticked. The Par Use Codes are the case this exists for:
+ *   a list of 57 five-letter codes is unreadable, and the appraiser is
+ *   choosing "Detached Single Dwelling", not "RESSD". Return '' for a
+ *   value with no name and the option renders bare.
+ */
+export function createMultiSelectFilter({ btnId, popoverId, label, onChange, order, describe }) {
   const $btn = document.getElementById(btnId);
   const $popover = document.getElementById(popoverId);
   let selected = null;      // tri-state, see the header
@@ -115,7 +132,7 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange, ord
   const $label = () => $btn.querySelector('.sales-pucs-btn-label');
   const syncLabel = () => {
     const el = $label();
-    if (el) el.textContent = selectionLabel(label, selected, options.length);
+    if (el) el.textContent = selectionLabel(label, selected, options.length, describe);
     // `has-selection` drives the filled-in look (dark ink, semibold,
     // stronger border) so a glance down the panel shows which pickers
     // are actually narrowing the set, rather than reading every label.
@@ -186,12 +203,26 @@ export function createMultiSelectFilter({ btnId, popoverId, label, onChange, ord
         onChange?.();
       });
       const text = document.createElement('span');
+      text.className = 'sales-pucs-popover-value';
       text.textContent = value;
+      // The name sits in its own span rather than inside the value's, so
+      // CSS can dim it and let it truncate while the code itself — the
+      // part that has to stay readable — never does.
+      const desc = describe ? String(describe(value) ?? '') : '';
+      const $desc = desc ? document.createElement('span') : null;
+      if ($desc) {
+        $desc.className = 'sales-pucs-popover-desc';
+        $desc.textContent = desc;
+        // The sidebar is narrow enough that a long name can still clip,
+        // so the hover text carries the whole thing.
+        item.title = `${value} — ${desc}`;
+      }
       const count = document.createElement('span');
       count.className = 'sales-pucs-popover-count';
       count.textContent = String(counts.get(value) ?? 0);
       item.appendChild(cb);
       item.appendChild(text);
+      if ($desc) item.appendChild($desc);
       item.appendChild(count);
       $popover.appendChild(item);
     }

@@ -2175,6 +2175,25 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Code + plain name, for the pickers that carry one (PUCS). The code
+   never shrinks and never wraps -- it is the part you match against the
+   grid -- while the name takes whatever room is left and ellipsises. The
+   count still pins right, because it is `margin-left: auto` and the name
+   sits before it. */
+.sales-pucs-popover-value {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.sales-pucs-popover-desc {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-neutral-500, #71717a);
+  font-size: 11.5px;
+}
+
 /* Sales-mode column visibility. .sales-only columns stay hidden
    until body carries .sales-mode (set by runSalesAnalysis after a
    CSV joins to live data). .subj-col hides the Dist column when
@@ -3838,6 +3857,7 @@ body.shape-drawing .maplibregl-canvas {
    the refresh layer gives .controls input, which they otherwise miss
    by being declared earlier in the file. */
 .controls .sales-range-input,
+.controls .sales-radius-input,
 .controls .sales-street-input {
   min-height: 36px;
   border: 1px solid var(--ui-line-strong);
@@ -3847,6 +3867,7 @@ body.shape-drawing .maplibregl-canvas {
   box-shadow: inset 0 1px 0 rgba(18, 22, 19, 0.03);
 }
 .controls .sales-range-input:hover,
+.controls .sales-radius-input:hover,
 .controls .sales-street-input:hover {
   border-color: #98a69e;
 }
@@ -4397,11 +4418,67 @@ button.topbar-link {
 /* Category picker sits on its own full-width row above the PUCS/class
    pair — the names ("Retail-Commercial", "Special Purpose") are longer
    than a half-width trigger can show without truncating to uselessness. */
-.sales-category-filter {
+.sales-category-filter,
+.sales-filter-full {
   width: 100%;
 }
-.sales-category-filter .sales-pucs-btn {
+.sales-category-filter .sales-pucs-btn,
+.sales-filter-full .sales-pucs-btn {
   width: 100%;
+}
+
+/* Radius from the subject parcel. Sits between the subject-roll chip and
+   the date presets, so it borrows the range rows' fixed label column and
+   the far-flung field's pinned input width -- the number is at most a few
+   characters and a full-width box would read as the panel's main event. */
+.sales-radius-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 2px;
+  font-size: 12.5px;
+}
+/* No fixed label column here, unlike the range rows: this row has one
+   input rather than a Min/Max pair to line up, and the 76px gutter is
+   what pushed "km of subject" onto a second line in a narrow sidebar. */
+.sales-radius-row .sales-range-label {
+  min-width: 0;
+}
+/* Specificity note, the same trap the far-flung field documents: the
+   sidebar gives `.controls input[type="number"]` (0,2,1) a stretchy
+   `flex: 1 1 auto`, which beats both `.sales-radius-input` and
+   `.controls .sales-radius-input` and leaves the box spanning the whole
+   row. The selector below has to carry the attribute too, or the pinned
+   width silently does nothing. */
+.controls input[type="number"].sales-radius-input,
+.sales-radius-input {
+  flex: 0 0 68px;
+  width: 68px;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: var(--ui-radius, 6px);
+  background: #fff;
+  color: var(--ui-ink, #151916);
+}
+.sales-radius-unit {
+  color: var(--color-neutral-500, #71717a);
+  font-size: 11.5px;
+}
+/* The note only appears when the radius is set but cannot run (no
+   subject roll) or is actually removing sales. Amber rather than red:
+   it is a caveat about the filter, not a failure of the run. */
+.sales-radius-note {
+  flex: 1 0 100%;
+  color: #8a4b08;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.sales-radius-note[hidden] {
+  display: none;
 }
 
 /* -----------------------------------------------------------------

@@ -129,6 +129,10 @@ import {
   groupVacancy, passesVacantFilter, isVacantUseCode, isLandSetUseCode, saleUseCodeOf,
   resolveMixedSales,
   groupSpreadKm, isFarFlung,
+  passesClusterFilter,
+  saleClusterOf,
+  parseRadiusKm,
+  passesRadiusFilter,
 } from './lib/salesFilters.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures } from './lib/sales.js';
@@ -1128,6 +1132,13 @@ function captureUrlState() {
   const subjectRollVal = (subjectRollEl?.value || '').trim();
   if (subjectRollVal) s.subjectRoll = subjectRollVal;
 
+  // Radius from the subject (Sales tab). Blank / 0 is the default and
+  // stays out of the URL. Emitted whatever the subject roll is doing —
+  // the same reasoning as "Number parcels": a shared link must carry the
+  // setting the sender typed, not whether it happened to be in effect.
+  const radiusVal = (document.getElementById('sales-radius-km')?.value || '').trim();
+  if (radiusVal !== '' && Number(radiusVal) > 0) s.salesRadiusKm = radiusVal;
+
   // N1 crosswalk filter (Sales tab). 'any' is the default and stays
   // out of the URL.
   const n1Val = document.getElementById('sales-n1-filter')?.value;
@@ -1216,6 +1227,11 @@ function applyUrlState(state) {
     // chipInput hasn't bound to #subject-roll yet at this point in
     // module init — it picks up the value when wireSalesTab runs
     // later. No need to dispatch a render event.
+  }
+
+  if ('salesRadiusKm' in state) {
+    const el = document.getElementById('sales-radius-km');
+    if (el) el.value = String(state.salesRadiusKm);
   }
 
   if ('salesN1' in state) {
@@ -3250,6 +3266,44 @@ function pruneVerifyKeys(max) {
  * 14-parcel portfolio sale is one sale, and saying 14 would badly
  * overstate what is being set aside.
  */
+/**
+ * The line under the radius input. Speaks only when the radius is set,
+ * and says one of two things:
+ *
+ *   - it CAN'T run, because no subject roll resolved to a centroid. The
+ *     row count would otherwise be indistinguishable from an ordinary
+ *     full result set, and the user would go on believing their comps
+ *     were within 2 km of anything.
+ *   - it IS running, and how many sales it removed. Same reason the
+ *     far-flung tally exists: a filter that quietly shrinks a comp set
+ *     has to account for itself where the eye already is.
+ *
+ * Silent when the radius is off, and silent when it is on and removing
+ * nothing — a filter that isn't doing anything shouldn't be talking.
+ */
+function updateRadiusNote(radiusKm, hasSubject, hiddenCount) {
+  const el = document.getElementById('sales-radius-note');
+  if (!el) return;
+  if (radiusKm == null) {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  if (!hasSubject) {
+    el.hidden = false;
+    el.textContent = '⚠ Ignored — enter a subject roll # above to measure from.';
+    return;
+  }
+  if (!hiddenCount) {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  el.hidden = false;
+  el.textContent = `${hiddenCount.toLocaleString('en-CA')} sale${hiddenCount === 1 ? '' : 's'} `
+    + `beyond ${radiusKm} km hidden.`;
+}
+
 function updateFarFlungCount(sales, thresholdKm, excluding) {
   const el = document.getElementById('far-flung-count');
   if (!el) return;
@@ -3686,6 +3740,19 @@ function wireSalesTab() {
     }
   }
 
+  // Radius from the subject. 'input' as well as 'change' so the set
+  // narrows as you type, like the far-flung threshold it sits closest to
+  // in spirit — and shareable via ?rad=.
+  const $radiusKm = document.getElementById('sales-radius-km');
+  if ($radiusKm) {
+    for (const evt of ['input', 'change']) {
+      $radiusKm.addEventListener(evt, () => {
+        queueUrlWrite();
+        if (salesData) runSalesAnalysis();
+      });
+    }
+  }
+
   // Charts. A named window target so repeated clicks reuse the one
   // tab rather than littering a dozen identical ones.
   document.getElementById('charts-open')?.addEventListener('click', () => {
@@ -3763,6 +3830,13 @@ const pucsFilter = createMultiSelectFilter({
   btnId: 'pucs-filter-btn',
   popoverId: 'pucs-filter-popover',
   label: 'PUCS',
+  // The City's own name for each code, beside the code. A list of 57
+  // five-letter codes is not a list anyone can choose from: the appraiser
+  // is looking for "Detached Single Dwelling", and RESSD is only how the
+  // export spells it. The code stays first so it still matches the grid
+  // at a glance. lib/pucs.js returns '' for a code it has never seen, and
+  // that option simply renders bare rather than vanishing.
+  describe: (code) => pucsName(code) || '',
   onChange: () => runSalesAnalysis(),
 });
 
@@ -3797,6 +3871,38 @@ const categoryFilter = createMultiSelectFilter({
   order: [...PUCS_CATEGORY_ORDER, UNCLASSIFIED_CATEGORY],
   onChange: () => runSalesAnalysis(),
 });
+
+// Neighbourhood cluster — WHERE, rather than what. Built after the join
+// for the same reason Class is: the cluster comes off the parcel centroid
+// on the live record, so it does not exist until the roll lookup has
+// resolved and lib/clusters.js has placed it.
+//
+// No explicit order: the cluster names are a flat vocabulary of ~23 with
+// no natural reading order, so alphabetical is exactly right — and it is
+// how an appraiser scans for one by name. (no cluster) falls to the end
+// on its own, the bracket sorting after every letter.
+const clusterFilter = createMultiSelectFilter({
+  btnId: 'cluster-filter-btn',
+  popoverId: 'cluster-filter-popover',
+  label: 'cluster',
+  onChange: () => runSalesAnalysis(),
+});
+
+/**
+ * Rebuild the cluster options from the joined, cluster-stamped set.
+ *
+ * Tallied BEFORE the cluster filter narrows anything, the same rule the
+ * other pickers follow — counting its own output would shrink the list on
+ * every change and the user could never tick a cluster back on.
+ */
+function rebuildClusterFilter(features) {
+  const counts = new Map();
+  for (const f of features) {
+    const c = saleClusterOf(f);
+    counts.set(c, (counts.get(c) || 0) + 1);
+  }
+  clusterFilter.setOptions(counts);
+}
 
 /**
  * Rebuild the category options from the joined, permit-corrected set.
@@ -4243,6 +4349,10 @@ async function runSalesAnalysis() {
     setColumnMode('property');
     clearTable();
     setParcels(EMPTY_FC, EMPTY_FC);
+    // The pre-join filters emptied the set, so the radius never ran. Its
+    // note has to go with it — a leftover "6 sales beyond 3 km hidden"
+    // sitting under an empty grid is a tally of a run that did not happen.
+    updateRadiusNote(null, false, 0);
     return;
   }
   const distinctRolls = [...new Set(visibleSales.map((s) => s.roll))];
@@ -4734,12 +4844,23 @@ async function runSalesAnalysis() {
     : saleFc.features.filter((f) => categorySelected.has(saleCategoryOf(f)));
   const categoryHidden = saleFc.features.length - afterCategory.length;
 
+  // Neighbourhood cluster. Second, right after Category: together they
+  // are the two cuts a comp search actually starts from — what it is and
+  // where it is — and both narrow far harder than the code-level pickers
+  // below. Options come off the FULL joined set, like every other picker.
+  rebuildClusterFilter(saleFc.features);
+  const clusterSelected = clusterFilter.getSelected();
+  const afterCluster = clusterSelected == null
+    ? afterCategory
+    : afterCategory.filter((f) => passesClusterFilter(f, clusterSelected));
+  const clusterHidden = afterCategory.length - afterCluster.length;
+
   rebuildClassFilter(saleFc.features);
   const classSelected = classFilter.getSelected();
   const afterClass = classSelected == null
-    ? afterCategory
-    : afterCategory.filter((f) => classSelected.has(saleClassOf(f)));
-  const classHidden = afterCategory.length - afterClass.length;
+    ? afterCluster
+    : afterCluster.filter((f) => classSelected.has(saleClassOf(f)));
+  const classHidden = afterCluster.length - afterClass.length;
 
   // Zoning. Options come off the FULL joined set (like Class) so
   // unticking a code never removes it from the list you need in order to
@@ -4792,11 +4913,29 @@ async function runSalesAnalysis() {
     afterVacant.filter((f) => f.properties._farFlung)
       .map((f) => String(f.properties._saleInstrument ?? ''))
   ).size;
-  const finalFeatures = farFlungKm != null && farFlungExclude
+  const afterFarFlung = farFlungKm != null && farFlungExclude
     ? afterVacant.filter((f) => !f.properties._farFlung)
     : afterVacant;
-  const farFlungHidden = afterVacant.length - finalFeatures.length;
+  const farFlungHidden = afterVacant.length - afterFarFlung.length;
   updateFarFlungCount(flaggedSales, farFlungKm, farFlungExclude);
+
+  // Radius from the subject. Last, because it is the cut an appraiser
+  // tunes by watching the count — and because it reads _dist, which only
+  // exists once a subject roll resolved to a centroid above.
+  //
+  // With no subject the filter is IGNORED rather than applied. Applying
+  // it would be arithmetically correct and practically a trap: nothing
+  // has a distance, every row fails, and the grid empties with "0 sales
+  // shown" — which reads as "no comps near your subject" when what
+  // happened is that no subject was named. The note beside the input
+  // says so instead.
+  const radiusKm = parseRadiusKm(document.getElementById('sales-radius-km')?.value);
+  const radiusActive = radiusKm != null && subjectCentroid != null;
+  const finalFeatures = radiusActive
+    ? afterFarFlung.filter((f) => passesRadiusFilter(f, radiusKm))
+    : afterFarFlung;
+  const radiusHidden = afterFarFlung.length - finalFeatures.length;
+  updateRadiusNote(radiusKm, subjectCentroid != null, radiusHidden);
 
   const teardownCount = finalFeatures.filter((f) => f.properties._demoVerdict === 'teardown').length;
   const alreadyBuiltCount = finalFeatures.filter((f) => f.properties._buildVerdict === 'already-built').length;
@@ -4861,10 +5000,18 @@ async function runSalesAnalysis() {
     // loses essentially all of them.
     (permitsOk ? '' : " · ⚠ PERMIT CHECK FAILED — only the roll's and SABRE's own year built are judging, which catches a small fraction, so already-built houses are still counted as Land") +
     (categoryHidden ? ` · ${categoryHidden} hidden by the category filter` : '') +
+    (clusterHidden ? ` · ${clusterHidden} hidden by the cluster filter` : '') +
     (classHidden ? ` · ${classHidden} hidden by the class filter` : '') +
     (zoningHidden ? ` · ${zoningHidden} hidden by the zoning filter` : '') +
     (vacantHidden ? ` · ${vacantHidden} hidden by the ${vacantMode} filter` : '') +
     (farFlungHidden ? ` · ${farFlungHidden} far-flung excluded` : '') +
+    // Loud when the radius is set but can't run: the user typed a limit
+    // and it is doing nothing, which is the one radius state they cannot
+    // see in the row count.
+    (radiusKm != null && subjectCentroid == null
+      ? ' · ⚠ Radius ignored — set a subject roll to measure from'
+      : '') +
+    (radiusHidden ? ` · ${radiusHidden} beyond ${radiusKm} km of the subject` : '') +
     // Named explicitly because this is the finding the columns exist to
     // surface, and it is invisible unless the Demo column happens to be
     // on screen: an improved-coded sale with a demolition permit beside

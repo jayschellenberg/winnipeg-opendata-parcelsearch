@@ -99,4 +99,27 @@ assert.deepEqual(
 assert.deepEqual(sortOptions(['b', 'a', 'c']), ['a', 'b', 'c']);
 assert.deepEqual(sortOptions(['b', 'a', 'c'], []), ['a', 'b', 'c']);
 
+
+// ---- selectionLabel with a describe() ------------------------------------
+// The PUCS picker names each code. With exactly one ticked the closed
+// button is the only thing on screen saying what the filter is doing, so
+// it spells the code out; every other count is unchanged, and a picker
+// that passes no describe must behave exactly as before.
+const PUCS_DESC = { RESSD: 'Detached Single Dwelling', ZZZZZ: '' };
+const describe = (code) => PUCS_DESC[code] ?? '';
+
+assert.equal(
+  selectionLabel('PUCS', new Set(['RESSD']), 7, describe),
+  'RESSD \u00b7 Detached Single Dwelling',
+);
+// A code the table has never seen renders bare rather than with a
+// trailing separator and nothing after it.
+assert.equal(selectionLabel('PUCS', new Set(['ZZZZZ']), 7, describe), 'ZZZZZ');
+// describe is only consulted for the one-selected case.
+assert.equal(selectionLabel('PUCS', new Set(['RESSD', 'RESMC']), 7, describe), '2 of 7');
+assert.equal(selectionLabel('PUCS', null, 7, describe), 'Any PUCS');
+assert.equal(selectionLabel('PUCS', new Set(), 7, describe), 'None');
+// No describe = the old behaviour, unchanged.
+assert.equal(selectionLabel('class', new Set(['OTHER']), 3), 'OTHER');
+
 console.log('multiSelectFilter.test.js: all assertions passed');

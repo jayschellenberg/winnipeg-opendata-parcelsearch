@@ -22,6 +22,8 @@ import {
   saleUseCodeOf, isVacantUseCode, groupVacancy, passesVacantFilter,
   groupSpreadKm, isFarFlung,
   isLandSetUseCode, resolveMixedSales,
+  saleClusterOf, passesClusterFilter, UNASSIGNED_CLUSTER,
+  parseRadiusKm, passesRadiusFilter,
 } from '../src/lib/salesFilters.js';
 
 let passed = 0;
@@ -490,6 +492,84 @@ test('resolveMixedSales — empty and junk input never throws', () => {
     assert.equal(force.size, 0);
     assert.equal(mixed.size, 0);
   }
+});
+
+
+// ---- cluster ---------------------------------------------------------------
+// Locking the one rule that decides whether a cluster search can quietly
+// lose sales: a parcel the point-in-polygon could not place is a NAMED,
+// tickable option, never a blank that fails every filter unseen.
+
+const clu = (cluster) => ({ properties: cluster === undefined ? {} : { _cluster: cluster } });
+
+test('saleClusterOf — reads the stamped cluster', () => {
+  assert.equal(saleClusterOf(clu('Fort Garry South')), 'Fort Garry South');
+});
+
+test('saleClusterOf — unplaceable parcels get the named bucket, never blank', () => {
+  for (const f of [clu(''), clu('   '), clu(null), clu(undefined), {}, null]) {
+    assert.equal(saleClusterOf(f), UNASSIGNED_CLUSTER);
+  }
+});
+
+test('passesClusterFilter — null selection is no filter', () => {
+  assert.equal(passesClusterFilter(clu('Transcona'), null), true);
+  assert.equal(passesClusterFilter(clu(''), null), true);
+});
+
+test('passesClusterFilter — only ticked clusters pass', () => {
+  const sel = new Set(['Transcona']);
+  assert.equal(passesClusterFilter(clu('Transcona'), sel), true);
+  assert.equal(passesClusterFilter(clu('St. Vital South'), sel), false);
+});
+
+test('passesClusterFilter — the unassigned bucket is tickable like any other', () => {
+  assert.equal(passesClusterFilter(clu(''), new Set([UNASSIGNED_CLUSTER])), true);
+  assert.equal(passesClusterFilter(clu(''), new Set(['Transcona'])), false);
+});
+
+test('passesClusterFilter — empty Set is a deliberate show-nothing', () => {
+  assert.equal(passesClusterFilter(clu('Transcona'), new Set()), false);
+});
+
+// ---- radius from the subject ----------------------------------------------
+// _dist is the same centroid-to-centroid figure the Dist (km) column
+// shows, so these assertions are also asserting that the filter and the
+// column can never disagree about how far away a sale is.
+
+const away = (dist) => ({ properties: dist === undefined ? {} : { _dist: dist } });
+
+test('parseRadiusKm — blank / junk / zero / negative all mean OFF', () => {
+  for (const v of ['', '   ', null, undefined, 'abc', '0', '0.0', '-3']) {
+    assert.equal(parseRadiusKm(v), null, `${JSON.stringify(v)} should disable the radius`);
+  }
+});
+
+test('parseRadiusKm — decimals survive (1.5 km is not 1 km)', () => {
+  assert.equal(parseRadiusKm('1.5'), 1.5);
+  assert.equal(parseRadiusKm(' 2 '), 2);
+  assert.equal(parseRadiusKm('1,500'), 1500);
+});
+
+test('passesRadiusFilter — null radius passes everything, measured or not', () => {
+  assert.equal(passesRadiusFilter(away(99), null), true);
+  assert.equal(passesRadiusFilter(away(undefined), null), true);
+});
+
+test('passesRadiusFilter — inclusive at the boundary', () => {
+  assert.equal(passesRadiusFilter(away(2), 2), true);
+  assert.equal(passesRadiusFilter(away(1.999), 2), true);
+  assert.equal(passesRadiusFilter(away(2.001), 2), false);
+});
+
+test('passesRadiusFilter — missing is excluded (no live match = no centroid)', () => {
+  for (const f of [away(undefined), away(null), away(NaN), away('far'), {}, null]) {
+    assert.equal(passesRadiusFilter(f, 2), false);
+  }
+});
+
+test('passesRadiusFilter — a sale on top of the subject is inside every radius', () => {
+  assert.equal(passesRadiusFilter(away(0), 0.5), true);
 });
 
 console.log('');

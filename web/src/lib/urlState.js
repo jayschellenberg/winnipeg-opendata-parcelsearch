@@ -47,6 +47,21 @@ function cleanInt(min, max) {
   };
 }
 
+/**
+ * A finite decimal inside [min, max], for the params that are distances
+ * rather than counts. cleanInt would silently truncate "1.5" to 1, which
+ * on a radius is not a rounding error — it is a different search.
+ */
+function cleanNumber(min, max) {
+  return (v) => {
+    if (typeof v !== 'string') return undefined;
+    const n = Number.parseFloat(v);
+    if (!Number.isFinite(n)) return undefined;
+    if (n < min || n > max) return undefined;
+    return n;
+  };
+}
+
 function oneOf(allowed) {
   const set = new Set(allowed);
   return (v) => (typeof v === 'string' && set.has(v) ? v : undefined);
@@ -147,6 +162,21 @@ export const SCHEMA = {
   // Storey band of apartment / office sales from the offline lookup.
   // 'any' is the default and never emitted.
   salesRise: { param: 'rise', validate: oneOf(['low', 'mid', 'high']), format: (v) => v },
+
+  // --- Radius from the subject parcel (Sales tab) ---
+  // Kilometres, decimals allowed. Blank / 0 is "no limit" and is never
+  // emitted, so the lower bound is the smallest meaningful radius rather
+  // than 0. The upper bound is far past Winnipeg's ~30 km span — wide
+  // enough never to reject something a user meant, tight enough that a
+  // malformed URL can't smuggle an absurd number into the filter.
+  salesRadiusKm: {
+    param: 'rad',
+    validate: cleanNumber(0.01, 500),
+    format: (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? String(n) : null;
+    },
+  },
 };
 
 const PARAM_TO_KEY = Object.fromEntries(
