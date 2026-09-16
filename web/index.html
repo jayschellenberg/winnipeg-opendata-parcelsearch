@@ -809,6 +809,18 @@
             <!-- Opens the land-sales charts in a second tab. The tab
                  tracks these filters live over a BroadcastChannel, so
                  narrowing the grid narrows the scatter. -->
+            <!-- The same export the Property tab's action row offers, and
+                 the same handler: csvSchemaForMode already switches to the
+                 sales schema in sales mode, and columnsForMode ignores the
+                 Columns picker, so this writes EVERY field including the
+                 columns you have hidden. It was simply unreachable from
+                 this tab (Jason, 2026-09-16). -->
+            <button
+              type="button"
+              id="sales-export"
+              class="secondary"
+              title="Download every sale currently shown as a CSV — all fields, including columns hidden in the Columns picker, and the sales-mode columns ($/Lot SF, $/Bldg SF, Category, Cluster, Dist…). Culled rows are excluded, and you are asked first if any are."
+            >⬇ Export CSV</button>
             <button
               type="button"
               id="charts-open"

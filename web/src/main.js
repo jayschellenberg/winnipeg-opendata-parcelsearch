@@ -169,6 +169,10 @@ const $duMin = document.getElementById('du-min');
 const $search = document.getElementById('search');
 const $clear = document.getElementById('clear');
 const $export = document.getElementById('export');
+// The Sales tab's own Export button. A second element rather than a moved
+// one so the Property tab's action row is untouched; both drive the same
+// exportCsv, which already picks its schema off body.sales-mode.
+const $salesExport = document.getElementById('sales-export');
 const $zoningToggle = document.getElementById('zoning-toggle');
 const $trafficToggle = document.getElementById('traffic-toggle');
 const $surveyToggle = document.getElementById('survey-toggle');
@@ -543,6 +547,7 @@ const { map, ready: mapReady } = initMap($mapEl, {
 $search.addEventListener('click', runSearch);
 $clear.addEventListener('click', clearAll);
 $export.addEventListener('click', exportCsv);
+$salesExport?.addEventListener('click', exportCsv);
 $zoningToggle.addEventListener('click', toggleZoning);
 $trafficToggle.addEventListener('click', toggleTraffic);
 $surveyToggle.addEventListener('click', () => toggleLayer('survey'));
@@ -3255,6 +3260,7 @@ function cssEscape(s) {
 
 function setExportEnabled(enabled) {
   $export.disabled = !enabled;
+  if ($salesExport) $salesExport.disabled = !enabled;
 }
 
 function exportCsv() {
