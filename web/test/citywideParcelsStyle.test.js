@@ -98,11 +98,30 @@ test('a map without the fabric layer is a no-op (tiles never toggled on)', () =>
   assert.deepEqual(m.paint, {});
 });
 
-test('colours match the Manitoba sister app exactly', () => {
-  // Jason amended these in mb-parcelsearch (web/src/lib/muniParcelsStyle.js)
-  // and wants the two tools consistent — grey on streets, white on aerial.
-  assert.equal(CITYWIDE_PARCELS_LINE_STYLES.light['line-color'], '#d1d5db');
+test('the streets grey is a DELIBERATE divergence from Manitoba', () => {
+  // Manitoba (web/src/lib/muniParcelsStyle.js) uses gray-300 #d1d5db and
+  // this app matched it until 2026-09-16, when Jason asked for darker
+  // lines on the Property Search tab. At working zoom the opacity ramp was
+  // already at 0.92 — no headroom — so the ink had to change. Pinned here
+  // so a future "restore parity with MB" pass has to read this first.
+  assert.equal(CITYWIDE_PARCELS_LINE_STYLES.light['line-color'], '#6b7280');
+  assert.notEqual(CITYWIDE_PARCELS_LINE_STYLES.light['line-color'], '#d1d5db');
+  // Imagery is unchanged: white on aerial is the classic cadastre
+  // treatment and was never the complaint.
   assert.equal(CITYWIDE_PARCELS_LINE_STYLES.imagery['line-color'], '#ffffff');
+});
+
+test('darker ink came with LOWER low-zoom stops, not the same ones', () => {
+  // The blackout guard scales with the ink. gray-500 at gray-300's old
+  // z11 opacity repaints the city solid where the lighter grey textured
+  // it, so the two low stops came down when the colour went darker.
+  const ramp = CITYWIDE_PARCELS_LINE_STYLES.light['line-opacity'];
+  const stops = new Map();
+  for (let i = 3; i < ramp.length; i += 2) stops.set(ramp[i], ramp[i + 1]);
+  assert.ok(stops.get(8) <= 0.10, `z8 ${stops.get(8)} must not exceed 0.10 with gray-500`);
+  assert.ok(stops.get(11) <= 0.15, `z11 ${stops.get(11)} must not exceed 0.15 with gray-500`);
+  // The working end is untouched — that was never the problem.
+  assert.equal(stops.get(15), 0.92);
 });
 
 test('the zoom ramps survive the port — no flat values, imagery no wider', () => {

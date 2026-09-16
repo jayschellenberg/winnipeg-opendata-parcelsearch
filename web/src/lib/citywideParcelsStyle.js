@@ -38,10 +38,17 @@ const LINE_WIDTH_RAMP = [
 
 export const CITYWIDE_PARCELS_LINE_STYLES = {
   light: {
-    // Tailwind gray-300, matching Manitoba, and lighter than the gray-500
-    // (#6b7280) this layer shipped with. The opacity below carries the
-    // apparent weight the darker grey used to.
-    'line-color': '#d1d5db',
+    // Tailwind gray-500 — back to the grey this layer originally shipped
+    // with, and a DELIBERATE divergence from Manitoba's gray-300 (Jason,
+    // 2026-09-16: "a bit too light, make them darker or more black").
+    //
+    // The colour was the only lever left. At z15+ the opacity ramp is
+    // already at 0.92, which the note below called very nearly the
+    // headroom this preset has, so "make it darker" at working zoom could
+    // not come from opacity — it had to come from the ink. Two steps down
+    // the grey ramp (gray-300 -> gray-400 -> gray-500) rather than one,
+    // because the ask was "darker or more black", not "slightly darker".
+    'line-color': '#6b7280',
     'line-width': LINE_WIDTH_RAMP,
     // Raised at the top end on 2026-08-24: gray-300 at 0.8 read too faint
     // on Positron in use (Jason). Only the two upper stops moved --
@@ -55,10 +62,16 @@ export const CITYWIDE_PARCELS_LINE_STYLES = {
     // read faint, opacity is no longer the lever -- the colour is, and the
     // move is a step back down the grey ramp (gray-400 #9ca3af, then the
     // original gray-500 #6b7280), accepting the divergence from Manitoba.
+    // The two low stops came DOWN with the darker ink, and that is the
+    // blackout guard doing its job rather than a second opinion about the
+    // look: at z11 roughly 37,000 lots are in view with every boundary
+    // overlapping its neighbours, so gray-500 at the old 0.18 paints the
+    // city solid where gray-300 merely textured it. Same apparent weight
+    // at the low end, much more at the working end.
     'line-opacity': [
       'interpolate', ['linear'], ['zoom'],
-      8, 0.12,
-      11, 0.18,
+      8, 0.10,
+      11, 0.15,
       13, 0.55,
       15, 0.92,
     ],
