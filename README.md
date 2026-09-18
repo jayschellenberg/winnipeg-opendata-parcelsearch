@@ -205,6 +205,16 @@ itself. Every row resolves against the live assessment roll, and
 `test/parcelListParse.test.js` reads the real file rather than a copy, so
 the sample cannot drift into one that no longer parses.
 
+Parsing is only half of it. A parcel the City renumbers or re-addresses
+would leave its row parsing perfectly while matching nothing — a stale
+sample teaching a shape that no longer works, which no offline test can
+see. `npm run check:sample` resolves every row against the live roll and
+fails naming any that no longer land; a monthly workflow
+(`.github/workflows/sample-list-check.yml`) runs it so that turns into a
+notification rather than a user's bug report. It is deliberately NOT part
+of `npm test`, which stays offline and must never fail because someone
+else's server had a bad minute.
+
 The last five imports are kept in `localStorage` and offered as a
 **Recent** dropdown, so a comp list can be reloaded after a Clear without
 finding the file again. The TEXT is cached, not just the name — a browser

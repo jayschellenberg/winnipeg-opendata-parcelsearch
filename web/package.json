@@ -11,7 +11,8 @@
     "lint": "eslint src test scripts eslint.config.js",
     "fetch:pmtiles": "node scripts/fetch-pmtiles.mjs",
     "refresh:transit": "node scripts/build-transit-geojson.mjs",
-    "refresh:neighbourhoods": "node scripts/build-neighbourhoods-geojson.mjs"
+    "refresh:neighbourhoods": "node scripts/build-neighbourhoods-geojson.mjs",
+    "check:sample": "node scripts/check-sample-list.mjs"
   },
   "dependencies": {
     "@mapbox/mapbox-gl-draw": "^1.5.1",

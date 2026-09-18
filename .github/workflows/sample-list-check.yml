@@ -1,0 +1,50 @@
+# Monthly liveness check for the Import list sample CSV.
+#
+# SEPARATE FROM ci.yml ON PURPOSE. CI is offline and deterministic: it
+# runs on every push and must never fail because someone else's server
+# had a bad minute. This one deliberately calls the City's live
+# assessment roll, so it cannot live there.
+#
+# What it catches: public/sample-parcel-list.csv is the file people copy
+# their own list from, and every row in it is a real Winnipeg parcel. If
+# the City renumbers, consolidates or re-addresses one, the row goes on
+# PARSING perfectly (which is all the unit tests can check) while
+# matching nothing — a stale sample that teaches a shape which no longer
+# works. Nothing else would notice.
+#
+# Monthly, because the assessment roll moves on that kind of timescale
+# and a stale sample is an annoyance rather than an outage. Exit code 2
+# means the API was unreachable rather than the sample being wrong; the
+# job still fails, and the log says which it was.
+name: Sample list check
+
+on:
+  schedule:
+    # 09:00 UTC on the 1st — early morning in Winnipeg, so a failure is
+    # waiting rather than arriving mid-day.
+    - cron: '0 9 1 * *'
+  workflow_dispatch:
+
+jobs:
+  check-sample:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      # Shallow checkout — the repo carries a large pmtiles asset at HEAD.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # The check imports the app's own parser and resolver and needs no
+      # build, but npm ci keeps the Node version and lockfile honest.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve every sample row against the live assessment roll
+        run: npm run check:sample
