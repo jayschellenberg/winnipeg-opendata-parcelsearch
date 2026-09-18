@@ -45,6 +45,16 @@ const HEADER_WORDS = new Set([
 ]);
 
 /**
+ * Words that mark a cell as a column heading when it is not an exact
+ * match for one of the above — "Address or Roll #", "Subject Property
+ * Address", "Roll Number (11 digit)". Matching on CONTAINS would be far
+ * too loose on its own; it is only ever applied to a row in which NOT
+ * ONE cell parsed as data, and a real address or roll always parses. So
+ * "123 Roll Street" can never reach this test.
+ */
+const HEADER_TOKENS = ['address', 'roll', 'parcel', 'civic'];
+
+/**
  * Locality tokens stripped from the TAIL of an address cell. The City's
  * datasets store neither city nor province, so "330 Selkirk Ave,
  * Winnipeg, MB" has to lose its last two components before street_name
@@ -155,9 +165,16 @@ function pickDelimiter(text) {
 export function looksLikeHeaderRow(cells) {
   const list = cells || [];
   if (!list.length) return false;
-  const anyHeader = list.some((c) => HEADER_WORDS.has(normalizeHeaderCell(c)));
-  if (!anyHeader) return false;
-  return !list.some((c) => classifyCell(c).kind !== 'unparseable');
+  // The guard comes FIRST and is what makes the loose token match safe:
+  // a row containing any real address or roll is data, whatever its
+  // other cells say.
+  if (list.some((c) => classifyCell(c).kind !== 'unparseable')) return false;
+  return list.some((c) => {
+    const n = normalizeHeaderCell(c);
+    if (!n) return false;
+    if (HEADER_WORDS.has(n)) return true;
+    return HEADER_TOKENS.some((t) => n.split(' ').includes(t));
+  });
 }
 
 /**

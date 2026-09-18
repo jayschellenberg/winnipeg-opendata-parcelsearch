@@ -3,6 +3,7 @@
  * the Import list modal.
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   parseParcelList, parseAddressCell, parseRollCell, classifyCell,
   cleanAddressCell, looksLikeHeaderRow,
@@ -135,6 +136,23 @@ test('a header word beside real data is not a header row', () => {
   assert.equal(looksLikeHeaderRow(['Location', '330 Selkirk Ave']), false);
 });
 
+test('a compound heading is recognized without an exact match', () => {
+  assert.equal(looksLikeHeaderRow(['Comp', 'Address or Roll #', 'Notes']), true);
+  assert.equal(looksLikeHeaderRow(['Subject Property Address']), true);
+  assert.equal(looksLikeHeaderRow(['Roll Number (11 digit)']), true);
+});
+
+test('a street literally named Roll is data, not a heading', () => {
+  // The loose token match is only reachable when NOTHING in the row
+  // parses, and an address always parses — so this stays data.
+  assert.equal(looksLikeHeaderRow(['123 Roll Street']), false);
+});
+
+test('an all-junk first row with no header word stays data', () => {
+  // Reported as unreadable rather than silently swallowed as a header.
+  assert.equal(looksLikeHeaderRow(['somewhere downtown']), false);
+});
+
 // ---- parseParcelList: the user's own sample ----------------------
 
 const SAMPLE = [
@@ -252,6 +270,53 @@ test('unparseable rows survive to the review screen', () => {
 test('empty input yields no rows', () => {
   const out = parseParcelList('   \n  \n');
   assert.equal(out.counts.total, 0);
+});
+
+// ---- the shipped sample CSV --------------------------------------
+// public/sample-parcel-list.csv is offered as a download from the Import
+// list modal and is the file people will copy their own list from, so a
+// row that stopped parsing would teach the wrong shape. Read the REAL
+// file rather than a copy: a sample that drifts out of step with the
+// parser is exactly what this guards against.
+//
+// Resolution needs the network and is not tested here; what is pinned is
+// that every row still PARSES, and as the kind it is meant to show.
+
+const SAMPLE_CSV = readFileSync(
+  new URL('../public/sample-parcel-list.csv', import.meta.url), 'utf8'
+);
+
+test('the sample CSV parses with no unreadable rows', () => {
+  const out = parseParcelList(SAMPLE_CSV);
+  assert.equal(out.headerDropped, true, 'its header row must be recognized');
+  assert.equal(out.column, 1, 'the identifier column must win the scoring');
+  assert.equal(out.counts.unparseable, 0, 'no sample row may fail to parse');
+  assert.equal(out.counts.total, 9);
+});
+
+test('the sample CSV demonstrates both addresses and roll numbers', () => {
+  const out = parseParcelList(SAMPLE_CSV);
+  assert.equal(out.counts.address, 6);
+  assert.equal(out.counts.roll, 3);
+});
+
+test('the sample CSV keeps its Comp and Notes columns out of the lookup', () => {
+  const out = parseParcelList(SAMPLE_CSV);
+  // Nothing from column 0 (Comp) or column 2 (Notes) may reach the cell
+  // that gets looked up.
+  for (const r of out.rows) {
+    assert.doesNotMatch(r.cell, /^\d+,/);
+    assert.doesNotMatch(r.cell, /ignored|fine|matches|folded/i);
+  }
+});
+
+test('the sample CSV covers the roll-number variants it claims to', () => {
+  const out = parseParcelList(SAMPLE_CSV);
+  const rolls = out.rows.filter((r) => r.kind === 'roll').map((r) => r.roll);
+  assert.ok(rolls.some((r) => r.length === 11), 'a full 11-digit roll');
+  assert.ok(rolls.some((r) => r.length === 10), 'one with the leading zero dropped');
+  // The dashed row must survive as digits only.
+  assert.ok(rolls.every((r) => /^\d+$/.test(r)));
 });
 
 console.log(`parcelListParse.test.js: ${passed} passed`);

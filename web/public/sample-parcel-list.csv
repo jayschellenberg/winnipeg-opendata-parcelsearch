@@ -1,0 +1,10 @@
+Comp,Address or Roll #,Notes
+1,"330 Selkirk Ave, Winnipeg, MB",City and province on the end are fine
+2,393 Selkirk Ave,...or leave them off
+3,"407 Selkirk Ave, Winnipeg, MB R2W 2M1",A postal code is ignored too
+4,14010256100,A roll number works in the same list as addresses
+5,1000001000,Excel dropped the leading zero - it still matches
+6,010-000-055-00,Dashes and spaces inside a roll are ignored
+7,440 Hargrave St,Side door - the roll lists this parcel as 400 Hargrave
+8,11 St. Mary's Rd,Periods and apostrophes are folded away
+9,101 Rue Marion,A French street name resolves to the name the roll stores

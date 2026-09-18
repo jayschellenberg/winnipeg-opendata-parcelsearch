@@ -193,6 +193,18 @@ Three things are load-bearing:
   remainder, so a clean list never pays for it, and it is capped — beyond
   the cap the rows are reported unmatched and the notice says why.
 
+A **Sample CSV** link beside the file picker downloads
+[`sample-parcel-list.csv`](web/public/sample-parcel-list.csv) — nine rows
+covering every shape the importer accepts: an address with the city and
+province, one without, one carrying a postal code, a full 11-digit roll,
+one with the leading zero Excel dropped, one written with dashes, a side
+door (440 Hargrave, assessed as 400 Hargrave), and punctuation-heavy and
+French street names. Its `Comp` and `Notes` columns are there to be
+ignored, which demonstrates that rule while letting the file document
+itself. Every row resolves against the live assessment roll, and
+`test/parcelListParse.test.js` reads the real file rather than a copy, so
+the sample cannot drift into one that no longer parses.
+
 The last five imports are kept in `localStorage` and offered as a
 **Recent** dropdown, so a comp list can be reloaded after a Clear without
 finding the file again. The TEXT is cached, not just the name — a browser

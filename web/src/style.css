@@ -3804,6 +3804,26 @@ body.shape-drawing .maplibregl-canvas {
    --------------------------------------------------------------------------- */
 .parcel-list-modal { width: min(860px, calc(100vw - 32px)); }
 
+/* Sample CSV download, beside the file picker in the Import list modal.
+   margin-left:auto pushes it to the far end of that flex row so it reads
+   as a companion to the picker rather than a third control in sequence. */
+.sample-csv-link {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-accent-600, #1d4ed8);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sample-csv-link:hover { color: var(--color-accent-500, #2563eb); }
+.sample-csv-link:focus-visible {
+  outline: 2px solid var(--color-accent-500, #2563eb);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 /* Recent imports row inside the Import list modal. */
 .parcel-list-recent[hidden] { display: none; }
 .parcel-list-recent-label {

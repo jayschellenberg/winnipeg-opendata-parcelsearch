@@ -1409,6 +1409,20 @@
               accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
             />
             <span>Choose CSV/TSV file…</span>
+            <!-- Template download. A static file in web/public, so it is
+                 served off the site root in dev and production alike.
+                 Every row in it resolves against the live assessment
+                 roll, and its Notes column says what each row is
+                 demonstrating — which also demonstrates the rule that
+                 extra columns are ignored. test/parcelListParse.test.js
+                 reads the real file, so the sample cannot drift into one
+                 that no longer parses. -->
+            <a
+              class="sample-csv-link"
+              href="sample-parcel-list.csv"
+              download="sample-parcel-list.csv"
+              title="Download a sample CSV. Nine rows covering every shape this importer accepts — addresses with and without the city, a postal code, roll numbers with and without their leading zero, a side-door address, and punctuation-heavy and French street names. Every row resolves."
+            >Sample CSV</a>
           </label>
           <!-- Recent imports (last 5, localStorage). Hidden until a
                cached entry exists, so a first-time user never sees an
