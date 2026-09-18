@@ -27,6 +27,58 @@
 import { parseParcelList } from './parcelListParse.js';
 import { resolveParcelList, collectRolls } from './parcelListResolve.js';
 
+/**
+ * Recent imports, cached in localStorage. Ported from the Manitoba
+ * sister app: a comp list gets re-run far more often than it gets
+ * written, usually because the user wants the same set back after
+ * clearing a search, so the last few are worth keeping.
+ *
+ * Text is stored, not just the name. A file picked from disk cannot be
+ * re-read without the user picking it again — the browser gives no
+ * standing handle — so replaying the cached text is the only way a
+ * "recent" entry can actually reload anything.
+ *
+ * Every read and write is wrapped: localStorage throws in private mode
+ * and on quota, and a dead cache must degrade to "no recent imports"
+ * rather than taking the modal down with it.
+ */
+const RECENT_STORAGE_KEY = 'wpgps_parcel_list_recent_v1';
+const RECENT_CAP = 5;
+
+function loadRecentImports() {
+  try {
+    const raw = localStorage.getItem(RECENT_STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.slice(0, RECENT_CAP) : [];
+  } catch { return []; }
+}
+
+function saveRecentImports(list) {
+  try {
+    localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(list.slice(0, RECENT_CAP)));
+  } catch { /* quota / private mode — best effort, never fatal */ }
+}
+
+function rememberImport(name, text, kind = 'file') {
+  if (!name || !text) return;
+  // De-dup by name, newest first. Re-importing the same file refreshes
+  // its cached text, which is what you want when the spreadsheet was
+  // edited between sessions.
+  const list = loadRecentImports().filter((e) => e.name !== name);
+  list.unshift({ name, text, kind, ts: Date.now() });
+  saveRecentImports(list);
+}
+
+/** A readable label for a paste with no file behind it: the first
+ *  non-empty line, so several pastes stay tellable apart. */
+export function synthesizePasteName(text, now = new Date()) {
+  const firstLine = String(text || '').split(/\r\n|\r|\n/).find((l) => l.trim()) || '';
+  const snippet = firstLine.replace(/\s+/g, ' ').trim().slice(0, 30);
+  const stamp = `${now.toISOString().slice(5, 10)} ${now.toTimeString().slice(0, 5)}`;
+  return snippet ? `Paste: ${snippet}… (${stamp})` : `Paste (${stamp})`;
+}
+
 /** Per-tab wording. The flow is identical; only the framing changes. */
 const MODES = {
   property: {
@@ -88,6 +140,9 @@ export function initParcelListImport({ onConfirm, resolve = resolveParcelList } 
   const $checkAll = document.getElementById('parcel-list-check-all');
   const $progress = document.getElementById('parcel-list-progress');
   const $reviewErr = document.getElementById('parcel-list-review-error');
+  const $recentRow    = document.getElementById('parcel-list-recent-row');
+  const $recentSelect = document.getElementById('parcel-list-recent-select');
+  const $recentClear  = document.getElementById('parcel-list-recent-clear');
   const steps = {
     paste:     $modal.querySelector('[data-step="paste"]'),
     resolving: $modal.querySelector('[data-step="resolving"]'),
@@ -99,6 +154,13 @@ export function initParcelListImport({ onConfirm, resolve = resolveParcelList } 
   let mode = 'property';
   let resolved = [];            // rows, post-resolution
   let included = new Set();     // indices of rows the user left checked
+  // How the current text arrived — a file name, a recent entry's label,
+  // or '' for a raw paste (which gets a synthesized label on success).
+  let sourceName = '';
+  // 'file' or 'paste' — which label form the entry gets in the recent
+  // dropdown. Carried through a replay so re-confirming a recent PASTE
+  // does not start labelling it as a file.
+  let sourceKind = 'paste';
   // Guards a resolution against a modal the user has already closed and
   // reopened — the late result must not repaint the new session.
   let runToken = 0;
@@ -124,12 +186,15 @@ export function initParcelListImport({ onConfirm, resolve = resolveParcelList } 
     resolved = [];
     included = new Set();
     lastStats = null;
+    sourceName = '';
+    sourceKind = 'paste';
     runToken += 1;
     if ($text) $text.value = '';
     if ($file) $file.value = '';
     if ($body) $body.textContent = '';
     showError($error, '');
     showError($reviewErr, '');
+    populateRecentDropdown();
     setStep('paste');
     try { $modal.showModal(); } catch { $modal.setAttribute('open', ''); }
     requestAnimationFrame(() => $text?.focus());
@@ -236,11 +301,15 @@ export function initParcelListImport({ onConfirm, resolve = resolveParcelList } 
     tdLine.textContent = String(row.lineNo);
     tr.appendChild(tdLine);
 
-    // What the user pasted, verbatim. textContent throughout: every
-    // string on this screen came off a clipboard.
+    // The CELL the importer actually read, not the whole line. Showing
+    // the whole line here made a spreadsheet's leading index column
+    // ("Comp") sit against the address and read as though the two had
+    // been merged — the one thing this screen exists to rule out. The
+    // full row stays on the tooltip for context. textContent throughout:
+    // every string on this screen came off a clipboard.
     const tdRaw = document.createElement('td');
     tdRaw.className = 'parcel-list-col-raw';
-    tdRaw.textContent = row.raw;
+    tdRaw.textContent = row.cell || row.raw;
     tdRaw.title = row.raw;
     tr.appendChild(tdRaw);
 
@@ -337,7 +406,55 @@ export function initParcelListImport({ onConfirm, resolve = resolveParcelList } 
     return collectRolls(picked);
   }
 
+  // ---- recent imports ----------------------------------------------
+
+  function populateRecentDropdown() {
+    if (!$recentSelect || !$recentRow) return;
+    const list = loadRecentImports();
+    $recentSelect.textContent = '';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = list.length ? 'Pick a recent import…' : '—';
+    $recentSelect.appendChild(blank);
+    for (const e of list) {
+      const opt = document.createElement('option');
+      opt.value = e.name;
+      // textContent, not innerHTML: the label is built from the first
+      // line of something the user pasted off a clipboard.
+      // A file name says nothing about when it was imported, so it gets
+      // the date. A synthesized paste label already carries its own
+      // timestamp — that stamp is what tells two same-day pastes of the
+      // same list apart — so appending the date again just reads as
+      // "(09-18 12:40) (2026-09-18)".
+      const dt = new Date(e.ts || 0);
+      const ts = Number.isFinite(dt.valueOf()) ? dt.toISOString().slice(0, 10) : '';
+      opt.textContent = (ts && e.kind !== 'paste') ? `${e.name} (${ts})` : e.name;
+      $recentSelect.appendChild(opt);
+    }
+    $recentRow.hidden = list.length === 0;
+  }
+
   // ---- events ------------------------------------------------------
+
+  $recentSelect?.addEventListener('change', () => {
+    const name = $recentSelect.value;
+    $recentSelect.value = '';
+    if (!name) return;
+    const entry = loadRecentImports().find((e) => e.name === name);
+    if (!entry || !$text) return;
+    $text.value = entry.text;
+    sourceName = entry.name;
+    sourceKind = entry.kind === 'paste' ? 'paste' : 'file';
+    // Straight to the lookup: the user picked a list that already
+    // resolved once, so making them press the button again buys nothing.
+    // The review screen still stands between this and the map.
+    lookUp();
+  });
+
+  $recentClear?.addEventListener('click', () => {
+    try { localStorage.removeItem(RECENT_STORAGE_KEY); } catch { /* ignore */ }
+    populateRecentDropdown();
+  });
 
   $next?.addEventListener('click', lookUp);
   $cancel?.addEventListener('click', close);
@@ -365,6 +482,8 @@ export function initParcelListImport({ onConfirm, resolve = resolveParcelList } 
     try {
       const text = await file.text();
       if ($text) $text.value = text;
+      sourceName = file.name || '';
+      sourceKind = 'file';
       showError($error, '');
     } catch (err) {
       showError($error, `Could not read that file: ${err?.message || err}`);
@@ -381,6 +500,13 @@ export function initParcelListImport({ onConfirm, resolve = resolveParcelList } 
     const rolls = currentRolls();
     if (!rolls.length) return;
     showError($reviewErr, '');
+    // Remember on CONFIRM, not on lookup: reaching this point is the
+    // user saying the list was the one they wanted.
+    rememberImport(
+      sourceName || synthesizePasteName($text?.value),
+      $text?.value,
+      sourceKind,
+    );
     // Close BEFORE handing off: the caller repaints the map and grid, and
     // doing that behind a modal the user has to dismiss reads as a hang.
     const payload = {

@@ -200,16 +200,24 @@ export function parseParcelList(text) {
   }
 
   const chosen = classified[best] || [];
-  const joiner = delimiter === '\t' ? '\t' : ', ';
   const rows = body.map((r, i) => {
     const c = chosen[i] || { kind: 'unparseable', interpreted: '' };
-    // `raw` is the full original line, not just the winning cell, so the
-    // review screen can show the user what they actually pasted.
-    const raw = r.join(joiner).replace(/\s+/g, ' ').trim();
+    // `raw` is the whole original line, kept for the review screen's
+    // tooltip. Cells are joined with a visible separator rather than
+    // whitespace: collapsing a tab into a space made a leading index
+    // column read as part of the address ("1  330 Selkirk Ave" became
+    // "1 330 Selkirk Ave"), which looks exactly like the parser merged
+    // two columns it had in fact kept apart. Empty trailing cells are
+    // dropped so a spreadsheet's blank Notes column adds no dangling
+    // separator.
+    const raw = r
+      .map((cell) => String(cell ?? '').replace(/\s+/g, ' ').trim())
+      .filter((cell) => cell !== '')
+      .join(' · ');
     return {
       lineNo: i + 1 + (headerDropped ? 1 : 0),
       raw,
-      cell: String(r[best] ?? '').trim(),
+      cell: String(r[best] ?? '').replace(/\s+/g, ' ').trim(),
       ...c,
     };
   });

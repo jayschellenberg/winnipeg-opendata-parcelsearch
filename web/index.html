@@ -329,12 +329,21 @@
         <div class="action-row">
           <button id="search" type="button">🔍 Search</button>
           <button id="clear"  type="button" class="danger">Clear</button>
-          <button id="export" type="button" class="secondary">Export CSV</button>
         </div>
-        <!-- Import list. Resolves a pasted block of addresses / rolls to
-             parcels and loads them as a Roll # search, so the result set
-             is an ordinary search — same grid, same map, same Entry-order
-             numbering — rather than a mode of its own. -->
+        <!-- Import list, and the numbering pill beside it. Import list
+             resolves a pasted block of addresses / rolls to parcels and
+             loads them as a Roll # search, so the result set is an
+             ordinary search — same grid, same map, same Entry-order
+             numbering — rather than a mode of its own.
+
+             The two share a row at half width each (the Manitoba
+             pattern): numbering annotates a result set, so it belongs
+             beside the control that produces one. #numbering-row is
+             MOVED here by main.js (placeNumberingRow) rather than
+             duplicated per tab, and it stays hidden until there is more
+             than one parcel to number — at which point the import
+             button gives up half the row. Until then the button keeps
+             the full width rather than leaving a gap. -->
         <div class="action-row action-row-import">
           <button
             id="parcel-list-trigger"
@@ -342,6 +351,7 @@
             class="secondary"
             title="Paste or upload a list of addresses (or roll numbers) and map them all at once. Extra columns are ignored and every row is shown for review before anything is mapped."
           >📋 Import list…</button>
+          <div class="numbering-slot" data-numbering-slot></div>
         </div>
         <!-- Number parcels + Entry order. ONE row that main.js MOVES under
              whichever tab is active (placeNumberingRow) rather than a copy
@@ -368,8 +378,8 @@
             <span class="mode-pill-prefix">Numbering:</span>
             <div class="mode-pill" role="radiogroup" aria-label="Parcel numbering" data-pill="numbering">
               <button type="button" class="mode-btn active mode-btn-off" data-mode="off" aria-pressed="true">Off</button>
-              <button type="button" class="mode-btn" data-mode="roll" aria-pressed="false" title="Number the parcels by roll number.">By roll #</button>
-              <button id="numbering-order-label" type="button" class="mode-btn" data-mode="entry" aria-pressed="false" hidden title="Number the parcels in the order you entered them — the Roll # chips here, or the pasted / uploaded rows on Sales Analysis — instead of by roll number. Entering 01003547800 then 01003546600 makes 01003547800 #1. A multi-parcel sale still carries one number, taken from its first-entered parcel; rolls the list did not name follow, by roll number. Only offered when the results came from an entered list of two or more rolls.">Entry order</button>
+              <button type="button" class="mode-btn" data-mode="roll" data-short="Roll #" aria-pressed="false" title="Number the parcels by roll number.">By roll #</button>
+              <button id="numbering-order-label" type="button" class="mode-btn" data-mode="entry" data-short="Entry" aria-pressed="false" hidden title="Number the parcels in the order you entered them — the Roll # chips here, or the pasted / uploaded rows on Sales Analysis — instead of by roll number. Entering 01003547800 then 01003546600 makes 01003547800 #1. A multi-parcel sale still carries one number, taken from its first-entered parcel; rolls the list did not name follow, by roll number. Only offered when the results came from an entered list of two or more rolls.">Entry order</button>
             </div>
           </div>
         </div>
@@ -654,6 +664,12 @@
             <button type="button" id="sales-db-load" disabled title="Connect the SABRE export folder above first.">🔍 Search</button>
             <button id="sales-clear" type="button" class="danger">Clear</button>
           </div>
+          <!-- Landing spot for #numbering-row on this tab. The Property
+               tab pairs it with Import list at half width; here the
+               import trigger lives inside the collapsed paste section,
+               so the pill takes the row on its own rather than being
+               tied to a control that may be folded away. -->
+          <div class="numbering-slot numbering-slot-wide" data-numbering-slot></div>
           <hr class="sales-phase-rule" aria-hidden="true" />
 
           <!-- PUCS + assessment-class multi-selects, one row at half
@@ -1102,6 +1118,15 @@
           <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the rendered image below the table and Save Image As to drop into a report.">📸 Generate Map</button>
           <button id="static-map-legend-btn" type="button" class="generate-map-btn generate-map-btn-legend" disabled title="Capture the current map view as a PNG with the map's visible legends drawn into it, stacked in the bottom-right corner just above the credit line — the same corner they occupy on screen. The image keeps its normal dimensions, so the legend sits over the map rather than beside it.">📸 Map w/Legend</button>
         </div>
+        <!-- Export CSV, below Generate Map (the Manitoba pattern). It
+             used to sit beside Search / Clear, which put an OUTPUT action
+             in the row that starts a search. Both ways of getting the
+             results out of the app now live together at the foot of the
+             sidebar. One button serving both tabs: exportCsv picks its
+             schema off body.sales-mode. -->
+        <div class="action-row export-row">
+          <button id="export" type="button" class="secondary">⬇ Export CSV</button>
+        </div>
         <p class="overlay-note">* Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.</p>
       </aside>
 
@@ -1385,6 +1410,26 @@
             />
             <span>Choose CSV/TSV file…</span>
           </label>
+          <!-- Recent imports (last 5, localStorage). Hidden until a
+               cached entry exists, so a first-time user never sees an
+               empty control. Picking one replays its text and goes
+               straight to the lookup — the list was already good once. -->
+          <div class="parcel-list-recent" id="parcel-list-recent-row" hidden>
+            <div class="sales-modal-or">— or —</div>
+            <label class="parcel-list-recent-label">
+              <span class="parcel-list-recent-prefix">Recent:</span>
+              <select id="parcel-list-recent-select" aria-label="Reload a recent import">
+                <option value="">—</option>
+              </select>
+              <button
+                type="button"
+                id="parcel-list-recent-clear"
+                class="parcel-list-recent-clear"
+                title="Forget all recent imports"
+                aria-label="Forget all recent imports"
+              >×</button>
+            </label>
+          </div>
           <div id="parcel-list-error" class="sales-modal-error" role="alert" hidden></div>
           <footer class="sales-modal-actions">
             <button type="button" id="parcel-list-cancel" class="sales-modal-btn">Cancel</button>

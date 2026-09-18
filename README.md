@@ -193,6 +193,18 @@ Three things are load-bearing:
   remainder, so a clean list never pays for it, and it is capped — beyond
   the cap the rows are reported unmatched and the notice says why.
 
+The last five imports are kept in `localStorage` and offered as a
+**Recent** dropdown, so a comp list can be reloaded after a Clear without
+finding the file again. The TEXT is cached, not just the name — a browser
+keeps no standing handle to a file picked from disk, so replaying the
+stored text is the only way a recent entry can actually reload anything.
+Picking one goes straight to the review screen; the × forgets them all.
+
+On Property Search the import button shares a row with the numbering pill
+at half width each, and **Export CSV** sits at the foot of the sidebar
+under Generate Map — both ways of getting results out of the app in one
+place, rather than an output action in the row that starts a search.
+
 Lists longer than the 500-entry SoQL `IN` cap are split across queries and
 merged, with every other filter carried on each chunk. Before the importer
 existed no UI could produce such a list; `rollClause` truncated at the cap

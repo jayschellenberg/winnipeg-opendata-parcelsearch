@@ -178,6 +178,44 @@ test('a multi-column CSV lands on the address column', () => {
   assert.equal(out.counts.address, 2);
 });
 
+// A spreadsheet comp list with a leading index column. The index must not
+// reach the lookup, and — the part that actually went wrong — it must not
+// end up rendered against the address either. Joining the cells with
+// whitespace made "1" + tab + "330 Selkirk Ave" read as "1 330 Selkirk
+// Ave", which looks exactly like the parser merged two columns it had in
+// fact kept apart.
+const COMP_LIST = [
+  'Comp\tAddress\tNotes',
+  '1\t330 Selkirk Ave, Winnipeg, MB\t',
+  '2\t393 Selkirk Ave, Winnipeg, MB\t',
+  '10\t563 Selkirk Ave, Winnipeg, MB\tcorner lot',
+].join('\n');
+
+test('a leading Comp # column is ignored, not read as part of the address', () => {
+  const out = parseParcelList(COMP_LIST);
+  assert.equal(out.headerDropped, true);
+  assert.equal(out.column, 1, 'the address column must win the scoring');
+  assert.equal(out.counts.address, 3);
+  assert.deepEqual(out.rows.map((r) => r.number), [330, 393, 563]);
+  assert.equal(out.rows[0].street, 'Selkirk Ave');
+});
+
+test('the cell shown on the review screen excludes the index column', () => {
+  const out = parseParcelList(COMP_LIST);
+  assert.equal(out.rows[0].cell, '330 Selkirk Ave, Winnipeg, MB');
+  assert.equal(out.rows[2].cell, '563 Selkirk Ave, Winnipeg, MB');
+  // Nothing in the displayed cell may lead with the comp number.
+  for (const r of out.rows) assert.doesNotMatch(r.cell, /^\d+\s+\d+\s/);
+});
+
+test('the full row keeps a visible separator between columns', () => {
+  const out = parseParcelList(COMP_LIST);
+  // Not "1 330 Selkirk Ave…" — the columns stay legibly apart, and an
+  // empty trailing Notes cell adds no dangling separator.
+  assert.equal(out.rows[0].raw, '1 · 330 Selkirk Ave, Winnipeg, MB');
+  assert.equal(out.rows[2].raw, '10 · 563 Selkirk Ave, Winnipeg, MB · corner lot');
+});
+
 test('a tab-delimited spreadsheet paste works', () => {
   const tsv = 'Address\tOwner\n330 Selkirk Ave\tSmith\n393 Selkirk Ave\tJones';
   const out = parseParcelList(tsv);

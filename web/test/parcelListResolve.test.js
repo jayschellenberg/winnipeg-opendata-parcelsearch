@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { parseParcelList } from '../src/lib/parcelListParse.js';
 import { resolveParcelList, collectRolls } from '../src/lib/parcelListResolve.js';
+import { synthesizePasteName } from '../src/lib/parcelListImport.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -271,6 +272,38 @@ tests.push(test('an empty list resolves to nothing without any request', async (
   const out = await resolveParcelList([], deps());
   assert.equal(out.stats.total, 0);
   assert.deepEqual(collectRolls(out.rows), []);
+}));
+
+// ---- synthesizePasteName (lib/parcelListImport.js) ----------------
+// Lives here rather than in its own file: it is the same feature, and
+// the module is safe to import in node because every DOM lookup sits
+// inside initParcelListImport rather than at module scope.
+
+const FIXED = new Date('2026-09-18T12:40:00');
+
+tests.push(test('a paste label names the list by its first line', async () => {
+  const name = synthesizePasteName('330 Selkirk Ave\n393 Selkirk Ave', FIXED);
+  assert.match(name, /^Paste: 330 Selkirk Ave…/);
+}));
+
+tests.push(test('a paste label carries a stamp, so two same-day pastes differ', async () => {
+  const a = synthesizePasteName('330 Selkirk Ave', new Date('2026-09-18T09:05:00'));
+  const b = synthesizePasteName('330 Selkirk Ave', new Date('2026-09-18T16:20:00'));
+  assert.notEqual(a, b);
+}));
+
+tests.push(test('a long first line is truncated, not carried whole', async () => {
+  const name = synthesizePasteName(`${'x'.repeat(200)}\nsecond`, FIXED);
+  assert.ok(name.length < 60, `label too long: ${name.length}`);
+}));
+
+tests.push(test('a header row becomes the label when it leads the paste', async () => {
+  assert.match(synthesizePasteName('Comp\tAddress\tNotes\n1\t330 Selkirk Ave', FIXED),
+    /^Paste: Comp Address Notes…/);
+}));
+
+tests.push(test('empty text still yields a usable label', async () => {
+  assert.match(synthesizePasteName('', FIXED), /^Paste \(/);
 }));
 
 await Promise.all(tests);

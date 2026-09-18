@@ -910,7 +910,18 @@ onTabChange(() => queueUrlWrite());
 function placeNumberingRow(tab) {
   if (!$numberingRow) return;
   const panel = document.querySelector(`.sidebar-tab-panel[data-tab="${tab}"]`);
-  const actionRow = panel?.querySelector(':scope > .action-row');
+  if (!panel) return;
+  // Each panel marks where the pill belongs. On Property that slot sits
+  // inside the Import list row, so numbering shares a half-width row with
+  // the control that produces a list to number; on Sales it is a row of
+  // its own. Falling back to "after the first action row" keeps the old
+  // behaviour for any panel that has not declared a slot.
+  const slot = panel.querySelector('[data-numbering-slot]');
+  if (slot) {
+    if ($numberingRow.parentElement !== slot) slot.appendChild($numberingRow);
+    return;
+  }
+  const actionRow = panel.querySelector(':scope > .action-row');
   if (actionRow && actionRow.nextElementSibling !== $numberingRow) {
     actionRow.insertAdjacentElement('afterend', $numberingRow);
   }

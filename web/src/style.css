@@ -3804,6 +3804,48 @@ body.shape-drawing .maplibregl-canvas {
    --------------------------------------------------------------------------- */
 .parcel-list-modal { width: min(860px, calc(100vw - 32px)); }
 
+/* Recent imports row inside the Import list modal. */
+.parcel-list-recent[hidden] { display: none; }
+.parcel-list-recent-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.parcel-list-recent-prefix {
+  color: var(--color-neutral-600, #52525b);
+  white-space: nowrap;
+}
+.parcel-list-recent-label select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  background: #fff;
+}
+/* Same override the sales pill needs: a bare <button> inside the sidebar
+   styles as a full-size dark control. */
+.parcel-list-recent .parcel-list-recent-clear {
+  min-height: 0;
+  min-width: 0;
+  height: auto;
+  width: auto;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--color-neutral-600, #52525b);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 1px 4px;
+  margin: 0;
+  box-shadow: none;
+}
+.parcel-list-recent .parcel-list-recent-clear:hover { color: #991b1b; }
+
 .parcel-list-notices {
   margin: 8px 0 0;
   padding: 7px 9px;
@@ -3887,9 +3929,90 @@ body.shape-drawing .maplibregl-canvas {
 .parcel-list-badge.is-bad  { background: #fee2e2; color: #991b1b; }
 .parcel-list-detail { color: var(--color-neutral-600, #52525b); }
 
-/* The sidebar's Import list button sits on its own row under the action
-   row so it never competes with Search for the primary position. */
-.action-row-import { margin-top: 6px; }
+/* Import list + the numbering pill, half the row each. Both children
+   flex, so when #numbering-row is hidden (fewer than two parcels to
+   number) the button takes the whole width instead of leaving a gap —
+   the 50/50 split appears exactly when there is something to put in the
+   other half. */
+.sidebar .action-row-import {
+  margin-top: 6px;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  /* .action-row wraps by default. Left alone, the pill's min-content
+     width exceeds its 50% basis and it drops to a second line, which is
+     the stacked layout this row exists to replace. */
+  flex-wrap: nowrap;
+}
+.sidebar .action-row-import > #parcel-list-trigger {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+.sidebar .action-row-import > .numbering-slot {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+/* An empty slot must not eat half the row. :empty goes false the moment
+   #numbering-row lands in it, hidden or not, so the hidden case is
+   covered by :has() rather than by :empty alone. */
+.sidebar .action-row-import > .numbering-slot:empty,
+.sidebar .action-row-import > .numbering-slot:has(> [hidden]) {
+  display: none;
+}
+.numbering-slot > .numbering-row { width: 100%; margin: 0; }
+/* The Sales tab's slot is a full-width row of its own. */
+.numbering-slot-wide { display: block; }
+.numbering-slot-wide:empty,
+.numbering-slot-wide:has(> [hidden]) { display: none; }
+
+/* In the half-width slot the pill has roughly 110px to work with, so the
+   "Numbering:" prefix goes and the segments shrink to fit. The control
+   keeps all three modes — dropping one to save space would hide a
+   function rather than tighten it. */
+.sidebar .action-row-import .numbering-slot .mode-pill-prefix { display: none; }
+.sidebar .action-row-import .numbering-slot .mode-pill-row {
+  width: 100%;
+  gap: 0;
+}
+.sidebar .action-row-import .numbering-slot .mode-pill {
+  width: 100%;
+  display: flex;
+}
+.sidebar .action-row-import .numbering-slot .mode-pill .mode-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Short labels in the narrow slot only. "Off / By roll # / Entry order"
+   measures ~146px and the slot is ~143px at a typical window — and the
+   sidebar is fluid, so it only gets tighter. Ellipsising all three
+   ("Entry or…") is worse than naming them briefly.
+   font-size:0 hides the long label's glyphs while leaving the real text
+   node in the DOM, so the accessibility tree and the Sales tab's
+   full-width copy both still read "By roll #". */
+.sidebar .action-row-import .numbering-slot .mode-pill .mode-btn[data-short] {
+  font-size: 0;
+}
+.sidebar .action-row-import .numbering-slot .mode-pill .mode-btn[data-short]::after {
+  content: attr(data-short);
+  font-size: 11px;
+}
+
+/* Export CSV at the foot of the sidebar, under Generate Map. Full width:
+   it is the one action in its row and a half-width button beside empty
+   space reads as though something failed to load. */
+.sidebar .export-row {
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+.sidebar .export-row > #export { width: 100%; }
 
 /* Active imported-list pill on the Sales tab. */
 .sales-list-filter {
