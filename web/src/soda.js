@@ -270,6 +270,28 @@ export async function searchAssessmentParcels({
   roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
   waterfront, nearWater,
 }) {
+  // A roll list longer than rollClause's IN cap is split here rather than
+  // silently truncated there. Before the Import list modal existed, no UI
+  // could produce one — a hand-typed chip list never reaches 500 — but an
+  // imported list of a thousand addresses does, and losing the tail
+  // without saying so would look exactly like a successful search. Every
+  // other filter rides along on each chunk, so the result is identical to
+  // what one query would have returned if the URL had room.
+  const rollTokens = splitRollTokens(roll);
+  if (rollTokens.length > ROLL_IN_CAP) {
+    const rest = {
+      addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+      waterfront, nearWater,
+    };
+    const chunks = [];
+    for (let i = 0; i < rollTokens.length; i += ROLL_IN_CAP) {
+      chunks.push(rollTokens.slice(i, i + ROLL_IN_CAP));
+    }
+    const fcs = await Promise.all(
+      chunks.map((c) => searchAssessmentParcels({ ...rest, roll: c.join(',') }))
+    );
+    return mergeFcByKey(fcs, 'roll_number');
+  }
   const clauses = [];
   const rc = rollClause(roll);
   if (rc)      clauses.push(rc);
@@ -357,6 +379,10 @@ function buildDuClause(duMode, duMin) {
  * paged calls (the citywide-zoning path already does that). Truncation
  * propagates: meta.truncated is true if ANY chunk hit its row cap.
  */
+// The same boundary rollClause caps a single IN-list at (ROLL_IN_CAP).
+// Written out rather than aliased: that const is declared far below this
+// point in the module, so referencing it here is a temporal-dead-zone
+// error at import time.
 const ROLL_CHUNK_SIZE = 500;
 export async function searchAssessmentParcelsByRolls(rolls) {
   const distinct = [...new Set(rolls.map((r) => String(r ?? '').trim()))]
@@ -518,6 +544,150 @@ export async function suggestCivicAddresses(raw, limit = 60) {
  * to a comma-joined list (primary first, then alphabetical). Distinct only
  * — duplicates between primary and civic-dataset entries collapse.
  */
+/**
+ * Batch address lookup for the Import list modal: every assessment parcel
+ * on `street` whose civic number appears in `numbers`.
+ *
+ * ONE QUERY PER STREET, not per address. A pasted comp list is nearly
+ * always a handful of addresses on one or two streets, so grouping by
+ * street turns an N-address import into ~1 request. `street` runs through
+ * streetNameClause, so "Selkirk Ave" matches street_name "SELKIRK" with
+ * street_type "AVENUE" in its own column, exactly as the sidebar search does.
+ *
+ * Returns raw rows (not a FeatureCollection): the modal only needs the roll
+ * and the address text to show a review line. Geometry comes later, from the
+ * ordinary roll search the confirmed list feeds into — no point shipping
+ * 245K-vertex polygons for a screen that renders text.
+ *
+ * `street_number` is left UNQUOTED here. It is a text column that Socrata
+ * casts for an integer IN-list, which is what buildAddressClauses has always
+ * relied on; the cast also makes "0330" and "330" the same number.
+ */
+const ADDRESS_NUMBER_CHUNK = 500;
+
+export async function fetchAssessmentRowsByStreet(street, numbers) {
+  const sc = streetNameClause(street);
+  if (!sc) return [];
+  const nums = [...new Set(
+    (numbers || []).map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n) && n > 0)
+  )];
+  if (!nums.length) return [];
+  const chunks = [];
+  for (let i = 0; i < nums.length; i += ADDRESS_NUMBER_CHUNK) {
+    chunks.push(nums.slice(i, i + ADDRESS_NUMBER_CHUNK));
+  }
+  const pages = await Promise.all(chunks.map((chunk) => {
+    const params = new URLSearchParams({
+      $where: `${sc} AND street_number IN (${chunk.join(',')})`,
+      $select: 'roll_number,full_address,street_number,street_name,street_type',
+      $order: 'street_number',
+    });
+    return fetchSodaRowsPaged(ASSESS_ROWS_URL, params, {
+      pageSize: USER_SEARCH_LIMIT,
+      maxRows: USER_SEARCH_LIMIT,
+      allowTruncated: true,
+      label: 'Imported list address lookup',
+    }).then(({ rows }) => rows);
+  }));
+  return pages.flat();
+}
+
+/**
+ * The same batch lookup against the civic-address dataset (cam2-ii3u),
+ * returning Point features. This is the SIDE-DOOR path: cam2 is the City's
+ * address authority and carries addresses the assessment roll does not list
+ * as a parcel's primary (440 Hargrave on the parcel assessed as 400
+ * Hargrave). Only called for the addresses the direct lookup missed, so a
+ * clean list never pays for it.
+ *
+ * `street_number` IS quoted here, matching suggestCivicAddresses — cam2
+ * stores it as text and that path is the proven one against this dataset.
+ */
+export async function fetchCivicAddressPointsByStreet(street, numbers) {
+  const normalized = normalizeStreetQuery(street);
+  if (!normalized) return { type: 'FeatureCollection', features: [] };
+  const nums = [...new Set(
+    (numbers || []).map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n) && n > 0)
+  )];
+  if (!nums.length) return { type: 'FeatureCollection', features: [] };
+  const chunks = [];
+  for (let i = 0; i < nums.length; i += ADDRESS_NUMBER_CHUNK) {
+    chunks.push(nums.slice(i, i + ADDRESS_NUMBER_CHUNK));
+  }
+  const pages = await Promise.all(chunks.map((chunk) => {
+    const inList = chunk.map((n) => `'${escapeSoql(String(n))}'`).join(',');
+    const params = new URLSearchParams({
+      $where: `upper(street_name) like '%${escapeSoql(normalized)}%' AND street_number IN (${inList})`,
+      $select: 'full_address,street_number,street_name,point',
+      $order: 'street_number',
+    });
+    return fetchSodaRowsPaged(ADDRESSES_URL, params, {
+      pageSize: USER_SEARCH_LIMIT,
+      maxRows: USER_SEARCH_LIMIT,
+      allowTruncated: true,
+      label: 'Imported list civic-address lookup',
+    }).then(({ rows }) => rows);
+  }));
+  const features = pages.flat()
+    .filter((r) => r.point?.coordinates?.length === 2)
+    .map((r) => ({
+      type: 'Feature',
+      geometry: r.point,
+      properties: {
+        full_address: r.full_address,
+        street_number: r.street_number,
+        street_name: r.street_name,
+      },
+    }));
+  return featureCollection(features);
+}
+
+/**
+ * Which assessment parcel contains each of these civic-address points.
+ * Thin wrapper over the same per-point `intersects` helper the sidebar's
+ * address cross-reference uses; returns rows rather than geometry for the
+ * same reason fetchAssessmentRowsByStreet does.
+ */
+export async function fetchAssessmentRowsAtPoints(pointFc) {
+  if (!pointFc?.features?.length) return [];
+  const fc = await fetchPerPointIntersects({
+    baseUrl: ASSESS_URL,
+    geomColumn: 'geometry',
+    select: 'roll_number,full_address,street_number,street_name,street_type',
+    dedupeKey: 'roll_number',
+    fc: pointFc,
+    extraWhere: null,
+  });
+  return (fc.features || []).map((f) => f.properties || {});
+}
+
+/**
+ * Verify a pasted list of roll numbers and hand back their addresses, so
+ * the review screen can show what each roll actually IS before the user
+ * commits to it. Chunked on the same 500-roll boundary rollClause caps at.
+ */
+export async function fetchAssessmentRowsByRolls(rolls) {
+  const distinct = [...new Set((rolls || []).map(normalizeRoll).filter(Boolean))];
+  if (!distinct.length) return [];
+  const chunks = [];
+  for (let i = 0; i < distinct.length; i += ROLL_IN_CAP) chunks.push(distinct.slice(i, i + ROLL_IN_CAP));
+  const pages = await Promise.all(chunks.map((chunk) => {
+    const inList = chunk.map((r) => `'${escapeSoql(r)}'`).join(',');
+    const params = new URLSearchParams({
+      $where: `roll_number IN (${inList})`,
+      $select: 'roll_number,full_address,street_number,street_name,street_type',
+      $order: 'roll_number',
+    });
+    return fetchSodaRowsPaged(ASSESS_ROWS_URL, params, {
+      pageSize: USER_SEARCH_LIMIT,
+      maxRows: USER_SEARCH_LIMIT,
+      allowTruncated: true,
+      label: 'Imported list roll lookup',
+    }).then(({ rows }) => rows);
+  }));
+  return pages.flat();
+}
+
 /**
  * Compute the area-weighted top-2 zoning districts for each assessment
  * parcel by intersecting the parcel polygon with every overlapping
@@ -3140,21 +3310,34 @@ function parseStreetNumber(raw) {
  *
  * Returns the SoQL clause string, or null when input is empty.
  */
+/**
+ * Split a roll field into its individual tokens. Delimiters: whitespace,
+ * comma, semicolon, and ampersand — so a pasted "03031870000 & 3031865000"
+ * (with or without spaces) lists both rolls. Exported shape is the array
+ * so callers can count tokens without rebuilding the split rule.
+ */
+export function splitRollTokens(roll) {
+  if (!roll) return [];
+  return String(roll).split(/[\s,;&]+/).map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Hard cap on one IN-list, protecting against blowing past Socrata's
+ * URL/clause-length limits. Typical use is < 10 rolls; 500 is a
+ * comfortable ceiling that still fits in one query. Lists longer than
+ * this are CHUNKED by searchAssessmentParcels rather than truncated here.
+ */
+export const ROLL_IN_CAP = 500;
+
 export function rollClause(roll) {
   if (!roll) return null;
-  // Delimiters: whitespace, comma, semicolon, and ampersand — so a pasted
-  // "03031870000 & 3031865000" (with or without spaces) lists both rolls.
-  const tokens = String(roll).split(/[\s,;&]+/).map((s) => s.trim()).filter(Boolean);
+  const tokens = splitRollTokens(roll);
   if (tokens.length <= 1) {
     return likeClause('roll_number', roll);
   }
   const normalised = tokens.map(normalizeRoll).filter(Boolean);
   if (normalised.length === 0) return null;
-  // Hard cap protects against accidentally pasting tens of thousands
-  // of rolls and blowing past Socrata's URL/clause-length limits.
-  // Typical use is < 10 rolls; 500 is a comfortable ceiling that
-  // still fits in one query.
-  const capped = normalised.slice(0, 500);
+  const capped = normalised.slice(0, ROLL_IN_CAP);
   const inList = capped.map((r) => `'${escapeSoql(r)}'`).join(',');
   return `roll_number IN (${inList})`;
 }

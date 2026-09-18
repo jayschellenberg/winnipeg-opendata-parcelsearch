@@ -1,0 +1,219 @@
+/*
+ * Unit tests for lib/parcelListParse.js — the pasted-list parser behind
+ * the Import list modal.
+ */
+import assert from 'node:assert/strict';
+import {
+  parseParcelList, parseAddressCell, parseRollCell, classifyCell,
+  cleanAddressCell, looksLikeHeaderRow,
+} from '../src/lib/parcelListParse.js';
+
+let passed = 0;
+function test(name, fn) {
+  try { fn(); passed += 1; } catch (err) {
+    console.error(`FAIL: ${name}`);
+    throw err;
+  }
+}
+
+// ---- cleanAddressCell --------------------------------------------
+
+test('strips the Winnipeg, MB locality tail', () => {
+  assert.equal(cleanAddressCell('330 Selkirk Ave, Winnipeg, MB'), '330 Selkirk Ave');
+});
+
+test('strips Manitoba and Canada too', () => {
+  assert.equal(cleanAddressCell('12 Main St, Winnipeg, Manitoba, Canada'), '12 Main St');
+});
+
+test('strips a postal code', () => {
+  assert.equal(cleanAddressCell('330 Selkirk Ave, Winnipeg, MB R2W 2M1'), '330 Selkirk Ave');
+});
+
+test('leaves an address with no locality alone', () => {
+  assert.equal(cleanAddressCell('  330   Selkirk Ave '), '330 Selkirk Ave');
+});
+
+// ---- parseAddressCell --------------------------------------------
+
+test('parses number and street', () => {
+  assert.deepEqual(parseAddressCell('330 Selkirk Ave'), { number: 330, street: 'Selkirk Ave' });
+});
+
+test('parses through the locality tail', () => {
+  assert.deepEqual(parseAddressCell('417 Selkirk Ave, Winnipeg, MB'),
+    { number: 417, street: 'Selkirk Ave' });
+});
+
+test('drops a letter suffix on the civic number', () => {
+  assert.deepEqual(parseAddressCell('330A Selkirk Ave'), { number: 330, street: 'Selkirk Ave' });
+});
+
+test('takes the leading number of a range', () => {
+  assert.deepEqual(parseAddressCell('330-340 Selkirk Ave'), { number: 330, street: 'Selkirk Ave' });
+});
+
+test('strips a unit prefix', () => {
+  assert.deepEqual(parseAddressCell('Unit 5 - 330 Selkirk Ave'),
+    { number: 330, street: 'Selkirk Ave' });
+});
+
+test('handles a French street name', () => {
+  assert.deepEqual(parseAddressCell('101 Rue Marion'), { number: 101, street: 'Rue Marion' });
+});
+
+test('handles an apostrophe street', () => {
+  assert.deepEqual(parseAddressCell("1250 St. Mary's Rd"), { number: 1250, street: "St. Mary's Rd" });
+});
+
+test('rejects a street-only cell', () => {
+  assert.equal(parseAddressCell('Selkirk Ave'), null);
+});
+
+test('rejects two bare numbers', () => {
+  assert.equal(parseAddressCell('330 340'), null);
+});
+
+test('rejects an empty cell', () => {
+  assert.equal(parseAddressCell('   '), null);
+});
+
+// ---- parseRollCell -----------------------------------------------
+
+test('accepts an 11-digit roll', () => {
+  assert.equal(parseRollCell('01003547800'), '01003547800');
+});
+
+test('accepts a 10-digit roll with the leading zero dropped', () => {
+  assert.equal(parseRollCell('1003547800'), '1003547800');
+});
+
+test('accepts a roll with separators', () => {
+  assert.equal(parseRollCell('010-035-478-00'), '01003547800');
+});
+
+test('rejects a civic number', () => {
+  assert.equal(parseRollCell('330'), null);
+});
+
+test('rejects a 12-digit number', () => {
+  assert.equal(parseRollCell('010035478001'), null);
+});
+
+test('rejects anything with letters', () => {
+  assert.equal(parseRollCell('330 Selkirk'), null);
+});
+
+// ---- classifyCell ------------------------------------------------
+
+test('a roll beats the address reading', () => {
+  assert.equal(classifyCell('01003547800').kind, 'roll');
+});
+
+test('an address classifies as address with an interpreted string', () => {
+  const c = classifyCell('330 Selkirk Ave, Winnipeg, MB');
+  assert.equal(c.kind, 'address');
+  assert.equal(c.number, 330);
+  assert.equal(c.interpreted, '330 SELKIRK AVE');
+});
+
+test('junk classifies as unparseable', () => {
+  assert.equal(classifyCell('Winnipeg').kind, 'unparseable');
+});
+
+// ---- looksLikeHeaderRow ------------------------------------------
+
+test('a lone Address header is a header', () => {
+  assert.equal(looksLikeHeaderRow(['Address']), true);
+});
+
+test('a data row is not a header', () => {
+  assert.equal(looksLikeHeaderRow(['330 Selkirk Ave']), false);
+});
+
+test('a header word beside real data is not a header row', () => {
+  assert.equal(looksLikeHeaderRow(['Location', '330 Selkirk Ave']), false);
+});
+
+// ---- parseParcelList: the user's own sample ----------------------
+
+const SAMPLE = [
+  'Address',
+  '330 Selkirk Ave, Winnipeg, MB',
+  '393 Selkirk Ave, Winnipeg, MB',
+  '407 Selkirk Ave, Winnipeg, MB',
+  '413 Selkirk Ave, Winnipeg, MB',
+  '417 Selkirk Ave, Winnipeg, MB',
+].join('\n');
+
+test('the sample list parses to five addresses on column 0', () => {
+  const out = parseParcelList(SAMPLE);
+  assert.equal(out.headerDropped, true);
+  assert.equal(out.column, 0);
+  assert.equal(out.counts.total, 5);
+  assert.equal(out.counts.address, 5);
+  assert.equal(out.counts.unparseable, 0);
+  assert.deepEqual(out.rows.map((r) => r.number), [330, 393, 407, 413, 417]);
+  assert.equal(out.rows[0].street, 'Selkirk Ave');
+  // Line numbers account for the dropped header, so an error message
+  // points at the line the user can actually see in their paste.
+  assert.equal(out.rows[0].lineNo, 2);
+});
+
+test('the sample parses identically without its header', () => {
+  const out = parseParcelList(SAMPLE.split('\n').slice(1).join('\n'));
+  assert.equal(out.headerDropped, false);
+  assert.equal(out.counts.address, 5);
+  assert.equal(out.rows[0].lineNo, 1);
+});
+
+test('a multi-column CSV lands on the address column', () => {
+  const csv = [
+    'Owner,Notes,Address',
+    'Smith,check zoning,330 Selkirk Ave',
+    'Jones,corner lot,393 Selkirk Ave',
+  ].join('\n');
+  const out = parseParcelList(csv);
+  assert.equal(out.column, 2);
+  assert.equal(out.counts.address, 2);
+});
+
+test('a tab-delimited spreadsheet paste works', () => {
+  const tsv = 'Address\tOwner\n330 Selkirk Ave\tSmith\n393 Selkirk Ave\tJones';
+  const out = parseParcelList(tsv);
+  assert.equal(out.delimiter, '\t');
+  assert.equal(out.column, 0);
+  assert.equal(out.counts.address, 2);
+});
+
+test('a mixed roll and address list classifies each row', () => {
+  const out = parseParcelList('330 Selkirk Ave\n01003547800\n393 Selkirk Ave');
+  assert.equal(out.counts.address, 2);
+  assert.equal(out.counts.roll, 1);
+});
+
+test('a roll-only list parses as rolls', () => {
+  const out = parseParcelList('01003547800\n01003546600');
+  assert.equal(out.counts.roll, 2);
+  assert.equal(out.counts.address, 0);
+});
+
+test('blank lines are dropped, not counted as rows', () => {
+  const out = parseParcelList('330 Selkirk Ave\n\n\n393 Selkirk Ave\n');
+  assert.equal(out.counts.total, 2);
+});
+
+test('unparseable rows survive to the review screen', () => {
+  const out = parseParcelList('330 Selkirk Ave\nsomewhere downtown\n393 Selkirk Ave');
+  assert.equal(out.counts.total, 3);
+  assert.equal(out.counts.unparseable, 1);
+  assert.equal(out.rows[1].kind, 'unparseable');
+  assert.equal(out.rows[1].raw, 'somewhere downtown');
+});
+
+test('empty input yields no rows', () => {
+  const out = parseParcelList('   \n  \n');
+  assert.equal(out.counts.total, 0);
+});
+
+console.log(`parcelListParse.test.js: ${passed} passed`);

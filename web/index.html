@@ -331,6 +331,18 @@
           <button id="clear"  type="button" class="danger">Clear</button>
           <button id="export" type="button" class="secondary">Export CSV</button>
         </div>
+        <!-- Import list. Resolves a pasted block of addresses / rolls to
+             parcels and loads them as a Roll # search, so the result set
+             is an ordinary search — same grid, same map, same Entry-order
+             numbering — rather than a mode of its own. -->
+        <div class="action-row action-row-import">
+          <button
+            id="parcel-list-trigger"
+            type="button"
+            class="secondary"
+            title="Paste or upload a list of addresses (or roll numbers) and map them all at once. Extra columns are ignored and every row is shown for review before anything is mapped."
+          >📋 Import list…</button>
+        </div>
         <!-- Number parcels + Entry order. ONE row that main.js MOVES under
              whichever tab is active (placeNumberingRow) rather than a copy
              in each panel, so there is a single checkbox state and
@@ -470,6 +482,18 @@
                 class="sales-import-trigger"
                 title="Paste sales rows copied from SABRE or a spreadsheet (tab- or comma-separated). Parcel ID, Instrument Number, Sale Dates and Sold Price are required."
               >Paste data…</button>
+              <span>or</span>
+              <!-- The same Import list modal the sidebar opens, in its
+                   Sales Analysis role: an address list here is a comp
+                   SELECTION, not sale data. It resolves to rolls and
+                   narrows the loaded sales to those parcels — the SABRE
+                   archive remains the source of every sale figure. -->
+              <button
+                type="button"
+                id="parcel-list-trigger-sales"
+                class="sales-import-trigger"
+                title="Paste or upload a list of addresses (or roll numbers) to narrow the loaded sales to those properties. This selects which parcels to show — it does not supply sale prices or dates."
+              >Import list…</button>
             </div>
 
             <!-- Recent uploads (last 5 cached in localStorage). Hidden by
@@ -488,6 +512,21 @@
               >×</button>
             </div>
           </details>
+
+          <!-- Active imported-list pill. OUTSIDE the collapse above on
+               purpose: it is a live filter silently removing sales from
+               the grid, so it has to stay visible even when the import
+               section is folded away. The × clears it and re-runs the
+               analysis unfiltered. -->
+          <div class="sales-list-filter" id="sales-list-filter" hidden>
+            <span id="sales-list-filter-label"></span>
+            <button
+              type="button"
+              id="sales-list-filter-clear"
+              class="sales-list-filter-clear"
+              aria-label="Clear the imported list filter"
+            >×</button>
+          </div>
 
           <!-- Subject roll and its radius share one row at half width
                each: the radius is meaningless without the roll, and
@@ -1299,6 +1338,92 @@
           <footer class="sales-modal-actions">
             <button type="button" id="sales-import-cancel" class="sales-modal-btn">Cancel</button>
             <button type="button" id="sales-import-load" class="sales-modal-btn primary">Load sales</button>
+          </footer>
+        </section>
+      </div>
+    </dialog>
+
+    <!-- Import list. One modal, opened from both tabs (src/lib/
+         parcelListImport.js). Property Search turns the confirmed list
+         into a Roll # search; Sales Analysis uses it to narrow the loaded
+         sales to those parcels. The heading and the confirm button are
+         rewritten per tab; everything between them is identical, which is
+         the point of sharing it. -->
+    <dialog id="parcel-list-modal" class="sales-modal parcel-list-modal">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title" id="parcel-list-title">Import list</h2>
+          <button
+            type="button"
+            id="parcel-list-close"
+            class="sales-modal-close"
+            aria-label="Close import dialog"
+          >×</button>
+        </header>
+
+        <section class="sales-modal-step" data-step="paste">
+          <p class="sales-modal-help" id="parcel-list-help">
+            Paste one address per line, or drop in a CSV. Roll numbers work
+            too, and the two can be mixed. <strong>Winnipeg, MB</strong> on
+            the end of an address is fine, and extra columns are ignored —
+            the address column is found for you. Every row is shown for
+            review before anything is mapped.
+          </p>
+          <textarea
+            id="parcel-list-text"
+            class="sales-modal-textarea"
+            rows="10"
+            placeholder="330 Selkirk Ave, Winnipeg, MB&#10;393 Selkirk Ave, Winnipeg, MB&#10;407 Selkirk Ave, Winnipeg, MB"
+            spellcheck="false"
+          ></textarea>
+          <div class="sales-modal-or">— or —</div>
+          <label class="sales-modal-file">
+            <input
+              type="file"
+              id="parcel-list-file"
+              accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+            />
+            <span>Choose CSV/TSV file…</span>
+          </label>
+          <div id="parcel-list-error" class="sales-modal-error" role="alert" hidden></div>
+          <footer class="sales-modal-actions">
+            <button type="button" id="parcel-list-cancel" class="sales-modal-btn">Cancel</button>
+            <button type="button" id="parcel-list-next" class="sales-modal-btn primary">Look up</button>
+          </footer>
+        </section>
+
+        <section class="sales-modal-step" data-step="resolving" hidden>
+          <p class="sales-modal-help" id="parcel-list-progress">Looking up addresses…</p>
+        </section>
+
+        <section class="sales-modal-step" data-step="review" hidden>
+          <p class="sales-modal-help" id="parcel-list-summary" role="status"></p>
+          <div id="parcel-list-notices" class="parcel-list-notices" hidden></div>
+          <div class="parcel-list-review-wrap">
+            <table class="parcel-list-review">
+              <thead>
+                <tr>
+                  <th scope="col" class="parcel-list-col-check">
+                    <input
+                      type="checkbox"
+                      id="parcel-list-check-all"
+                      checked
+                      aria-label="Include or exclude every row"
+                    />
+                  </th>
+                  <th scope="col" class="parcel-list-col-line">#</th>
+                  <th scope="col">You pasted</th>
+                  <th scope="col">Matched</th>
+                  <th scope="col">Roll</th>
+                </tr>
+              </thead>
+              <tbody id="parcel-list-review-body"></tbody>
+            </table>
+          </div>
+          <div id="parcel-list-review-error" class="sales-modal-error" role="alert" hidden></div>
+          <footer class="sales-modal-actions">
+            <button type="button" id="parcel-list-back" class="sales-modal-btn">Back</button>
+            <button type="button" id="parcel-list-confirm" class="sales-modal-btn primary">Map parcels</button>
           </footer>
         </section>
       </div>

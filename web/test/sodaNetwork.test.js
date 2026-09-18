@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import {
   fetchSoda,
   searchAssessmentParcelsByRolls,
+  searchAssessmentParcels,
   fetchSurveyOverlap,
   fetchZoningOverlap,
   fetchAssessmentOverlap,
@@ -335,6 +336,42 @@ test('the padded-bbox rectangle is a rectangle, not the parcel outline', async (
   const ring = readWhere(calls[0]).match(/POLYGON\(\((.*?)\)\)/)[1].split(',');
   assert.equal(ring.length, 5);
   assert.equal(ring[0].trim(), ring[4].trim());
+});
+
+// ---------- searchAssessmentParcels (roll-list chunking) ----------
+// The Import list modal can hand the ordinary Roll # search a list longer
+// than rollClause's 500-entry IN cap. Before this chunking existed the
+// clause was truncated there instead, so the tail of a big import
+// vanished and the search still reported success. These pin the split.
+
+test('searchAssessmentParcels — a list at the cap stays one request', async () => {
+  const calls = stubChunkedFetch();
+  const rolls = Array.from({ length: 500 }, (_, i) => String(40000000000 + i));
+  const fc = await searchAssessmentParcels({ roll: rolls.join(',') });
+  assert.equal(calls.length, 1);
+  assert.equal(fc.features.length, 500);
+});
+
+test('searchAssessmentParcels — 1200 rolls split into three chunks, none dropped', async () => {
+  const calls = stubChunkedFetch();
+  const rolls = Array.from({ length: 1200 }, (_, i) => String(50000000000 + i));
+  const fc = await searchAssessmentParcels({ roll: rolls.join(',') });
+  assert.equal(calls.length, 3);
+  assert.equal(fc.features.length, 1200);
+});
+
+test('searchAssessmentParcels — every chunk carries the other filters', async () => {
+  const calls = stubChunkedFetch();
+  const rolls = Array.from({ length: 700 }, (_, i) => String(60000000000 + i));
+  await searchAssessmentParcels({ roll: rolls.join(','), zoning: 'R2', duMode: 'zero' });
+  assert.equal(calls.length, 2);
+  // A filter that rode along on only ONE chunk would return a set the
+  // user never asked for, so both have to carry all of them.
+  for (const url of calls) {
+    const decoded = readWhere(url);
+    assert.match(decoded, /R2/, 'zoning clause missing from a chunk');
+    assert.match(decoded, /dwelling_units/, 'DU clause missing from a chunk');
+  }
 });
 
 // ---------- async runner ----------

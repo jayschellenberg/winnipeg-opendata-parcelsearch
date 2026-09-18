@@ -120,6 +120,7 @@ import {
 } from './lib/shapeFilter.js';
 import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
+import { initParcelListImport } from './lib/parcelListImport.js';
 import {
   buildClusterIndex, clusterForFeature, clusterForPoint, nearestCluster,
 } from './lib/clusters.js';
@@ -1430,6 +1431,52 @@ async function runSearch() {
   } finally {
     setBusy(false);
   }
+}
+
+/**
+ * Load a resolved list of rolls into the Property Search form and run it.
+ *
+ * The list becomes an ordinary Roll # search — the same hidden #roll input
+ * a typed chip list writes to — rather than a display mode of its own.
+ * That is the whole integration: everything downstream (the grid, the map
+ * layers, CSV export, and the Entry-order numbering that reads the roll
+ * list back in the order it was entered) already knows how to handle it.
+ *
+ * EVERY OTHER SEARCH FIELD IS CLEARED FIRST. Search ANDs its filters, so a
+ * street name or zoning code left over from the previous search would
+ * quietly cut the imported list down — the user would see 3 of their 40
+ * addresses on the map with nothing saying why. Clearing is the only
+ * behaviour that makes the result mean what the list says.
+ */
+function applyImportedRollList(rolls, stats = null) {
+  if (!rolls?.length) return;
+  for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $addressStreet, $zoning]) {
+    if (el) el.value = '';
+  }
+  if ($duMode) $duMode.value = '';
+  if ($waterFront) $waterFront.checked = false;
+  if ($waterNear) $waterNear.checked = false;
+  $roll.value = rolls.join(',');
+  // The chip module holds its list as internal state seeded at init, so
+  // setting .value alone would move the search while the chips on screen
+  // went on showing the old roll. This is the event it listens for.
+  $roll.dispatchEvent(new Event('chip-input:reseed'));
+  setActiveTab('property', { skipFocus: true });
+  const dropped = stats && stats.rows > stats.selected
+    ? ` (${stats.rows - stats.selected} of ${stats.rows} rows not included)`
+    : '';
+  setCount(`Searching ${rolls.length} imported parcel${rolls.length === 1 ? '' : 's'}${dropped}…`);
+  return runSearch();
+}
+
+/** Paint the Sales tab's imported-list pill from salesListFilter. */
+function renderSalesListFilter() {
+  const $pill = document.getElementById('sales-list-filter');
+  const $label = document.getElementById('sales-list-filter-label');
+  if (!$pill) return;
+  if (!salesListFilter) { $pill.hidden = true; return; }
+  if ($label) $label.textContent = salesListFilter.label;
+  $pill.hidden = false;
 }
 
 // ---------- Map / zoning helpers ----------
@@ -3818,6 +3865,12 @@ const saleVerdictCache = new Map();
 // most recent run mutate the DOM. Earlier runs check the token
 // before render and abort if a newer run has started.
 let salesRunToken = 0;
+// Active imported-list filter on the Sales tab, or null. `{ rolls: Set,
+// label: string }`. Deliberately NOT cleared when a new CSV loads: the
+// list is the user's comp selection and survives swapping the sales
+// source under it — the pill stays on screen saying so, and the × is the
+// one way it goes away.
+let salesListFilter = null;
 // Parsed /rise-lookup.json (lib/riseLookup.js), fetched once on the first
 // sales run; null while unavailable.
 let riseLookup = null;
@@ -3881,6 +3934,44 @@ function wireSalesTab() {
   });
   document.getElementById('sales-import-trigger')
     ?.addEventListener('click', () => salesImportModal.open());
+
+  // "Import list…" — the shared address/roll importer. One modal, two
+  // roles, decided by the `mode` it is opened with:
+  //
+  //   property  the confirmed rolls become a Roll # search. Nothing here
+  //             is a new display mode — the list is loaded into the same
+  //             hidden #roll input a typed chip list writes to, so the
+  //             grid, the map, Entry-order numbering and CSV export all
+  //             behave exactly as they do for a search the user typed.
+  //
+  //   sales     the confirmed rolls become a pre-join filter over the
+  //             sales already loaded (see runSalesAnalysis).
+  const parcelListModal = initParcelListImport({
+    onConfirm: async ({ mode, rolls, stats }) => {
+      if (!rolls.length) return;
+      if (mode === 'sales') {
+        salesListFilter = {
+          rolls: new Set(rolls),
+          label: `${rolls.length} parcel${rolls.length === 1 ? '' : 's'} from imported list`,
+        };
+        renderSalesListFilter();
+        setActiveTab('sales', { skipFocus: true });
+        await runSalesAnalysis();
+        return;
+      }
+      applyImportedRollList(rolls, stats);
+    },
+  });
+  document.getElementById('parcel-list-trigger')
+    ?.addEventListener('click', () => parcelListModal.open({ mode: 'property' }));
+  document.getElementById('parcel-list-trigger-sales')
+    ?.addEventListener('click', () => parcelListModal.open({ mode: 'sales' }));
+  document.getElementById('sales-list-filter-clear')
+    ?.addEventListener('click', async () => {
+      salesListFilter = null;
+      renderSalesListFilter();
+      await runSalesAnalysis();
+    });
 
   // Recent uploads — picker + Forget-all. Picking an entry replays the
   // cached text; `remember: false` because it is already cached and a
@@ -4733,6 +4824,17 @@ async function runSalesAnalysis() {
   const streetQuery = normalizeStreetQuery(document.getElementById('sales-street-name')?.value);
   if (streetQuery) {
     visibleSales = visibleSales.filter((s) => passesStreetFilter(s, streetQuery));
+  }
+
+  // Imported list, PRE-JOIN. An address list pasted on this tab is a comp
+  // SELECTION — "these are the properties I care about" — so it narrows
+  // the sales already loaded rather than supplying any sale data of its
+  // own. Applied here for the same reason the date and street filters
+  // are: a roll the list never named is a parcel that never has to be
+  // fetched. `s.roll` is 11-digit zero-padded by dedupAndGroupSales and
+  // the imported rolls are normalized the same way, so the two key alike.
+  if (salesListFilter) {
+    visibleSales = visibleSales.filter((s) => salesListFilter.rolls.has(s.roll));
   }
 
   // Sale price — the whole transaction's consideration, so a

@@ -149,6 +149,61 @@ and `fetchPerPointIntersects` (exact point-in-polygon). `sodaNetwork.test.js`
 pins the predicate each join asks for, because a regression here reports no
 error and no empty result — just quietly fewer rows.
 
+## Importing a list of addresses
+
+**Import list…** — on the Property Search sidebar, and again beside *Paste
+data…* on Sales Analysis — takes a pasted block or a CSV/TSV of civic
+addresses, resolves each to an assessment parcel, and maps the lot.
+Roll numbers work in the same list, and the two can be mixed.
+
+One modal serves both tabs, because the parsing and the lookup are the same
+job; only what happens on confirm differs.
+
+- **Property Search** loads the resolved rolls into the Roll # field and
+  runs an ordinary search. The imported list is not a mode: the grid, the
+  map layers, CSV export and **Entry order** numbering all behave exactly
+  as they do for a roll list typed by hand, and Entry order numbers the
+  parcels in the sequence the list was written.
+- **Sales Analysis** treats the list as a comp *selection*. It narrows the
+  sales already loaded to those parcels, pre-join, and does not supply sale
+  data of its own — every price and date still comes from SABRE. A pill
+  above the filters says how many parcels are selected; its × clears it.
+
+Three things are load-bearing:
+
+- **The address column is found, not declared.** There is no schema to
+  alias onto, so every column is parsed and the one yielding the most
+  recognizable addresses wins. That is also what handles the comma inside
+  an address: tokenizing `330 Selkirk Ave, Winnipeg, MB` gives three cells,
+  of which only the first parses, so the locality cells are dropped as the
+  noise they are. A real CSV with the address in column 3 lands on column 3
+  for the same reason. Extra columns are ignored.
+- **Nothing is mapped before it is shown.** Resolution always stops at a
+  review screen listing each row beside the address the City actually
+  matched. An address list is the kind of input that is quietly wrong — a
+  typo that drops a comp, a condo address that is really eight rolls, a
+  street that resolved to a different one — and none of those announce
+  themselves. A row matching several rolls says so; a row whose loose
+  `like` matches span two street names is reported **ambiguous** rather
+  than guessed at.
+- **A missed address gets a second lookup, not a shrug.** Addresses the
+  assessment roll does not carry are re-tried against the City's civic
+  address dataset and resolved by containment, which is what finds 440
+  Hargrave on the parcel assessed as 400 Hargrave. It runs only on the
+  remainder, so a clean list never pays for it, and it is capped — beyond
+  the cap the rows are reported unmatched and the notice says why.
+
+Lists longer than the 500-entry SoQL `IN` cap are split across queries and
+merged, with every other filter carried on each chunk. Before the importer
+existed no UI could produce such a list; `rollClause` truncated at the cap
+instead, which would have made the tail of a big import vanish while the
+search still reported success.
+
+Parsing lives in [`lib/parcelListParse.js`](web/src/lib/parcelListParse.js)
+and resolution in [`lib/parcelListResolve.js`](web/src/lib/parcelListResolve.js).
+Both are pure — the resolver takes its fetchers by injection — so the whole
+decision tree is unit tested with no network.
+
 ## Sales Analysis
 
 Winnipeg publishes no sales dataset, so sales always arrive from the user: a

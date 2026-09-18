@@ -3787,6 +3787,150 @@ body.shape-drawing .maplibregl-canvas {
   outline: 2px solid var(--color-accent-500, #2563eb);
   outline-offset: 1px;
 }
+.sales-modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.sales-modal-btn.primary:disabled:hover {
+  background: var(--color-accent-500, #2563eb);
+}
+
+/* ---------------------------------------------------------------------------
+   Import list modal. Reuses the .sales-modal shell; everything below is the
+   review table, which the sales paste modal has no equivalent of. Wider than
+   the base modal because the review shows the pasted row and the matched
+   address side by side — seeing both at once is the whole point of the
+   screen, and wrapping them into each other defeats it.
+   --------------------------------------------------------------------------- */
+.parcel-list-modal { width: min(860px, calc(100vw - 32px)); }
+
+.parcel-list-notices {
+  margin: 8px 0 0;
+  padding: 7px 9px;
+  border-radius: 4px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.parcel-list-notices p { margin: 0 0 4px; }
+.parcel-list-notices p:last-child { margin-bottom: 0; }
+.parcel-list-notices[hidden] { display: none; }
+
+/* Scrolls internally so a 200-row import keeps its footer buttons on
+   screen instead of pushing Confirm below the fold. */
+.parcel-list-review-wrap {
+  margin-top: 10px;
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+}
+.parcel-list-review {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.parcel-list-review thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 600;
+  background: var(--color-neutral-100, #f4f4f5);
+  border-bottom: 1px solid var(--color-neutral-300, #d4d4d8);
+  white-space: nowrap;
+}
+.parcel-list-review td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--color-neutral-200, #e4e4e7);
+  vertical-align: top;
+}
+.parcel-list-review tr:last-child td { border-bottom: none; }
+.parcel-list-col-check { width: 28px; }
+.parcel-list-col-line {
+  width: 30px;
+  color: var(--color-neutral-500, #71717a);
+  font-variant-numeric: tabular-nums;
+}
+.parcel-list-col-raw {
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.parcel-list-col-roll {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.parcel-list-col-match { min-width: 220px; }
+
+/* A tinted left edge, not a tinted row: the row stays readable while the
+   status is still scannable down the column. */
+.parcel-list-row.is-ok    { box-shadow: inset 3px 0 0 #16a34a; }
+.parcel-list-row.is-warn  { box-shadow: inset 3px 0 0 #d97706; background: #fffbeb; }
+.parcel-list-row.is-bad   { box-shadow: inset 3px 0 0 #dc2626; background: #fef2f2; }
+
+.parcel-list-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.parcel-list-badge.is-ok   { background: #dcfce7; color: #166534; }
+.parcel-list-badge.is-warn { background: #fef3c7; color: #92400e; }
+.parcel-list-badge.is-bad  { background: #fee2e2; color: #991b1b; }
+.parcel-list-detail { color: var(--color-neutral-600, #52525b); }
+
+/* The sidebar's Import list button sits on its own row under the action
+   row so it never competes with Search for the primary position. */
+.action-row-import { margin-top: 6px; }
+
+/* Active imported-list pill on the Sales tab. */
+.sales-list-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 3px 6px 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-accent-500, #2563eb);
+  background: #eff6ff;
+  color: var(--color-accent-600, #1d4ed8);
+  font-size: 12px;
+  width: fit-content;
+}
+.sales-list-filter[hidden] { display: none; }
+/* Scoped to the pill, and every box property restated: the sidebar styles
+   bare <button> as a full-size dark control (36px min-height, 8/14
+   padding), which turns an unqualified rule here into a black square
+   sitting on top of the label. */
+.sales-list-filter .sales-list-filter-clear {
+  min-height: 0;
+  min-width: 0;
+  height: auto;
+  width: auto;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  padding: 1px 4px;
+  margin: 0;
+  box-shadow: none;
+}
+.sales-list-filter .sales-list-filter-clear:hover {
+  background: #dbeafe;
+  color: #991b1b;
+}
 
 /* ---------------------------------------------------------------------------
    Collapsible overlay group (Historical). A <details> spanning both grid
