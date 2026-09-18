@@ -3818,6 +3818,16 @@ body.shape-drawing .maplibregl-canvas {
   cursor: pointer;
 }
 .sample-csv-link:hover { color: var(--color-accent-500, #2563eb); }
+/* In the sidebar the link is a footnote to the Import list button, not a
+   control: right-aligned on its own thin line so it adds a row of text
+   rather than a row of UI. margin-left:auto is the modal's doing, so it
+   is reset here. */
+.sidebar .sample-csv-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 3px 0 0;
+}
+.sidebar .sample-csv-row .sample-csv-link { margin-left: 0; }
 .sample-csv-link:focus-visible {
   outline: 2px solid var(--color-accent-500, #2563eb);
   outline-offset: 2px;

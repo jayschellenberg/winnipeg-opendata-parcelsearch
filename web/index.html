@@ -353,6 +353,20 @@
           >📋 Import list…</button>
           <div class="numbering-slot" data-numbering-slot></div>
         </div>
+        <!-- Sample list template. Its own thin line rather than a third
+             item in the row above: that row is sized so the button and
+             the numbering pill fit exactly at a narrow sidebar, and a
+             link squeezed in beside them would start truncating one of
+             the two. Right-aligned so it reads as a footnote to the
+             Import list button rather than a control of its own. -->
+        <div class="sample-csv-row">
+          <a
+            class="sample-csv-link"
+            href="sample-parcel-list.csv"
+            download="sample-parcel-list.csv"
+            title="Download a sample CSV. Nine rows covering every shape Import list accepts — addresses with and without the city, a postal code, roll numbers with and without their leading zero, a side-door address, and punctuation-heavy and French street names. Every row resolves."
+          >Sample CSV</a>
+        </div>
         <!-- Number parcels + Entry order. ONE row that main.js MOVES under
              whichever tab is active (placeNumberingRow) rather than a copy
              in each panel, so there is a single checkbox state and
@@ -504,6 +518,22 @@
                 class="sales-import-trigger"
                 title="Paste or upload a list of addresses (or roll numbers) to narrow the loaded sales to those properties. This selects which parcels to show — it does not supply sale prices or dates."
               >Import list…</button>
+            </div>
+            <!-- The same template the Import list modal offers, surfaced
+                 here so the shape is visible before deciding to open
+                 anything. On its own line for the same reason as the
+                 Property tab's copy: inline, it squeezed the two buttons
+                 beside it until their labels wrapped onto two lines.
+                 It is an ADDRESS/roll list, not sale data — pasting it
+                 into "Paste data…" would fail that loader's
+                 required-column gate. -->
+            <div class="sample-csv-row">
+              <a
+                class="sample-csv-link"
+                href="sample-parcel-list.csv"
+                download="sample-parcel-list.csv"
+                title="Download a sample list of addresses and roll numbers for Import list. This is a PARCEL list, not sales data — it has no price or sale date, so it is not a template for 'Paste data…'."
+              >Sample CSV</a>
             </div>
 
             <!-- Recent uploads (last 5 cached in localStorage). Hidden by
