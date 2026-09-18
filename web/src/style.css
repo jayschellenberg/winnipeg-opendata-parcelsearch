@@ -3964,13 +3964,26 @@ body.shape-drawing .maplibregl-canvas {
      the stacked layout this row exists to replace. */
   flex-wrap: nowrap;
 }
+/* The import button gives up most of the row: it is one word plus an
+   ellipsis, while the pill beside it has to carry a label and three
+   segments. It still shrinks rather than overflowing on a narrow
+   sidebar. */
 .sidebar .action-row-import > #parcel-list-trigger {
-  flex: 1 1 50%;
+  flex: 1 1 auto;
   min-width: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* The pill asks for exactly what its label and three segments need and
+   does not shrink; the import button takes whatever is left. Sizing the
+   two as fixed percentages could not fit the label at a narrow sidebar —
+   the segments were being STRETCHED to fill a 50% slot, which is what
+   ate the room the label needed. Natural-width segments free ~100px. */
 .sidebar .action-row-import > .numbering-slot {
-  flex: 1 1 50%;
-  min-width: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
 }
@@ -3991,20 +4004,43 @@ body.shape-drawing .maplibregl-canvas {
    "Numbering:" prefix goes and the segments shrink to fit. The control
    keeps all three modes — dropping one to save space would hide a
    function rather than tighten it. */
-.sidebar .action-row-import .numbering-slot .mode-pill-prefix { display: none; }
+/* The label stays, and stays the real word. Without it the three
+   segments read as an unexplained toggle — "Off / Roll # / Entry" says
+   nothing about what is being numbered. An abbreviation was worse than
+   no label at all here: "No." beside an "Off" button reads as the word
+   "No". It never wraps and never shrinks, so the pill gives up the
+   space instead. */
+.sidebar .action-row-import .numbering-slot .mode-pill-prefix {
+  display: inline;
+  flex: 0 0 auto;
+  margin-right: 5px;
+  font-weight: 600;
+  color: var(--color-neutral-600, #52525b);
+  white-space: nowrap;
+  /* "Number:" rather than "Numbering:" — 17px narrower, which is what
+     lets the import button beside it keep its full text at a narrow
+     sidebar. Still a real word, so it cannot be misread the way an
+     abbreviation could. The text node stays "Numbering:" for the Sales
+     tab copy and the accessibility tree. */
+  font-size: 0;
+}
+.sidebar .action-row-import .numbering-slot .mode-pill-prefix::after {
+  content: "Number:";
+  font-size: 10px;
+}
 .sidebar .action-row-import .numbering-slot .mode-pill-row {
-  width: 100%;
+  display: flex;
+  align-items: center;
   gap: 0;
 }
 .sidebar .action-row-import .numbering-slot .mode-pill {
-  width: 100%;
   display: flex;
 }
 .sidebar .action-row-import .numbering-slot .mode-pill .mode-btn {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
-  padding-left: 4px;
-  padding-right: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
