@@ -193,7 +193,8 @@ Three things are load-bearing:
   remainder, so a clean list never pays for it, and it is capped — beyond
   the cap the rows are reported unmatched and the notice says why.
 
-A **Sample CSV** link beside the file picker downloads
+A **Sample CSV** link — beside the modal's file picker, and on its own line
+under the Import list button in both sidebars — downloads
 [`sample-parcel-list.csv`](web/public/sample-parcel-list.csv) — nine rows
 covering every shape the importer accepts: an address with the city and
 province, one without, one carrying a postal code, a full 11-digit roll,
@@ -222,10 +223,18 @@ keeps no standing handle to a file picked from disk, so replaying the
 stored text is the only way a recent entry can actually reload anything.
 Picking one goes straight to the review screen; the × forgets them all.
 
-On Property Search the import button shares a row with the numbering pill
-at half width each, and **Export CSV** sits at the foot of the sidebar
-under Generate Map — both ways of getting results out of the app in one
-place, rather than an output action in the row that starts a search.
+On Property Search the import button shares a row with the numbering pill.
+The pill asks for exactly what its label and three segments need and does
+not shrink; the button takes the rest, which lands it around half the row.
+Sizing the two as fixed percentages did not work: the segments were being
+STRETCHED to fill a 50% slot, and that — not a shortage of room — was what
+left no space for the pill's label. Two labels are shortened for that row
+only, via `data-short` and `::after`, so the Sales tab's full-width copy
+and the accessibility tree still read `Numbering:` and `By roll #`.
+
+**Export CSV** sits at the foot of the sidebar under Generate Map — both
+ways of getting results out of the app in one place, rather than an output
+action in the row that starts a search.
 
 Lists longer than the 500-entry SoQL `IN` cap are split across queries and
 merged, with every other filter carried on each chunk. Before the importer
@@ -794,10 +803,13 @@ start the dev server on `localhost`.
 
 ## Documentation
 
-- **[SESSION-HANDOFF-2026-08-22.md](SESSION-HANDOFF-2026-08-22.md)** — the
-  current resume point: what the sales side is, the decisions that will
-  silently regress if you change them, and what is still open. Superseded
-  handoffs are archived under `.claude/`.
+- **[SESSION-HANDOFF-2026-09-18.md](SESSION-HANDOFF-2026-09-18.md)** — the
+  current resume point: the address importer, the decisions that will
+  silently regress if you change them, and what is still open. The previous
+  two ([09-16](SESSION-HANDOFF-2026-09-16.md),
+  [08-22](SESSION-HANDOFF-2026-08-22.md)) stay beside it; anything older sits
+  in `.claude/`, which is gitignored, so those are local-only history rather
+  than part of the repo.
 - **[REPLICATION_GUIDE.md](REPLICATION_GUIDE.md)** — the deep doc: full
   architecture, every solved bug, SoQL reference, and a checklist for porting
   the tool to another jurisdiction.
