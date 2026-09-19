@@ -11,6 +11,7 @@
 // The hover popup figures out which schema the feature is carrying.
 
 import maplibregl from 'maplibre-gl';
+import { addLocateControl } from './lib/locateControl.js';
 import { isPhone } from './lib/phoneMode.js';
 // Bundle MapLibre's stylesheet through Vite instead of loading it from the
 // unpkg CDN at runtime — removes a third-party request with no Subresource
@@ -604,6 +605,13 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
   });
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+  // "Use my location": flies to the GPS fix and fires the map's own click
+  // there, so a result parcel opens its card (phone) or popup, and a
+  // citywide parcel opens its popup. Result layers first.
+  addLocateControl(map, {
+    hitLayers: PARCEL_CONTENT_LAYERS,
+    missText: 'No parcel is drawn here. Zoom in, or run a search that covers this spot, then try again.',
+  });
   map.addControl(new BasemapMenuControl(onBasemapChange), 'top-right');
   // Distance / area measurement tool. mapbox-gl-draw owns the
   // in-progress geometry; MeasureControl wraps it in a small panel

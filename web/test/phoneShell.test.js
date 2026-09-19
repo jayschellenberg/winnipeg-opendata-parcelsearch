@@ -241,13 +241,32 @@ test('sales mode on the phone: draw tools on the map, no-folder import copy', ()
   assert.ok(html.includes('id="sales-db-nofs-hint"'), 'index.html has no #sales-db-nofs-hint');
 });
 
+test('"use my location" is on the map and reuses the parcel click', () => {
+  const mapSrc = stripJs(read('src', 'map.js'));
+  const locate = stripJs(read('src', 'lib', 'locateControl.js'));
+  assert.match(mapSrc, /import\s*\{[^}]*\baddLocateControl\b[^}]*\}\s*from\s*'\.\/lib\/locateControl\.js'/,
+    'map.js does not import addLocateControl');
+  const call = mapSrc.match(/addLocateControl\(map,\s*\{([\s\S]*?)\}\);/);
+  assert.ok(call, 'map.js never calls addLocateControl');
+  assert.match(call[1], /hitLayers:\s*PARCEL_CONTENT_LAYERS/,
+    'the locate control does not hit-test the parcel content layers (results first)');
+  assert.match(call[1], /missText:/, 'a fix on no parcel would be silent');
+  // The control opens the parcel by firing the map's own click, so the
+  // phone card reveal and every popup keep one code path.
+  assert.match(locate, /new MapMouseEvent\('click', map, mouse\)/, 'locateControl.js does not fire a real MapMouseEvent at the fix');
+  assert.match(locate, /preventDefault\(\) \{\}/, 'the fallback event lacks preventDefault(), which the draw tools call');
+  assert.match(locate, /map\.once\('idle'/, 'the hit test must wait for the fly-to to settle');
+  assert.match(locate, /new maplibregl\.GeolocateControl\(/, 'the built-in GeolocateControl is not used');
+  assert.ok(css.includes('body.phone .maplibregl-ctrl-group button'), 'phone map control buttons are not thumb-sized');
+});
+
 test('the Manitoba and Winnipeg phone modules have not drifted', () => {
   // Both apps ship the same two modules; a fix in one belongs in the
   // other. Skipped (not failed) when the sister checkout is absent, as
   // it is in CI.
   const sister = 'D:/Dropbox/ClaudeCode/MBOpenData/mb-parcelsearch/web/src/lib/';
   if (!fs.existsSync(sister + 'phoneMode.js')) { console.log('    (sister checkout absent; skipped)'); return; }
-  for (const f of ['phoneMode.js', 'sheetDrag.js', 'resultCards.js']) {
+  for (const f of ['phoneMode.js', 'sheetDrag.js', 'resultCards.js', 'locateControl.js']) {
     assert.equal(read('src', 'lib', f), fs.readFileSync(sister + f, 'utf8'),
       `${f} differs from the Manitoba copy`);
   }
