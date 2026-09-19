@@ -451,6 +451,10 @@
                 uploaded.
               </p>
               <button type="button" id="sales-db-import" class="secondary">Choose export folder…</button>
+              <!-- Unhidden by salesDbPanel.js when the browser has no File
+                   System Access (Safari, Firefox, every phone): the button
+                   then opens a multi-file picker instead of a folder. -->
+              <p class="sales-db-hint sales-db-nofs-hint" id="sales-db-nofs-hint" hidden>This browser cannot open a folder. Pick every SoldPropertyListing CSV from the export folder — on a phone, from the Files app — and it is imported the same way, without auto-refresh.</p>
               <input id="sales-db-folder-input" type="file" webkitdirectory directory multiple hidden />
             </div>
             <div class="sales-db-ready" id="sales-db-ready" hidden>
@@ -1307,6 +1311,15 @@
               </div>
             </div>
           </div>
+
+          <!-- Phone only: lib/resultCards.js mirrors every row of #results
+               into a card here and keeps them in step through a
+               MutationObserver; the table-scroll below is hidden while
+               body.phone is on. data-card-keys names which of this app's
+               column keys make the headline (the module is shared with the
+               Manitoba portal, whose keys are its defaults). -->
+          <div id="result-cards" class="result-cards"
+               data-card-keys='{"title":["address","desc"],"sub":["roll"],"facts":["value","zoning","saleDate","salePrice","saleAcres","area","dwellingUnits"],"pct":{"zoning":"zoningPct"},"skip":["select"]}'></div>
 
           <div class="table-scroll">
           <table id="results">

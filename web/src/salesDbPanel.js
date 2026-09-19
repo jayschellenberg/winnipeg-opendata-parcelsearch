@@ -38,6 +38,15 @@ export function initSalesDbPanel({ onLoad, setStatus, getDateWindow } = {}) {
   const $ready = document.getElementById('sales-db-ready');
   const $import = document.getElementById('sales-db-import');
   const $folderInput = document.getElementById('sales-db-folder-input');
+  // No File System Access (Safari, Firefox, every phone): the fallback is
+  // the multi-file <input>, so the button must not promise a folder. Same
+  // import, no auto-refresh.
+  if ($import && !fsAccessSupported()) {
+    $import.textContent = 'Choose export files…';
+    $import.title = 'Select every SoldPropertyListing CSV from the export folder';
+    const hint = document.getElementById('sales-db-nofs-hint');
+    if (hint) hint.hidden = false;
+  }
   const $load = document.getElementById('sales-db-load');
   const $refresh = document.getElementById('sales-db-refresh');
   const $forget = document.getElementById('sales-db-forget');

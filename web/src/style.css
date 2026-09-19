@@ -5526,3 +5526,191 @@ body.phone .sidebar.sheet-settling {
   transition: transform 0.2s ease;
   overflow: hidden;
 }
+/* --- Result cards (lib/resultCards.js) ------------------------------
+   The phone face of #results. The table stays in the DOM — it is the
+   data the cards are read from — but only the cards are shown. The
+   selected-parcel summary card is hidden too: the tapped card carries
+   its own detail list, and the summary would open at the top of the
+   sheet where the user is not looking. */
+.result-cards { display: none; }
+body.phone .phone-results-slot .table-scroll { display: none; }
+body.phone .phone-results-slot .result-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+body.phone .phone-results-slot .parcel-summary { display: none; }
+.result-card {
+  padding: 10px 12px;
+  border: 1px solid var(--ui-line, #d7ded9);
+  border-radius: var(--ui-radius, 8px);
+  background: var(--ui-panel, #fff);
+  box-shadow: var(--ui-shadow-soft, 0 1px 2px rgba(0, 0, 0, 0.06));
+  cursor: pointer;
+}
+.result-card.deselected { opacity: 0.55; }
+.result-card.starred { border-color: #d4a017; background: #fffbea; }
+.result-card.outlier { border-left: 4px solid #d62828; }
+.result-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.result-card-check {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin: 1px 0 0;
+}
+.result-card-text { min-width: 0; flex: 1 1 auto; }
+.result-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ui-ink, #151916);
+  overflow-wrap: anywhere;
+}
+.result-card-seq {
+  display: inline-block;
+  min-width: 22px;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--ui-ink, #151916);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 20px;
+}
+.result-card-sub {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--ui-ink-soft, #4d5752);
+}
+.result-card-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.result-card-facts li { font-size: 13.5px; color: var(--ui-ink, #151916); }
+.result-card-facts b {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-ink-soft, #4d5752);
+}
+body.phone .sidebar .result-card-more {
+  display: block;
+  margin: 6px 0 0;
+  padding: 6px 0;
+  min-height: 36px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--ui-accent, #2f6f6a);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.result-card-detail { display: none; }
+.result-card.open .result-card-detail {
+  display: grid;
+  grid-template-columns: minmax(96px, 36%) 1fr;
+  gap: 5px 10px;
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+.result-card-detail dt { color: var(--ui-ink-soft, #4d5752); }
+.result-card-detail dd { margin: 0; overflow-wrap: anywhere; }
+.result-card-detail a { color: var(--ui-accent, #2f6f6a); }
+
+/* --- Parcel tap -> card (map.js onParcelClick, phoneMode.js) --------
+   Hover popups have no meaning under a finger and would flash before
+   the tap lands, so every hover popup carries .hover-popup and is
+   hidden on the phone. The revealed card scrolls to the top of the
+   sheet, under the sticky handle + tab strip, and flashes its outline
+   the way a desktop row flashes .row-highlight. */
+body.phone .maplibregl-popup.hover-popup { display: none; }
+.result-card { scroll-margin-top: 92px; }
+.result-card.card-highlight { animation: card-highlight 1.6s ease-out; }
+@keyframes card-highlight {
+  0%, 35% { outline: 3px solid var(--ui-accent, #2f6f6a); outline-offset: 0; }
+  100% { outline: 3px solid transparent; outline-offset: 0; }
+}
+
+/* --- Sales Analysis on the phone ------------------------------------
+   The draw tools move from the top bar onto the map (phoneMode.js
+   relocateShapeTools): a floating column at the bottom-left, lifted
+   above the sheet like the legends, shown only while a sales set is
+   loaded because the shape filter runs in the sales predicate chain. */
+body.phone #map .shape-tools {
+  display: none;
+  position: absolute;
+  left: 8px;
+  bottom: 12px;
+  z-index: 6;
+  flex-direction: column;
+  gap: 6px;
+  transform: translateY(calc(-1 * var(--sheet-lift)));
+}
+body.phone.sales-mode #map .shape-tools { display: flex; }
+body.phone:has(.sidebar.sheet-full) #map .shape-tools { visibility: hidden; }
+body.phone #map .shape-tool-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--ui-line-strong, #b8c3ba);
+  border-radius: var(--ui-radius, 6px);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ui-ink, #151916);
+  font-size: 18px;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+body.phone #map .shape-tool-btn.active {
+  background: var(--ui-accent, #2f6f6a);
+  border-color: var(--ui-accent, #2f6f6a);
+  color: #fff;
+}
+
+/* Card extras for sales mode: the comparable star and the multi-parcel
+   sale note. */
+body.phone .sidebar .result-card-star {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  margin: -6px -6px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--ui-ink-soft, #4d5752);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+body.phone .sidebar .result-card-star.active { color: #d4a017; }
+.result-card-note {
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 3px solid #6aa84f;
+  font-size: 12.5px;
+  color: var(--ui-ink-soft, #4d5752);
+}
+.sales-db-nofs-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--ui-ink-soft, #4d5752);
+}
+.sales-db-nofs-hint code { font-size: 12px; }

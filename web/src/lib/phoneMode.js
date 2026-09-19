@@ -20,6 +20,7 @@
 //   full  — the whole sidebar, for long result lists and the layer groups
 
 import { initSheetDrag } from './sheetDrag.js';
+import { initResultCards } from './resultCards.js';
 
 export const PHONE_QUERY = '(max-width: 767px)';
 export const SHEET_STATES = ['peek', 'half', 'full'];
@@ -29,6 +30,19 @@ let mql = null;
 // Where #results-wrap sat in the workspace before the first move. A text
 // node is fine: insertBefore only needs it to still be a workspace child.
 let desktopAnchor = null;
+// The result-cards instance (lib/resultCards.js), once initPhoneMode ran.
+let cards = null;
+
+/**
+ * A parcel tapped on the map: open and scroll to its card, and bring a
+ * peeked sheet up so the card is on screen. Returns false when there is
+ * no card for the key, so map.js can fall back to its popup.
+ */
+export function revealResultCard(key) {
+  if (!cards || !cards.reveal(key)) return false;
+  if (getSheetState() === 'peek') setSheetState(DEFAULT_SHEET);
+  return true;
+}
 
 export function isPhone() {
   return typeof document !== 'undefined'
@@ -49,6 +63,26 @@ function relocateResults(phone) {
       ? desktopAnchor
       : null;
     workspace.insertBefore(results, anchor);
+  }
+}
+
+// The area-selection draw tools live in the top bar, which folds into a
+// menu on the phone. They move onto the map instead (a floating column
+// at the bottom-left, CSS under body.phone.sales-mode) and back to their
+// exact top-bar position on a widen. drawShapes.js wires the buttons by
+// id, so the move is invisible to it.
+let shapeToolsHome = null;   // { parent, next } in the top bar
+function relocateShapeTools(phone) {
+  const tools = document.getElementById('shape-tools');
+  const mapEl = document.getElementById('map');
+  if (!tools || !mapEl) return;
+  if (phone) {
+    if (tools.parentElement === mapEl) return;
+    shapeToolsHome = { parent: tools.parentElement, next: tools.nextSibling };
+    mapEl.appendChild(tools);
+  } else if (tools.parentElement === mapEl && shapeToolsHome?.parent) {
+    const { parent, next } = shapeToolsHome;
+    parent.insertBefore(tools, next && next.parentNode === parent ? next : null);
   }
 }
 
@@ -170,11 +204,22 @@ export function initPhoneMode({ onChange } = {}) {
     measure: measureSnapHeights,
     onSnap: setSheetState,
   });
+  // Result cards mirror the table while phone mode is on. A tapped card
+  // has flown the map to its parcel, so a full-height sheet drops to
+  // half to show it.
+  cards = initResultCards({
+    table: document.getElementById('results'),
+    container: document.getElementById('result-cards'),
+    isPhone,
+    onTap: () => { if (getSheetState() === 'full') setSheetState(DEFAULT_SHEET); },
+  });
   const apply = () => {
     const phone = mql.matches;
     document.body.classList.toggle('phone', phone);
     relocateResults(phone);
+    relocateShapeTools(phone);
     if (phone && !getSheetState()) setSheetState(DEFAULT_SHEET);
+    cards?.render();
     if (typeof onChange === 'function') onChange(phone);
   };
   apply();
