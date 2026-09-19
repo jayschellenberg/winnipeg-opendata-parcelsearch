@@ -5714,3 +5714,11 @@ body.phone .sidebar .result-card-star.active { color: #d4a017; }
   color: var(--ui-ink-soft, #4d5752);
 }
 .sales-db-nofs-hint code { font-size: 12px; }
+/* --- "Use my location" (lib/locateControl.js) ------------------------
+   MapLibre's geolocate button joins the zoom stack. On the phone every
+   map control button grows to a thumb-sized square; the legends are
+   lifted by the sheet, not anchored to this stack, so nothing collides. */
+body.phone .maplibregl-ctrl-group button {
+  width: 40px;
+  height: 40px;
+}
