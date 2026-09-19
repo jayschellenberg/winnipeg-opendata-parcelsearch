@@ -12,9 +12,15 @@
 //
 // A press that never moves more than TAP_SLOP_PX is a tap: nothing here
 // reacts, and the element's own click handler runs (the handle cycles,
-// a tab selects). After a real drag the click that the browser fires
-// anyway is swallowed, so a drag on the tab strip does not also switch
-// tabs.
+// a tab selects). No explicit pointer capture is taken: Chromium fires
+// the click at the capturing element, so capturing on the tab strip at
+// pointerdown sent every tap on a tab BUTTON to the STRIP and no tab
+// ever switched. Instead the moves and the release are heard on window,
+// filtered by pointer id — a mouse reaches window from wherever it is,
+// and a touch is implicitly captured by the element it started on, so
+// both keep reporting after the finger leaves the grabber. After a real
+// drag the click that the browser fires anyway is swallowed, so a drag
+// on the tab strip does not also switch tabs.
 
 export const PROJECT_MS = 120;   // how far ahead a fling is projected
 export const TAP_SLOP_PX = 6;    // less movement than this is a tap
@@ -64,14 +70,13 @@ export function initSheetDrag({ sheet, grabbers, measure, onSnap }) {
     if (!heights || !Number.isFinite(heights.full)) return;
     const startH = sheet.getBoundingClientRect().height;
     active = {
-      id: e.pointerId, target: e.currentTarget, heights,
+      id: e.pointerId, heights,
       startY: e.clientY, startH, h: startH,
       lastY: e.clientY, lastT: e.timeStamp, vel: 0, moved: false,
     };
     sheet.classList.add('sheet-dragging');
     sheet.style.height = `${heights.full}px`;
     sheet.style.transform = `translateY(${heights.full - startH}px)`;
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
   };
 
   const onMove = (e) => {
@@ -93,7 +98,6 @@ export function initSheetDrag({ sheet, grabbers, measure, onSnap }) {
     if (!active || e.pointerId !== active.id) return;
     const a = active;
     active = null;
-    try { a.target.releasePointerCapture(a.id); } catch {}
     if (!a.moved) {
       // A tap: back to the resting state, then let the click handler act.
       // The inline pair is cleared and laid out while sheet-dragging still
@@ -131,12 +135,14 @@ export function initSheetDrag({ sheet, grabbers, measure, onSnap }) {
     }, SETTLE_MS);
   };
 
+  // Moves and the release are heard on window (see the header); every
+  // handler ignores a pointer that is not the active one.
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', (e) => finish(e, false));
+  window.addEventListener('pointercancel', (e) => finish(e, true));
   for (const g of grabbers) {
     if (!g) continue;
     g.addEventListener('pointerdown', onDown);
-    g.addEventListener('pointermove', onMove);
-    g.addEventListener('pointerup', (e) => finish(e, false));
-    g.addEventListener('pointercancel', (e) => finish(e, true));
     g.addEventListener('click', (e) => {
       if (!swallowClick) return;
       e.stopPropagation();

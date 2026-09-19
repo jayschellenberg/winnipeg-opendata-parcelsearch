@@ -140,6 +140,17 @@ test('the drag gesture is wired, not just written', () => {
     'measureSnapHeights must measure under sheet-dragging');
 });
 
+test('the gesture never takes pointer capture, so a tap still clicks the button', () => {
+  // Chromium fires the click at the capturing element. Capturing on the
+  // tab strip at pointerdown made every tap on a tab button a click on
+  // the strip, and no tab ever switched. Moves and the release are heard
+  // on window instead.
+  assert.doesNotMatch(drag, /setPointerCapture/, 'sheetDrag.js must not take pointer capture');
+  for (const ev of ['pointermove', 'pointerup', 'pointercancel']) {
+    assert.ok(drag.includes(`window.addEventListener('${ev}'`), `${ev} must be listened for on window`);
+  }
+});
+
 test('the JS breakpoint and the desktop split breakpoint agree', () => {
   const q = mode.match(/PHONE_QUERY\s*=\s*'\(max-width:\s*(\d+)px\)'/);
   assert.ok(q, 'PHONE_QUERY not found');

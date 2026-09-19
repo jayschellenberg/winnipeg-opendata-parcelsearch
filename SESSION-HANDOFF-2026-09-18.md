@@ -226,9 +226,20 @@ session:
   `fullRows` back in, so a fresh array is the only reliable "new result set"
   signal. The zoning-enrichment re-render at the end of a search passes a new
   array too, which lifts a sheet that is already up — harmless.
+- **A shared-module bug found and fixed in both apps.** `sheetDrag.js` took
+  pointer capture on the tab strip at pointerdown; Chromium then fires the
+  click at the capturing element, so every tap on a tab BUTTON became a click
+  on the STRIP and no tab ever switched on a phone. The gesture now takes no
+  capture at all — pointermove / pointerup / pointercancel are heard on
+  window and filtered by pointer id (a touch is implicitly captured by the
+  element it started on, so it keeps reporting off the grabber). Pinned by a
+  test. The same commit is on MB's `feat/phone-sheet-drag` as 579e8a3, made
+  through a git worktree so the MB session's checkout was untouched — **not
+  pushed**; push it or cherry-pick when that branch is next worked on.
 - **Draw tools and Hide / Expand map are hidden on the phone**, as in MB.
-  Sales Analysis on a phone was only looked at, not exercised (the tab
-  renders; its charts and the paste modal were not tried at 375px).
+  Sales Analysis on a phone was exercised through the paste modal with a
+  SABRE triplex export: 8 sales in the sheet, dots on the map, the category
+  legend lifted above the sheet. The charts were not looked at.
 - **Verified at 375×812** in the desktop-app browser pane: bar fits, menu
   opens and closes on a pick, handle cycles peek → half → full, a
   300–400 Selkirk search lands 32 parcels in the sheet with the map fitted,
@@ -237,4 +248,5 @@ session:
 - **Dev server:** port 5173 was held by another chat's server (which was
   actually serving the MB app). `.claude/launch.json` in the WpgOpenData root
   gained `parcelsearch-web-5180`.
-- Committed on `feat/phone-shell`, **not pushed** — pushing to main deploys.
+- On `feat/phone-shell`, pushed, with a PR open — not merged; merging to
+  main deploys.
