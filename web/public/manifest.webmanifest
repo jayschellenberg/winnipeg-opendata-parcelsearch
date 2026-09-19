@@ -1,0 +1,16 @@
+{
+  "name": "Winnipeg Parcel Search",
+  "short_name": "WPG Parcels",
+  "description": "Search every Winnipeg property by address, roll number or legal description, with zoning, assessment and sales.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f3f5f2",
+  "theme_color": "#151a16",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

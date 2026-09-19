@@ -37,7 +37,7 @@ import { formatSqFt } from './lib/format.js';
 import { encodeState, decodeState } from './lib/urlState.js';
 import { initSidebarTabs, setActiveTab, onTabChange, getActiveTab } from './lib/tabs.js';
 // Phone mode: map-first shell + bottom sheet below 768px.
-import { initPhoneMode, ensureSheetVisible, isPhone, revealResultCard } from './lib/phoneMode.js';
+import { initPhoneMode, ensureSheetVisible, isPhone, revealResultCard, setSheetState } from './lib/phoneMode.js';
 import { presetRange } from './lib/datePresets.js';
 import { readMapLegends, layoutMapLegends, paintMapLegends } from './lib/mapLegend.js';
 import {
@@ -556,7 +556,21 @@ function updateSortIndicators() {
 const { map, ready: mapReady } = initMap($mapEl, {
   onFeatureClick: scrollToRow,
   onBasemapChange,
+  onLocate: handleLocate,
 });
+
+// "Use my location" (lib/locateControl.js) hands the GPS fix here once per
+// press, after the map has settled on it. The phone use case is finding
+// an address nearby, so: switch on All Assessment Parcels so the fabric
+// and its civic labels draw around the dot, and peek the sheet so the
+// map has the screen. Nothing opens.
+async function handleLocate() {
+  // Sheet first: the archive probe inside the toggle can take a moment,
+  // and the map should be showing while it does.
+  if (isPhone()) setSheetState('peek');
+  if (!citywideParcelsEnabled) await toggleCitywideParcels();
+}
+if (import.meta.env?.DEV) window.__handleLocate = handleLocate;   // dev-only handle for driving it without GPS
 
 $search.addEventListener('click', runSearch);
 $clear.addEventListener('click', clearAll);

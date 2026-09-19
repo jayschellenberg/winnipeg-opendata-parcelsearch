@@ -581,7 +581,7 @@ const MEASURE_DRAW_STYLES = [
   },
 ];
 
-export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
+export function initMap(container, { onFeatureClick, onBasemapChange, onLocate } = {}) {
   const map = new maplibregl.Map({
     container,
     style: BASEMAP_STYLE,
@@ -605,13 +605,10 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
   });
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-  // "Use my location": flies to the GPS fix and fires the map's own click
-  // there, so a result parcel opens its card (phone) or popup, and a
-  // citywide parcel opens its popup. Result layers first.
-  addLocateControl(map, {
-    hitLayers: PARCEL_CONTENT_LAYERS,
-    missText: 'No parcel is drawn here. Zoom in, or run a search that covers this spot, then try again.',
-  });
+  // "Use my location": flies to the GPS fix, follows the user, and hands
+  // the fix to main.js once so it can switch on the citywide parcel
+  // fabric and tuck the phone sheet away.
+  addLocateControl(map, { onLocated: onLocate });
   map.addControl(new BasemapMenuControl(onBasemapChange), 'top-right');
   // Distance / area measurement tool. mapbox-gl-draw owns the
   // in-progress geometry; MeasureControl wraps it in a small panel
