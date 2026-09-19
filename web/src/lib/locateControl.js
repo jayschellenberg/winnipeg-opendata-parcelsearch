@@ -1,97 +1,80 @@
-// "Use my location" — a map button that flies to the phone's GPS fix and
-// opens the parcel under it.
+// "Use my location" — a map button for finding an address near you.
 //
-// MapLibre's GeolocateControl already does the hard part: the button, the
-// permission prompt, the blue dot with its accuracy ring, and the fly-to.
-// What it does not know is what a parcel is. So once the map has settled
-// on the fix, this fires the map's OWN click at that point — the same
-// event a finger would raise — and every existing click handler takes it
-// from there: a result parcel opens its card on the phone (or its popup
-// on desktop), a municipality parcel opens its popup. Nothing about
-// parcels is duplicated here.
+// The phone use case (Jason, 2026-09-19) is not "which parcel am I on"
+// but "show me the parcels around me with their civic addresses, so I
+// can find the one I am looking for". So the button does three things
+// and opens nothing: it flies to the GPS fix at a zoom where civic
+// labels draw, it keeps following you as you walk (MapLibre's tracking
+// mode, until you pan the map yourself), and it hands the fix to the
+// app once — onLocated(lngLat) — so the app can switch on its parcel
+// fabric for that area and get its sheet out of the way. Which layer
+// that is, and how it is scoped, is the app's business: Manitoba loads
+// parcels per municipality, Winnipeg has one citywide archive.
 //
-// A fix that lands on no parcel layer (outside the province, zoomed to a
-// bare basemap, the parcel layer for that municipality not switched on)
-// gets a short popup saying so instead of silence.
+// MapLibre's GeolocateControl already provides the button, the
+// permission prompt, the blue dot with its accuracy ring, the fly-to and
+// the tracking. This module only adds the one-shot hand-off and plain
+// words when a fix cannot be had.
 //
-// Shared byte-for-byte with the Winnipeg portal: which layers count as a
-// parcel, and what the miss text says, come from the caller.
+// Shared byte-for-byte with the Winnipeg portal.
 
 import maplibregl from 'maplibre-gl';
 
+/** Zoom to land on: civic labels draw from 16 (Winnipeg) / 16.5 (Manitoba). */
 export const LOCATE_ZOOM = 17;
 
-/** Pure: which of the rendered hits to open — the first on the earliest
- *  listed layer, so a result parcel beats the municipality fabric. */
-export function pickHit(features, hitLayers) {
-  for (const layer of hitLayers) {
-    const f = (features || []).find((x) => x.layer?.id === layer);
-    if (f) return f;
-  }
-  return null;
+/**
+ * Pure: the one-shot latch. Tracking mode reports a fix every few
+ * seconds; the app should hear only the first after each press of the
+ * button, or it would keep re-running its "switch the fabric on" work
+ * while the user walks. Returns the next latch state and whether this
+ * fix is the one to hand over.
+ */
+export function takeFix(latch) {
+  if (latch.armed) return { latch: { armed: false }, handle: true };
+  return { latch, handle: false };
 }
 
 /**
  * Add the control.
- *   map        the MapLibre map
- *   hitLayers  layer ids that mean "a parcel is here", in priority order
- *   missText   what to say when the fix lands on none of them
- *   position   control corner (default top-right, under the zoom buttons)
+ *   map          the MapLibre map
+ *   onLocated    (lngLat) => void — called once per button press, after
+ *                the map has settled on the fix
+ *   position     control corner (default top-right, under the zoom buttons)
  */
-export function addLocateControl(map, { hitLayers, missText, position = 'top-right' }) {
+export function addLocateControl(map, { onLocated, position = 'top-right' } = {}) {
   const control = new maplibregl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     fitBoundsOptions: { maxZoom: LOCATE_ZOOM },
-    trackUserLocation: false,
+    trackUserLocation: true,
     showUserLocation: true,
     showAccuracyCircle: true,
   });
   map.addControl(control, position);
 
-  const missPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' });
+  const notice = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' });
+  let latch = { armed: false };
 
-  const openParcelAt = (lngLat) => {
-    const point = map.project(lngLat);
-    const layers = hitLayers.filter((id) => map.getLayer(id));
-    const hits = layers.length ? map.queryRenderedFeatures(point, { layers }) : [];
-    if (pickHit(hits, hitLayers)) {
-      // A real MapMouseEvent, built from a MouseEvent at the fix's screen
-      // position, so every click handler sees what a tap gives it: point,
-      // lngLat, originalEvent and preventDefault() (the draw tools call
-      // it). A plain object would throw in any handler that touches those.
-      const rect = map.getContainer().getBoundingClientRect();
-      const mouse = new MouseEvent('click', {
-        bubbles: true, cancelable: true,
-        clientX: rect.left + point.x, clientY: rect.top + point.y,
-      });
-      const MapMouseEvent = maplibregl.MapMouseEvent;
-      map.fire(MapMouseEvent
-        ? new MapMouseEvent('click', map, mouse)
-        : { type: 'click', lngLat, point, originalEvent: mouse, preventDefault() {} });
-      return true;
-    }
-    if (missText) {
-      missPopup.setLngLat(lngLat).setText(missText).addTo(map);
-    }
-    return false;
-  };
-
+  // Each press of the button starts (or restarts) tracking; arm the
+  // latch so the next fix is handed over exactly once.
+  control.on('trackuserlocationstart', () => { latch = { armed: true }; });
   control.on('geolocate', (e) => {
+    const next = takeFix(latch);
+    latch = next.latch;
+    if (!next.handle || typeof onLocated !== 'function') return;
     const lngLat = new maplibregl.LngLat(e.coords.longitude, e.coords.latitude);
-    // The control's own fly-to starts right after this event; wait for the
-    // map to settle (tiles loaded) so the parcel under the fix is rendered
-    // and can be hit-tested. `idle` fires once nothing is in flight.
-    map.once('idle', () => openParcelAt(lngLat));
+    // The control's own fly-to starts right after this event; wait for
+    // the map to settle so the app's work lands on the right view.
+    map.once('idle', () => onLocated(lngLat));
   });
   control.on('error', (e) => {
+    latch = { armed: false };
     const denied = e?.code === 1;
-    if (missText) {
-      missPopup.setLngLat(map.getCenter())
-        .setText(denied
-          ? 'Location is blocked for this site. Allow it in the browser settings to use this button.'
-          : 'Could not get a location fix. Try again outdoors or with Wi-Fi on.')
-        .addTo(map);
-    }
+    notice.setLngLat(map.getCenter())
+      .setText(denied
+        ? 'Location is blocked for this site. Allow it in the browser settings to use this button.'
+        : 'Could not get a location fix. Try again outdoors or with Wi-Fi on.')
+      .addTo(map);
   });
   return control;
 }

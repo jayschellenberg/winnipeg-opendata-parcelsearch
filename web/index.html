@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Winnipeg Parcel Search</title>
+    <!-- Add to Home Screen. The manifest gives Android its name, icons and
+         standalone display; iOS reads the apple-* tags and the touch icon
+         instead. No service worker on purpose: the data behind every
+         search changes nightly and an offline cache would serve it stale. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#151a16" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="WPG Parcels" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <!-- MapLibre's CSS is bundled via Vite (imported in src/map.js), not
          loaded from unpkg — no third-party style request, no SRI gap. -->
     <!-- Inter loaded from Google Fonts. The preconnect hints speed up

@@ -1,14 +1,14 @@
-// pickHit — which parcel a location fix opens.
+// takeFix — the one-shot latch behind "use my location".
 //
-// The control fires the map's own click at the fix, but only when a
-// parcel layer is actually under it; otherwise it says so. The choice of
-// WHICH hit counts is the one decision here: a result parcel outranks the
-// municipality fabric, and only the caller's layers count at all.
+// Tracking mode reports a fix every few seconds while the user walks.
+// The app must hear exactly one per press of the button: the first
+// switches the parcel fabric on and tucks the sheet away; a second would
+// redo that while the user is reading the map.
 //
 // Run: cd web && node test/locateControl.test.js
 
 import assert from 'node:assert/strict';
-import { pickHit, LOCATE_ZOOM } from '../src/lib/locateControl.js';
+import { takeFix, LOCATE_ZOOM } from '../src/lib/locateControl.js';
 
 const results = [];
 function test(name, fn) {
@@ -16,26 +16,33 @@ function test(name, fn) {
   catch (err) { results.push(0); console.log(`  ✗ ${name}\n    ${err.message}`); }
 }
 
-const hit = (layer, id) => ({ layer: { id: layer }, properties: { id } });
-const LAYERS = ['parcel-fill', 'parcel-pin', 'muni-parcels-fill'];
-
-test('a result parcel outranks the municipality fabric under the same point', () => {
-  const f = pickHit([hit('muni-parcels-fill', 'm'), hit('parcel-fill', 'r')], LAYERS);
-  assert.equal(f.properties.id, 'r');
+test('an armed latch hands over the first fix and disarms', () => {
+  const r = takeFix({ armed: true });
+  assert.equal(r.handle, true);
+  assert.deepEqual(r.latch, { armed: false });
 });
 
-test('the municipality parcel is used when no result is there', () => {
-  assert.equal(pickHit([hit('muni-parcels-fill', 'm')], LAYERS).properties.id, 'm');
+test('a disarmed latch ignores every later fix', () => {
+  let latch = { armed: false };
+  for (let i = 0; i < 3; i++) {
+    const r = takeFix(latch);
+    assert.equal(r.handle, false);
+    latch = r.latch;
+  }
+  assert.deepEqual(latch, { armed: false });
 });
 
-test('layers the caller did not name never count', () => {
-  assert.equal(pickHit([hit('zoning-fill', 'z'), hit('water', 'w')], LAYERS), null);
-  assert.equal(pickHit([], LAYERS), null);
-  assert.equal(pickHit(undefined, LAYERS), null);
+test('a fresh press arms it again: one hand-over per press', () => {
+  let latch = { armed: true };
+  let handed = 0;
+  for (let i = 0; i < 4; i++) { const r = takeFix(latch); latch = r.latch; if (r.handle) handed++; }
+  latch = { armed: true };   // trackuserlocationstart
+  for (let i = 0; i < 4; i++) { const r = takeFix(latch); latch = r.latch; if (r.handle) handed++; }
+  assert.equal(handed, 2);
 });
 
-test('the zoom lands on a parcel, not a street or a province', () => {
-  assert.ok(LOCATE_ZOOM >= 16 && LOCATE_ZOOM <= 18, `LOCATE_ZOOM ${LOCATE_ZOOM}`);
+test('the zoom draws civic labels (from 16.5 in Manitoba) but stays street-scale', () => {
+  assert.ok(LOCATE_ZOOM >= 16.5 && LOCATE_ZOOM <= 18, `LOCATE_ZOOM ${LOCATE_ZOOM}`);
 });
 
 const passed = results.reduce((a, b) => a + b, 0);
