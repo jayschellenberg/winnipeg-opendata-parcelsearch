@@ -36,6 +36,8 @@ import { initColumns, applyVisibility as applyColumnVisibility, setMode as setCo
 import { formatSqFt } from './lib/format.js';
 import { encodeState, decodeState } from './lib/urlState.js';
 import { initSidebarTabs, setActiveTab, onTabChange, getActiveTab } from './lib/tabs.js';
+// Phone mode: map-first shell + bottom sheet below 768px.
+import { initPhoneMode, ensureSheetVisible } from './lib/phoneMode.js';
 import { presetRange } from './lib/datePresets.js';
 import { readMapLegends, layoutMapLegends, paintMapLegends } from './lib/mapLegend.js';
 import {
@@ -878,6 +880,12 @@ createMapAddressSearch({
 // initSidebarTabs runs BEFORE applyUrlState so the latter can call
 // setActiveTab('sales') to honour a shared ?t=sales URL.
 initSidebarTabs();
+// Phone mode (body.phone below 768px). The map container changes size
+// when the mode flips — full viewport on a phone, 16:9 pane on desktop —
+// so MapLibre has to recompute its canvas each way. The Hide / Expand
+// map preferences still apply their classes; the body.phone CSS simply
+// outranks them while the phone layout is on.
+initPhoneMode({ onChange: () => { mapReady.then(() => map.resize()); } });
 
 // Phase 8: apply the URL's decoded state to the inputs + toggles
 // before initChipInput runs. The chip module renders chips from
@@ -3084,7 +3092,13 @@ const TABLE_DRAW_CAP = 2000;
 let drawCapped = 0;
 
 function renderTable(rows) {
+  // A new result set on a phone: the sheet may be peeked down to show the
+  // map, and results that land under a 64px strip look like no results at
+  // all. Re-renders hand fullRows back in (a numbering or filter toggle,
+  // a sort), so only a fresh array counts. No-op on desktop.
+  const isNewResultSet = rows !== fullRows;
   fullRows = rows;
+  if (isNewResultSet && rows.length) ensureSheetVisible();
   const shapes = getMapShapes();
   const shownByShape = shapes.length > 0
     ? rows.filter((r) => passesShapeFilter(shapeRowCentroid(r), shapes))
