@@ -177,3 +177,64 @@ every other filter on each chunk. Three tests in `sodaNetwork.test.js` pin it.
 | `web/public/sample-parcel-list.csv` | the shipped template |
 | `web/scripts/check-sample-list.mjs` | live liveness check |
 | `.github/workflows/sample-list-check.yml` | monthly run of the above |
+
+
+---
+
+# Later the same evening — two follow-ups
+
+## Open item 1 closed: the Sales Analysis list filter against real SABRE data
+
+Run offline through the app's own modules (`parseSalesText` →
+`dedupAndGroupSales`) over every `SoldPropertyListing*.csv` in
+`WpgOpenData/SABRE`:
+
+| | |
+|---|---|
+| exports | 53 |
+| raw rows | 20,032 |
+| sales after dedup | 18,153 |
+| raw rows with a 10-digit Parcel ID | 15,078 |
+| sales whose `roll` is not 11 digits | 0 |
+
+On the triplex export, a filter set built the way the resolver builds it
+(`normalizeRoll` on Socrata's 11-digit `roll_number`) from three parcels whose
+CSV ids were 10-digit matched 4 sales; the same three ids left unpadded
+matched 0; a set of every roll returned all 38. The one-line `s.roll` match
+holds. Nothing changed in code.
+
+## Phone layout, ported from Manitoba (`feat/phone-shell`, not on main)
+
+README § *Phone layout* describes the feature. What matters for the next
+session:
+
+- **Source of truth is the MB branches, not MB main.** `feat/phone-shell`
+  (f1a0799, 5bc3bc6) and `feat/phone-sheet-drag` (7eeff0c) in
+  `MBOpenData/mb-parcelsearch`; MB `main` had no phone files when this was
+  written. `phoneMode.js` and `sheetDrag.js` were taken from 7eeff0c and are
+  byte-identical here; `test/phoneShell.test.js` diffs them against the MB
+  working tree when it is present (skips when it is not, so CI is unaffected).
+- **Two Winnipeg-only rules** at the end of `style.css`: From # / To # share
+  the row (their 80px slots clipped the placeholder at 16px), and the results
+  header + pinned first column drop to z-index 1 so they stack under the tab
+  strip (2) as the table scrolls beneath it. Inside the sheet the header is
+  not pinned at all — its scroll container is `.table-scroll`, which no longer
+  scrolls vertically — so an offset was pointless; the first attempt tried one.
+  Scoped with `#results` because the desktop rules are id-scoped.
+- **`ensureSheetVisible` keys on `rows !== fullRows`** because Winnipeg's
+  `renderTable(rows)` has no `resetPage` option: every re-render passes
+  `fullRows` back in, so a fresh array is the only reliable "new result set"
+  signal. The zoning-enrichment re-render at the end of a search passes a new
+  array too, which lifts a sheet that is already up — harmless.
+- **Draw tools and Hide / Expand map are hidden on the phone**, as in MB.
+  Sales Analysis on a phone was only looked at, not exercised (the tab
+  renders; its charts and the paste modal were not tried at 375px).
+- **Verified at 375×812** in the desktop-app browser pane: bar fits, menu
+  opens and closes on a pick, handle cycles peek → half → full, a
+  300–400 Selkirk search lands 32 parcels in the sheet with the map fitted,
+  and at 1024px the results return under the map (673×379, 16:9) with the
+  menu button and handle hidden. No console errors either way.
+- **Dev server:** port 5173 was held by another chat's server (which was
+  actually serving the MB app). `.claude/launch.json` in the WpgOpenData root
+  gained `parcelsearch-web-5180`.
+- Committed on `feat/phone-shell`, **not pushed** — pushing to main deploys.

@@ -47,6 +47,43 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 | `tools/` | Standalone command-line tools, outside the web build. `address_aliases.py` — civic-address aliases for a property, Winnipeg or Manitoba (see [Address aliases](#address-aliases)). Python stdlib only, no dependencies. |
 | `extras/` | Early experiments kept for reference |
 
+## Phone layout
+
+Below 768px the page is map-first. `lib/phoneMode.js` sets `body.phone` from
+a `matchMedia` query and everything narrow-screen hangs off that one class:
+
+- **The top bar is fixed and compact.** The nav (Manitoba portal, Data Status,
+  Data sources) folds behind a menu button; Hide / Expand map and the draw
+  tools are hidden, because the phone map is always full-screen.
+- **The map fills the viewport** under the bar. The in-map address search
+  narrows to leave room for the MapLibre controls, and legends are lifted
+  above the sheet by its current height (hidden when the sheet is full).
+- **The sidebar is a bottom sheet** with three snap states: *peek* (handle
+  and tab strip only), *half* (the search form, the default) and *full*.
+  Tap the grab bar to cycle, or drag the bar or the tab strip
+  (`lib/sheetDrag.js`, which works in transform space so a 100-row table
+  inside the sheet never re-lays-out per pointer move).
+- **Results move into the sheet.** `#results-wrap` is relocated, not
+  duplicated, so every handle `main.js` captured at boot stays live; it goes
+  back to its exact workspace position when the viewport widens. A fresh
+  result set lifts a peeked sheet to half (`ensureSheetVisible` in
+  `renderTable`, keyed on a new row array so a sort or numbering toggle
+  does not).
+
+The CSS is keyed on `body.phone` rather than a bare media query so the JS
+that moves the results and resizes the map and the CSS that lays them out
+cannot disagree about which mode is on. `test/phoneShell.test.js` reads all
+five pieces (markup, the two modules, the `main.js` call, the CSS) and
+asserts they name the same ids, classes and breakpoint, with comments
+stripped, so no piece can ship unwired. The two modules are shared verbatim
+with the Manitoba app; the same test diffs them against that checkout when
+it is present.
+
+Two Winnipeg-only phone rules sit at the end of `style.css`: the From # /
+To # fields share the row (their 80px desktop slots clipped "From #" at the
+16px phone font), and the results header and its pinned first column stack
+beneath the tab strip instead of painting over it as the table scrolls under.
+
 ## Address aliases
 
 A parcel carries many civic addresses; the assessment roll records one. Roll
