@@ -250,3 +250,13 @@ session:
   gained `parcelsearch-web-5180`.
 - On `feat/phone-shell`, pushed, with a PR open — not merged; merging to
   main deploys.
+
+## Open item 5 closed: CI actions bumped to v5
+
+`actions/checkout` and `actions/setup-node` moved v4 → v5 in both workflows
+on `ci/actions-v5` (PR #10, its own change because ci.yml gates the
+deploy signal). Its CI run passed with the Node 20 deprecation warning gone;
+only the Ubuntu 26 migration notice remains, which does not affect a
+Node-only job. `node-version` stays 20 — that is the engine package.json
+declares (local dev is on Node 24, so that declaration is the thing to
+revisit, not the workflow).
