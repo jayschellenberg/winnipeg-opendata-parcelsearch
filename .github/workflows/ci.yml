@@ -21,9 +21,9 @@ jobs:
     steps:
       # Shallow checkout (default fetch-depth: 1) — the repo carries an
       # 82 MB pmtiles asset at HEAD, so don't pull full history.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
