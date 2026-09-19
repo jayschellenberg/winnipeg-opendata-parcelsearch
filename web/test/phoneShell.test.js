@@ -163,13 +163,91 @@ test('the JS breakpoint and the desktop split breakpoint agree', () => {
     `phone ends at ${phoneMax}px but the desktop split starts at ${split[1]}px`);
 });
 
+test('result cards are wired: container, key map, observer, phone-mode call, CSS swap', () => {
+  const cards = stripJs(read('src', 'lib', 'resultCards.js'));
+  assert.match(mode, /import\s*\{[^}]*\binitResultCards\b[^}]*\}\s*from\s*'\.\/resultCards\.js'/,
+    'phoneMode.js does not import initResultCards');
+  const call = mode.match(/initResultCards\(\{([\s\S]*?)\}\)/);
+  assert.ok(call, 'phoneMode.js never calls initResultCards');
+  assert.match(call[1], /getElementById\('results'\)/, 'cards are not read from #results');
+  assert.match(call[1], /getElementById\('result-cards'\)/, 'cards do not render into #result-cards');
+  assert.match(mode, /cards\?\.render\(\)/, 'a phone-mode change never re-renders the cards');
+  // The container sits inside #results-wrap, which is what moves into
+  // the sheet, and its key map names real columns from the registry.
+  const wrap = html.indexOf('id="results-wrap"');
+  const slot = html.indexOf('id="result-cards"');
+  const table = html.indexOf('id="results"');
+  assert.ok(wrap >= 0 && slot > wrap && slot < table, '#result-cards is not inside #results-wrap ahead of the table');
+  const attr = html.match(/id="result-cards"[^>]*data-card-keys='([^']+)'/);
+  assert.ok(attr, '#result-cards carries no data-card-keys (Winnipeg columns differ from the module defaults)');
+  const keys = JSON.parse(attr[1]);
+  const registry = stripJs(read('src', 'lib', 'columnsRegistry.js'));
+  const known = new Set([...registry.matchAll(/\{\s*key:\s*'([A-Za-z0-9]+)'/g)].map((m) => m[1]));
+  const named = [...keys.title, ...keys.sub, ...keys.facts, ...Object.keys(keys.pct || {}), ...Object.values(keys.pct || {}), ...(keys.skip || [])];
+  for (const k of named) assert.ok(known.has(k), `data-card-keys names "${k}", which is not a registry column`);
+  // The observer is the only thing keeping cards in step with the table.
+  assert.match(cards, /new MutationObserver\([\s\S]*?\)\.observe\(table,/, 'resultCards.js does not observe the table');
+  assert.match(cards, /tr\.click\(\)/, 'a card tap never forwards to its row (no map fly-to)');
+  for (const sel of [
+    'body.phone .phone-results-slot .table-scroll',
+    'body.phone .phone-results-slot .result-cards',
+    'body.phone .phone-results-slot .parcel-summary',
+  ]) {
+    assert.ok(css.includes(sel), `style.css has no rule for "${sel}"`);
+  }
+});
+
+test('a parcel tap on the map reaches its card, with a popup fallback', () => {
+  const mapSrc = stripJs(read('src', 'map.js'));
+  const cards = stripJs(read('src', 'lib', 'resultCards.js'));
+  assert.match(mapSrc, /import\s*\{[^}]*\bisPhone\b[^}]*\}\s*from\s*'\.\/lib\/phoneMode\.js'/,
+    'map.js does not import isPhone');
+  // The gate sits inside the result click handler and defers to the
+  // popup unless the callback reports the card was found.
+  const click = mapSrc.slice(mapSrc.indexOf('const handleResultClick = (e) => {'));
+  const body = click.slice(0, click.indexOf('\n      };'));
+  assert.match(body, /isPhone\(\)[^\n]*onFeatureClick\(key\) === true/, 'handleResultClick is not gated on the phone card reveal');
+  assert.match(body, /resultClickPopup/, 'the popup fallback is gone from handleResultClick');
+  // main.js answers that callback with the card on the phone.
+  const scroll = main.slice(main.indexOf('function scrollToRow('));
+  const scrollBody = scroll.slice(0, scroll.indexOf('\n}\n'));
+  assert.match(scrollBody, /if \(isPhone\(\)\) return revealResultCard\(key\);/, 'scrollToRow does not route to the card on phone');
+  assert.match(scrollBody, /return true;/, 'scrollToRow must report success for the popup fallback to work');
+  assert.match(mode, /export function revealResultCard\(key\)[\s\S]*cards\.reveal\(key\)/, 'phoneMode.revealResultCard does not use cards.reveal');
+  assert.match(cards, /return \{ render: schedule, reveal \}/, 'resultCards does not expose reveal()');
+  // Every hover popup is tagged, and the tag hides it on the phone.
+  const hovers = [...mapSrc.matchAll(/const (\w*[hH]over\w*|popup) = new maplibregl\.Popup\(\{([^}]*)\}/g)]
+    .filter((m) => /closeButton: false/.test(m[2]));
+  assert.ok(hovers.length >= 2, `expected the hover popups, found ${hovers.length}`);
+  for (const m of hovers) {
+    assert.match(m[2], /className: '(?:[a-z-]+ )?hover-popup'/, `${m[1]} lacks className: 'hover-popup'`);
+  }
+  assert.ok(css.includes('body.phone .maplibregl-popup.hover-popup'), 'style.css does not hide .hover-popup on phone');
+  assert.ok(css.includes('.result-card.card-highlight'), 'style.css has no card-highlight rule');
+});
+
+test('sales mode on the phone: draw tools on the map, no-folder import copy', () => {
+  const panel = stripJs(read('src', 'salesDbPanel.js'));
+  assert.match(mode, /function relocateShapeTools\(phone\)[\s\S]*getElementById\('shape-tools'\)[\s\S]*mapEl\.appendChild\(tools\)/,
+    'phoneMode.js does not move #shape-tools into the map');
+  assert.match(mode, /relocateResults\(phone\);\s*relocateShapeTools\(phone\);/, 'relocateShapeTools is not called from apply()');
+  assert.ok(html.includes('id="shape-tools"'), 'index.html has no #shape-tools');
+  assert.match(main, /classList\.add\('sales-mode'\)/, 'main.js never sets body.sales-mode, which the phone draw tools key on');
+  assert.ok(css.includes('body.phone.sales-mode #map .shape-tools { display: flex; }'), 'CSS never shows the relocated draw tools in sales mode');
+  assert.ok(css.includes('body.phone #map .shape-tool-btn'), 'CSS has no phone styling for the draw buttons');
+  // Import: no File System Access -> the button must not promise a folder.
+  assert.match(panel, /if \(\$import && !fsAccessSupported\(\)\) \{[\s\S]*Choose export files/, 'salesDbPanel.js keeps "Choose export folder" without File System Access');
+  assert.match(panel, /getElementById\('sales-db-nofs-hint'\)/, 'salesDbPanel.js never reveals the no-folder hint');
+  assert.ok(html.includes('id="sales-db-nofs-hint"'), 'index.html has no #sales-db-nofs-hint');
+});
+
 test('the Manitoba and Winnipeg phone modules have not drifted', () => {
   // Both apps ship the same two modules; a fix in one belongs in the
   // other. Skipped (not failed) when the sister checkout is absent, as
   // it is in CI.
   const sister = 'D:/Dropbox/ClaudeCode/MBOpenData/mb-parcelsearch/web/src/lib/';
   if (!fs.existsSync(sister + 'phoneMode.js')) { console.log('    (sister checkout absent; skipped)'); return; }
-  for (const f of ['phoneMode.js', 'sheetDrag.js']) {
+  for (const f of ['phoneMode.js', 'sheetDrag.js', 'resultCards.js']) {
     assert.equal(read('src', 'lib', f), fs.readFileSync(sister + f, 'utf8'),
       `${f} differs from the Manitoba copy`);
   }

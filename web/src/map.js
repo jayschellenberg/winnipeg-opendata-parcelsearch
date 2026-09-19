@@ -11,6 +11,7 @@
 // The hover popup figures out which schema the feature is carrying.
 
 import maplibregl from 'maplibre-gl';
+import { isPhone } from './lib/phoneMode.js';
 // Bundle MapLibre's stylesheet through Vite instead of loading it from the
 // unpkg CDN at runtime — removes a third-party request with no Subresource
 // Integrity and keeps the Content-Security-Policy free of a CDN style origin.
@@ -1842,6 +1843,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       // overlap area shows both blocks of info side-by-side — no more
       // guessing which colour is which.
       const popup = new maplibregl.Popup({
+        className: 'hover-popup',
         closeButton: false,
         closeOnClick: false,
       });
@@ -1968,6 +1970,14 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
       const resultClickPopup = new maplibregl.Popup({ closeButton: true });
       const handleResultClick = (e) => {
         const key = e.features?.[0]?.properties?._rowKey;
+        // Phone: the popup has no room on a 375px map, and the parcel's card
+        // in the sheet is the detail surface. onFeatureClick answers true
+        // when it found and revealed the card; otherwise (another page, a
+        // parcel outside the results) the popup below still opens.
+        if (isPhone() && key != null && onFeatureClick && onFeatureClick(key) === true) {
+          popup.remove();
+          return;
+        }
         if (key != null && onFeatureClick) onFeatureClick(key);
 
         const primaryHits = map.getLayer('parcel-fill')
@@ -2221,7 +2231,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange } = {}) {
         closeButton: false,
         closeOnClick: false,
         offset: 8,
-        className: 'hood-hover-popup',
+        className: 'hood-hover-popup hover-popup',
       });
       const hoodHoverHandler = (labelKey) => (e) => {
         if (isShapeDrawing() || isMeasuring()) {

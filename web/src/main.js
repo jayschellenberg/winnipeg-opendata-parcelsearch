@@ -37,7 +37,7 @@ import { formatSqFt } from './lib/format.js';
 import { encodeState, decodeState } from './lib/urlState.js';
 import { initSidebarTabs, setActiveTab, onTabChange, getActiveTab } from './lib/tabs.js';
 // Phone mode: map-first shell + bottom sheet below 768px.
-import { initPhoneMode, ensureSheetVisible } from './lib/phoneMode.js';
+import { initPhoneMode, ensureSheetVisible, isPhone, revealResultCard } from './lib/phoneMode.js';
 import { presetRange } from './lib/datePresets.js';
 import { readMapLegends, layoutMapLegends, paintMapLegends } from './lib/mapLegend.js';
 import {
@@ -3410,8 +3410,11 @@ function tagFeatures(fc, side) {
 
 /** Click-on-map handler: scroll the matching row into view and flash it. */
 function scrollToRow(key) {
+  // Phone: the table is hidden and the parcel's card is the row. True when
+  // the card was found and revealed; map.js falls back to its popup on false.
+  if (isPhone()) return revealResultCard(key);
   const tr = $tbody.querySelector(`tr[data-row-key="${cssEscape(String(key))}"]`);
-  if (!tr) return;
+  if (!tr) return false;
   tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
   for (const prev of $tbody.querySelectorAll('tr.row-highlight')) {
     prev.classList.remove('row-highlight');
@@ -3421,6 +3424,7 @@ function scrollToRow(key) {
   tr.classList.remove('row-highlight');
   void tr.offsetWidth;
   tr.classList.add('row-highlight');
+  return true;
 }
 
 // Minimal CSS.escape polyfill — just enough to handle the characters we
