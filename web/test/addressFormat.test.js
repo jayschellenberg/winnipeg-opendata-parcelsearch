@@ -10,6 +10,7 @@ import {
   dedupeAddresses,
   addressListTooltip,
   properCaseAddress,
+  groupAddressesByStreet,
 } from '../src/lib/addressFormat.js';
 
 // ---- normalizeAddressKey --------------------------------------------------
@@ -212,5 +213,75 @@ assert.equal(properCaseAddress(properCaseAddress('1636 MCCREARY ROAD')), '1636 M
 assert.equal(properCaseAddress(''), '');
 assert.equal(properCaseAddress(null), '');
 assert.equal(properCaseAddress(undefined), '');
+
+// ---- groupAddressesByStreet ----------------------------------------------
+// One parcel holding several addresses on one street draws ONE map label.
+// At lot scale the separate points stack on top of each other, and
+// "511 & 513 Selkirk Ave" is how the addresses get written down anyway.
+const P = (display, i = 0) => ({ display, lng: -97.1 + i * 0.0001, lat: 49.9 + i * 0.0001 });
+const labels = (pts) => groupAddressesByStreet(pts).map((g) => g.label);
+
+// The reported case, across the two datasets' street-type spellings.
+assert.deepEqual(
+  labels([P('511 SELKIRK AVE', 0), P('513 SELKIRK AVENUE', 1)]),
+  ['511 & 513 SELKIRK AVE'],
+);
+// Three still list individually; the fourth flips to a range, because a
+// strip mall's entries would otherwise outrun the parcel they sit on.
+assert.deepEqual(
+  labels([P('511 SELKIRK AVE', 0), P('513 SELKIRK AVE', 1), P('515 SELKIRK AVE', 2)]),
+  ['511, 513 & 515 SELKIRK AVE'],
+);
+assert.deepEqual(
+  labels([P('1100 PORTAGE AVE', 0), P('1110 PORTAGE AVE', 1),
+          P('1120 PORTAGE AVE', 2), P('1140 PORTAGE AVE', 3)]),
+  ['1100\u20131140 PORTAGE AVE'],
+);
+// Input order must not matter — the numbers come out ascending.
+assert.deepEqual(
+  labels([P('515 SELKIRK AVE', 0), P('511 SELKIRK AVE', 1), P('513 SELKIRK AVE', 2)]),
+  ['511, 513 & 515 SELKIRK AVE'],
+);
+// A letter suffix sorts after its bare number and stays distinct.
+assert.deepEqual(
+  labels([P('100A MAIN ST', 0), P('100 MAIN ST', 1)]),
+  ['100 & 100A MAIN ST'],
+);
+// A half address is its own entry and does not sort on its trailing "2".
+assert.deepEqual(
+  labels([P('100 1/2 MAIN ST', 0), P('100 MAIN ST', 1)]),
+  ['100 & 100 1/2 MAIN ST'],
+);
+// A condo's per-unit points share one civic number, so the whole tower
+// collapses to the building address rather than one label per unit.
+assert.deepEqual(
+  labels([P('1000 ALDGATE RD UNIT 101', 0), P('1000 ALDGATE RD UNIT 501', 1),
+          P('1000 ALDGATE RD UNIT 902', 2)]),
+  ['1000 ALDGATE RD'],
+);
+// A corner lot fronts two streets. Those are two frontages and must
+// stay two labels — merging them would assert something false.
+assert.deepEqual(
+  labels([P('100 MAIN ST', 0), P('99 OSBORNE ST', 1)]).sort(),
+  ['100 MAIN ST', '99 OSBORNE ST'],
+);
+// A group of one is never reworded: the unit designator survives, and so
+// does a legal description that has no civic number to factor out.
+assert.deepEqual(labels([P('511 SELKIRK AVE', 0)]), ['511 SELKIRK AVE']);
+assert.deepEqual(labels([P('610-1000 ALDGATE ROAD', 0)]), ['610-1000 ALDGATE ROAD']);
+assert.deepEqual(labels([P('DESC NE22-21-3E', 0)]), ['DESC NE22-21-3E']);
+// The merged label sits at the mean of its points, and remembers what it
+// stands for.
+const merged = groupAddressesByStreet([P('511 SELKIRK AVE', 0), P('513 SELKIRK AVE', 2)])[0];
+assert.equal(merged.lng.toFixed(6), (-97.1 + 0.0001).toFixed(6));
+assert.equal(merged.lat.toFixed(6), (49.9 + 0.0001).toFixed(6));
+assert.deepEqual(merged.addresses, ['511 SELKIRK AVE', '513 SELKIRK AVE']);
+// Junk in: no throw, nothing out. A point with no coordinates is dropped
+// rather than poisoning the group's mean with NaN.
+assert.deepEqual(groupAddressesByStreet([]), []);
+assert.deepEqual(groupAddressesByStreet(null), []);
+assert.deepEqual(groupAddressesByStreet(undefined), []);
+assert.deepEqual(labels([{ display: '511 SELKIRK AVE' }]), []);
+assert.deepEqual(labels([P('', 0), P('   ', 1)]), []);
 
 console.log('addressFormat.test.js: all assertions passed');

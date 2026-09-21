@@ -34,7 +34,7 @@ import { yearSeriesFromEntries, annualizedGrowth, latestFullYear, FULL_YEAR_MIN_
 import { intersect } from '@turf/intersect';
 import { area } from '@turf/area';
 import { waterTokens } from './lib/water.js';
-import { dedupeAddresses } from './lib/addressFormat.js';
+import { dedupeAddresses, groupAddressesByStreet } from './lib/addressFormat.js';
 
 /**
  * The assessment-parcel field list, shared by every path that returns
@@ -796,11 +796,19 @@ export async function enrichAssessmentAddresses(assessFc) {
     return { parcels: assessFc, addresses: emptyAddrs };
   }
 
-  // We mutate parcel.full_address in-place AND collect the address
-  // points that fall inside any result parcel, deduped by their
-  // full_address text. The collected points are returned for the
-  // map's civic-address label layer.
-  const matchedAddresses = new Map();  // full_address -> Feature
+  // We mutate parcel.full_address in-place AND collect the label points
+  // for the map's civic-address layer. Those labels are built PER
+  // PARCEL and grouped by street (groupAddressesByStreet), so a lot
+  // holding 511 and 513 Selkirk draws one "511 & 513 SELKIRK AVE"
+  // instead of two labels stacked on one narrow lot. Grouping has to
+  // happen inside this loop because it is parcel-scoped: the same two
+  // numbers on two SEPARATE lots are two labels, not one.
+  //
+  // Cross-parcel dedupe still applies, now on the finished label and
+  // its position rather than on a single address string — overlapping
+  // parcels would otherwise stamp the same merged label twice.
+  const labelFeatures = [];
+  const seenLabels = new Set();
 
   for (const parcel of assessFc.features) {
     // Guard each parcel individually so one bad/odd geometry doesn't
@@ -834,18 +842,34 @@ export async function enrichAssessmentAddresses(assessFc) {
       // Primary is first, so the assessment's own spelling survives.
       parcel.properties.full_address = dedupeAddresses(ordered).join(', ');
 
-      // Stash each address point for the map layer, deduped on the
-      // full_address string. Stamp a `street_num` (digits before the
-      // first space) so the label layer can render just the number.
+      // Stash this parcel's label points, one per street. Stamp a
+      // `street_num` (the leading civic token) so the label layer's
+      // coalesce fallback still has something to draw if a label ever
+      // comes through empty.
+      const points = [];
       for (const addr of insideAddrs) {
         const fa = (addr.properties?.full_address || '').trim();
-        if (!fa || matchedAddresses.has(fa)) continue;
-        const numMatch = fa.match(/^(\d+(?:[A-Za-z]|\s?1\/2)?)/);
-        const street_num = numMatch ? numMatch[1] : '';
-        matchedAddresses.set(fa, {
+        const [lng, lat] = addr.geometry?.coordinates || [];
+        if (!fa || !Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+        points.push({ display: fa, lng, lat });
+      }
+      for (const grp of groupAddressesByStreet(points)) {
+        const at = `${grp.lng.toFixed(6)},${grp.lat.toFixed(6)}`;
+        const dedupeKey = `${grp.label}@${at}`;
+        if (seenLabels.has(dedupeKey)) continue;
+        seenLabels.add(dedupeKey);
+        const numMatch = grp.label.match(/^(\d+(?:[A-Za-z]|\s?1\/2)?)/);
+        labelFeatures.push({
           type: 'Feature',
-          geometry: addr.geometry,
-          properties: { full_address: fa, street_num },
+          geometry: { type: 'Point', coordinates: [grp.lng, grp.lat] },
+          properties: {
+            full_address: grp.label,
+            street_num: numMatch ? numMatch[1] : '',
+            // How many source addresses this label stands for. 1 means
+            // nothing was merged; the layer can stay agnostic, but a
+            // future hover has the count without re-deriving it.
+            address_count: grp.addresses.length,
+          },
         });
       }
     } catch (err) {
@@ -854,7 +878,7 @@ export async function enrichAssessmentAddresses(assessFc) {
   }
   return {
     parcels: assessFc,
-    addresses: { type: 'FeatureCollection', features: [...matchedAddresses.values()] },
+    addresses: { type: 'FeatureCollection', features: labelFeatures },
   };
 }
 
