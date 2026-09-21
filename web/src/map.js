@@ -792,7 +792,12 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       map.addLayer({
         id: 'infill-guideline-line', type: 'line', source: 'infill-guideline',
         layout: { visibility: 'none' },
-        paint: { 'line-color': '#2e5e2e', 'line-width': 2.5, 'line-dasharray': [2, 2] },
+        // 4px rather than the 2.5 the other policy outlines use: with a
+        // 10% fill these two boundaries are carried entirely by their
+        // outline, and at 2.5 over the aerial basemaps the dashes were
+        // lost in the imagery. Wide enough to read on the dark aerials
+        // without turning into a band on the light streets map.
+        paint: { 'line-color': '#2e5e2e', 'line-width': 4, 'line-dasharray': [2, 2] },
       });
 
       // Airport Area (OurWPG Airport Area) — one polygon, amber. Tighter
@@ -818,7 +823,10 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       map.addLayer({
         id: 'airport-area-line', type: 'line', source: 'airport-area',
         layout: { visibility: 'none' },
-        paint: { 'line-color': '#8a5a12', 'line-width': 2.5, 'line-dasharray': [6, 2] },
+        // 4px, matching infill-guideline-line — same reason, same fill
+        // opacity. Keep the two in step: they are the pair of faint-fill
+        // policy boundaries and should read as one convention.
+        paint: { 'line-color': '#8a5a12', 'line-width': 4, 'line-dasharray': [6, 2] },
       });
 
       // Malls and Corridors PDO (combined: Regional Mixed Use Centre +

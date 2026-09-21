@@ -1107,7 +1107,7 @@ body {
    with no colour at all. */
 .infill-swatch {
   background: rgba(90, 160, 90, 0.10);
-  border: 1.5px dashed #2e5e2e;
+  border: 2px dashed #2e5e2e;
   flex: none;
 }
 
@@ -1116,7 +1116,7 @@ body {
    reason for the plain `swatch` class (the PNG export scrapes it). */
 .airport-swatch {
   background: rgba(216, 154, 58, 0.10);
-  border: 1.5px dashed #8a5a12;
+  border: 2px dashed #8a5a12;
   flex: none;
 }
 
