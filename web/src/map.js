@@ -2160,10 +2160,21 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
             plans. <a href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer">See full list →</a></small>
           </div>`;
       }));
+      // The infill overlay carries no name field of its own (5guk-f7xw
+      // publishes an `id` and nothing else), so the popup is the only
+      // place the area can say what it is. The City's own definition is
+      // quoted rather than paraphrased — "Mature Community" is a defined
+      // term in OurWinnipeg, and an approximation of it would be the
+      // kind of thing that ends up in a report.
       onLayerClick(map, 'infill-guideline-fill', policyClick(() => `
-        <div style="line-height:1.4">
-          <strong>Mature Community</strong><br>
-          <em>Infill Guidelines apply</em>
+        <div style="line-height:1.4;max-width:290px">
+          <strong>Infill Area</strong> — Mature Community<br>
+          <em>Residential Infill Guidelines apply</em>
+          <hr style="margin:6px 0;border:none;border-top:1px solid #ddd">
+          <small>Winnipeg's earliest neighbourhoods, mostly planned before
+          1950 — grid streets, public lanes, connected sidewalks. A subset
+          of Established Neighbourhoods.
+          <a href="https://winnipeg.ca/interhom/infill/" target="_blank" rel="noreferrer">Guidelines →</a></small>
         </div>`));
       onLayerClick(map, 'malls-corridors-fill', policyClick((p) => `
         <div style="line-height:1.4">
@@ -2276,6 +2287,31 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           .setHTML(`<span class="hood-hover-label">${escapeHtml(String(label))}</span>`)
           .addTo(map);
       };
+      // Infill Area hover. The overlay is five large polygons with no
+      // labels of their own, so on hover it names itself — "what is this
+      // green dashed thing" answered without a click. The `help` cursor
+      // is the affordance that there is more in the click popup.
+      map.on('mousemove', 'infill-guideline-fill', (e) => {
+        if (isShapeDrawing() || isMeasuring()) { hoodHoverPopup.remove(); return; }
+        if (parcelAt(map, e.point)) { hoodHoverPopup.remove(); return; }
+        if (map.getLayoutProperty('infill-guideline-fill', 'visibility') !== 'visible') {
+          hoodHoverPopup.remove();
+          return;
+        }
+        hoodHoverPopup
+          .setLngLat(e.lngLat)
+          .setHTML('<span class="hood-hover-label">Infill Area — Mature Community</span>')
+          .addTo(map);
+      });
+      map.on('mouseenter', 'infill-guideline-fill', () => {
+        if (map.getLayoutProperty('infill-guideline-fill', 'visibility') !== 'visible') return;
+        map.getCanvas().style.cursor = 'help';
+      });
+      map.on('mouseleave', 'infill-guideline-fill', () => {
+        map.getCanvas().style.cursor = '';
+        hoodHoverPopup.remove();
+      });
+
       map.on('mousemove', 'neighbourhood-clusters-fill', hoodHoverHandler('cluster'));
       map.on('mousemove', 'neighbourhoods-fill', hoodHoverHandler('name'));
       for (const layerId of ['neighbourhood-clusters-fill', 'neighbourhoods-fill']) {

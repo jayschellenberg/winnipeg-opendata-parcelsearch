@@ -220,6 +220,7 @@ const $staticMapOutput = document.getElementById('static-map-output');
 // before generateStaticMap's definition further down.
 let captureInFlight = false;
 const $zoningLegend = document.getElementById('zoning-legend');
+const $infillLegend = document.getElementById('infill-legend');
 const $trafficLegend = document.getElementById('traffic-legend');
 const $historicalToggle = document.getElementById('historical-toggle');
 const $historicalDate   = document.getElementById('historical-date');
@@ -2264,6 +2265,12 @@ const POLICY_OVERLAY_CONFIG = {
     fetch:  fetchInfillGuidelineArea,
     onLabel:  'Hide Infill Area',
     offLabel: 'Infill Area',
+    // The only overlay of the three that needs a legend: the dataset
+    // (5guk-f7xw) publishes an `id` and nothing else -- no name, no
+    // description -- so its five polygons cannot be labelled from their
+    // own data the way secondary-plans are. Without this the green
+    // dashed outline is unexplained on screen and in any exported map.
+    legend: () => $infillLegend,
   },
   mallsCorridors: {
     btn:    () => $mallsCorridorsToggle,
@@ -2532,6 +2539,12 @@ async function togglePolicyOverlay(name) {
   btn.textContent = state.enabled ? cfg.onLabel : cfg.offLabel;
   btn.setAttribute('aria-pressed', String(state.enabled));
   btn.classList.toggle('active', state.enabled);
+  // Before the await, not after: the legend is a DOM concern that
+  // belongs with the button state, and `await mapReady` can be a long
+  // wait (or never resolve at all if the style fails to load). Pinning
+  // it after would leave the button reading "Hide Infill Area" over a
+  // map with nothing explaining the overlay.
+  setPolicyLegendVisible(cfg, state.enabled);
   await mapReady;
   setOverlayVisible(map, cfg.src, state.enabled);
   if (state.enabled && !state.loaded) {
@@ -2548,10 +2561,21 @@ async function togglePolicyOverlay(name) {
       btn.setAttribute('aria-pressed', 'false');
       btn.classList.remove('active');
       setOverlayVisible(map, cfg.src, false);
+      // The legend has to come back down with the layer, or a failed
+      // fetch leaves a box on the map explaining an overlay that is not
+      // there.
+      setPolicyLegendVisible(cfg, false);
     } finally {
       btn.disabled = false;
     }
   }
+}
+
+/** Show or hide a policy overlay's legend box, for the overlays that
+ *  have one. A config without `legend` is a no-op. */
+function setPolicyLegendVisible(cfg, visible) {
+  const el = cfg.legend?.();
+  if (el) el.hidden = !visible;
 }
 
 /**

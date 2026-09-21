@@ -1225,15 +1225,36 @@
             <strong>Zoning</strong>
             <ul></ul>
           </div>
-          <div id="traffic-legend" class="map-legend traffic-legend" hidden>
-            <strong>24h Traffic</strong>
-            <ul>
-              <li><span class="line-swatch traffic-low"></span>&lt;5k</li>
-              <li><span class="line-swatch traffic-med"></span>5k–15k</li>
-              <li><span class="line-swatch traffic-high"></span>15k–30k</li>
-              <li><span class="line-swatch traffic-vhigh"></span>30k–60k</li>
-              <li><span class="line-swatch traffic-extreme"></span>60k+</li>
-            </ul>
+          <!-- Bottom-LEFT legends, stacked rather than each pinned to the
+               same corner: Traffic and Infill Area can be on at once, and
+               two absolutely-positioned boxes would sit on top of each
+               other. Newest concern nearest the corner (column-reverse),
+               and a hidden box takes no space, so the stack closes up on
+               its own. The zoning legend keeps the bottom-RIGHT corner. -->
+          <div class="map-legend-stack map-legend-stack-left">
+            <div id="traffic-legend" class="map-legend traffic-legend" hidden>
+              <strong>24h Traffic</strong>
+              <ul>
+                <li><span class="line-swatch traffic-low"></span>&lt;5k</li>
+                <li><span class="line-swatch traffic-med"></span>5k–15k</li>
+                <li><span class="line-swatch traffic-high"></span>15k–30k</li>
+                <li><span class="line-swatch traffic-vhigh"></span>30k–60k</li>
+                <li><span class="line-swatch traffic-extreme"></span>60k+</li>
+              </ul>
+            </div>
+            <!-- Infill Area. The overlay is five big unlabelled polygons
+                 (the dataset publishes no name field at all), so without
+                 this the green dashed outline is unexplained on screen and
+                 in any exported exhibit. -->
+            <div id="infill-legend" class="map-legend infill-legend" hidden>
+              <strong>Infill Area</strong>
+              <ul>
+                <li><span class="swatch infill-swatch"></span>Mature Community</li>
+              </ul>
+              <p class="legend-note">Winnipeg&rsquo;s earliest neighbourhoods,
+                mostly planned before 1950. The City&rsquo;s Residential
+                Infill Guidelines apply here.</p>
+            </div>
           </div>
         </div>
 

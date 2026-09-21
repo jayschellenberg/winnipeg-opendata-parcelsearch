@@ -1056,10 +1056,30 @@ body {
   white-space: nowrap;
 }
 
-.traffic-legend {
+/* Bottom-left legend stack. The boxes inside go back to static flow so
+   the column can space them; .map-legend's own absolute positioning is
+   what the stack replaces. Column-reverse puts the first box in the DOM
+   nearest the corner. */
+.map-legend-stack-left {
+  position: absolute;
   bottom: 12px;
   left: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.map-legend-stack .map-legend {
+  position: static;
+  bottom: auto;
+  left: auto;
   right: auto;
+}
+
+.traffic-legend {
   max-width: 170px;
 }
 
@@ -1074,6 +1094,40 @@ body {
   border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.9);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+/* Matches infill-guideline-fill / -line in map.js: the same faint green
+   wash, inside the same dashed darker outline. Kept in lock-step with
+   those paint values by hand — a legend that disagrees with its layer
+   is worse than no legend.
+
+   It carries the plain `swatch` class deliberately: lib/mapLegend.js
+   scrapes `.swatch, .line-swatch` to redraw this legend into the
+   Generate Map PNG, and a swatch under any other class name exports
+   with no colour at all. */
+.infill-swatch {
+  background: rgba(90, 160, 90, 0.10);
+  border: 1.5px dashed #2e5e2e;
+  flex: none;
+}
+
+.infill-legend {
+  max-width: 210px;
+}
+
+.infill-legend li {
+  font-size: 11px;
+  align-items: center;
+}
+
+/* The "what is this" line under a legend's swatches. Quieter and
+   narrower than the rows so it reads as a footnote rather than another
+   entry, and wraps instead of stretching the box across the map. */
+.map-legend .legend-note {
+  margin: 5px 0 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #555;
 }
 
 .traffic-low { background: #4f9d69; }
