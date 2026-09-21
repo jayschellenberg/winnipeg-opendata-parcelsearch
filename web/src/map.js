@@ -754,7 +754,11 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
             'Major Redevelopment', '#7a3a92',
             '#5a3d8a',
           ],
-          'line-width': 2.5,
+          // 4px, matching the other policy boundaries. These carry a
+          // heavier fill than the infill/airport pair and so depend on
+          // the outline less, but a single weight across all four is
+          // what makes them read as one family of overlay.
+          'line-width': 4,
         },
       });
       map.addLayer({
@@ -853,7 +857,17 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         layout: { visibility: 'none' },
         paint: {
           'line-color': '#0e3848',
-          'line-width': 2,
+          // 4px, matching the other policy boundaries.
+          //
+          // NOT visually verified (Jason chose to ship without it). The
+          // corridors are thin strips along arterials, so a 4px outline
+          // on both sides takes up a real share of the polygon's width;
+          // at low zoom they may read as solid lines rather than bands.
+          // If they do, drop the corridors back to 2-3px and let colour
+          // carry the family resemblance instead of weight — the malls
+          // and the plan areas are large polygons and are unaffected
+          // either way.
+          'line-width': 4,
         },
       });
 
