@@ -9,7 +9,7 @@
 //   - No reach into main.js state. Pass in what you need.
 
 import { assessmentUrl } from './links.js';
-import { addressListTooltip, properCaseAddress } from './addressFormat.js';
+import { addressListTooltip, properCaseAddress, collapseAddressList } from './addressFormat.js';
 
 /** Default empty-cell content — keeps a single source of truth. */
 const EMPTY = '—';        // em-dash
@@ -126,14 +126,32 @@ export function truncatedTd(value, maxChars, className) {
  * names which of a multi-address parcel's addresses is the assessment
  * record's own — the only one the City's own search can find. A single-
  * address parcel behaves exactly like truncatedTd.
+ *
+ * The CELL text is collapsed per street — "511 & 513 Selkirk Ave" rather
+ * than "511 Selkirk Avenue, 513 Selkirk Ave" — matching the map label for
+ * the same parcel, so the grid and the exhibit say the same thing.
+ *
+ * The HOVER is deliberately built from the UNCOLLAPSED list, not from
+ * what the cell shows. Two reasons, and both matter:
+ *
+ *   - Collapsing sorts civic numbers ascending, which can move the
+ *     assessment record's own address out of first position. The tooltip
+ *     is the thing that names which address the City's search will find,
+ *     so it has to read the list that still carries that ordering.
+ *   - Once the cell reads "511 & 513", the individual addresses are no
+ *     longer on screen anywhere else. The hover is now the only place
+ *     they appear, which makes it more load-bearing than before, not
+ *     less.
+ *
+ * Both strings are cased by the same properCaseAddress, so the cell and
+ * its hover can never disagree about spelling.
  */
 export function addressTd(value, maxChars, className) {
   // Cased for reading here, at the last possible moment: the raw capitals
-  // are what every key, dedupe and lookup upstream runs on, and the cell
-  // and its hover must agree, so both are built from the same cased string.
-  const shown = properCaseAddress(value);
-  const el = truncatedTd(shown, maxChars, className);
-  const tip = addressListTooltip(shown);
+  // are what every key, dedupe and lookup upstream runs on.
+  const full = properCaseAddress(value);
+  const el = truncatedTd(collapseAddressList(full), maxChars, className);
+  const tip = addressListTooltip(full);
   if (tip) {
     el.title = tip;
     el.style.cursor = 'help';

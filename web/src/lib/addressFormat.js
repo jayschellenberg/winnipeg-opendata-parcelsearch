@@ -272,6 +272,35 @@ function groupLabel({ street, items }) {
 }
 
 /**
+ * Collapse a parcel's address LIST to what the Full Address cell shows:
+ * one entry per street, so "511 SELKIRK AVENUE, 513 SELKIRK AVE" reads
+ * "511 & 513 SELKIRK AVE". Accepts the comma-joined string the parcel
+ * carries, or an array.
+ *
+ * DISPLAY ONLY. `full_address` itself keeps the full comma-joined list,
+ * because three other things depend on it: the CSV export (a data
+ * consumer wants every address), the hover built by addressListTooltip,
+ * and the convention that the parcel's own assessment address is the
+ * FIRST entry — the only one winnipegassessment.com can find. Collapsing
+ * re-sorts civic numbers ascending, which can move that address out of
+ * first position, so the cell must never become the thing the tooltip is
+ * derived from. See addressTd in cells.js, which builds the two from
+ * different strings on purpose.
+ */
+export function collapseAddressList(list) {
+  const parts = Array.isArray(list)
+    ? list
+    : String(list ?? '').split(',');
+  const entries = parts
+    .map((a) => ({ display: String(a ?? '').trim() }))
+    .filter((e) => e.display);
+  if (!entries.length) return '';
+  return buildStreetGroups(entries)
+    .map((g) => groupLabel(g) ?? g.items.map((i) => i.display).join(', '))
+    .join(', ');
+}
+
+/**
  * Collapse one parcel's address points into map labels, one per street.
  *
  * `points` is [{ display, lng, lat }]. Returns [{ label, lng, lat,

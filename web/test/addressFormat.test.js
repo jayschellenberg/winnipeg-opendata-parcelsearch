@@ -11,6 +11,7 @@ import {
   addressListTooltip,
   properCaseAddress,
   groupAddressesByStreet,
+  collapseAddressList,
 } from '../src/lib/addressFormat.js';
 
 // ---- normalizeAddressKey --------------------------------------------------
@@ -283,5 +284,66 @@ assert.deepEqual(groupAddressesByStreet(null), []);
 assert.deepEqual(groupAddressesByStreet(undefined), []);
 assert.deepEqual(labels([{ display: '511 SELKIRK AVE' }]), []);
 assert.deepEqual(labels([P('', 0), P('   ', 1)]), []);
+
+// ---- collapseAddressList --------------------------------------------------
+// The Full Address CELL, collapsed the same way the map label is, so the
+// grid and the exhibit say the same thing about one parcel.
+// Takes the comma-joined string the parcel carries, or an array.
+assert.equal(
+  collapseAddressList('511 SELKIRK AVENUE, 513 SELKIRK AVE'),
+  '511 & 513 SELKIRK AVENUE',
+);
+assert.equal(
+  collapseAddressList(['511 SELKIRK AVENUE', '513 SELKIRK AVE']),
+  '511 & 513 SELKIRK AVENUE',
+);
+// The street spelling comes from the FIRST entry, which dedupeAddresses
+// guarantees is the parcel's own assessment record. Its "AVENUE" is what
+// the record says, so it is what the cell shows.
+assert.equal(
+  collapseAddressList('513 SELKIRK AVE, 511 SELKIRK AVENUE'),
+  '511 & 513 SELKIRK AVE',
+);
+// Cased input stays cased — the cell collapses AFTER properCaseAddress.
+assert.equal(
+  collapseAddressList('511 Selkirk Avenue, 513 Selkirk Ave'),
+  '511 & 513 Selkirk Avenue',
+);
+// Three list; four become a range.
+assert.equal(
+  collapseAddressList('510 SELKIRK AVE, 512 SELKIRK AVE, 514 SELKIRK AVE'),
+  '510, 512 & 514 SELKIRK AVE',
+);
+assert.equal(
+  collapseAddressList('1568 MAIN ST, 1570 MAIN ST, 1572 MAIN ST, 1576 MAIN ST'),
+  '1568\u20131576 MAIN ST',
+);
+// Two streets stay two entries, in the order they were given, so the
+// parcel's own street still reads first.
+assert.equal(
+  collapseAddressList('100 MAIN ST, 102 MAIN ST, 99 OSBORNE ST'),
+  '100 & 102 MAIN ST, 99 OSBORNE ST',
+);
+// A single address is returned untouched — no rewording, ever.
+assert.equal(collapseAddressList('511 SELKIRK AVENUE'), '511 SELKIRK AVENUE');
+assert.equal(collapseAddressList('610-1000 ALDGATE ROAD'), '610-1000 ALDGATE ROAD');
+// Units fold to the building address, same as the map label.
+assert.equal(
+  collapseAddressList('1000 ALDGATE RD UNIT 101, 1000 ALDGATE RD UNIT 501'),
+  '1000 ALDGATE RD',
+);
+// Empty in, empty out — the cell helpers test for '' to draw the em-dash.
+assert.equal(collapseAddressList(''), '');
+assert.equal(collapseAddressList(null), '');
+assert.equal(collapseAddressList(undefined), '');
+assert.equal(collapseAddressList([]), '');
+// The tooltip is built from the UNCOLLAPSED list, and must keep working:
+// collapsing re-sorts civic numbers, so the assessment record's own
+// address can move out of first position, and the hover is the only
+// place the individual addresses still appear.
+const tip = addressListTooltip('513 SELKIRK AVENUE, 511 SELKIRK AVE');
+assert.ok(tip.includes('Assessment record: 513 SELKIRK AVENUE'));
+assert.ok(tip.includes('511 SELKIRK AVE'));
+assert.equal(collapseAddressList('513 SELKIRK AVENUE, 511 SELKIRK AVE'), '511 & 513 SELKIRK AVENUE');
 
 console.log('addressFormat.test.js: all assertions passed');
