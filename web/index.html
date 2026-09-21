@@ -1112,6 +1112,7 @@
           <button id="secondary-plans-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Secondary Plans</button>
           <button id="infill-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Infill Area</button>
           <button id="malls-corridors-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
+          <button id="airport-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Airport Area — the Complete Communities policy area around Richardson International. Not the Airport PDO (zoning) and not the provincial Airport Vicinity Protection Area.">Airport Area</button>
           <!-- Zoning Changes — Off / Show / Filter (the Manitoba pattern).
                Show paints every parcel with a known rezoning by-law or a
                pending rezoning notice amber (citywide, and on the results);
@@ -1241,6 +1242,19 @@
                 <li><span class="line-swatch traffic-vhigh"></span>30k–60k</li>
                 <li><span class="line-swatch traffic-extreme"></span>60k+</li>
               </ul>
+            </div>
+            <!-- Airport Area. One unlabelled polygon, same as Infill —
+                 the dataset has no name field, so the legend is where it
+                 gets named. -->
+            <div id="airport-legend" class="map-legend airport-legend" hidden>
+              <strong>Airport Area</strong>
+              <ul>
+                <li><span class="swatch airport-swatch"></span>OurWinnipeg policy area</li>
+              </ul>
+              <p class="legend-note">Complete Communities 2.0 policy area
+                around Richardson International.<br>
+                <span class="legend-caveat">Not the Airport PDO (zoning), not
+                the provincial AVPA.</span></p>
             </div>
             <!-- Infill Area. The overlay is five big unlabelled polygons
                  (the dataset publishes no name field at all), so without

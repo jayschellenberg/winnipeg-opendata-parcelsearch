@@ -105,6 +105,7 @@ const ZONING_URL = 'https://data.winnipeg.ca/resource/dxrp-w6re.geojson';
 const SECONDARY_PLAN_PRECINCT_URL  = 'https://data.winnipeg.ca/resource/xh28-4smq.geojson';  // OurWPG Precinct (5)
 const SECONDARY_PLAN_REDEV_URL     = 'https://data.winnipeg.ca/resource/piz6-n3at.geojson';  // OurWPG Major Redev Site (11)
 const INFILL_GUIDELINE_URL         = 'https://data.winnipeg.ca/resource/5guk-f7xw.geojson';  // OurWPG Mature Community
+const AIRPORT_AREA_URL             = 'https://data.winnipeg.ca/resource/3nva-2f66.geojson';  // OurWPG Airport Area
 const MALLS_REGIONAL_CENTRE_URL    = 'https://data.winnipeg.ca/resource/wv32-jdtk.geojson';  // OurWPG Regional Mixed Use Centre
 const CORRIDORS_URBAN_URL          = 'https://data.winnipeg.ca/resource/t4kh-5gtd.geojson';  // OurWPG Urban Mixed Use Corridor
 const CORRIDORS_REGIONAL_URL       = 'https://data.winnipeg.ca/resource/ahzi-uwu2.geojson';  // OurWPG Regional Mixed Use Corridor
@@ -2172,6 +2173,19 @@ function tagPlanKind(feature, kind) {
  */
 export async function fetchInfillGuidelineArea() {
   return fetchAllAndCache('infillGuideline', INFILL_GUIDELINE_URL);
+}
+
+/**
+ * Fetch the OurWinnipeg Airport Area policy boundary (3nva-2f66) — one
+ * polygon around Winnipeg James Armstrong Richardson International and
+ * the lands its policies reach.
+ *
+ * Like the Mature Community boundary, this dataset publishes an `id`
+ * and nothing else, so everything the overlay says about itself is
+ * written into the app rather than read off a feature.
+ */
+export async function fetchAirportArea() {
+  return fetchAllAndCache('airportArea', AIRPORT_AREA_URL);
 }
 
 /**

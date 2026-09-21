@@ -795,6 +795,32 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         paint: { 'line-color': '#2e5e2e', 'line-width': 2.5, 'line-dasharray': [2, 2] },
       });
 
+      // Airport Area (OurWPG Airport Area) — one polygon, amber. Tighter
+      // than the name suggests: roughly 4 x 3 km around the airport
+      // lands themselves (bbox -97.267/49.889 to -97.211/49.917), not a
+      // broad swathe of the northwest quadrant. Faint fill and a
+      // long-dash outline match the infill boundary's treatment so the
+      // two read as the same class of thing — policy boundary, not
+      // parcel edge — while the dash pattern and colour keep them
+      // apart when both are on.
+      //
+      // This is the OurWinnipeg/Complete Communities POLICY area. It is
+      // not the Airport PDO (a zoning-by-law overlay) and not the
+      // provincial Airport Vicinity Protection Area, which is the one
+      // that actually restricts residential development by noise
+      // proximity. The three are easy to conflate and the popup says so.
+      map.addSource('airport-area', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'airport-area-fill', type: 'fill', source: 'airport-area',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#d89a3a', 'fill-opacity': 0.10 },
+      });
+      map.addLayer({
+        id: 'airport-area-line', type: 'line', source: 'airport-area',
+        layout: { visibility: 'none' },
+        paint: { 'line-color': '#8a5a12', 'line-width': 2.5, 'line-dasharray': [6, 2] },
+      });
+
       // Malls and Corridors PDO (combined: Regional Mixed Use Centre +
       // Urban Mixed Use Corridor + Regional Mixed Use Corridor). Each
       // sub-kind gets its own colour via a `pdo_kind` match expression.
@@ -2197,6 +2223,26 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           <a href="https://www.winnipeg.ca/building-development/property-records/winnipeg-property-map" target="_blank" rel="noreferrer">City's property map</a>
           for which one applies.</small>
         </div>`));
+      // Same situation as the infill boundary: 3nva-2f66 publishes an
+      // `id` and nothing else, so the popup carries the City's own
+      // description of what the policy area is for.
+      onLayerClick(map, 'airport-area-fill', policyClick(() => `
+        <div style="line-height:1.4;max-width:300px">
+          <strong>Airport Area</strong><br>
+          <em>OurWinnipeg policy area</em>
+          <hr style="margin:6px 0;border:none;border-top:1px solid #ddd">
+          <small>Airport Area policies, in section F1 of Complete
+          Communities 2.0, support the economic role of Winnipeg James
+          Armstrong Richardson International Airport and the surrounding
+          lands.
+          <br><br>
+          <span style="color:#b45309">Not</span> the two things it is
+          easily confused with: the <strong>Airport PDO</strong> (a
+          zoning overlay in the Winnipeg Zoning By-law) and the
+          <strong>Airport Vicinity Protection Area</strong> (provincial,
+          restricting residential development by proximity to the
+          airport). Neither is mapped here.</small>
+        </div>`));
       onLayerClick(map, 'malls-corridors-fill', policyClick((p) => `
         <div style="line-height:1.4">
           <strong>${escapeHtml(p.pdo_kind ?? 'Malls and Corridors PDO')}</strong>
@@ -2329,6 +2375,28 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         map.getCanvas().style.cursor = 'help';
       });
       map.on('mouseleave', 'infill-guideline-fill', () => {
+        map.getCanvas().style.cursor = '';
+        hoodHoverPopup.remove();
+      });
+
+      // Airport Area hover — one unlabelled polygon, same as infill.
+      map.on('mousemove', 'airport-area-fill', (e) => {
+        if (isShapeDrawing() || isMeasuring()) { hoodHoverPopup.remove(); return; }
+        if (parcelAt(map, e.point)) { hoodHoverPopup.remove(); return; }
+        if (map.getLayoutProperty('airport-area-fill', 'visibility') !== 'visible') {
+          hoodHoverPopup.remove();
+          return;
+        }
+        hoodHoverPopup
+          .setLngLat(e.lngLat)
+          .setHTML('<span class="hood-hover-label">Airport Area — OurWinnipeg policy area</span>')
+          .addTo(map);
+      });
+      map.on('mouseenter', 'airport-area-fill', () => {
+        if (map.getLayoutProperty('airport-area-fill', 'visibility') !== 'visible') return;
+        map.getCanvas().style.cursor = 'help';
+      });
+      map.on('mouseleave', 'airport-area-fill', () => {
         map.getCanvas().style.cursor = '';
         hoodHoverPopup.remove();
       });

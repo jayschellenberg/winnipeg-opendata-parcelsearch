@@ -1111,8 +1111,23 @@ body {
   flex: none;
 }
 
-.infill-legend {
+/* Matches airport-area-fill / -line: faint amber wash, long-dash amber
+   outline. Same lock-step-by-hand caveat as .infill-swatch, and the same
+   reason for the plain `swatch` class (the PNG export scrapes it). */
+.airport-swatch {
+  background: rgba(216, 154, 58, 0.10);
+  border: 1.5px dashed #8a5a12;
+  flex: none;
+}
+
+.infill-legend,
+.airport-legend {
   max-width: 210px;
+}
+
+.airport-legend li {
+  font-size: 11px;
+  align-items: center;
 }
 
 .infill-legend li {
