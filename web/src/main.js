@@ -2237,6 +2237,9 @@ async function refreshZoning() {
   if (zoningMode === 'off') return;
   const zoningFc = await fetchCityZoning();
   setZoningData(map, zoningFc);
+  // Now that the real codes are in hand, re-render the legend with the
+  // C1/C2/R1-M... list under each colour band.
+  buildZoningLegend(zoningCodesByCategory(zoningFc));
 }
 
 /**
@@ -2355,13 +2358,48 @@ function buildDimensionLabels(parcelFc) {
 }
 
 /**
+ * Collect the zone CODES that actually occur under each colour
+ * category, so the legend can say "Commercial — C1, C2, C3, C4, CMU"
+ * instead of leaving the reader to guess which band a C2 parcel falls
+ * in. Derived from the loaded citywide FC rather than hard-coded: the
+ * by-law gains and retires codes (TOD and RMU are recent), and a
+ * hard-coded list would quietly go stale while still looking right.
+ *
+ * Codes longer than 5 chars are dropped for the same reason the
+ * zoning-label layer filters them — they're overlay-district oddities,
+ * not districts an appraiser is scanning the legend for.
+ */
+function zoningCodesByCategory(fc) {
+  const byCat = new Map();
+  for (const f of fc?.features || []) {
+    const cat = f?.properties?.map_colour;
+    const code = f?.properties?.zoning;
+    if (!cat || !code || code.length > 5) continue;
+    if (!byCat.has(cat)) byCat.set(cat, new Set());
+    byCat.get(cat).add(code);
+  }
+  const out = new Map();
+  for (const [cat, codes] of byCat) {
+    out.set(cat, [...codes].sort((a, b) => a.localeCompare(b, 'en', { numeric: true })));
+  }
+  return out;
+}
+
+/**
  * Populate the floating zoning legend's <ul> from the same palette
  * map.js uses to colour the zoning fill layer. Run once at startup —
  * the citywide layer always covers all 13 categories so we don't have
  * to recompute on viewport changes. Visibility is flipped by the
  * toggleZoning handler.
+ *
+ * `codesByCategory` (optional) is the Map from zoningCodesByCategory;
+ * when present each row gains a second line listing that category's
+ * zone codes. The startup call has no data yet and renders names only
+ * — refreshZoning re-runs this once the citywide FC has landed, which
+ * is always before the legend can be shown (it only appears in
+ * shading mode, and shading mode is what triggers the fetch).
  */
-function buildZoningLegend() {
+function buildZoningLegend(codesByCategory) {
   if (!$zoningLegend || !ZONING_PALETTE) return;
   const ul = $zoningLegend.querySelector('ul');
   if (!ul) return;
@@ -2374,7 +2412,31 @@ function buildZoningLegend() {
     sw.className = 'swatch';
     sw.style.background = color;
     li.appendChild(sw);
-    li.appendChild(document.createTextNode(name));
+    const text = document.createElement('span');
+    text.className = 'zl-text';
+    const label = document.createElement('span');
+    label.className = 'zl-name';
+    label.textContent = name;
+    text.appendChild(label);
+    const codes = codesByCategory?.get(name);
+    if (codes?.length) {
+      // Real separator rather than CSS-only spacing: lib/mapLegend.js
+      // scrapes li.textContent to redraw this legend into the Generate
+      // Map PNG, where the two lines collapse into one row. Without a
+      // character between them the export would read
+      // "CommercialC1, C2, ...". Hidden on screen (.zl-sep), where the
+      // line break already separates them and a trailing dash would
+      // just dangle off the category name.
+      const sep = document.createElement('span');
+      sep.className = 'zl-sep';
+      sep.textContent = ' — ';
+      text.appendChild(sep);
+      const codeEl = document.createElement('span');
+      codeEl.className = 'zl-codes';
+      codeEl.textContent = codes.join(', ');
+      text.appendChild(codeEl);
+    }
+    li.appendChild(text);
     ul.appendChild(li);
   }
 }

@@ -1008,23 +1008,52 @@ body {
   bottom: 12px;
   right: 12px;
   left: auto;
-  max-width: 220px;
+  max-width: 235px;
 }
 
 .zoning-legend ul {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1px;
+  gap: 3px;
 }
 
 .zoning-legend li {
   font-size: 11px;
+  /* Two-line rows (name + zone codes) — the swatch pins to the first
+     line rather than centring against the whole block. */
+  align-items: flex-start;
 }
 
 .zoning-legend .swatch {
   width: 14px;
   height: 10px;
   border: 1px solid rgba(0, 0, 0, 0.25);
+  flex: none;
+  margin-top: 2px;
+}
+
+/* The zone codes that fall under each colour band (C1, C2, ...), on
+   their own line under the category name. Muted and a shade smaller so
+   the band names still carry the legend at a glance. */
+.zoning-legend .zl-codes {
+  display: block;
+  font-size: 10px;
+  color: #555;
+  letter-spacing: 0.02em;
+}
+
+/* Separator between the category name and its codes. Present in the DOM
+   only so the Generate Map PNG, which flattens each row to one line of
+   text, reads "Commercial — C1, C2, ...". On screen the line break
+   does that job, so keep it out of the flow without removing it from
+   textContent (display:none would). */
+.zoning-legend .zl-sep {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .traffic-legend {
