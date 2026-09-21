@@ -2166,15 +2166,36 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       // quoted rather than paraphrased — "Mature Community" is a defined
       // term in OurWinnipeg, and an approximation of it would be the
       // kind of thing that ends up in a report.
+      //
+      // The limitation is stated rather than left to be discovered.
+      // The City's own property map divides this envelope into six
+      // categories — Infill Guideline Area 1 and Area 2, each with a
+      // plain, an Airport PDO and a Secondary Plan variant — and Area 1
+      // (predominantly R1) and Area 2 (predominantly R2) carry different
+      // guidance. NONE of that split is published on Open Data: the full
+      // OurWPG set there is Precinct / New / Mature / Recent Community,
+      // Employment Lands, Rural Agricultural, Airport Area, Major
+      // Redevelopment Site and the three mixed-use layers, with no
+      // infill-guideline-area dataset among them. So this overlay is the
+      // OUTER boundary only, and an appraiser reading "Infill Guidelines
+      // apply" needs to know it does not tell them which area they are
+      // in.
       onLayerClick(map, 'infill-guideline-fill', policyClick(() => `
-        <div style="line-height:1.4;max-width:290px">
+        <div style="line-height:1.4;max-width:300px">
           <strong>Infill Area</strong> — Mature Community<br>
           <em>Residential Infill Guidelines apply</em>
           <hr style="margin:6px 0;border:none;border-top:1px solid #ddd">
           <small>Winnipeg's earliest neighbourhoods, mostly planned before
           1950 — grid streets, public lanes, connected sidewalks. A subset
           of Established Neighbourhoods.
-          <a href="https://winnipeg.ca/interhom/infill/" target="_blank" rel="noreferrer">Guidelines →</a></small>
+          <br><br>
+          <span style="color:#b45309">Outer boundary only.</span> The City
+          splits this into Infill Guideline <strong>Area 1</strong>
+          (predominantly R1) and <strong>Area 2</strong> (predominantly
+          R2), each with Airport PDO and Secondary Plan variants. That
+          breakdown is not published on Open Data — check the
+          <a href="https://www.winnipeg.ca/building-development/property-records/winnipeg-property-map" target="_blank" rel="noreferrer">City's property map</a>
+          for which one applies.</small>
         </div>`));
       onLayerClick(map, 'malls-corridors-fill', policyClick((p) => `
         <div style="line-height:1.4">

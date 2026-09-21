@@ -1130,6 +1130,13 @@ body {
   color: #555;
 }
 
+/* A limitation of the layer, not a description of it. Amber rather than
+   grey because "this boundary is coarser than the City's" is the kind of
+   thing that has to survive being skimmed. */
+.map-legend .legend-caveat {
+  color: #b45309;
+}
+
 .traffic-low { background: #4f9d69; }
 .traffic-med { background: #d6c94f; }
 .traffic-high { background: #e59a3d; }
