@@ -4104,16 +4104,18 @@ body.shape-drawing .maplibregl-canvas {
 }
 /* An empty slot must not eat half the row. :empty goes false the moment
    #numbering-row lands in it, hidden or not, so the hidden case is
-   covered by :has() rather than by :empty alone. */
+   covered by :has() rather than by :empty alone. The slot holds both the
+   numbering row and the one-parcel locator row (#pin-row), so it hides
+   only when NEITHER is showing. */
 .sidebar .action-row-import > .numbering-slot:empty,
-.sidebar .action-row-import > .numbering-slot:has(> [hidden]) {
+.sidebar .action-row-import > .numbering-slot:not(:has(> :not([hidden]))) {
   display: none;
 }
 .numbering-slot > .numbering-row { width: 100%; margin: 0; }
 /* The Sales tab's slot is a full-width row of its own. */
 .numbering-slot-wide { display: block; }
 .numbering-slot-wide:empty,
-.numbering-slot-wide:has(> [hidden]) { display: none; }
+.numbering-slot-wide:not(:has(> :not([hidden]))) { display: none; }
 
 /* In the half-width slot the pill has roughly 110px to work with, so the
    "Numbering:" prefix goes and the segments shrink to fit. The control
@@ -4142,6 +4144,11 @@ body.shape-drawing .maplibregl-canvas {
 .sidebar .action-row-import .numbering-slot .mode-pill-prefix::after {
   content: "Number:";
   font-size: 10px;
+}
+/* The one-parcel locator row shares the slot, and so the rule above;
+   it keeps its own word. */
+.sidebar .action-row-import .numbering-slot #pin-row .mode-pill-prefix::after {
+  content: "Locator:";
 }
 .sidebar .action-row-import .numbering-slot .mode-pill-row {
   display: flex;

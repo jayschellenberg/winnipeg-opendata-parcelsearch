@@ -427,6 +427,22 @@
             </div>
           </div>
         </div>
+        <!-- Numbering's counterpart: shown only when the results are exactly
+             ONE parcel. Pin swaps the parcel shape for a Google-style map pin,
+             which still reads when zoomed out to the cluster or city. -->
+        <div id="pin-row" class="numbering-row" hidden>
+          <input type="checkbox" id="pin-toggle" class="pill-backing" hidden />
+          <div
+            class="mode-pill-row numbering-toggle"
+            title="Show the one parcel found as a map pin instead of its shape — easier to find when zoomed out to the cluster or city. Clicking where the parcel is still opens it, and the pin is included in the Generate Map image."
+          >
+            <span class="mode-pill-prefix">Locator:</span>
+            <div class="mode-pill" role="radiogroup" aria-label="Single-parcel locator" data-pill="locator">
+              <button type="button" class="mode-btn active mode-btn-off" data-mode="shape" aria-pressed="true">Shape</button>
+              <button type="button" class="mode-btn" data-mode="pin" aria-pressed="false">Pin</button>
+            </div>
+          </div>
+        </div>
         <span id="count" class="count"></span>
         </section><!-- /tab-panel-property -->
 

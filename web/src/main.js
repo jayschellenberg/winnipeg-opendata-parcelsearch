@@ -101,7 +101,7 @@ import {
   setCitywideParcelsVisible, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
   setContamData, setContamVisible, setWaterInfluenceVisible,
   setSubjectData, setSubjectRadiusData, setSalesPointsData,
-  setParcelNumberData, setParcelNumbersVisible,
+  setParcelNumberData, setParcelNumbersVisible, setResultPin,
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
   setHistoricalZoningData, setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
@@ -232,6 +232,8 @@ const $numberingToggle  = document.getElementById('numbering-toggle');
 const $numberingRow     = document.getElementById('numbering-row');
 const $numberingOrderToggle = document.getElementById('numbering-order-toggle');
 const $numberingOrderLabel  = document.getElementById('numbering-order-label');
+const $pinToggle        = document.getElementById('pin-toggle');
+const $pinRow           = document.getElementById('pin-row');
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
@@ -344,6 +346,13 @@ let shapeTotal = 0;
 // hidden until it would do something.
 let numberingOn = false;
 let numberable = false;
+// "Locator: Pin" — Numbering's counterpart for a ONE-parcel result: a
+// Google-style pin in place of the parcel shape, which vanishes at the
+// cluster or city zoom. `pinOn` is the user's choice (kept while hidden,
+// like numberingOn); `pinPoint` is where the single result sits, or null
+// whenever the set is not exactly one parcel.
+let pinOn = false;
+let pinPoint = null;
 // "Entry order" beside it — number in the order the rolls were ENTERED
 // rather than by roll number. Opt-in, and only offered when the result
 // set on screen came from an entered list: the Roll # chips (property) or
@@ -623,6 +632,13 @@ if ($numberingToggle) {
     const active = numberingOn && numberable;
     document.body.classList.toggle('numbering-on', active);
     mapReady.then(() => setParcelNumbersVisible(map, active));
+    queueUrlWrite();
+  });
+}
+if ($pinToggle) {
+  $pinToggle.addEventListener('change', () => {
+    pinOn = $pinToggle.checked;
+    mapReady.then(() => setResultPin(map, pinOn ? pinPoint : null));
     queueUrlWrite();
   });
 }
@@ -944,14 +960,19 @@ function placeNumberingRow(tab) {
   // the control that produces a list to number; on Sales it is a row of
   // its own. Falling back to "after the first action row" keeps the old
   // behaviour for any panel that has not declared a slot.
+  // The locator row (one-parcel results) rides along right after it: the
+  // two never show together, so they share the one slot.
   const slot = panel.querySelector('[data-numbering-slot]');
   if (slot) {
     if ($numberingRow.parentElement !== slot) slot.appendChild($numberingRow);
-    return;
+  } else {
+    const actionRow = panel.querySelector(':scope > .action-row');
+    if (actionRow && actionRow.nextElementSibling !== $numberingRow) {
+      actionRow.insertAdjacentElement('afterend', $numberingRow);
+    }
   }
-  const actionRow = panel.querySelector(':scope > .action-row');
-  if (actionRow && actionRow.nextElementSibling !== $numberingRow) {
-    actionRow.insertAdjacentElement('afterend', $numberingRow);
+  if ($pinRow && $numberingRow.nextElementSibling !== $pinRow) {
+    $numberingRow.insertAdjacentElement('afterend', $pinRow);
   }
 }
 onTabChange(placeNumberingRow);
@@ -1195,6 +1216,7 @@ function captureUrlState() {
   // parcel would strip the setting out of a shared link.
   if (numberingOn) s.numberingToggle = true;
   if (numberingEntryOrder) s.numberingOrder = true;
+  if (pinOn) s.pinToggle = true;
 
   if (currentSort?.col) s.sortCol = currentSort.col;
   if (currentSort?.dir) s.sortDir = currentSort.dir;
@@ -1286,6 +1308,11 @@ function applyUrlState(state) {
   }
   // The boxes were set without a change event, so repaint the pill by hand.
   if ('numberingOrder' in state || 'numberingToggle' in state) pillPainters.numbering?.();
+  if ('pinToggle' in state) {
+    pinOn = !!state.pinToggle;
+    if ($pinToggle) $pinToggle.checked = pinOn;
+    pillPainters.locator?.();
+  }
 
   if (state.sortCol) {
     currentSort = { col: state.sortCol, dir: state.sortDir === 'desc' ? 'desc' : 'asc' };
@@ -3087,10 +3114,13 @@ function clearTable() {
   // next one.
   numberable = false;
   if ($numberingRow) $numberingRow.hidden = true;
+  pinPoint = null;
+  if ($pinRow) $pinRow.hidden = true;
   document.body.classList.remove('numbering-on');
   mapReady.then(() => {
     setParcelNumberData(map, []);
     setParcelNumbersVisible(map, false);
+    setResultPin(map, null);
   });
 }
 
@@ -3185,10 +3215,19 @@ function applyParcelNumbering(fullRows, shownRows) {
   const active = numberingOn && numberable;
   document.body.classList.toggle('numbering-on', active);
 
+  // Exactly one subject: offer the locator pin instead. Placed from the
+  // SHOWN rows, so a drawn shape that filters the parcel out takes the pin
+  // with it.
+  const single = subjects === 1;
+  if ($pinRow) $pinRow.hidden = !single;
+  const shownOne = single ? shownRows.map(rowFeature).find(Boolean) : null;
+  pinPoint = shownOne ? shapeFeatureCentroid(shownOne) : null;
+
   const shownFeatures = numberable ? shownRows.map(rowFeature).filter(Boolean) : [];
   mapReady.then(() => {
     setParcelNumberData(map, shownFeatures);
     setParcelNumbersVisible(map, active);
+    setResultPin(map, pinOn ? pinPoint : null);
   });
 }
 

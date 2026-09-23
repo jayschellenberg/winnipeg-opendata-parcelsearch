@@ -300,7 +300,10 @@ const ASSESS_LINE_WIDTH = [
 const assessFillState = { waterOn: false, zoningShaded: false };
 function applyAssessFillOpacity(map) {
   if (!map.getLayer('assess-context-fill')) return;
-  map.setPaintProperty('assess-context-fill', 'fill-opacity', assessFillOpacity(assessFillState));
+  // The single-result pin stands in for the shape, so the fill stays out
+  // of sight while it is up, whatever the overlays would otherwise want.
+  map.setPaintProperty('assess-context-fill', 'fill-opacity',
+    map._resultPinOn ? 0 : assessFillOpacity(assessFillState));
 }
 
 // Categorical fill colors keyed off the dataset's `map_colour` field. Values
@@ -2763,6 +2766,22 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         });
       });
 
+      // The single-result locator pin (setResultPin). Above every parcel
+      // and overlay layer, under only the drawn area-selection shapes. A GL
+      // symbol, not a maplibregl.Marker, so Generate Map (which copies the
+      // canvas) captures it — the same reason the number badges are GL.
+      map.addImage('result-pin', resultPinImage(), { pixelRatio: 2 });
+      map.addSource('result-pin', { type: 'geojson', data: emptyFc() });
+      map.addLayer({
+        id: 'result-pin', type: 'symbol', source: 'result-pin',
+        layout: {
+          'icon-image': 'result-pin',
+          'icon-anchor': 'bottom',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      });
+
       // Area-selection shapes go in LAST — after every overlay and
       // after the moveLayer reordering above — so a shape the user
       // just drew can never hide beneath a parcel or basemap-reference
@@ -4386,4 +4405,70 @@ function historicalSurveyHtml(p, snap, lineageRec = null) {
   if (p.description) lines.push(escapeHtml(p.description));
   lines.push('<small style="color:#888">Display geometry simplified — verify against the registered plan of survey / title.</small>');
   return `<div class="parcel-popup">${lines.join('<br>')}${lineageHtml(lineageRec, 'survey_id', false)}</div>`;
+}
+
+// ---------- Single-result locator pin ----------
+
+/** The result-shape layers the pin replaces, and the opacity property each
+ *  carries. assess-context-fill is handled by applyAssessFillOpacity. */
+const PIN_HIDDEN_LAYERS = [
+  ['parcel-fill', 'fill-opacity'],
+  ['parcel-line', 'line-opacity'],
+  ['assess-context-line-underlay', 'line-opacity'],
+  ['assess-context-line', 'line-opacity'],
+];
+
+/**
+ * A Google-Maps-style map pin (red teardrop, dark red dot), drawn on a
+ * canvas at 2x so it stays crisp: 32 x 44 CSS px, the tip at bottom centre.
+ * Drawn in code rather than loaded from a file, so it is ready synchronously
+ * inside the style load and needs no asset.
+ */
+function resultPinImage() {
+  const W = 32, H = 44, R = 2;
+  const c = document.createElement('canvas');
+  c.width = W * R;
+  c.height = H * R;
+  const g = c.getContext('2d');
+  g.scale(R, R);
+  const body = new Path2D('M16 1.5C8 1.5 1.5 7.9 1.5 15.8c0 10.6 12.6 24.4 14.5 26.5 1.9-2.1 14.5-15.9 14.5-26.5C30.5 7.9 24 1.5 16 1.5z');
+  g.fillStyle = '#ea4335';
+  g.fill(body);
+  g.lineWidth = 1.5;
+  g.strokeStyle = '#a52714';
+  g.stroke(body);
+  g.beginPath();
+  g.arc(16, 15.5, 5.5, 0, 2 * Math.PI);
+  g.fillStyle = '#7a0c0c';
+  g.fill();
+  const img = g.getImageData(0, 0, c.width, c.height);
+  return { width: c.width, height: c.height, data: new Uint8Array(img.data.buffer) };
+}
+
+/**
+ * Show the locator pin at `point` ({lng, lat}) in place of the result
+ * parcel's shape, or pass null to take it away and bring the shape back.
+ * The shapes are faded to 0 rather than hidden, so a click on the parcel
+ * still opens it; their own opacities are kept and put back as they were.
+ */
+export function setResultPin(map, point) {
+  const src = map.getSource('result-pin');
+  if (!src) return;
+  const on = !!point;
+  src.setData(on ? {
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [point.lng, point.lat] } }],
+  } : emptyFc());
+  if (on === !!map._resultPinOn) return;
+  if (on) {
+    map._resultPinSaved = PIN_HIDDEN_LAYERS
+      .filter(([id]) => map.getLayer(id))
+      .map(([id, prop]) => [id, prop, map.getPaintProperty(id, prop)]);
+    for (const [id, prop] of map._resultPinSaved) map.setPaintProperty(id, prop, 0);
+  } else {
+    for (const [id, prop, v] of map._resultPinSaved || []) map.setPaintProperty(id, prop, v ?? 1);
+    map._resultPinSaved = null;
+  }
+  map._resultPinOn = on;
+  applyAssessFillOpacity(map);
 }

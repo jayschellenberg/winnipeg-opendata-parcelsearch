@@ -96,7 +96,7 @@ const isAssignedIn = (v, text) => new RegExp(`(^|[^.\\w])${v}\\s*=[^=]`).test(te
 // ---------------------------------------------------------------------------
 const PER_RESULT = [
   'currentRows', 'fullRows', 'shapeShown', 'shapeTotal',
-  'numberable', 'propertyRollOrder',
+  'numberable', 'pinPoint', 'propertyRollOrder',
   'lastFullSurveyFc', 'lastFullAssessFc', 'lastSurveyFc', 'lastCountBase',
   'drawCapped',
   'deselectedRowKeys',   // row culling belongs to the result set it was done on
@@ -111,6 +111,7 @@ const PER_RESULT = [
 const PERSISTENT = {
   numberingOn: 'a display preference that should carry across searches',
   numberingEntryOrder: 'travels with numberingOn',
+  pinOn: 'the one-parcel Locator choice (Shape or Pin), a display preference like numberingOn',
   currentSort: "the user's sort preference, not a property of the results",
   salesRollOrder: 'belongs to the sales import, which outlives a property search',
   lastChartRows: 'the charts tab mirrors the sales set; a property search does not publish to it',
