@@ -69,9 +69,12 @@ export function layoutMapLegends(legends, {
   width, height, bottomY, fontSize, measureText,
 }) {
   const pad = Math.round(fontSize * 0.6);
-  const lineH = Math.round(fontSize * 1.35);
-  const swatch = Math.round(fontSize * 0.9);
-  const gap = Math.round(fontSize * 0.5);
+  // Swatches a little taller than the text and rows spaced to suit
+  // (Jason, 2026-09-23: the image legend's swatches were too small to tell
+  // the zoning bands apart).
+  const lineH = Math.round(fontSize * 1.5);
+  const swatch = Math.round(fontSize * 1.15);
+  const gap = Math.round(fontSize * 0.55);
   const maxBoxW = Math.floor(width * LEGEND_MAX_WIDTH_RATIO);
   const budgetTop = Math.max(0, bottomY - Math.floor(height * LEGEND_MAX_HEIGHT_RATIO));
 
