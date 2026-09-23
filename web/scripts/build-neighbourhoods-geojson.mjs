@@ -2,38 +2,49 @@
 /*
  * build-neighbourhoods-geojson.mjs
  * ---------------------------------------------------------------
- * One-off processor for the two Winnipeg neighbourhood overlays.
- * Reads the source GeoJSON from a hand-maintained appraisal base
- * folder, strips redundant properties, and writes the cleaned
- * outputs into web/public/ where the map can fetch them at runtime.
+ * Builds the two Winnipeg neighbourhood overlays into web/public/.
  *
- * Cadence: rarely. Neighbourhood boundaries are on a decade-scale
- * stable; re-run only if Jason updates the BaseFiles or the City
- * publishes a new boundary set.
+ *   Neighbourhoods: fetched LIVE from the City's Open Data
+ *     "Neighbourhoods" dataset (8k6x-xxsy). Until 2026-09-23 this read
+ *     a hand-kept copy (base-files/WpgNeighbourhoods.geojson) that was
+ *     older than the City's set and left 119 assessed parcels in no
+ *     neighbourhood at all (117 gaps over 2,000 m2, the one Jason found
+ *     along Selkirk Ave in William Whyte) and 192 in two at once. That
+ *     copy was then deleted from appraisal-templates (53f56b2), which
+ *     would have broken the quarterly refresh. Checked 2026-09-23 against
+ *     all 245,324 assessed parcels: the City set leaves 1 outside (at the
+ *     city limit), 0 overlapping, and no gap bigger than 100 m2.
+ *
+ *   Clusters (23): still the appraisal base file
+ *     base-files/WpgNeighbourhoodClusters.geojson, shared with the R
+ *     templates. Its polygons are kept as they are (they cover every
+ *     assessed parcel); its membership lists are REBUILT here from the
+ *     cluster each City neighbourhood actually sits in, so the popup's
+ *     list and the sales cluster filter agree with the map.
+ *
+ * A neighbourhood's cluster is the cluster polygon holding most of its
+ * area. Every City neighbourhood sat at least 97% inside one cluster on
+ * 2026-09-23, so the choice is never close; the build prints any that
+ * fall below that and fails on one outside every cluster.
+ *
+ * Cadence: run by the quarterly WpgAssetRefreshQuarterly task
+ * (r/refresh_assets.ps1), which commits only when the output changes.
  *
  * Trigger:
- *   - Default source path:  D:\Dropbox\Appraisal\RProjects\appraisal-templates\base-files\
- *   - Override via CLI arg: node build-neighbourhoods-geojson.mjs <src-dir>
- *   - npm:                  npm run refresh:neighbourhoods
+ *   - Default clusters path: D:\Dropbox\Appraisal\RProjects\appraisal-templates\base-files\
+ *   - Override via CLI arg:  node build-neighbourhoods-geojson.mjs <src-dir>
+ *   - npm:                   npm run refresh:neighbourhoods
  *
- * Source columns we keep:
- *   Neighbourhoods (235):
- *     - Name         (string)         neighbourhood name
- *     - Cluster      (string)         parent cluster name
- *     - ID           (number)         City Open Data ID
- *   Clusters (23):
- *     - cluster      (string)         cluster name
- *     - neighbourhood_count (number)  how many hoods inside it
- *     - neighbourhoods (string)       semi-colon list of hood names
- *
- * Source columns we drop:
- *   - Location (WKT string duplicating the geometry — ~50% of file)
- *   - lon / lat (centroid; MapLibre derives one for symbol layers)
+ * Output properties:
+ *   Neighbourhoods: id (City id), name (City name), cluster
+ *   Clusters:       cluster, neighbourhood_count, neighbourhoods ("; " list)
  * --------------------------------------------------------------- */
 
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import area from '@turf/area';
+import intersect from '@turf/intersect';
 import { writeStable } from './stableWrite.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -43,36 +54,83 @@ const PUBLIC_DIR = path.join(REPO_WEB, 'public');
 const DEFAULT_SRC = String.raw`D:\Dropbox\Appraisal\RProjects\appraisal-templates\base-files`;
 const srcDir = process.argv[2] || DEFAULT_SRC;
 
-const SRC_HOODS    = path.join(srcDir, 'WpgNeighbourhoods.geojson');
+const CITY_DATASET = '8k6x-xxsy';
+const CITY_HOODS_URL = `https://data.winnipeg.ca/resource/${CITY_DATASET}.geojson?$limit=5000`;
 const SRC_CLUSTERS = path.join(srcDir, 'WpgNeighbourhoodClusters.geojson');
 const OUT_HOODS    = path.join(PUBLIC_DIR, 'wpg-neighbourhoods.geojson');
 const OUT_CLUSTERS = path.join(PUBLIC_DIR, 'wpg-neighbourhood-clusters.geojson');
 
-async function processHoods() {
-  console.log(`Reading ${SRC_HOODS}`);
-  const raw = JSON.parse(await readFile(SRC_HOODS, 'utf-8'));
+// A neighbourhood less than this share inside its best cluster is printed,
+// so a City boundary change that straddles two clusters gets looked at.
+const CLUSTER_FIT_WARN = 0.97;
+
+async function fetchCityHoods() {
+  console.log(`Fetching ${CITY_HOODS_URL}`);
+  const res = await fetch(CITY_HOODS_URL);
+  if (!res.ok) throw new Error(`City neighbourhoods: HTTP ${res.status}`);
+  const raw = await res.json();
+  if (raw.type !== 'FeatureCollection' || !Array.isArray(raw.features)) {
+    throw new Error('City neighbourhoods: expected a FeatureCollection');
+  }
+  // The City set has ~237. Far fewer means a truncated or broken response,
+  // and publishing it would open exactly the gaps this build exists to close.
+  if (raw.features.length < 200) {
+    throw new Error(`City neighbourhoods: only ${raw.features.length} features, refusing to publish`);
+  }
+  return raw.features;
+}
+
+/** The cluster holding most of `hood`'s area, and that share. */
+function bestCluster(hood, clusters) {
+  const total = area(hood);
+  let best = { name: null, share: 0 };
+  for (const c of clusters) {
+    let inter = null;
+    try { inter = intersect({ type: 'FeatureCollection', features: [hood, c] }); } catch { inter = null; }
+    if (!inter) continue;
+    const share = area(inter) / total;
+    if (share > best.share) best = { name: c.properties.cluster, share };
+  }
+  return best;
+}
+
+async function readClusterPolygons() {
+  console.log(`Reading ${SRC_CLUSTERS}`);
+  const raw = JSON.parse(await readFile(SRC_CLUSTERS, 'utf-8'));
   if (raw.type !== 'FeatureCollection') throw new Error('Expected FeatureCollection');
-  const features = raw.features.map((f) => ({
+  return raw.features.map((f) => ({
     type: 'Feature',
-    geometry: f.geometry,
-    // Keep only the props the map actually reads. Drop the giant
-    // Location WKT string (duplicates the geometry) and the
-    // pre-computed lon/lat centroid (MapLibre picks one for us).
-    properties: {
-      id: f.properties?.ID ?? null,
-      name: f.properties?.Name ?? '',
-      cluster: f.properties?.Cluster ?? '',
-    },
+    geometry: cleanPolygon(f.geometry),
+    properties: { cluster: f.properties?.cluster ?? '' },
   }));
-  // Sort alphabetically so any diff against a future regen is
-  // a clean line-by-line comparison rather than file-order noise.
+}
+
+function processHoods(cityFeatures, clusterPolys) {
+  const features = [];
+  for (const f of cityFeatures) {
+    const name = String(f.properties?.name ?? '').trim();
+    const best = bestCluster(f, clusterPolys);
+    if (!best.name) throw new Error(`Neighbourhood ${name} lies outside every cluster`);
+    if (best.share < CLUSTER_FIT_WARN) {
+      console.warn(`  ! ${name}: only ${(best.share * 100).toFixed(1)}% inside ${best.name}`);
+    }
+    features.push({
+      type: 'Feature',
+      geometry: f.geometry,
+      properties: {
+        id: f.properties?.id != null ? Number(f.properties.id) : null,
+        name,
+        cluster: best.name,
+      },
+    });
+  }
+  // Sorted, so a future regen diffs line by line rather than by file order.
   features.sort((a, b) => a.properties.name.localeCompare(b.properties.name));
   return {
     type: 'FeatureCollection',
     features,
     _meta: {
-      // Filename only — this ships on the public site, so no local paths.
-      source: path.basename(SRC_HOODS),
+      source: `City of Winnipeg Open Data, Neighbourhoods (${CITY_DATASET})`,
       generated_at: new Date().toISOString(),
       neighbourhood_count: features.length,
     },
@@ -112,25 +170,34 @@ function cleanPolygon(geom) {
   return { type: 'Polygon', coordinates: kept };
 }
 
-async function processClusters() {
-  console.log(`Reading ${SRC_CLUSTERS}`);
-  const raw = JSON.parse(await readFile(SRC_CLUSTERS, 'utf-8'));
-  if (raw.type !== 'FeatureCollection') throw new Error('Expected FeatureCollection');
-  const features = raw.features.map((f) => ({
-    type: 'Feature',
-    geometry: cleanPolygon(f.geometry),
-    properties: {
-      cluster: f.properties?.cluster ?? '',
-      neighbourhood_count: Number(f.properties?.neighbourhood_count ?? 0),
-      neighbourhoods: f.properties?.neighbourhoods ?? '',
-    },
-  }));
+function processClusters(clusterPolys, hoods) {
+  // Membership rebuilt from the neighbourhoods' own cluster assignment, so a
+  // neighbourhood is listed under exactly one cluster (the base file listed
+  // Airport under both St. James clusters) and new City neighbourhoods show.
+  const members = new Map();
+  for (const h of hoods.features) {
+    const list = members.get(h.properties.cluster) || [];
+    list.push(h.properties.name);
+    members.set(h.properties.cluster, list);
+  }
+  const features = clusterPolys.map((f) => {
+    const list = (members.get(f.properties.cluster) || []).sort((x, y) => x.localeCompare(y));
+    return {
+      type: 'Feature',
+      geometry: f.geometry,
+      properties: {
+        cluster: f.properties.cluster,
+        neighbourhood_count: list.length,
+        neighbourhoods: list.join('; '),
+      },
+    };
+  });
   features.sort((a, b) => a.properties.cluster.localeCompare(b.properties.cluster));
   return {
     type: 'FeatureCollection',
     features,
     _meta: {
-      // Filename only — this ships on the public site, so no local paths.
+      // Filename only: this ships on the public site, so no local paths.
       source: path.basename(SRC_CLUSTERS),
       generated_at: new Date().toISOString(),
       cluster_count: features.length,
@@ -139,7 +206,9 @@ async function processClusters() {
 }
 
 async function main() {
-  const [hoods, clusters] = await Promise.all([processHoods(), processClusters()]);
+  const [cityFeatures, clusterPolys] = await Promise.all([fetchCityHoods(), readClusterPolygons()]);
+  const hoods = processHoods(cityFeatures, clusterPolys);
+  const clusters = processClusters(clusterPolys, hoods);
   await mkdir(PUBLIC_DIR, { recursive: true });
   // writeStable, not writeFile: an unchanged rebuild must not rewrite the file
   // just because generated_at moved. See scripts/stableWrite.mjs.
