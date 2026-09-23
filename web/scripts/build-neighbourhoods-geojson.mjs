@@ -80,13 +80,22 @@ async function fetchCityHoods() {
   return raw.features;
 }
 
+/** The overlap of two polygons, or null when they don't meet (or turf
+ *  cannot resolve a degenerate edge, which counts as no overlap). */
+function overlap(a, b) {
+  try {
+    return intersect({ type: 'FeatureCollection', features: [a, b] });
+  } catch {
+    return null;
+  }
+}
+
 /** The cluster holding most of `hood`'s area, and that share. */
 function bestCluster(hood, clusters) {
   const total = area(hood);
   let best = { name: null, share: 0 };
   for (const c of clusters) {
-    let inter = null;
-    try { inter = intersect({ type: 'FeatureCollection', features: [hood, c] }); } catch { inter = null; }
+    const inter = overlap(hood, c);
     if (!inter) continue;
     const share = area(inter) / total;
     if (share > best.share) best = { name: c.properties.cluster, share };
