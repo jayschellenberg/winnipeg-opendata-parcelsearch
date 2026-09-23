@@ -985,7 +985,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         // legibility, not emphasis.
         paint: {
           'line-color': '#ffffff',
-          'line-width': 2.5,
+          'line-width': 3.5,
           'line-opacity': [
             'case', ['boolean', ['feature-state', 'off'], false], 0.25, 0.45,
           ],
@@ -1002,8 +1002,10 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           // THREE states, not two. `on` is set only once a filter is
           // actually narrowing (see setClusterSelection), so:
           //
-          //   no filter    — the resting hairline, which is the weight
-          //                  Jason approved and must not change
+          //   no filter    — the resting line: dark slate at 2 px since
+          //                  Jason asked for darker, thicker cluster lines
+          //                  (2026-09-23); the old 1.3 px #94a3b8 hairline
+          //                  was too faint to read
           //   on           — a filter is running and this one is IN it:
           //                  step up slightly, so what is still in play
           //                  reads at a glance
@@ -1015,20 +1017,20 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           'line-color': [
             'case',
             ['boolean', ['feature-state', 'off'], false], '#cbd5e1',
-            ['boolean', ['feature-state', 'on'], false], '#64748b',
-            '#94a3b8',
+            ['boolean', ['feature-state', 'on'], false], '#1e293b',
+            '#475569',
           ],
           'line-width': [
             'case',
             ['boolean', ['feature-state', 'off'], false], 0.8,
-            ['boolean', ['feature-state', 'on'], false], 2,
-            1.3,
+            ['boolean', ['feature-state', 'on'], false], 2.8,
+            2,
           ],
           'line-opacity': [
             'case',
             ['boolean', ['feature-state', 'off'], false], 0.4,
-            ['boolean', ['feature-state', 'on'], false], 0.9,
-            0.75,
+            ['boolean', ['feature-state', 'on'], false], 0.95,
+            0.85,
           ],
         },
       });
