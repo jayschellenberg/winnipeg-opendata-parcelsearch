@@ -3921,14 +3921,18 @@ function composeWithAttribution(srcCanvas, { withLegend = false } = {}) {
   if (withLegend) {
     const legends = readMapLegends($mapEl, (el) => getComputedStyle(el));
     if (legends.length) {
+      // The legend gets its own, larger type than the credit line — at the
+      // credit's 11px the zoning bands were unreadable in a report exhibit
+      // (Jason, 2026-09-23).
+      const legendFont = Math.round(fontSize * 1.35);
       const measure = (t, bold) => {
-        ctx.font = `${bold ? '600 ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+        ctx.font = `${bold ? '600 ' : ''}${legendFont}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
         return ctx.measureText(t).width;
       };
       const boxes = layoutMapLegends(legends, {
-        width: w, height: h, bottomY: y0 - 6, fontSize, measureText: measure,
+        width: w, height: h, bottomY: y0 - 6, fontSize: legendFont, measureText: measure,
       });
-      paintMapLegends(ctx, boxes, fontSize);
+      paintMapLegends(ctx, boxes, legendFont);
     }
   }
   return out.toDataURL('image/png');
