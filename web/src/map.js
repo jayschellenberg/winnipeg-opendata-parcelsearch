@@ -1073,8 +1073,8 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           ],
           // A thinner, slightly see-through halo: enough to lift the name
           // off the street grid without the heavy white smear.
-          'text-halo-color': 'rgba(255, 255, 255, 0.85)',
-          'text-halo-width': 1,
+          'text-halo-color': 'rgba(255, 255, 255, 0.9)',
+          'text-halo-width': 1.3,
         },
       });
       map.addLayer({
