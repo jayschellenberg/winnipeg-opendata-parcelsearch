@@ -1062,14 +1062,19 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           'symbol-placement': 'point',
         },
         paint: {
+          // Darker to match the cluster lines (Jason, 2026-09-23): the old
+          // #8a97a8 read washed out. Resting slate-700, in-filter slate-800,
+          // excluded still faint.
           'text-color': [
             'case',
             ['boolean', ['feature-state', 'off'], false], '#cbd5e1',
-            ['boolean', ['feature-state', 'on'], false], '#64748b',
-            '#8a97a8',
+            ['boolean', ['feature-state', 'on'], false], '#1e293b',
+            '#334155',
           ],
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.6,
+          // A thinner, slightly see-through halo: enough to lift the name
+          // off the street grid without the heavy white smear.
+          'text-halo-color': 'rgba(255, 255, 255, 0.9)',
+          'text-halo-width': 1.3,
         },
       });
       map.addLayer({
