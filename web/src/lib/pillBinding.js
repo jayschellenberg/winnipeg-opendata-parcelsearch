@@ -34,6 +34,9 @@ export const PILL_SPECS = {
   // default); its name follows the question the control asks rather than
   // "off". Nominal transfers are HIDDEN by default in Winnipeg (the box ships
   // checked), so Exclude is the default segment there.
+  // One-parcel results: the parcel shape (default) or a locator pin in its
+  // place, for reading the location at cluster or city zoom.
+  locator: { inputs: ['pin-toggle'], modes: { shape: [false], pin: [true] } },
   farflung: { inputs: ['far-flung-exclude'],   modes: { keep: [false], exclude: [true] } },
   nominal:  { inputs: ['sales-hide-sentinels'], modes: { exclude: [true], include: [false] } },
 };

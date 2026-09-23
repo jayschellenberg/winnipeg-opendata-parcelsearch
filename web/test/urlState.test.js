@@ -315,8 +315,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 34 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 34);
+test('SCHEMA — has exactly 35 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 35);
 });
 
 test('the retired rise param is no longer honoured', () => {
@@ -341,6 +341,12 @@ test('numberingToggle round-trips as the nu param', () => {
   assert.deepEqual(decodeState('?nu=1'), { numberingToggle: true });
   assert.deepEqual(decodeState('?nu=0'), { numberingToggle: false });
   assert.deepEqual(decodeState('?nu=maybe'), {});
+});
+
+test('pinToggle ("Locator: Pin") round-trips as the pn param', () => {
+  assert.equal(encodeState({ pinToggle: true }), 'pn=1');
+  assert.deepEqual(decodeState('?pn=1'), { pinToggle: true });
+  assert.deepEqual(decodeState('?pn=maybe'), {});
 });
 
 // ---------- neighbourhoodsMode (3-state cycle) ----------

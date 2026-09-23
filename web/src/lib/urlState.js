@@ -145,6 +145,9 @@ export const SCHEMA = {
   // for the recipient, and that depends on the order rule as much as on
   // the toggle. Off by default, so only emitted when on.
   numberingOrder: { param: 'no', validate: cleanBool, format: formatBool },
+  // "Locator: Pin" — a one-parcel result drawn as a pin instead of its
+  // shape. Off by default, so only emitted when on.
+  pinToggle: { param: 'pn', validate: cleanBool, format: formatBool },
 
   // --- Subject roll (1, Phase 7 follow-up 2) ---
   // The subject parcel against which loaded sales are compared
