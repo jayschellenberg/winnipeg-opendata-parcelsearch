@@ -171,7 +171,7 @@ export function initDataStatusDialog() {
         ? `${Number(surveyMeta.features).toLocaleString('en-US')} survey lots; `
           + `${Number(surveyMeta.features_with_roll).toLocaleString('en-US')} stamped with an assessment roll`
         : 'not built — run r/publish_survey_tiles.ps1',
-      'every two months, with the parcel tiles',
+      'monthly, with the parcel tiles',
     ]));
     renderHistorical($historical, histIndex, histTilesMeta);
   }

@@ -68,5 +68,5 @@ $ghOk    = $text -match 'gh auth status exit=0'
 Write-Host ("VERDICT under S4U:  email={0}  ntfy={1}  gh={2}" -f `
     $(if ($emailOk) {'OK'} else {'FAIL'}), $(if ($pushOk) {'OK'} else {'FAIL'}), $(if ($ghOk) {'OK'} else {'FAIL'}))
 if (-not $emailOk) { Write-Host "  email: Credential Manager entry WpgScheduleMail is not readable under S4U (see lib_mail.ps1 header)." }
-if (-not $ghOk)    { Write-Host "  gh: token store not readable under S4U; WpgParcelTilesBiMonthly's release step would fail." }
+if (-not $ghOk)    { Write-Host "  gh: token store not readable under S4U; WpgParcelTilesMonthly's release step would fail." }
 Write-Host "Now check your inbox and the ntfy app for 'Wpg Open Data: TEST - asset refresh alerts'."

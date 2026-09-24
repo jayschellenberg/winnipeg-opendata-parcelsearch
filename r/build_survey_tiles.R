@@ -105,7 +105,7 @@ live_count <- function(resource, tries = 3) {
 # Paged .geojson fetch ordered by the stable :id, each page retried — the same
 # policy as r/download_parcels.R. Reconciled against the live count (0.1%
 # slack for rows deleted mid-fetch); a short fetch stops the build rather than
-# becoming the overlay for the next two months.
+# becoming the overlay until the next monthly rebuild.
 fetch_paged <- function(resource, select) {
   live <- live_count(resource)
   if (is.na(live)) stop("live count unavailable for ", resource, " - refusing an unverifiable fetch")

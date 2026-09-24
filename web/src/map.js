@@ -3234,17 +3234,17 @@ let _citywideBuiltDate = null;
 
 // Console-only staleness backstop for the citywide tiles, in the same spirit
 // as the historical-pin check in soda.js (audit H-1). The archive rebuilds on
-// the 2nd of every even month (WpgParcelTilesBiMonthly -> r/rebuild_tiles.ps1),
-// so a healthy one is at most ~62 days old.
+// the 2nd of every month (WpgParcelTilesMonthly -> r/rebuild_tiles.ps1), so a
+// healthy one is at most ~31 days old.
 //
 // This catches the one failure the server-side heartbeat in r/refresh_assets.ps1
 // cannot: the scheduler machine being off, or every task disabled — no job runs
 // to notice that no job ran. Here the signal comes from the deployed app, which
 // only needs a visitor. Console-only, so normal users never see it.
 //
-// 90 days = two consecutive missed rebuilds. Anything tighter would cry wolf on
+// 60 days = two consecutive missed rebuilds. Anything tighter would cry wolf on
 // a single run that merely started late (StartWhenAvailable defers to logon).
-const TILE_STALE_DAYS = 90;
+const TILE_STALE_DAYS = 60;
 function warnIfTilesStale(builtDate) {
   const built = Date.parse(`${builtDate}T00:00:00Z`);
   if (!Number.isFinite(built)) return;
@@ -3252,7 +3252,7 @@ function warnIfTilesStale(builtDate) {
   if (ageDays > TILE_STALE_DAYS) {
     console.warn(
       `[citywide-parcels] tile archive is ${ageDays} days old (built ${builtDate}) — the `
-      + `bi-monthly rebuild has not published since. Check the WpgParcelTilesBiMonthly `
+      + `monthly rebuild has not published since. Check the WpgParcelTilesMonthly `
       + `scheduled task and r/rebuild_tiles.ps1; parcels created since then are missing `
       + `from Show All Parcels and Dwelling Units.`
     );

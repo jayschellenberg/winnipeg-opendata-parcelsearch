@@ -42,7 +42,7 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 | `web/src/` | The app — `main.js` (UI wiring), `soda.js` (all SODA queries/joins), `map.js` (MapLibre layers), `lib/` (reusable modules) |
 | `web/test/` | Unit tests, run by `npm test` |
 | `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods) |
-| `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcel polygons z8–z18, address labels, and derived dwelling-unit totals; ~100 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Rebuilt and republished automatically every two months (see [Data freshness](#data-freshness)). |
+| `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcel polygons z8–z18, address labels, and derived dwelling-unit totals; ~100 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Rebuilt and republished automatically every month (see [Data freshness](#data-freshness)). |
 | `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels, per-snapshot historical, and aerial-ortho PMTiles builds, the DMIS zoning-amendment scrape |
 | `tools/` | Standalone command-line tools, outside the web build. `address_aliases.py` — civic-address aliases for a property, Winnipeg or Manitoba (see [Address aliases](#address-aliases)). Python stdlib only, no dependencies. |
 | `extras/` | Early experiments kept for reference |
@@ -669,8 +669,8 @@ below: published artifact vintages, the historical archive and its pinned
 CDN revision, the aerial-ortho years, and each Socrata dataset's own
 last-update stamp (fetched when the dialog opens, filled in per service so
 one dead endpoint reads "unavailable" rather than blocking the rest). A
-banner appears under the top bar when the citywide parcel tiles pass 90 days
-— two missed bi-monthly rebuilds — and turns red past a year. It is the one
+banner appears under the top bar when the citywide parcel tiles pass 60 days
+— two missed monthly rebuilds — and turns red past a year. It is the one
 alarm that fires from the deployed app rather than the scheduler machine, so
 it still works when the machine that runs the jobs is off.
 
@@ -687,7 +687,7 @@ principal back and says loudly which one it got.
 
 | Job | When | Rebuilds | Stores history? |
 |---|---|---|---|
-| `WpgParcelTilesBiMonthly` | 2nd of each even month, 03:00 | `parcels.pmtiles` — the Show All Parcels / Dwelling Units overlays. Fetches d4mq-wa44 live, tiles via WSL tippecanoe, publishes the release asset, commits the checksum, auto-deploys. | No |
+| `WpgParcelTilesMonthly` | 2nd of each month, 03:00 | `parcels.pmtiles` — the Show All Parcels / Dwelling Units overlays. Fetches d4mq-wa44 live, tiles via WSL tippecanoe, publishes the release asset, commits the checksum, auto-deploys. Then `wpg-survey-parcels.pmtiles` (All Survey Parcels), and on even months the historical per-snapshot archives. | No |
 | `WpgOpenDataSemiAnnualDownload` | Jun 1 + Dec 1, 03:00 | Downloads the `r/wpg_datasets.R` layers into the WpgSnapshots archive. | **Yes** — the only job that does |
 | `WpgAssetRefreshQuarterly` | Jan/Apr/Jul/Oct 1, 03:30 | Transit + neighbourhood GeoJSON, and runs both staleness heartbeats. | No |
 
@@ -740,7 +740,7 @@ ebuild_tiles.ps1 -TestAlert
   tasks, so it catches drift, not a total outage.
 - The quarterly job verifies the archive actually contains the most recent
   scheduled capture (Jun 1 / Dec 1, plus 21 days of grace) and that the
-  published tiles are under 80 days old, emailing and writing a
+  published tiles are under 45 days old, emailing and writing a
   `STALE-*.txt` marker when either trips. It checks against the schedule
   rather than a fixed age so an off-cycle capture can't shrink the margin
   below one missed run.
@@ -750,7 +750,7 @@ ebuild_tiles.ps1 -TestAlert
   the age checks: on 2026-08-05 a failed publish emptied the release while
   the committed sidecar stayed perfectly fresh.
 - The deployed app itself warns in the browser console when the tile sidecar
-  is over 90 days old — the only signal that survives the scheduler machine
+  is over 60 days old — the only signal that survives the scheduler machine
   being off entirely.
 - The quarterly job also cross-checks the aerial-ortho years the app offers
   (`ORTHO_YEARS` in `web/src/map.js`) against the archives actually on R2, in

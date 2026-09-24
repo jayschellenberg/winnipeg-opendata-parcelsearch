@@ -1,20 +1,21 @@
 # rebuild_tiles.ps1
 #
-# BI-MONTHLY unattended job: rebuild and publish the citywide parcels PMTiles
+# MONTHLY unattended job: rebuild and publish the citywide parcels PMTiles
 # archive (web/public/parcels.pmtiles) so the "Show All Parcels" and
-# "Dwelling Units" overlays never drift more than ~2 months behind the live
-# assessment roll.
+# "Dwelling Units" overlays never drift more than ~1 month behind the live
+# assessment roll; then (step 8) the All Survey Parcels archive. Monthly since
+# 2026-09-24 (was every even month).
 #
 # THIS JOB STORES NO HISTORY. It fetches its own copy of d4mq-wa44 live from
 # SODA, tiles it, publishes, and deletes the intermediates - it never touches
 # WpgSnapshots or wpg-parcel-history. Historical snapshots stay on their own
 # SEMI-ANNUAL cadence (r/scheduled_download.ps1, Jun 1 + Dec 1).
 #
-# Registered as WpgParcelTilesBiMonthly by r/setup_schedule.ps1
-# (Feb/Apr/Jun/Aug/Oct/Dec, the 2nd at 03:00).
+# Registered as WpgParcelTilesMonthly by r/setup_schedule.ps1
+# (every month, the 2nd at 03:00).
 #
 # *** This job AUTO-DEPLOYS to production. *** To disable entirely:
-#   schtasks /Delete /TN WpgParcelTilesBiMonthly /F
+#   schtasks /Delete /TN WpgParcelTilesMonthly /F
 #
 # Run manually any time. Use the FULL path: the script is working-directory
 # independent, but `-File r\rebuild_tiles.ps1` only resolves if the shell
@@ -272,7 +273,7 @@ function Fail($why) {
   exit 1
 }
 
-Log '=== Winnipeg citywide parcel-tile rebuild (bi-monthly) ==='
+Log '=== Winnipeg citywide parcel-tile rebuild (monthly) ==='
 
 # --- Step 0: preflight ----------------------------------------------------
 # Every external dependency is checked BEFORE the ~20-minute build, so a
@@ -658,7 +659,7 @@ if (-not $changed) {
 }
 
 & git -C $repo add -- $metaRel $shaRel
-$msg = "Rebuild citywide parcel tiles (scheduled bi-monthly)`n`nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+$msg = "Rebuild citywide parcel tiles (scheduled monthly)`n`nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 & git -C $repo commit -m $msg *>> $log 2>&1
 if ($LASTEXITCODE -ne 0) {
   # Fail() will NOT revert now: $newArchiveIsLive is true, and reverting would
@@ -691,16 +692,22 @@ Get-ChildItem $archiveRoot -File -Filter 'FAILED-tiles-*.txt' -ErrorAction Silen
 
 Log 'Pushed. Vercel will rebuild and fetch-pmtiles.mjs will pull the new asset.'
 
-# --- Step 7: historical tile archives (non-fatal) -------------------------
+# --- Step 7: historical tile archives (non-fatal, EVEN MONTHS ONLY) --------
 # The Historical overlay's per-snapshot archives carry size-change bands
-# computed against the roll of the day they were built, so they go stale on
-# the same clock as the citywide archive. Rebuild + republish them here, after
-# the citywide job has succeeded and pushed. publish_historical_tiles.ps1
+# computed against the roll of the day they were built, so they go stale as
+# the roll moves. Rebuild + republish them here, after the citywide job has
+# succeeded and pushed. Only on even months: every snapshot is 15-25 min of
+# tippecanoe plus a ~200 MB upload, and the bands barely move in a month, so
+# when the citywide + survey tiles went monthly (2026-09-24) this step kept
+# its old every-other-month cadence. publish_historical_tiles.ps1
 # commits its own sidecar (web/public/historical-tiles-meta.json) and pushes.
 # Non-fatal on purpose: the citywide archive above is already live and pinned,
 # and a historical failure must not be reported as a citywide one. It leaves a
 # FAILED-historical-tiles marker beside the citywide ones so the next look at
 # the archive folder shows it, and the log says how to rerun.
+if ((Get-Date).Month % 2 -ne 0) {
+  Log 'Step 7: historical tile archives - skipped (odd month; they rebuild on even months)'
+} else {
 Log 'Step 7: historical tile archives (r/publish_historical_tiles.ps1)'
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'r\publish_historical_tiles.ps1') *>> $log 2>&1
 if ($LASTEXITCODE -ne 0) {
@@ -713,10 +720,11 @@ if ($LASTEXITCODE -ne 0) {
   Get-ChildItem $archiveRoot -File -Filter 'FAILED-historical-tiles-*.txt' -ErrorAction SilentlyContinue |
     ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
 }
+}
 
 # --- Step 8: All Survey Parcels archive (non-fatal) -----------------------
 # Every current survey lot, stamped with the rolls on it against today's
-# roll, so it rides the same two-month clock. Same non-fatal contract and
+# roll, so it rides the same monthly clock. Same non-fatal contract and
 # marker convention as Step 7; publish_survey_tiles.ps1 commits its own
 # sidecar (web/public/survey-pmtiles-meta.json) and pushes.
 Log 'Step 8: survey parcel archive (r/publish_survey_tiles.ps1)'

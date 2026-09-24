@@ -3,7 +3,7 @@
 # Build + publish the All Survey Parcels archive (r/build_survey_tiles.R),
 # then commit its sidecar and push (Vercel deploys). ~20-30 minutes of
 # fetching and tippecanoe plus the R2 upload, so run it detached; the
-# bi-monthly r/rebuild_tiles.ps1 calls it as its final, non-fatal step.
+# monthly r/rebuild_tiles.ps1 calls it as its final, non-fatal step.
 #
 #   powershell -File r/publish_survey_tiles.ps1
 #   powershell -File r/publish_survey_tiles.ps1 -NoCommit   # build + upload only

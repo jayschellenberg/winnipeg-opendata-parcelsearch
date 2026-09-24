@@ -60,20 +60,19 @@ export function socrataUpdatedDate(json) {
 /**
  * The next scheduled citywide tile rebuild, as 'October 2026'.
  *
- * The archive rebuilds on the 2nd of every EVEN month (map.js's
- * TILE_STALE_DAYS comment; WpgParcelTilesBiMonthly → r/rebuild_tiles.ps1).
+ * The archive rebuilds on the 2nd of every month (map.js's
+ * TILE_STALE_DAYS comment; WpgParcelTilesMonthly → r/rebuild_tiles.ps1).
  * Month-and-year only — naming the exact day would promise a scheduler
  * start time this label has no way to know.
  */
 export function nextTileRebuildLabel(now = new Date()) {
   let year = now.getFullYear();
-  // Months here are 1-based for readability: rebuilds run in 2,4,…,12.
+  // Months here are 1-based for readability.
   let month = now.getMonth() + 1;
-  const day = now.getDate();
-  const isRebuildMonth = month % 2 === 0;
-  if (!isRebuildMonth || day > 2) {
-    month = isRebuildMonth ? month + 2 : month + 1;
-    if (month > 12) { month -= 12; year += 1; }
+  // Past the 2nd, this month's rebuild has run: the next one is next month.
+  if (now.getDate() > 2) {
+    month += 1;
+    if (month > 12) { month = 1; year += 1; }
   }
   return `${MONTHS[month - 1]} ${year}`;
 }

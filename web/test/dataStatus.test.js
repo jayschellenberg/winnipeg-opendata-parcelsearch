@@ -53,15 +53,15 @@ test('socrataUpdatedDate — rowsUpdatedAt is epoch SECONDS', () => {
   assert.equal(socrataUpdatedDate(null), null);
 });
 
-test('nextTileRebuildLabel — the 2nd of every even month', () => {
-  // Mid-August (even month, past the 2nd) → October.
-  assert.equal(nextTileRebuildLabel(new Date(2026, 7, 19)), 'October 2026');
-  // Aug 1 — this month's rebuild hasn't run yet.
+test('nextTileRebuildLabel — the 2nd of every month', () => {
+  // Mid-August, past the 2nd → September.
+  assert.equal(nextTileRebuildLabel(new Date(2026, 7, 19)), 'September 2026');
+  // Aug 1 and Aug 2 — this month's rebuild hasn't run yet (it runs on the 2nd).
   assert.equal(nextTileRebuildLabel(new Date(2026, 7, 1)), 'August 2026');
-  // Odd month → next month.
+  assert.equal(nextTileRebuildLabel(new Date(2026, 7, 2)), 'August 2026');
   assert.equal(nextTileRebuildLabel(new Date(2026, 8, 15)), 'October 2026');
-  // Year wrap: mid-December → February.
-  assert.equal(nextTileRebuildLabel(new Date(2026, 11, 15)), 'February 2027');
+  // Year wrap: mid-December → January.
+  assert.equal(nextTileRebuildLabel(new Date(2026, 11, 15)), 'January 2027');
   assert.equal(nextTileRebuildLabel(new Date(2026, 11, 1)), 'December 2026');
 });
 
@@ -107,7 +107,7 @@ test('publishedRows — the tile row carries build date, counts, and next rebuil
   assert.equal(tiles.vintage, 'Aug 5, 2026');
   assert.match(tiles.detail, /217,071/);
   assert.match(tiles.detail, /245,248/);
-  assert.equal(tiles.next, 'October 2026');
+  assert.equal(tiles.next, 'September 2026');
   assert.equal(hoods.vintage, 'Aug 6, 2026');
   assert.match(hoods.detail, /235 neighbourhoods/);
   assert.match(transit.detail, /72 routes/);

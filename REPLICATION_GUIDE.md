@@ -811,9 +811,9 @@ summary); the app reads it for the count line and the Data Status dialog,
 and range-probes the archive before switching the source so a snapshot with
 no published archive says so instead of drawing nothing. Rebuild after a
 shard republish (new snapshot) **and** periodically anyway, because the
-size-change bands go stale as today's roll moves: the bi-monthly
-`WpgParcelTilesBiMonthly` job (`r/rebuild_tiles.ps1`) runs
-`r/publish_historical_tiles.ps1` as its non-fatal step 7 after the citywide
+size-change bands go stale as today's roll moves: the monthly
+`WpgParcelTilesMonthly` job (`r/rebuild_tiles.ps1`) runs
+`r/publish_historical_tiles.ps1` on even months as its non-fatal step 7 after the citywide
 archive has been pushed, and leaves a `FAILED-historical-tiles-<date>.txt`
 marker in the archive folder if that step fails. Flags mirror
 `lib_tippecanoe.R` with `--minimum-zoom=11` (the overlay draws from z12).
@@ -844,7 +844,7 @@ powershell -File r/publish_survey_tiles.ps1 # build + publish + commit/push the 
 The committed sidecar `web/public/survey-pmtiles-meta.json` holds the build
 date (quoted in the popup), feature counts and sha256, and the Data Status
 dialog shows it. The build takes ~20-30 min, so run it detached. The
-bi-monthly job runs `publish_survey_tiles.ps1` as its non-fatal step 8, and
+monthly job runs `publish_survey_tiles.ps1` as its non-fatal step 8, and
 a failure leaves a `FAILED-survey-tiles-<date>.txt` marker. Local dev: set
 `VITE_SURVEY_TILES_URL=/wpg-survey-parcels.pmtiles` to use the gitignored
 local build.

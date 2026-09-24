@@ -23,7 +23,7 @@ console.log('staleness');
 
 test('fresh tiles show no banner, up to and including the threshold', () => {
   assert.equal(stalenessBannerState(0).show, false);
-  assert.equal(stalenessBannerState(45).show, false);
+  assert.equal(stalenessBannerState(31).show, false);
   assert.equal(stalenessBannerState(STALE_FRESH_MAX_DAYS).show, false);
 });
 
@@ -31,8 +31,8 @@ test('past the fresh threshold the banner is amber', () => {
   const s = stalenessBannerState(STALE_FRESH_MAX_DAYS + 1);
   assert.equal(s.show, true);
   assert.equal(s.tone, 'data-staleness-amber');
-  assert.match(s.lead, /91 days old/);
-  assert.match(s.tail, /WpgParcelTilesBiMonthly/);
+  assert.match(s.lead, /61 days old/);
+  assert.match(s.tail, /WpgParcelTilesMonthly/);
 });
 
 test('the red line', () => {
