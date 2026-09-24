@@ -82,6 +82,7 @@ arg_val      <- function(flag) { i <- match(flag, args); if (is.na(i) || i == le
 only_snap    <- arg_val("--snapshot")
 publish      <- "--publish" %in% args || "--publish-only" %in% args
 publish_only <- "--publish-only" %in% args
+keep_local   <- "--keep-local" %in% args
 
 log <- function(...) cat(format(Sys.time(), "%H:%M:%S"), " ", ..., "\n", sep = "")
 
@@ -222,6 +223,9 @@ build_snapshot <- function(snap, current) {
   if (status != 0 || !file.exists(tmp_file)) stop("tippecanoe failed for ", snap, " (exit ", status, ")")
   if (file.exists(out_file)) file.remove(out_file)
   if (!file.rename(tmp_file, out_file)) stop("rename failed: ", tmp_file)
+  # The GeoJSONSeq inputs are ~150 MB per layer and are rewritten on every
+  # build; they used to sit in hist-build/ (in Dropbox) between runs.
+  for (f in list.files(WORK_DIR, pattern = paste0("^", snap, "-.*\\.geojsonl$"), full.names = TRUE)) file.remove(f)
   bytes <- file.info(out_file)$size
   log("  ", basename(out_file), " = ", round(bytes / 1e6, 1), " MB")
   list(
@@ -246,6 +250,9 @@ publish_snapshot <- function(entry) {
     stop("R2 object size ", remote_bytes, " != local ", entry$bytes, " for ", entry$file)
   }
   log("  R2 verified: ", entry$file, " at ", entry$bytes, " bytes")
+  # R2 is the copy the app serves; the local one is ~100-170 MB of Dropbox
+  # per snapshot with no further use. --keep-local keeps it (local dev).
+  if (!keep_local) { file.remove(local); log("  removed local copy ", entry$file) }
 }
 
 # ---- main -------------------------------------------------------------------
@@ -292,4 +299,5 @@ if (publish) {
     publish_snapshot(entry)
   }
 }
+unlink(WORK_DIR, recursive = TRUE)
 log("Done.")

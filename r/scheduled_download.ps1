@@ -103,6 +103,14 @@ Get-ChildItem $repo -File |
     }
   }
 
+# Step 4 (non-fatal): retention. Deletes extra captures closer than ~5 months
+# to a kept one, never the newest capture or a published history source (see
+# r/prune_snapshots.R). Non-fatal: the new capture is already archived, and a
+# prune problem must not be reported as a failed download.
+Log 'Step 4: prune_snapshots.R --apply (retention: ~1 capture per 6 months)'
+& $rscript (Join-Path $repo 'r\prune_snapshots.R') --apply *>> $log
+if ($LASTEXITCODE -ne 0) { Log "  prune exited $LASTEXITCODE - nothing is lost by skipping it; rerun: Rscript r\prune_snapshots.R --apply" }
+
 # A clean run supersedes any earlier FAILED marker.
 Get-ChildItem $archiveRoot -File -Filter 'FAILED-download-*.txt' -ErrorAction SilentlyContinue |
   ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
@@ -122,8 +130,8 @@ $reminder = @(
   '  5. Rscript r\verify_shards.R   (must pass before publishing)',
   '  6. commit + push wpg-parcel-history, then pin the new commit SHA in',
   '     web/src/soda.js (HISTORICAL_CDN), npm run build, commit + push.',
-  '(Remove the superseded snapshot dir from wpg-parcel-history first if the',
-  'retention prune deleted its archive source; see r\prune_snapshots.R.)',
+  '(The retention prune never deletes a capture a published history',
+  'snapshot names as its source; see r\prune_snapshots.R.)',
   '',
   'NOT part of this reminder: the citywide PARCEL TILES. They rebuild and',
   'deploy themselves on the 2nd of every month - including tomorrow -',

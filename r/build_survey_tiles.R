@@ -27,7 +27,10 @@
 # Usage:
 #   Rscript r/build_survey_tiles.R              # build only
 #   Rscript r/build_survey_tiles.R --publish    # build + upload to R2
-#   Rscript r/build_survey_tiles.R --publish-only
+#   Rscript r/build_survey_tiles.R --publish-only   # needs a --keep-local build
+#
+# After a verified upload the local archive is deleted (it is only needed
+# again for local dev); pass --keep-local to keep it.
 #
 # Runtime ~20-30 min (two ~250K-row geometry fetches + tippecanoe): run it
 # detached. r/publish_survey_tiles.ps1 wraps build + publish + sidecar commit,
@@ -86,6 +89,7 @@ SURVEY_TIPPECANOE_FLAGS <- c(
 args         <- commandArgs(trailingOnly = TRUE)
 publish      <- "--publish" %in% args || "--publish-only" %in% args
 publish_only <- "--publish-only" %in% args
+keep_local   <- "--keep-local" %in% args
 
 log <- function(...) cat(format(Sys.time(), "%H:%M:%S"), " ", ..., "\n", sep = "")
 
@@ -284,6 +288,9 @@ publish_archive <- function() {
     stop("R2 object size ", remote_bytes, " != local ", bytes)
   }
   log("R2 verified at ", bytes, " bytes")
+  # R2 is the copy the app serves; the local ~100 MB would only sit in
+  # Dropbox until next month's build overwrote it. --keep-local keeps it.
+  if (!keep_local) { file.remove(OUT_FILE); log("Removed local copy ", basename(OUT_FILE)) }
 }
 
 if (!publish_only) build()

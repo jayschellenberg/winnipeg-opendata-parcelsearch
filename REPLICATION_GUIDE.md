@@ -818,7 +818,8 @@ archive has been pushed, and leaves a `FAILED-historical-tiles-<date>.txt`
 marker in the archive folder if that step fails. Flags mirror
 `lib_tippecanoe.R` with `--minimum-zoom=11` (the overlay draws from z12).
 Local dev: `VITE_HISTORICAL_TILES_BASE=http://localhost:5173` serves the
-archives straight out of `web/public/` (they are gitignored).
+archives straight out of `web/public/` (they are gitignored). A publish
+deletes the local copy once R2 is verified, so build with `--keep-local` first.
 
 ### 8.7.1a All Survey Parcels archive
 
@@ -847,7 +848,8 @@ dialog shows it. The build takes ~20-30 min, so run it detached. The
 monthly job runs `publish_survey_tiles.ps1` as its non-fatal step 8, and
 a failure leaves a `FAILED-survey-tiles-<date>.txt` marker. Local dev: set
 `VITE_SURVEY_TILES_URL=/wpg-survey-parcels.pmtiles` to use the gitignored
-local build.
+local build. A `--publish` deletes the local copy after the R2 check, so
+pass `--keep-local` to keep it.
 
 ---
 
