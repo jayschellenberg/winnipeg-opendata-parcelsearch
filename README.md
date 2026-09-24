@@ -695,6 +695,16 @@ Tiles refresh on their own faster cadence than the snapshot archive on
 purpose: the overlay should track the current roll, while history stays
 sparse and deliberate.
 
+**Storage stays flat.** The tile jobs overwrite their archives in place
+(R2, the GitHub release, which keeps one `parcels-previous-*` copy, and the
+single `_pmtiles_rollback` copy). They also delete their GeoJSON scratch.
+Once an upload is verified on R2, the survey and historical builders delete
+their local archive copies; pass `--keep-local` for local dev. The monthly
+job trims `_download_logs` to a year. Snapshot retention runs after each
+semi-annual download (`r/prune_snapshots.R --apply`). It keeps about one
+capture per 6 months, and never deletes the newest capture of a dataset or
+any file a published `wpg-parcel-history` manifest names as its source.
+
 The archive spans **z8–z18**, and the floor is measured against the camera,
 not guessed from the parcels. It was z13 on the reasoning that a city lot is
 sub-pixel below that — true, and beside the point. The map opens at zoom 11

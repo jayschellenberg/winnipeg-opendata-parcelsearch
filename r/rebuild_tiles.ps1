@@ -739,4 +739,9 @@ if ($LASTEXITCODE -ne 0) {
   Get-ChildItem $archiveRoot -File -Filter 'FAILED-survey-tiles-*.txt' -ErrorAction SilentlyContinue |
     ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
 }
+# --- Log retention (non-fatal) ---------------------------------------------
+# Every job writes a dated log here (~1-2 MB each); keep a year of them.
+Get-ChildItem $logDir -File -Filter '*.log' -ErrorAction SilentlyContinue |
+  Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-365) } |
+  ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "log retention: removed $($_.Name)" }
 Log '=== done ==='
