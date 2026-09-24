@@ -19,10 +19,13 @@
 #        main (Vercel AUTO-DEPLOYS).
 #        -> r/refresh_assets.ps1
 #
-#   3) WpgParcelTilesBiMonthly        (Feb/Apr/Jun/Aug/Oct/Dec 2nd, 03:00)
-#        Rebuilds + publishes the citywide parcels PMTiles archive and
-#        AUTO-DEPLOYS. Stores no history - it fetches d4mq-wa44 live, tiles
-#        it, and deletes the intermediates.
+#   3) WpgParcelTilesMonthly          (every month, 2nd, 03:00)
+#        Rebuilds + publishes the citywide parcels PMTiles archive and the
+#        All Survey Parcels archive, and AUTO-DEPLOYS. Stores no history - it
+#        fetches d4mq-wa44 / sjjm-nj47 live, tiles them, and deletes the
+#        intermediates. The historical per-snapshot archives (step 7) still
+#        rebuild on even months only. Was WpgParcelTilesBiMonthly (even
+#        months) until 2026-09-24; this registrar deletes that task.
 #        -> r/rebuild_tiles.ps1
 #
 #        Why the 2nd and not the 1st: Jun/Dec overlap with the snapshot
@@ -51,7 +54,7 @@
 # That is not hypothetical. The Manitoba sister project lost 9.3 h to exactly
 # this on 2026-08-12 and converted all 14 of its tasks to S4U that day. These
 # three were still Interactive when audited on 2026-08-24 -- including
-# WpgParcelTilesBiMonthly, which AUTO-DEPLOYS to production, so a missed run
+# WpgParcelTilesMonthly, which AUTO-DEPLOYS to production, so a missed run
 # means the live overlay keeps serving stale tiles with nothing to say so.
 #
 # S4U = "run whether the user is logged on or not", using a service-for-user
@@ -122,15 +125,22 @@ function Register-WpgTask($name, $script, $months, $time, $day = 1) {
 
 Register-WpgTask 'WpgOpenDataSemiAnnualDownload' (Join-Path $rdir 'scheduled_download.ps1') 'JUN,DEC'                  '03:00'
 Register-WpgTask 'WpgAssetRefreshQuarterly'      (Join-Path $rdir 'refresh_assets.ps1')      'JAN,APR,JUL,OCT'          '03:30'
-Register-WpgTask 'WpgParcelTilesBiMonthly'       (Join-Path $rdir 'rebuild_tiles.ps1')       'FEB,APR,JUN,AUG,OCT,DEC'  '03:00' 2
+# The every-other-month predecessor. Left registered it would run the same
+# job a second time on even months.
+schtasks /Query /TN 'WpgParcelTilesBiMonthly' 2>$null | Out-Null
+if ($LASTEXITCODE -eq 0) {
+  schtasks /Delete /TN 'WpgParcelTilesBiMonthly' /F | Out-Null
+  Write-Output '  removed the old WpgParcelTilesBiMonthly task (replaced by WpgParcelTilesMonthly)'
+}
+Register-WpgTask 'WpgParcelTilesMonthly'         (Join-Path $rdir 'rebuild_tiles.ps1')       'JAN,FEB,MAR,APR,MAY,JUN,JUL,AUG,SEP,OCT,NOV,DEC'  '03:00' 2
 
 Write-Output ''
 Write-Output "Registered:"
 Write-Output "  WpgOpenDataSemiAnnualDownload  (Jun 1 + Dec 1, 03:00)  -> data download + archive (the only job storing history)"
 Write-Output "  WpgAssetRefreshQuarterly       (quarterly, 03:30)      -> heartbeats + transit/neighbourhood refresh + auto-deploy"
-Write-Output "  WpgParcelTilesBiMonthly        (even months, 2nd, 03:00) -> citywide parcel tiles rebuild + publish + auto-deploy, then the historical per-snapshot tile archives (non-fatal step 7)"
+Write-Output "  WpgParcelTilesMonthly        (monthly, 2nd, 03:00)     -> citywide parcel + survey tiles rebuild + publish + auto-deploy; historical per-snapshot archives on even months (step 7)"
 Write-Output ""
-Write-Output "Verify:  schtasks /Query /TN WpgParcelTilesBiMonthly /V /FO LIST"
+Write-Output "Verify:  schtasks /Query /TN WpgParcelTilesMonthly /V /FO LIST"
 Write-Output "Alerts:  powershell -ExecutionPolicy Bypass -File r\rebuild_tiles.ps1 -TestAlert"
 
 # The verdict, printed last so it is what is left on screen. Based on what Task

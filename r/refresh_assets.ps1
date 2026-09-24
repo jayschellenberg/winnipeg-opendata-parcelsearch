@@ -92,7 +92,7 @@ Log '=== refresh transit + neighbourhood static assets ==='
 # them properly.
 try {
   $notS4U = @()
-  foreach ($tn in @('WpgOpenDataSemiAnnualDownload', 'WpgAssetRefreshQuarterly', 'WpgParcelTilesBiMonthly')) {
+  foreach ($tn in @('WpgOpenDataSemiAnnualDownload', 'WpgAssetRefreshQuarterly', 'WpgParcelTilesMonthly')) {
     $lt = 'missing'
     try { $lt = [string](Get-ScheduledTask -TaskName $tn -ErrorAction Stop).Principal.LogonType } catch {}
     Log ("task principal: {0} = {1}" -f $tn, $lt)
@@ -162,19 +162,20 @@ try {
 }
 
 # --- Parcel-tile-age heartbeat (alert on ABSENCE) --------------------------
-# Same reasoning as the snapshot heartbeat above, for the bi-monthly tile
-# rebuild (WpgParcelTilesBiMonthly -> r/rebuild_tiles.ps1). A FAILED run emails
+# Same reasoning as the snapshot heartbeat above, for the monthly tile
+# rebuild (WpgParcelTilesMonthly -> r/rebuild_tiles.ps1). A FAILED run emails
 # for itself; this is the tripwire for the run that NEVER STARTS - a disabled
 # task, or a machine that was off through the whole window.
 #
-# 80 days: this job runs Jan/Apr/Jul/Oct 1 and tiles rebuild on the 2nd of even
-# months, so the newest healthy build seen here is ~60 days old (Oct 1 sees the
-# Aug 2 build). One missed rebuild pushes that to ~120, which 80 catches at the
-# very next quarterly check instead of a quarter later.
+# 45 days: this job runs Jan/Apr/Jul/Oct 1 and tiles rebuild on the 2nd of
+# every month, so the newest healthy build seen here is ~30 days old (Oct 1
+# sees the Sep 2 build). One missed rebuild pushes that to ~60, which 45
+# catches at the very next quarterly check. (80 while the rebuild ran on even
+# months only, until 2026-09-24.)
 #
 # Reads the same committed sidecar the app serves, so this alarm and the
 # overlay's "Tile snapshot as of" line can never disagree.
-$maxTileAgeDays = 80
+$maxTileAgeDays = 45
 try {
   $metaPath = Join-Path $repo 'web\public\parcels-pmtiles-meta.json'
   if (-not (Test-Path $metaPath)) {
@@ -186,7 +187,7 @@ try {
     $tileAge = [int]((Get-Date) - $builtDate).TotalDays
     Log "tile heartbeat: parcels.pmtiles built $built ($tileAge days old; limit $maxTileAgeDays)"
     if ($tileAge -gt $maxTileAgeDays) {
-      $why = "tile heartbeat: the citywide parcel tiles are $tileAge days old (> $maxTileAgeDays). The bi-monthly rebuild likely never fired - run it manually and check the WpgParcelTilesBiMonthly task:  $rebuildCmd"
+      $why = "tile heartbeat: the citywide parcel tiles are $tileAge days old (> $maxTileAgeDays). The monthly rebuild likely never fired - run it manually and check the WpgParcelTilesMonthly task:  $rebuildCmd"
       Log "WARNING: $why"; Mail-Fail $why
       @("$(Get-Date -Format 's')  tile heartbeat tripped", "Reason: $why") |
         Set-Content -Path (Join-Path $archiveRoot ("STALE-tiles-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd')))

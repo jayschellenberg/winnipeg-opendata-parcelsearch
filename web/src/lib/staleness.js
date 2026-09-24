@@ -3,9 +3,9 @@
  *
  * Same shape as the Manitoba site's lib/staleness.js, with thresholds
  * keyed to Winnipeg's pipeline: the tile archive rebuilds on the 2nd of
- * every even month (WpgParcelTilesBiMonthly → r/rebuild_tiles.ps1), so a
- * healthy archive is at most ~62 days old and 90 days = two consecutive
- * missed rebuilds (matching TILE_STALE_DAYS in map.js, which logs the
+ * every month (WpgParcelTilesMonthly → r/rebuild_tiles.ps1), so a healthy
+ * archive is at most ~31 days old and 60 days = two consecutive missed
+ * rebuilds (90 while the rebuild ran on even months only, until 2026-09-24) (matching TILE_STALE_DAYS in map.js, which logs the
  * same condition to the console). Past a year the data is unambiguously
  * unfit and the banner goes red.
  *
@@ -13,7 +13,7 @@
  */
 
 /** Age (days) at or below which no banner shows. */
-export const STALE_FRESH_MAX_DAYS = 90;
+export const STALE_FRESH_MAX_DAYS = 60;
 
 /** Age (days) above which the banner turns red rather than amber. */
 export const STALE_RED_MIN_DAYS = 365;
@@ -34,9 +34,9 @@ export function stalenessBannerState(oldestDays) {
       show: true,
       tone: 'data-staleness-red',
       lead,
-      tail: 'The bi-monthly rebuild has not published in over a year — '
+      tail: 'The monthly rebuild has not published in over a year — '
         + 'parcels created since then are missing from Show All Parcels and '
-        + 'Dwelling Units. Check the WpgParcelTilesBiMonthly scheduled task '
+        + 'Dwelling Units. Check the WpgParcelTilesMonthly scheduled task '
         + 'and r/rebuild_tiles.ps1.',
     };
   }
@@ -44,8 +44,8 @@ export function stalenessBannerState(oldestDays) {
     show: true,
     tone: 'data-staleness-amber',
     lead,
-    tail: 'Two bi-monthly rebuilds have been missed. Newer parcels are '
-      + 'absent from the citywide layers until the WpgParcelTilesBiMonthly '
+    tail: 'Two monthly rebuilds have been missed. Newer parcels are '
+      + 'absent from the citywide layers until the WpgParcelTilesMonthly '
       + 'task publishes again (r/rebuild_tiles.ps1).',
   };
 }

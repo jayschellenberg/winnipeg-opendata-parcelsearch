@@ -19,7 +19,7 @@
 #       UNATTENDED: also runs tippecanoe (via WSL), promotes the archive
 #       only after it succeeds and passes a size check, writes the meta
 #       sidecar, and deletes the ~600 MB of GeoJSON intermediates. This is
-#       what the bi-monthly scheduled job (r/rebuild_tiles.ps1) invokes.
+#       what the monthly scheduled job (r/rebuild_tiles.ps1) invokes.
 #
 # Tippecanoe is a Linux/Mac C++ tool. On Windows, options are:
 #
@@ -318,7 +318,7 @@ if (!is.na(live_count) && length(all_features) < ceiling(live_count * 0.999)) {
 if (is.na(live_count)) {
   # Unattended there is no one to eyeball the total, and the reconcile guard
   # above is a no-op without a live count — so an unverifiable fetch must not
-  # become the citywide overlay for the next two months.
+  # become the citywide overlay until the next monthly rebuild.
   if (run_tippe) {
     stop("live count unavailable and --run-tippecanoe is set: refusing to publish an UNVERIFIED fetch unattended.")
   }

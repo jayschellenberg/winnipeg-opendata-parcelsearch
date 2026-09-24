@@ -198,7 +198,7 @@
     </header>
 
     <!-- Data-staleness banner. Hidden while the citywide parcel tiles are
-         fresh; amber once they pass 90 days, red past a year. Text comes
+         fresh; amber once they pass 60 days, red past a year. Text comes
          from lib/staleness.js via initStalenessBanner(). -->
     <div id="data-staleness-banner" class="data-staleness-banner" role="status" aria-live="polite" hidden></div>
 
@@ -1119,7 +1119,7 @@
         <div class="overlay-grid overlay-grid-grouped">
           <h3 class="overlay-group-title">Parcel layers</h3>
           <button id="all-parcels-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show every assessment parcel in the city as a faint grey wash. Search results highlight in yellow on top.">All Assessment Parcels</button>
-          <button id="all-survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show every survey lot (legal lot) in the city as thin blue lines, from zoom 15 in. Hover for Lot / Block / Plan plus the assessment roll and address under it. Rebuilt with the citywide parcel tiles every two months; not live data.">All Survey Parcels</button>
+          <button id="all-survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show every survey lot (legal lot) in the city as thin blue lines, from zoom 15 in. Hover for Lot / Block / Plan plus the assessment roll and address under it. Rebuilt monthly with the citywide parcel tiles; not live data.">All Survey Parcels</button>
           <button id="survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show / hide the blue survey-lot (legal lot) polygons of the current search results. Dark = shown.">Survey Parcel Results</button>
           <button id="assess-toggle" type="button" class="secondary active" data-layer-set="parcel" aria-pressed="true" title="Show / hide the red assessment-parcel polygons of the current search results. Dark = shown. Not the citywide grey wash — that is All Assessment Parcels, which highlights the same results in yellow.">Assessment Results</button>
 

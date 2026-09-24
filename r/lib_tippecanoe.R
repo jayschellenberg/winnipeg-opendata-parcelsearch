@@ -5,7 +5,7 @@
 #
 # WSL is the runtime (Ubuntu here has tippecanoe v2.80.0 at
 # /usr/local/bin/tippecanoe). Docker is deliberately NOT used by the
-# unattended bi-monthly job: Docker Desktop's daemon is frequently not
+# unattended monthly job: Docker Desktop's daemon is frequently not
 # running at 03:00, which would strand the build.
 
 # WSL sees the Windows drives under /mnt/<drive letter>. None of the paths
