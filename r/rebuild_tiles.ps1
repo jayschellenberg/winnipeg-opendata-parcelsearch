@@ -713,4 +713,22 @@ if ($LASTEXITCODE -ne 0) {
   Get-ChildItem $archiveRoot -File -Filter 'FAILED-historical-tiles-*.txt' -ErrorAction SilentlyContinue |
     ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
 }
+
+# --- Step 8: All Survey Parcels archive (non-fatal) -----------------------
+# Every current survey lot, stamped with the rolls on it against today's
+# roll, so it rides the same two-month clock. Same non-fatal contract and
+# marker convention as Step 7; publish_survey_tiles.ps1 commits its own
+# sidecar (web/public/survey-pmtiles-meta.json) and pushes.
+Log 'Step 8: survey parcel archive (r/publish_survey_tiles.ps1)'
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'r\publish_survey_tiles.ps1') *>> $log 2>&1
+if ($LASTEXITCODE -ne 0) {
+  $marker = Join-Path $archiveRoot ("FAILED-survey-tiles-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd'))
+  "survey tile rebuild exited $LASTEXITCODE on $(Get-Date -Format 's'); rerun: powershell -File r\publish_survey_tiles.ps1 (see $log)" |
+    Set-Content -Path $marker -ErrorAction SilentlyContinue
+  Log "  survey tiles FAILED (exit $LASTEXITCODE) - citywide archive is unaffected; marker $marker; rerun r\publish_survey_tiles.ps1"
+} else {
+  Log '  survey tiles rebuilt, published and their sidecar pushed.'
+  Get-ChildItem $archiveRoot -File -Filter 'FAILED-survey-tiles-*.txt' -ErrorAction SilentlyContinue |
+    ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
+}
 Log '=== done ==='

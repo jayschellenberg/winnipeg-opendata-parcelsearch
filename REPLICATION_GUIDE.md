@@ -129,6 +129,7 @@ repo-root/
 │   ├── build_lineage.R       inferred lineage between consecutive snapshots
 │   ├── build_parcel_tiles.R  → web/public/parcels.pmtiles via tippecanoe
 │   ├── build_historical_tiles.R  → one wpg-hist-<date>.pmtiles per snapshot (§8.7.1)
+│   ├── build_survey_tiles.R  → wpg-survey-parcels.pmtiles, All Survey Parcels (§8.7.1a)
 │   ├── sanitize_shards.R / verify_shards.R   post-build sanity
 │   ├── scheduled_download.ps1 / refresh_assets.ps1 / setup_schedule.ps1   Task Scheduler glue
 └── web/
@@ -818,6 +819,35 @@ marker in the archive folder if that step fails. Flags mirror
 `lib_tippecanoe.R` with `--minimum-zoom=11` (the overlay draws from z12).
 Local dev: `VITE_HISTORICAL_TILES_BASE=http://localhost:5173` serves the
 archives straight out of `web/public/` (they are gitignored).
+
+### 8.7.1a All Survey Parcels archive
+
+The **All Survey Parcels** toggle draws every current survey lot from its own
+survey-only archive, `wpg-survey-parcels.pmtiles` on the `wpg-ortho` R2
+bucket, built by `r/build_survey_tiles.R`. The build fetches Survey Parcels
+(`sjjm-nj47`) and Assessment Parcels (`d4mq-wa44`, roll + address +
+geometry), both reconciled against the API count, and stamps each lot with
+the rolls standing on it. The match is interior points both ways, the same
+test as `parcelsOverlap` in `soda.js`, so shared edges never count. Lot
+fields: `survey_id`, `plan`, `lot`, `block`, `description`, and `asmt_rolls`
+/ `asmt_addresses` (up to 3 / 2, `;`-joined) with `asmt_roll_count` /
+`asmt_address_count`. The `asmt_` prefix is load-bearing: `popupHtml` treats
+any feature with a `roll_number` as an assessment parcel. There is one
+source-layer, `survey`, at z13-z18, and the app draws it from z15.
+
+```
+Rscript r/build_survey_tiles.R              # build only
+Rscript r/build_survey_tiles.R --publish    # build, then rclone to R2 + size verify
+powershell -File r/publish_survey_tiles.ps1 # build + publish + commit/push the sidecar
+```
+
+The committed sidecar `web/public/survey-pmtiles-meta.json` holds the build
+date (quoted in the popup), feature counts and sha256, and the Data Status
+dialog shows it. The build takes ~20-30 min, so run it detached. The
+bi-monthly job runs `publish_survey_tiles.ps1` as its non-fatal step 8, and
+a failure leaves a `FAILED-survey-tiles-<date>.txt` marker. Local dev: set
+`VITE_SURVEY_TILES_URL=/wpg-survey-parcels.pmtiles` to use the gitignored
+local build.
 
 ---
 

@@ -136,13 +136,14 @@ export function initDataStatusDialog() {
   async function load() {
     loaded = true;
     renderServices($services);   // rows appear immediately, fill per-service
-    const [pmtilesMeta, histIndex, histTilesMeta, neighbourhoodsMeta, transitMeta, zoningAmend] = await Promise.all([
+    const [pmtilesMeta, histIndex, histTilesMeta, neighbourhoodsMeta, transitMeta, zoningAmend, surveyMeta] = await Promise.all([
       fetchJson(PMTILES_META_URL),
       fetchHistoricalIndex().catch(() => null),
       fetchJson('/historical-tiles-meta.json'),
       fetchTailMeta('/wpg-neighbourhoods.geojson'),
       fetchTailMeta('/transit-routes.geojson'),
       fetchJson('/zoning-amendments.json'),
+      fetchJson('/survey-pmtiles-meta.json'),
     ]);
     renderPublished($published, publishedRows({ pmtilesMeta, neighbourhoodsMeta, transitMeta }));
     // Zoning amendments (DMIS scrape): built date, how many by-laws were
@@ -161,6 +162,17 @@ export function initDataStatusDialog() {
         'quarterly, with the asset refresh',
       ]));
     }
+    // All Survey Parcels archive (r/build_survey_tiles.R): build date, lot
+    // count, and how many lots carry a roll.
+    $published.appendChild(rowOf([
+      'All Survey Parcels tiles',
+      surveyMeta?.built ? dateLabel(surveyMeta.built) : null,
+      surveyMeta
+        ? `${Number(surveyMeta.features).toLocaleString('en-US')} survey lots; `
+          + `${Number(surveyMeta.features_with_roll).toLocaleString('en-US')} stamped with an assessment roll`
+        : 'not built — run r/publish_survey_tiles.ps1',
+      'every two months, with the parcel tiles',
+    ]));
     renderHistorical($historical, histIndex, histTilesMeta);
   }
 

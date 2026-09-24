@@ -57,3 +57,8 @@ __pycache__/
 web/public/wpg-hist-*.pmtiles*
 web/public/hist-build/
 web/.env.local
+
+# All Survey Parcels archive (r/build_survey_tiles.R): served from R2; only
+# the sidecar survey-pmtiles-meta.json is tracked. survey-build/ is scratch.
+web/public/wpg-survey-parcels*.pmtiles*
+web/public/survey-build/
