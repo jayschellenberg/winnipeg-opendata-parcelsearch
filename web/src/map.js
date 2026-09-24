@@ -2004,10 +2004,13 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           if (map.getLayer('citywide-parcels-fill')) {
             citywideHits = map.queryRenderedFeatures(e.point, { layers: ['citywide-parcels-fill'] });
           }
-          // All Survey Parcels: the lot leads, the assessment parcel under
-          // it follows as context — the same Survey-over-Assessment pair
-          // a legal-description search shows.
+          // All Survey Parcels: the lot leads. With All Assessment Parcels
+          // also on, the parcel under it follows as its own block — the
+          // Survey-over-Assessment pair a legal-description search shows —
+          // and the lot drops its stamped roll/address so they aren't said
+          // twice.
           surveyLot = citywideSurveyAt(map, e.point);
+          if (surveyLot && citywideHits.length) surveyLot._hideAsmt = true;
         }
         if (!primaryHits.length && !contextHits.length && !citywideHits.length && !surveyLot) {
           popup.remove();
@@ -2120,6 +2123,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         const f = e.features?.[0];
         if (!f) return;
         const surveyLot = citywideSurveyAt(map, e.point);
+        if (surveyLot) surveyLot._hideAsmt = true;   // the assessment block follows
         citywideClickPopup
           .setLngLat(e.lngLat)
           .setHTML(surveyLot
@@ -2137,10 +2141,11 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         wireRollCopy(citywideClickPopup);
       };
       onLayerClick(map, 'citywide-parcels-fill', citywideClick('citywide-parcels-fill'));
-      // A survey lot with no assessment parcel over it (road allowances,
-      // some river lots) never reaches citywideClick; give it the lot alone.
-      // Registered on the map, not the layer: the survey layers are added
-      // lazily on first toggle.
+      // A survey lot clicked with All Assessment Parcels off (or with no
+      // assessment parcel over it) never reaches citywideClick; give it the
+      // lot alone, with its stamped roll(s) + address(es). Registered on the
+      // map, not the layer: the survey layers are added lazily on first
+      // toggle.
       map.on('click', (e) => {
         if (clickOwnedByTool(map, e)) return;
         const surveyLot = citywideSurveyAt(map, e.point);
@@ -3131,43 +3136,40 @@ export function setWaterInfluenceVisible(map, visible) {
   applyAssessFillOpacity(map);
 }
 
-// The invisible citywide-parcels-fill is the hit target for BOTH toggles:
-// All Assessment Parcels, and All Survey Parcels, whose hover names the
-// roll + address under the survey lot (Jason, 2026-09-24). The lot's own
-// tiles carry no roll, so the assessment tiles have to be loaded and
-// queryable while survey is on even if the grey wash is off.
-const citywideState = { assess: false, survey: false };
-
-function applyCitywideFillVisibility(map) {
-  const v = citywideState.assess || citywideState.survey ? 'visible' : 'none';
-  if (map.getLayer('citywide-parcels-fill')) map.setLayoutProperty('citywide-parcels-fill', 'visibility', v);
-}
-
 export function setCitywideParcelsVisible(map, visible) {
-  citywideState.assess = !!visible;
   const v = visible ? 'visible' : 'none';
-  applyCitywideFillVisibility(map);
+  if (map.getLayer('citywide-parcels-fill')) map.setLayoutProperty('citywide-parcels-fill', 'visibility', v);
   if (map.getLayer('citywide-parcels-line')) map.setLayoutProperty('citywide-parcels-line', 'visibility', v);
   if (map.getLayer('citywide-parcels-label')) map.setLayoutProperty('citywide-parcels-label', 'visibility', v);
 }
 
 // ---- All Survey Parcels ----------------------------------------------------
-// Every survey lot in the city, streamed from the `survey` layer of the
-// newest historical snapshot archive that has one (r/build_historical_tiles.R).
-// That archive already sits on R2, so this costs no build — but it is a
-// snapshot (dated in the popup) and lots over 1 ha are simplified ~2-3 m.
-// Its own source, not HIST_TILE_SOURCE, so it survives the Historical
-// overlay switching dates underneath it.
+// Every current survey lot, full detail, from its own survey-only archive
+// (r/build_survey_tiles.R, rebuilt with the citywide parcel tiles). Each lot
+// is stamped at build time with the assessment roll(s) + address(es) on it
+// (asmt_rolls / asmt_roll_count / asmt_addresses / asmt_address_count), so
+// the popup names them without loading the assessment archive as well.
+// Same host rules as PARCEL_TILES_URL above.
+const SURVEY_TILES_URL =
+  (() => { try { return import.meta.env.VITE_SURVEY_TILES_URL; } catch { return undefined; } })()
+  || 'https://pub-f351b204f73e4b2287acad946d79681c.r2.dev/wpg-survey-parcels.pmtiles';
+
+/** Where the survey archive is expected, for the probe and error messages. */
+export function surveyTilesUrl() { return SURVEY_TILES_URL; }
+
 const SURVEY_TILE_SOURCE = 'citywide-survey';
 const SURVEY_TILE_LAYERS = ['citywide-survey-fill', 'citywide-survey-line'];
-// 263K lots: at z14 a 15 m lot is ~2 px wide and a downtown tile is
-// 400-600 KB (the archive carries the historical parcels layer too); at z15
-// lots read and tiles drop to ~100-160 KB.
+// 263K lots: below this a 15 m lot is a couple of pixels wide and the
+// overlay is a solid smear. The archive starts two zooms lower for slack.
 export const CITYWIDE_SURVEY_MIN_ZOOM = 15;
-let citywideSurveySnap = null;
+let citywideSurveyOn = false;
+// Build date from web/public/survey-pmtiles-meta.json, quoted in the popup.
+let citywideSurveyBuilt = null;
 
-function addCitywideSurveyLayers(map, url) {
-  map.addSource(SURVEY_TILE_SOURCE, { type: 'vector', url: `pmtiles://${url}`, minzoom: 11, maxzoom: 18 });
+function addCitywideSurveyLayers(map) {
+  map.addSource(SURVEY_TILE_SOURCE, {
+    type: 'vector', url: `pmtiles://${SURVEY_TILES_URL}`, minzoom: 13, maxzoom: 18,
+  });
   // Above the grey assessment wash, under its address labels and every
   // search-result layer.
   const beforeId = map.getLayer('citywide-parcels-label') ? 'citywide-parcels-label' : undefined;
@@ -3189,30 +3191,23 @@ function addCitywideSurveyLayers(map, url) {
   }, beforeId);
 }
 
-/**
- * Show / hide All Survey Parcels. `url` (https archive URL) and `snap` (its
- * date) are needed the first time only; the source is added lazily then.
- */
-export function setCitywideSurveyVisible(map, visible, { url, snap } = {}) {
-  if (visible && !map.getSource(SURVEY_TILE_SOURCE)) {
-    if (!url) return;
-    addCitywideSurveyLayers(map, url);
-    citywideSurveySnap = snap ?? null;
-  }
-  citywideState.survey = !!visible;
+/** Show / hide All Survey Parcels; the source is added on first show. */
+export function setCitywideSurveyVisible(map, visible, { built } = {}) {
+  if (visible && !map.getSource(SURVEY_TILE_SOURCE)) addCitywideSurveyLayers(map);
+  if (built) citywideSurveyBuilt = built;
+  citywideSurveyOn = !!visible;
   const v = visible ? 'visible' : 'none';
   for (const id of SURVEY_TILE_LAYERS) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
   }
-  applyCitywideFillVisibility(map);
 }
 
-/** The survey lot under `point` (All Survey Parcels on), stamped with its
- *  snapshot date for the popup; null when there is none. */
+/** The survey lot under `point` (All Survey Parcels on), stamped with the
+ *  archive's build date for the popup; null when there is none. */
 function citywideSurveyAt(map, point) {
-  if (!citywideState.survey || !map.getLayer('citywide-survey-fill')) return null;
+  if (!citywideSurveyOn || !map.getLayer('citywide-survey-fill')) return null;
   const hit = map.queryRenderedFeatures(point, { layers: ['citywide-survey-fill'] })[0];
-  return hit ? { ...hit.properties, _asOf: citywideSurveySnap } : null;
+  return hit ? { ...hit.properties, _asOf: citywideSurveyBuilt } : null;
 }
 
 /** Toggle the derived dwelling-unit labels independently of parcel outlines. */
@@ -3864,6 +3859,26 @@ function combinedPopupHtml(primary, context, { actions: withActions = false } = 
 
 const POPUP_RULE = '<hr style="margin:6px 0;border:none;border-top:1px solid #ddd">';
 
+/**
+ * The roll(s) + address(es) r/build_survey_tiles.R stamps on each lot of the
+ * All Survey Parcels archive: up to three rolls and two addresses, with the
+ * full counts, so a 200-unit condo lot names a few and counts the rest.
+ * Absent on search-result lots (live SODA) — those get no lines here.
+ */
+function surveyAssessmentLines(p) {
+  if (p.asmt_roll_count == null) return [];
+  const rollCount = Number(p.asmt_roll_count) || 0;
+  if (!rollCount) return ['<small style="color:#888">No assessment roll on this lot</small>'];
+  const more = (n, shown) => (n > shown ? ` <small>+ ${n - shown} more</small>` : '');
+  const rolls = String(p.asmt_rolls ?? '').split(';').filter(Boolean);
+  const out = [`<strong>Roll #</strong> ${rolls.map((r) => rollDetailLink(r, `Open Roll ${r} on the City assessment site`)).join(', ')}${more(rollCount, rolls.length)}`];
+  const addrs = String(p.asmt_addresses ?? '').split(';').filter(Boolean);
+  if (addrs.length) {
+    out.push(`${addrs.map((a) => escapeHtml(properCaseAddress(a))).join(' / ')}${more(Number(p.asmt_address_count) || 0, addrs.length)}`);
+  }
+  return out;
+}
+
 function surveyBlockHtml(p) {
   return `<div><strong style="color:#0b2566">Survey Parcel</strong><br>${popupHtml(p)}</div>`;
 }
@@ -3935,8 +3950,9 @@ function popupHtml(p) {
     + `&nbsp;<strong>Plan</strong> ${escapeHtml(p.plan ?? '')}`;
   const lines = [head];
   if (p.description) lines.push(escapeHtml(p.description));
-  // All Survey Parcels comes off a snapshot archive, not live SODA.
-  if (p._asOf) lines.push(`<small style="color:#888">Survey snapshot as of ${escapeHtml(p._asOf)} — search for live data</small>`);
+  if (!p._hideAsmt) lines.push(...surveyAssessmentLines(p));
+  // All Survey Parcels comes off an offline-built archive, not live SODA.
+  if (p._asOf) lines.push(`<small style="color:#888">Survey tiles as of ${escapeHtml(p._asOf)} — search for live data</small>`);
   return lines.join('<br>');
 }
 

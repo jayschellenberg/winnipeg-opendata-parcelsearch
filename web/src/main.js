@@ -98,7 +98,7 @@ import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
-  setCitywideParcelsVisible, setCitywideSurveyVisible, CITYWIDE_SURVEY_MIN_ZOOM, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
+  setCitywideParcelsVisible, setCitywideSurveyVisible, CITYWIDE_SURVEY_MIN_ZOOM, surveyTilesUrl, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
   setContamData, setContamVisible, setWaterInfluenceVisible,
   setSubjectData, setSubjectRadiusData, setSalesPointsData,
   setParcelNumberData, setParcelNumbersVisible, setResultPin,
@@ -2656,31 +2656,27 @@ async function toggleCitywideParcels() {
 }
 
 /**
- * Toggle All Survey Parcels: every survey lot, from the `survey` layer of
- * the newest historical snapshot archive that carries one (see
- * setCitywideSurveyVisible in map.js for why that archive).
+ * Toggle All Survey Parcels: every current survey lot, from the survey-only
+ * archive r/build_survey_tiles.R publishes (see setCitywideSurveyVisible in
+ * map.js). The committed sidecar dates it for the popup.
  */
 async function toggleCitywideSurvey() {
   await mapReady;
   if (!citywideSurveyEnabled) {
-    const meta = await fetchHistoricalTilesMeta();
-    const snap = Object.entries(meta?.snapshots || {})
-      .filter(([, e]) => Number(e?.layers?.survey) > 0)
-      .map(([d]) => d)
-      .sort()
-      .pop();
-    const url = snap ? historicalTilesUrl(import.meta.env.VITE_HISTORICAL_TILES_BASE, snap) : null;
-    if (!url || !(await probeHistoricalTiles(url))) {
-      setCount('All Survey Parcels: no published survey tile archive found. '
-        + 'Build and publish one with r/build_historical_tiles.R --publish.');
+    const [ok, meta] = await Promise.all([
+      probeHistoricalTiles(surveyTilesUrl()),
+      fetch('/survey-pmtiles-meta.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]);
+    if (!ok) {
+      setCount(`All Survey Parcels: tile archive unreachable at ${surveyTilesUrl()}. `
+        + 'Build and publish it with r/publish_survey_tiles.ps1.');
       return;
     }
-    // The roll + address in the hover come from the assessment tiles.
-    await probeCitywideParcels();
-    setCitywideSurveyVisible(map, true, { url, snap });
+    const built = /^\d{4}-\d{2}-\d{2}$/.test(meta?.built ?? '') ? meta.built : null;
+    setCitywideSurveyVisible(map, true, { built });
     citywideSurveyEnabled = true;
     if (map.getZoom() < CITYWIDE_SURVEY_MIN_ZOOM) {
-      setCount(`All Survey Parcels (as of ${snap}) — zoom in to street level to see the lots.`);
+      setCount('All Survey Parcels — zoom in to street level to see the lots.');
     }
   } else {
     setCitywideSurveyVisible(map, false);
