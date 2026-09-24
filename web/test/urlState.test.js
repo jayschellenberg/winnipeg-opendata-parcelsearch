@@ -136,6 +136,7 @@ test('encodeState — every overlay toggle emits its short code', () => {
     surveyToggle: true,
     assessToggle: false,
     allParcelsToggle: true,
+    allSurveyToggle: true,
     dwellingUnitsToggle: true,
     zoningToggle: true,
     trafficToggle: true,
@@ -150,6 +151,7 @@ test('encodeState — every overlay toggle emits its short code', () => {
   assert.equal(params.get('sv'), '1');
   assert.equal(params.get('av'), '0');
   assert.equal(params.get('ap'), '1');
+  assert.equal(params.get('ay'), '1');
   assert.equal(params.get('dl'), '1');
   assert.equal(params.get('zo'), '1');
   assert.equal(params.get('tr'), '1');
@@ -251,6 +253,7 @@ test('round-trip — full state survives encode + decode', () => {
     surveyToggle: true,
     assessToggle: false,
     allParcelsToggle: true,
+    allSurveyToggle: true,
     dwellingUnitsToggle: true,
     zoningToggle: true,
     trafficToggle: true,
@@ -315,8 +318,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 35 entries (11 inputs + 13 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 35);
+test('SCHEMA — has exactly 36 entries (11 inputs + 14 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 36);
 });
 
 test('the retired rise param is no longer honoured', () => {
