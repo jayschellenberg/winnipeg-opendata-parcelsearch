@@ -108,6 +108,7 @@ export const SCHEMA = {
   surveyToggle:         { param: 'sv', validate: cleanBool, format: formatBool },
   assessToggle:         { param: 'av', validate: cleanBool, format: formatBool },
   allParcelsToggle:     { param: 'ap', validate: cleanBool, format: formatBool },
+  allSurveyToggle:      { param: 'ay', validate: cleanBool, format: formatBool },
   dwellingUnitsToggle:  { param: 'dl', validate: cleanBool, format: formatBool },
   zoningToggle:         { param: 'zo', validate: cleanBool, format: formatBool },
   trafficToggle:        { param: 'tr', validate: cleanBool, format: formatBool },

@@ -98,7 +98,7 @@ import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
-  setCitywideParcelsVisible, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
+  setCitywideParcelsVisible, setCitywideSurveyVisible, CITYWIDE_SURVEY_MIN_ZOOM, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
   setContamData, setContamVisible, setWaterInfluenceVisible,
   setSubjectData, setSubjectRadiusData, setSalesPointsData,
   setParcelNumberData, setParcelNumbersVisible, setResultPin,
@@ -198,6 +198,7 @@ const $airportToggle        = document.getElementById('airport-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
+const $allSurveyToggle      = document.getElementById('all-survey-toggle');
 const $dwellingUnitsToggle  = document.getElementById('dwelling-units-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
@@ -426,6 +427,7 @@ const policyOverlayState = {
 };
 let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
+let citywideSurveyEnabled = false;
 let dwellingUnitsEnabled = false;
 
 // ---------- Column sort ----------
@@ -617,6 +619,7 @@ $airportToggle.addEventListener('click',        () => togglePolicyOverlay('airpo
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
+if ($allSurveyToggle) $allSurveyToggle.addEventListener('click', toggleCitywideSurvey);
 if ($dwellingUnitsToggle) $dwellingUnitsToggle.addEventListener('click', toggleDwellingUnits);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
@@ -1178,7 +1181,7 @@ function captureUrlState() {
 
   // Toggle defaults: assess is the only one that ships ON.
   const defaults = {
-    surveyToggle: false, assessToggle: true, allParcelsToggle: false, dwellingUnitsToggle: false,
+    surveyToggle: false, assessToggle: true, allParcelsToggle: false, allSurveyToggle: false, dwellingUnitsToggle: false,
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     airportToggle: false,
@@ -1187,7 +1190,7 @@ function captureUrlState() {
   };
   const buttons = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
-    allParcelsToggle: $allParcelsToggle, dwellingUnitsToggle: $dwellingUnitsToggle, zoningToggle: $zoningToggle,
+    allParcelsToggle: $allParcelsToggle, allSurveyToggle: $allSurveyToggle, dwellingUnitsToggle: $dwellingUnitsToggle, zoningToggle: $zoningToggle,
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
@@ -1271,7 +1274,7 @@ function applyUrlState(state) {
 
   const toggles = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
-    allParcelsToggle: $allParcelsToggle, dwellingUnitsToggle: $dwellingUnitsToggle, zoningToggle: $zoningToggle,
+    allParcelsToggle: $allParcelsToggle, allSurveyToggle: $allSurveyToggle, dwellingUnitsToggle: $dwellingUnitsToggle, zoningToggle: $zoningToggle,
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
@@ -1380,7 +1383,7 @@ if ($roll) $roll.addEventListener('input', queueUrlWrite);
 // Every overlay toggle button — extra listener runs after the
 // toggle handler so it sees the post-flip aria-pressed value.
 for (const btn of [
-  $surveyToggle, $assessToggle, $allParcelsToggle, $dwellingUnitsToggle,
+  $surveyToggle, $assessToggle, $allParcelsToggle, $allSurveyToggle, $dwellingUnitsToggle,
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle, $airportToggle,
   $transitToggle,
@@ -2650,6 +2653,42 @@ async function toggleCitywideParcels() {
   $allParcelsToggle.setAttribute('aria-pressed', String(citywideParcelsEnabled));
   $allParcelsToggle.classList.toggle('active', citywideParcelsEnabled);
   setCitywideParcelsVisible(map, citywideParcelsEnabled);
+}
+
+/**
+ * Toggle All Survey Parcels: every survey lot, from the `survey` layer of
+ * the newest historical snapshot archive that carries one (see
+ * setCitywideSurveyVisible in map.js for why that archive).
+ */
+async function toggleCitywideSurvey() {
+  await mapReady;
+  if (!citywideSurveyEnabled) {
+    const meta = await fetchHistoricalTilesMeta();
+    const snap = Object.entries(meta?.snapshots || {})
+      .filter(([, e]) => Number(e?.layers?.survey) > 0)
+      .map(([d]) => d)
+      .sort()
+      .pop();
+    const url = snap ? historicalTilesUrl(import.meta.env.VITE_HISTORICAL_TILES_BASE, snap) : null;
+    if (!url || !(await probeHistoricalTiles(url))) {
+      setCount('All Survey Parcels: no published survey tile archive found. '
+        + 'Build and publish one with r/build_historical_tiles.R --publish.');
+      return;
+    }
+    // The roll + address in the hover come from the assessment tiles.
+    await probeCitywideParcels();
+    setCitywideSurveyVisible(map, true, { url, snap });
+    citywideSurveyEnabled = true;
+    if (map.getZoom() < CITYWIDE_SURVEY_MIN_ZOOM) {
+      setCount(`All Survey Parcels (as of ${snap}) — zoom in to street level to see the lots.`);
+    }
+  } else {
+    setCitywideSurveyVisible(map, false);
+    citywideSurveyEnabled = false;
+  }
+  $allSurveyToggle.textContent = citywideSurveyEnabled ? 'Hide All Survey Parcels' : 'All Survey Parcels';
+  $allSurveyToggle.setAttribute('aria-pressed', String(citywideSurveyEnabled));
+  $allSurveyToggle.classList.toggle('active', citywideSurveyEnabled);
 }
 
 /** Toggle derived dwelling-unit totals from the citywide PMTiles archive. */

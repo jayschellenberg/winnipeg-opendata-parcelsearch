@@ -69,13 +69,13 @@ let clusterPickerOwns = () => false;
  * belonging to the neighbourhood backdrop has to defer to these — they are
  * the subject of the map, and the backdrop is the paper it is drawn on.
  */
-const PARCEL_CONTENT_LAYERS = ['parcel-fill', 'assess-context-fill', 'citywide-parcels-fill'];
+const PARCEL_CONTENT_LAYERS = ['parcel-fill', 'assess-context-fill', 'citywide-parcels-fill', 'citywide-survey-fill'];
 
 /** Is any parcel layer drawn at this point? Honours layer visibility, so a
- *  hidden layer never counts. */
-function parcelAt(map, point) {
+ *  hidden layer never counts. `except` skips layers by id. */
+function parcelAt(map, point, except = []) {
   for (const id of PARCEL_CONTENT_LAYERS) {
-    if (!map.getLayer(id)) continue;
+    if (except.includes(id) || !map.getLayer(id)) continue;
     if (map.getLayoutProperty(id, 'visibility') === 'none') continue;
     if (map.queryRenderedFeatures(point, { layers: [id] }).length > 0) return true;
   }
@@ -1999,18 +1999,27 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         // win over citywide because the live SoDA data on results is
         // richer (e.g. address-enrichment + partial-lot flags).
         let citywideHits = [];
-        if (!primaryHits.length && !contextHits.length && map.getLayer('citywide-parcels-fill')) {
-          citywideHits = map.queryRenderedFeatures(e.point, { layers: ['citywide-parcels-fill'] });
+        let surveyLot = null;
+        if (!primaryHits.length && !contextHits.length) {
+          if (map.getLayer('citywide-parcels-fill')) {
+            citywideHits = map.queryRenderedFeatures(e.point, { layers: ['citywide-parcels-fill'] });
+          }
+          // All Survey Parcels: the lot leads, the assessment parcel under
+          // it follows as context — the same Survey-over-Assessment pair
+          // a legal-description search shows.
+          surveyLot = citywideSurveyAt(map, e.point);
         }
-        if (!primaryHits.length && !contextHits.length && !citywideHits.length) {
+        if (!primaryHits.length && !contextHits.length && !citywideHits.length && !surveyLot) {
           popup.remove();
           map.getCanvas().style.cursor = '';
           return;
         }
         map.getCanvas().style.cursor = 'pointer';
         const primaryProps = primaryHits[0]?.properties
+          ?? surveyLot
           ?? (contextHits.length ? null : citywideHits[0]?.properties);
-        const contextProps = contextHits[0]?.properties;
+        const contextProps = contextHits[0]?.properties
+          ?? (surveyLot ? citywideHits[0]?.properties : undefined);
         popup
           .setLngLat(e.lngLat)
           .setHTML(combinedPopupHtml(primaryProps, contextProps))
@@ -2110,9 +2119,12 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         if (overSearchResult || overDwelling) return;
         const f = e.features?.[0];
         if (!f) return;
+        const surveyLot = citywideSurveyAt(map, e.point);
         citywideClickPopup
           .setLngLat(e.lngLat)
-          .setHTML(citywideParcelHtml(f.properties))
+          .setHTML(surveyLot
+            ? `${surveyBlockHtml(surveyLot)}${POPUP_RULE}<strong style="color:#8a6500">Assessment Parcel</strong><br>${citywideParcelHtml(f.properties)}`
+            : citywideParcelHtml(f.properties))
           .addTo(map);
         // Compute the popup's coordinate-copy target from the actual
         // polygon (bbox midpoint is a stable approximation of centroid
@@ -2125,6 +2137,16 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         wireRollCopy(citywideClickPopup);
       };
       onLayerClick(map, 'citywide-parcels-fill', citywideClick('citywide-parcels-fill'));
+      // A survey lot with no assessment parcel over it (road allowances,
+      // some river lots) never reaches citywideClick; give it the lot alone.
+      // Registered on the map, not the layer: the survey layers are added
+      // lazily on first toggle.
+      map.on('click', (e) => {
+        if (clickOwnedByTool(map, e)) return;
+        const surveyLot = citywideSurveyAt(map, e.point);
+        if (!surveyLot || parcelAt(map, e.point, ['citywide-survey-fill'])) return;
+        citywideClickPopup.setLngLat(e.lngLat).setHTML(surveyBlockHtml(surveyLot)).addTo(map);
+      });
       onLayerClick(map, 'zoning-changes-citywide-fill', citywideClick('zoning-changes-citywide-fill'));
 
       const dwellingClickPopup = new maplibregl.Popup({ closeButton: true });
@@ -3109,11 +3131,88 @@ export function setWaterInfluenceVisible(map, visible) {
   applyAssessFillOpacity(map);
 }
 
-export function setCitywideParcelsVisible(map, visible) {
-  const v = visible ? 'visible' : 'none';
+// The invisible citywide-parcels-fill is the hit target for BOTH toggles:
+// All Assessment Parcels, and All Survey Parcels, whose hover names the
+// roll + address under the survey lot (Jason, 2026-09-24). The lot's own
+// tiles carry no roll, so the assessment tiles have to be loaded and
+// queryable while survey is on even if the grey wash is off.
+const citywideState = { assess: false, survey: false };
+
+function applyCitywideFillVisibility(map) {
+  const v = citywideState.assess || citywideState.survey ? 'visible' : 'none';
   if (map.getLayer('citywide-parcels-fill')) map.setLayoutProperty('citywide-parcels-fill', 'visibility', v);
+}
+
+export function setCitywideParcelsVisible(map, visible) {
+  citywideState.assess = !!visible;
+  const v = visible ? 'visible' : 'none';
+  applyCitywideFillVisibility(map);
   if (map.getLayer('citywide-parcels-line')) map.setLayoutProperty('citywide-parcels-line', 'visibility', v);
   if (map.getLayer('citywide-parcels-label')) map.setLayoutProperty('citywide-parcels-label', 'visibility', v);
+}
+
+// ---- All Survey Parcels ----------------------------------------------------
+// Every survey lot in the city, streamed from the `survey` layer of the
+// newest historical snapshot archive that has one (r/build_historical_tiles.R).
+// That archive already sits on R2, so this costs no build — but it is a
+// snapshot (dated in the popup) and lots over 1 ha are simplified ~2-3 m.
+// Its own source, not HIST_TILE_SOURCE, so it survives the Historical
+// overlay switching dates underneath it.
+const SURVEY_TILE_SOURCE = 'citywide-survey';
+const SURVEY_TILE_LAYERS = ['citywide-survey-fill', 'citywide-survey-line'];
+// 263K lots: at z14 a 15 m lot is ~2 px wide and a downtown tile is
+// 400-600 KB (the archive carries the historical parcels layer too); at z15
+// lots read and tiles drop to ~100-160 KB.
+export const CITYWIDE_SURVEY_MIN_ZOOM = 15;
+let citywideSurveySnap = null;
+
+function addCitywideSurveyLayers(map, url) {
+  map.addSource(SURVEY_TILE_SOURCE, { type: 'vector', url: `pmtiles://${url}`, minzoom: 11, maxzoom: 18 });
+  // Above the grey assessment wash, under its address labels and every
+  // search-result layer.
+  const beforeId = map.getLayer('citywide-parcels-label') ? 'citywide-parcels-label' : undefined;
+  map.addLayer({
+    id: 'citywide-survey-fill', type: 'fill', source: SURVEY_TILE_SOURCE, 'source-layer': 'survey',
+    minzoom: CITYWIDE_SURVEY_MIN_ZOOM,
+    layout: { visibility: 'none' },
+    paint: { 'fill-color': '#000', 'fill-opacity': 0 },   // hover hit target only
+  }, beforeId);
+  map.addLayer({
+    id: 'citywide-survey-line', type: 'line', source: SURVEY_TILE_SOURCE, 'source-layer': 'survey',
+    minzoom: CITYWIDE_SURVEY_MIN_ZOOM,
+    layout: { visibility: 'none' },
+    paint: {
+      'line-color': '#2563eb',
+      'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.7, 18, 1.4],
+      'line-opacity': 0.75,
+    },
+  }, beforeId);
+}
+
+/**
+ * Show / hide All Survey Parcels. `url` (https archive URL) and `snap` (its
+ * date) are needed the first time only; the source is added lazily then.
+ */
+export function setCitywideSurveyVisible(map, visible, { url, snap } = {}) {
+  if (visible && !map.getSource(SURVEY_TILE_SOURCE)) {
+    if (!url) return;
+    addCitywideSurveyLayers(map, url);
+    citywideSurveySnap = snap ?? null;
+  }
+  citywideState.survey = !!visible;
+  const v = visible ? 'visible' : 'none';
+  for (const id of SURVEY_TILE_LAYERS) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+  }
+  applyCitywideFillVisibility(map);
+}
+
+/** The survey lot under `point` (All Survey Parcels on), stamped with its
+ *  snapshot date for the popup; null when there is none. */
+function citywideSurveyAt(map, point) {
+  if (!citywideState.survey || !map.getLayer('citywide-survey-fill')) return null;
+  const hit = map.queryRenderedFeatures(point, { layers: ['citywide-survey-fill'] })[0];
+  return hit ? { ...hit.properties, _asOf: citywideSurveySnap } : null;
 }
 
 /** Toggle the derived dwelling-unit labels independently of parcel outlines. */
@@ -3721,9 +3820,7 @@ function combinedPopupHtml(primary, context, { actions: withActions = false } = 
   const primaryIsAssess = primary && (primary.roll_number != null || primary.full_address != null);
   const primaryIsSurvey = primary && !primaryIsAssess;
 
-  if (primaryIsSurvey) {
-    blocks.push(`<div><strong style="color:#0b2566">Survey Parcel</strong><br>${popupHtml(primary)}</div>`);
-  }
+  if (primaryIsSurvey) blocks.push(surveyBlockHtml(primary));
   if (primaryIsAssess) {
     blocks.push(`<div><strong style="color:#8a6500">Assessment Parcel</strong><br>${popupHtml(primary)}</div>`);
   }
@@ -3762,7 +3859,13 @@ function combinedPopupHtml(primary, context, { actions: withActions = false } = 
       + ' title="Copy parcel centroid (lat, lng) to clipboard">GPS Coordinates</a>');
     blocks.push(`<div style="margin-top:4px">${actions.join(' &nbsp;·&nbsp; ')}</div>`);
   }
-  return blocks.join('<hr style="margin:6px 0;border:none;border-top:1px solid #ddd">');
+  return blocks.join(POPUP_RULE);
+}
+
+const POPUP_RULE = '<hr style="margin:6px 0;border:none;border-top:1px solid #ddd">';
+
+function surveyBlockHtml(p) {
+  return `<div><strong style="color:#0b2566">Survey Parcel</strong><br>${popupHtml(p)}</div>`;
 }
 
 /** The Copy Roll anchor. The roll rides on the anchor's own data-roll so
@@ -3830,9 +3933,11 @@ function popupHtml(p) {
   const head = `<strong>Lot</strong> ${escapeHtml(p.lot ?? '')}`
     + `&nbsp;<strong>Block</strong> ${escapeHtml(p.block ?? '')}`
     + `&nbsp;<strong>Plan</strong> ${escapeHtml(p.plan ?? '')}`;
-  return p.description
-    ? `${head}<br>${escapeHtml(p.description)}`
-    : head;
+  const lines = [head];
+  if (p.description) lines.push(escapeHtml(p.description));
+  // All Survey Parcels comes off a snapshot archive, not live SODA.
+  if (p._asOf) lines.push(`<small style="color:#888">Survey snapshot as of ${escapeHtml(p._asOf)} — search for live data</small>`);
+  return lines.join('<br>');
 }
 
 function escapeHtml(s) {
