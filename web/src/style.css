@@ -5840,3 +5840,56 @@ body.phone .maplibregl-ctrl-group button {
   width: 40px;
   height: 40px;
 }
+
+/* ---------- Wpg/MB sidebar parity (2026-09-24) ----------
+   Tab strip: the Manitoba look. `.controls button` was giving both tabs
+   14px text, content-sized widths and a dark outline on the INACTIVE tab;
+   scoped through .sidebar-tabs to outrank it. */
+.sidebar-tabs .sidebar-tab {
+  flex: 1 1 0;
+  min-height: 34px;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.sidebar-tabs .sidebar-tab:hover:not([aria-selected="true"]) {
+  color: var(--ui-ink);
+  background: rgba(255, 255, 255, 0.72);
+  border-color: transparent;
+}
+.sidebar-tabs .sidebar-tab[aria-selected="true"] {
+  border-color: var(--ui-brand);
+}
+
+/* Advanced searches active-criteria badge (renderAdvancedFilterBadge in
+   main.js) — same chip as Manitoba's. The summary is a flex row (chevron,
+   title, badge); wrapping lets a long criteria list drop to its own line
+   instead of squeezing the title. Normal case: the summary is uppercased. */
+.sidebar details.additional-searches > summary { flex-wrap: wrap; }
+.sidebar details.additional-searches > summary .advanced-filters-title { flex: 0 0 auto; }
+.sidebar details.additional-searches > summary .advanced-filters-badge {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 1px 7px;
+  border: 1px solid var(--ui-accent, #2f6f6a);
+  border-radius: 999px;
+  background: var(--ui-accent-soft, #e4f1ef);
+  color: var(--ui-accent-dark, #1f5752);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+}
+.sidebar details.additional-searches > summary .advanced-filters-badge[hidden] {
+  display: none;
+}
+
+/* Address row: with one info icon per row (above) the From / To boxes no
+   longer lose ~27px each to their own icons. 64px still fits five digits
+   (they were rendering at 49px before), and Street Name gets the rest. */
+.sidebar .address-row .address-from-field,
+.sidebar .address-row .address-to-field {
+  flex: 0 0 64px;
+}

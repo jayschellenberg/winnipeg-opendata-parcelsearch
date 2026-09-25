@@ -248,13 +248,14 @@
           open upper bound.
         -->
         <div class="address-row">
+          <!-- One info icon per ROW, matching the Manitoba sidebar: the
+               row's three fields share the single combined .tip on Street
+               Name, so infoIcon.js renders one ⓘ at the end of the line. -->
           <span class="field address-from-field">
             <input id="address-from" type="text" placeholder="From #" autocomplete="off" />
-            <span class="tip">Street number lower bound (inclusive). Leave blank for no lower limit.</span>
           </span>
           <span class="field address-to-field">
             <input id="address-to" type="text" placeholder="To #" autocomplete="off" />
-            <span class="tip">Street number upper bound (inclusive). Tab here after From and it auto-fills with the same value (highlighted) for an exact-number search; overwrite for a range or clear it for an open upper bound.</span>
           </span>
           <span class="field address-street-field">
             <input
@@ -263,7 +264,7 @@
               role="combobox" aria-expanded="false" aria-autocomplete="list"
               aria-controls="address-street-suggest"
             />
-            <span class="tip">Substring match against street_name. e.g. "HARGRAVE", "MAIN", "ROUGE BAY". The street type (ST / AVE / DR) lives in a separate column and isn't matched here — but type two letters and pick from the list to search one street exactly, including the ones whose name ENDS in a type word (ELM PARK, PARK EAST, MIDDLE GATE).</span>
+            <span class="tip">Civic-address search. From # and To # are the inclusive street-number bounds — leave either blank for an open end. Tab into To # after From # and it auto-fills with the same value (highlighted) for an exact-number search; overwrite it for a range or clear it for no upper limit. Street Name is a substring match against street_name, e.g. "HARGRAVE", "MAIN", "ROUGE BAY". The street type (ST / AVE / DR) lives in a separate column and isn't matched here — but type two letters and pick from the list to search one street exactly, including the ones whose name ENDS in a type word (ELM PARK, PARK EAST, MIDDLE GATE).</span>
           </span>
           <!-- Predictive street-name list. Filled on first focus from the
                assessment roll's own street_name vocabulary, so every
@@ -297,7 +298,16 @@
         </span>
 
         <details class="additional-searches">
-          <summary>Additional Searches</summary>
+          <!-- Named and badged to match the Manitoba sidebar. The badge
+               lists whichever criteria in here are set; it lives inside
+               <summary> so it stays visible when the group is collapsed —
+               the case where a forgotten filter silently narrows a
+               search. Filled by renderAdvancedFilterBadge() in main.js. -->
+          <summary><span class="advanced-filters-title">Advanced searches</span><span
+            class="advanced-filters-badge"
+            id="advanced-filters-badge"
+            hidden
+          ></span></summary>
           <span class="field">
             <input id="lot"     type="text" placeholder="Lot (or River Lot or Section)" />
             <span class="tip">Lot (or River Lot or Section)</span>
@@ -321,15 +331,14 @@
           <div class="du-row">
             <span class="field du-mode-field">
               <select id="du-mode">
-                <option value="">Any DU</option>
+                <option value="">Any dwelling units</option>
                 <option value="zero">0 DU only</option>
                 <option value="min">Min DU</option>
               </select>
-              <span class="tip">Dwelling units filter (Any · 0 · Min N)</span>
             </span>
             <span class="field du-min-field">
               <input id="du-min" type="number" min="1" step="1" placeholder="#" disabled />
-              <span class="tip">Minimum dwelling units (when 'Min DU')</span>
+              <span class="tip">Dwelling units (DU) filter. "0 DU only" surfaces vacant or non-residential parcels; "Min DU" pairs with the # box for parcels with at least that many units.</span>
             </span>
           </div>
           <!-- Water influence. Two boxes, not one Yes/No: a lot
@@ -987,7 +996,7 @@
           <!-- The tune-later filters live behind a disclosure so the
                panel leads with the pickers every comp search starts from
                (date, use, class, zoning). Same pattern as the property
-               tab's Additional Searches. -->
+               tab's Advanced searches. -->
           <details class="more-filters sales-filters">
             <!-- The badge is a WARNING that names every control in here
                  that is set. It lives inside <summary> so it shows when

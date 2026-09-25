@@ -981,6 +981,62 @@ function placeNumberingRow(tab) {
 onTabChange(placeNumberingRow);
 placeNumberingRow(getActiveTab());
 
+// ---------- Advanced searches badge ----------
+// The Manitoba app's pattern: a chip in the collapsed group's <summary>
+// naming every criterion set inside it, so a forgotten Zoning or DU filter
+// can't quietly narrow a search while the group is closed.
+
+/** One entry per active advanced criterion: short label + full detail. */
+function advancedFilterChips() {
+  const chips = [];
+  const text = [
+    [$lot, 'Lot'], [$block, 'Block'], [$plan, 'Plan'],
+    [$desc, 'Description'], [$zoning, 'Zoning'],
+  ];
+  for (const [el, label] of text) {
+    const v = el?.value.trim() || '';
+    if (v) chips.push({ label, detail: `${label}: ${v}` });
+  }
+  const duMode = $duMode?.value || '';
+  if (duMode === 'zero') {
+    chips.push({ label: '0 DU', detail: 'Dwelling units: 0 only (vacant / non-residential)' });
+  } else if (duMode === 'min') {
+    const n = parseInt($duMin?.value ?? '', 10);
+    chips.push(Number.isFinite(n) && n > 0
+      ? { label: `DU ≥ ${n}`, detail: `Dwelling units: at least ${n}` }
+      : { label: 'Min DU', detail: 'Dwelling units: minimum set, no count entered yet' });
+  }
+  const front = !!$waterFront?.checked;
+  const near = !!$waterNear?.checked;
+  if (front && near) chips.push({ label: 'Water', detail: 'Water proximity: waterfront or near water' });
+  else if (front) chips.push({ label: 'Waterfront', detail: 'Water proximity: waterfront only' });
+  else if (near) chips.push({ label: 'Near water', detail: 'Water proximity: near water only' });
+  return chips;
+}
+
+function renderAdvancedFilterBadge() {
+  const badge = document.getElementById('advanced-filters-badge');
+  if (!badge) return;
+  const chips = advancedFilterChips();
+  if (chips.length === 0) {
+    badge.hidden = true;
+    badge.textContent = '';
+    badge.removeAttribute('title');
+    return;
+  }
+  badge.hidden = false;
+  badge.textContent = chips.map((c) => c.label).join(' · ');
+  badge.title = `${chips.length} advanced criteri${chips.length === 1 ? 'on' : 'a'} set — ${chips.map((c) => c.detail).join('; ')}`;
+}
+
+// Delegated so every control in the group is covered. `input` catches
+// typing; `change` catches the DU select / Min # and the water pill, whose
+// backing checkboxes fire a bubbling change when a segment is clicked.
+const $advancedFiltersGroup = document.querySelector('details.additional-searches');
+$advancedFiltersGroup?.addEventListener('input', renderAdvancedFilterBadge);
+$advancedFiltersGroup?.addEventListener('change', renderAdvancedFilterBadge);
+renderAdvancedFilterBadge();
+
 // Wire the Sales Analysis tab — dropzone, subject roll, sentinel
 // filter. The CSV is parsed entirely client-side; no upload.
 wireSalesTab();
@@ -1528,6 +1584,9 @@ function applyImportedRollList(rolls, stats = null) {
   if ($duMode) $duMode.value = '';
   if ($waterFront) $waterFront.checked = false;
   if ($waterNear) $waterNear.checked = false;
+  // Set without events, so repaint the water pill and the badge by hand.
+  pillPainters.water?.();
+  renderAdvancedFilterBadge();
   $roll.value = rolls.join(',');
   // The chip module holds its list as internal state seeded at init, so
   // setting .value alone would move the search while the chips on screen
