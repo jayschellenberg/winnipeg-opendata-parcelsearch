@@ -303,7 +303,7 @@
                <summary> so it stays visible when the group is collapsed —
                the case where a forgotten filter silently narrows a
                search. Filled by renderAdvancedFilterBadge() in main.js. -->
-          <summary><span class="advanced-filters-title">Advanced searches</span><span
+          <summary><span class="advanced-filters-title">Additional Searches</span><span
             class="advanced-filters-badge"
             id="advanced-filters-badge"
             hidden
@@ -363,49 +363,36 @@
               <button type="button" class="mode-btn" data-mode="any" aria-pressed="false" title="Both — waterfront or near water.">Both</button>
             </div>
           </div>
+          <!-- Import list + Sample CSV, at the foot of Additional Searches
+               like the Manitoba sidebar. Import list resolves a pasted block
+               of addresses / rolls to parcels and loads them as a Roll #
+               search, so the result is an ordinary search — same grid, same
+               map, same Entry-order numbering. Wiring is by #id in main.js. -->
+          <div class="advanced-import-row">
+            <button
+              id="parcel-list-trigger"
+              type="button"
+              class="secondary"
+              title="Paste or upload a list of addresses (or roll numbers) and map them all at once. Extra columns are ignored and every row is shown for review before anything is mapped."
+            >📋 Import list…</button>
+            <a
+              class="sample-csv-link"
+              href="sample-parcel-list.csv"
+              download="sample-parcel-list.csv"
+              title="Download a sample CSV. Nine rows covering every shape Import list accepts — addresses with and without the city, a postal code, roll numbers with and without their leading zero, a side-door address, and punctuation-heavy and French street names. Every row resolves."
+            >Sample CSV</a>
+          </div>
         </details>
 
         <div class="action-row">
           <button id="search" type="button">🔍 Search</button>
           <button id="clear"  type="button" class="danger">Clear</button>
         </div>
-        <!-- Import list, and the numbering pill beside it. Import list
-             resolves a pasted block of addresses / rolls to parcels and
-             loads them as a Roll # search, so the result set is an
-             ordinary search — same grid, same map, same Entry-order
-             numbering — rather than a mode of its own.
-
-             The two share a row at half width each (the Manitoba
-             pattern): numbering annotates a result set, so it belongs
-             beside the control that produces one. #numbering-row is
-             MOVED here by main.js (placeNumberingRow) rather than
-             duplicated per tab, and it stays hidden until there is more
-             than one parcel to number — at which point the import
-             button gives up half the row. Until then the button keeps
-             the full width rather than leaving a gap. -->
-        <div class="action-row action-row-import">
-          <button
-            id="parcel-list-trigger"
-            type="button"
-            class="secondary"
-            title="Paste or upload a list of addresses (or roll numbers) and map them all at once. Extra columns are ignored and every row is shown for review before anything is mapped."
-          >📋 Import list…</button>
-          <div class="numbering-slot" data-numbering-slot></div>
-        </div>
-        <!-- Sample list template. Its own thin line rather than a third
-             item in the row above: that row is sized so the button and
-             the numbering pill fit exactly at a narrow sidebar, and a
-             link squeezed in beside them would start truncating one of
-             the two. Right-aligned so it reads as a footnote to the
-             Import list button rather than a control of its own. -->
-        <div class="sample-csv-row">
-          <a
-            class="sample-csv-link"
-            href="sample-parcel-list.csv"
-            download="sample-parcel-list.csv"
-            title="Download a sample CSV. Nine rows covering every shape Import list accepts — addresses with and without the city, a postal code, roll numbers with and without their leading zero, a side-door address, and punctuation-heavy and French street names. Every row resolves."
-          >Sample CSV</a>
-        </div>
+        <!-- Numbering / Locator pills sit on their own line under Search /
+             Clear (the Manitoba layout). #numbering-row is MOVED here by
+             main.js (placeNumberingRow) rather than duplicated per tab, and
+             the slot collapses while the row is hidden. -->
+        <div class="numbering-slot numbering-slot-wide" data-numbering-slot></div>
         <!-- Number parcels + Entry order. ONE row that main.js MOVES under
              whichever tab is active (placeNumberingRow) rather than a copy
              in each panel, so there is a single checkbox state and
@@ -996,7 +983,7 @@
           <!-- The tune-later filters live behind a disclosure so the
                panel leads with the pickers every comp search starts from
                (date, use, class, zoning). Same pattern as the property
-               tab's Advanced searches. -->
+               tab's Additional Searches. -->
           <details class="more-filters sales-filters">
             <!-- The badge is a WARNING that names every control in here
                  that is set. It lives inside <summary> so it shows when
@@ -1132,7 +1119,13 @@
           <button id="survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show / hide the blue survey-lot (legal lot) polygons of the current search results. Dark = shown.">Survey Parcel Results</button>
           <button id="assess-toggle" type="button" class="secondary active" data-layer-set="parcel" aria-pressed="true" title="Show / hide the red assessment-parcel polygons of the current search results. Dark = shown. Not the citywide grey wash — that is All Assessment Parcels, which highlights the same results in yellow.">Assessment Results</button>
 
-          <h3 class="overlay-group-title">Planning</h3>
+          <!-- Planning is collapsed by default like Reference and Historical
+               below. Closed <details> content stays in the DOM, so main.js
+               still binds every button and the Zoning Changes pill at init,
+               and URL-restored layers still switch on. -->
+          <details class="overlay-group-collapse" id="planning-group">
+            <summary class="overlay-group-title overlay-group-summary">Planning</summary>
+            <div class="overlay-group-body">
           <button id="zoning-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="City-wide zoning by-law districts (cached 7 days). Click to cycle three states: 1st click = coloured shading (fill + outlines + zone-code labels); 2nd click = labels only (zone codes + district outlines, no colour fill, so it doesn't obscure the map); 3rd click = off. The colour legend shows in the shaded state.">Zoning</button>
           <button id="secondary-plans-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Secondary Plans</button>
           <button id="infill-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Infill Area</button>
@@ -1162,6 +1155,8 @@
               <ul id="zoning-changes-unresolved"></ul>
             </details>
           </div>
+            </div>
+          </details>
 
           <!-- Reference is collapsed by default, same reasoning as
                Historical below: seven overlays that most sessions never

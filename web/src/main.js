@@ -981,7 +981,7 @@ function placeNumberingRow(tab) {
 onTabChange(placeNumberingRow);
 placeNumberingRow(getActiveTab());
 
-// ---------- Advanced searches badge ----------
+// ---------- Additional Searches badge ----------
 // The Manitoba app's pattern: a chip in the collapsed group's <summary>
 // naming every criterion set inside it, so a forgotten Zoning or DU filter
 // can't quietly narrow a search while the group is closed.
@@ -1026,7 +1026,7 @@ function renderAdvancedFilterBadge() {
   }
   badge.hidden = false;
   badge.textContent = chips.map((c) => c.label).join(' · ');
-  badge.title = `${chips.length} advanced criteri${chips.length === 1 ? 'on' : 'a'} set — ${chips.map((c) => c.detail).join('; ')}`;
+  badge.title = `${chips.length} additional search criteri${chips.length === 1 ? 'on' : 'a'} set — ${chips.map((c) => c.detail).join('; ')}`;
 }
 
 // Delegated so every control in the group is covered. `input` catches
