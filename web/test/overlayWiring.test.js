@@ -83,5 +83,19 @@ test('every overlay handler main.js names is a function that exists', () => {
   assert.deepEqual(missing, [], `handlers referenced but never defined: ${missing.join(', ')}`);
 });
 
+test('toggle state the URL restore reaches is declared before applyUrlState runs', () => {
+  // applyUrlState() clicks overlay toggles during init. A module-level const
+  // a toggle handler reads, declared further down the file, is still in its
+  // temporal dead zone at that moment — and in an async handler the throw is
+  // a silently rejected promise, so a shared ?sp=1 link just did nothing.
+  const initCall = main.search(/^applyUrlState\(decodeState\(/m);
+  assert.ok(initCall > 0, 'could not find the init-time applyUrlState() call');
+  for (const name of ['policyOverlayState', 'POLICY_OVERLAY_CONFIG']) {
+    const decl = main.search(new RegExp(`^const ${name}\\s*=`, 'm'));
+    assert.ok(decl >= 0, `could not find const ${name}`);
+    assert.ok(decl < initCall, `const ${name} is declared after applyUrlState() runs at init`);
+  }
+});
+
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

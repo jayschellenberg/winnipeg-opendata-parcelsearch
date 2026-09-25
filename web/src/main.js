@@ -425,6 +425,61 @@ const policyOverlayState = {
   airport:        { enabled: false, loaded: false },
   mallsCorridors: { enabled: false, loaded: false },
 };
+
+/**
+ * Generic toggle for the OurWinnipeg policy-area overlays. Each is a
+ * small whole-citywide dataset fetched once and cached for the
+ * session — see fetchAllAndCache in soda.js — so toggling on/off after
+ * the first hit is instant.
+ *
+ * `name` is one of 'secondaryPlans' / 'infill' / 'airport' / 'mallsCorridors'.
+ *
+ * Declared up here with policyOverlayState, not beside togglePolicyOverlay:
+ * applyUrlState() clicks these toggles at init, long before a mid-file
+ * const is initialized, and togglePolicyOverlay is async, so the TDZ throw
+ * became a silently rejected promise and ?sp=1 / ?if=1 / ?mc=1 did
+ * nothing. The button and legend lookups are arrow functions and the
+ * fetchers are imports, so nothing here is read before it exists.
+ */
+const POLICY_OVERLAY_CONFIG = {
+  secondaryPlans: {
+    btn:    () => $secondaryPlansToggle,
+    src:    'secondary-plans',
+    fetch:  fetchSecondaryPlans,
+    onLabel:  'Hide Secondary Plans',
+    offLabel: 'Secondary Plans',
+  },
+  infill: {
+    btn:    () => $infillToggle,
+    src:    'infill-guideline',
+    fetch:  fetchInfillGuidelineArea,
+    onLabel:  'Hide Infill Area',
+    offLabel: 'Infill Area',
+    // The only overlay of the three that needs a legend: the dataset
+    // (5guk-f7xw) publishes an `id` and nothing else -- no name, no
+    // description -- so its five polygons cannot be labelled from their
+    // own data the way secondary-plans are. Without this the green
+    // dashed outline is unexplained on screen and in any exported map.
+    legend: () => $infillLegend,
+  },
+  airport: {
+    btn:    () => $airportToggle,
+    src:    'airport-area',
+    fetch:  fetchAirportArea,
+    onLabel:  'Hide Airport Area',
+    offLabel: 'Airport Area',
+    // Same reason as infill: 3nva-2f66 publishes an `id` and nothing
+    // else, so one unlabelled polygon needs the legend to name it.
+    legend: () => $airportLegend,
+  },
+  mallsCorridors: {
+    btn:    () => $mallsCorridorsToggle,
+    src:    'malls-corridors',
+    fetch:  fetchMallsAndCorridors,
+    onLabel:  'Hide Malls/Corridors',
+    offLabel: 'Malls/Corridors',
+  },
+};
 let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
 let citywideSurveyEnabled = false;
@@ -2340,53 +2395,8 @@ async function refreshZoning() {
   buildZoningLegend(zoningCodesByCategory(zoningFc));
 }
 
-/**
- * Generic toggle for the OurWinnipeg policy-area overlays. Each is a
- * small whole-citywide dataset fetched once and cached for the
- * session — see fetchAllAndCache in soda.js — so toggling on/off after
- * the first hit is instant.
- *
- * `name` is one of 'secondaryPlans' / 'infill' / 'mallsCorridors'.
- */
-const POLICY_OVERLAY_CONFIG = {
-  secondaryPlans: {
-    btn:    () => $secondaryPlansToggle,
-    src:    'secondary-plans',
-    fetch:  fetchSecondaryPlans,
-    onLabel:  'Hide Secondary Plans',
-    offLabel: 'Secondary Plans',
-  },
-  infill: {
-    btn:    () => $infillToggle,
-    src:    'infill-guideline',
-    fetch:  fetchInfillGuidelineArea,
-    onLabel:  'Hide Infill Area',
-    offLabel: 'Infill Area',
-    // The only overlay of the three that needs a legend: the dataset
-    // (5guk-f7xw) publishes an `id` and nothing else -- no name, no
-    // description -- so its five polygons cannot be labelled from their
-    // own data the way secondary-plans are. Without this the green
-    // dashed outline is unexplained on screen and in any exported map.
-    legend: () => $infillLegend,
-  },
-  airport: {
-    btn:    () => $airportToggle,
-    src:    'airport-area',
-    fetch:  fetchAirportArea,
-    onLabel:  'Hide Airport Area',
-    offLabel: 'Airport Area',
-    // Same reason as infill: 3nva-2f66 publishes an `id` and nothing
-    // else, so one unlabelled polygon needs the legend to name it.
-    legend: () => $airportLegend,
-  },
-  mallsCorridors: {
-    btn:    () => $mallsCorridorsToggle,
-    src:    'malls-corridors',
-    fetch:  fetchMallsAndCorridors,
-    onLabel:  'Hide Malls/Corridors',
-    offLabel: 'Malls/Corridors',
-  },
-};
+// POLICY_OVERLAY_CONFIG is hoisted to the top of the module beside
+// policyOverlayState, for the same TDZ reason.
 
 // ---------- Parcel-edge dimensions toggle ----------
 // policyOverlayState + dimensionsEnabled hoisted to the top of the
