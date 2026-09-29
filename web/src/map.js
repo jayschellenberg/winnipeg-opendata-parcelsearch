@@ -2504,35 +2504,6 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       // by size-change band) and survey lots (dashed violet). Added here, after
       // the live layers, so they render on top.
       try {
-      // Historical zoning (whole-city, as-of the selected snapshot). Added FIRST
-      // so it sits UNDER the dashed historical parcel/survey lines. Same
-      // map_colour palette + styling as the live Zoning overlay.
-      map.addSource('historical-zoning', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({
-        id: 'historical-zoning-fill', type: 'fill', source: 'historical-zoning',
-        layout: { visibility: 'none' },
-        paint: {
-          'fill-color': ['match', ['get', 'map_colour'], ...ZONING_PALETTE, '#cccccc'],
-          'fill-opacity': 0.45,
-          'fill-outline-color': '#444',
-        },
-      });
-      map.addLayer({
-        id: 'historical-zoning-line', type: 'line', source: 'historical-zoning',
-        layout: { visibility: 'none' },
-        paint: { 'line-color': '#333', 'line-width': 0.6, 'line-opacity': 0.7 },
-      });
-      map.addLayer({
-        id: 'historical-zoning-label', type: 'symbol', source: 'historical-zoning',
-        layout: {
-          visibility: 'none',
-          'text-field': ['case', ['<=', ['length', ['coalesce', ['get', 'zoning'], '']], 5], ['get', 'zoning'], ''],
-          'text-font': ['Open Sans Semibold'], 'text-size': 22,
-          'text-allow-overlap': false, 'text-ignore-placement': false, 'symbol-placement': 'point',
-        },
-        paint: { 'text-color': '#1a1a1a', 'text-halo-color': '#ffffff', 'text-halo-width': 2.8 },
-      });
-
       // Zoning Changes (amber): every parcel with a known rezoning by-law or
       // a pending rezoning notice, citywide off the tile archive and again
       // on the search results, so the highlight survives either layer being
@@ -4283,9 +4254,16 @@ const HIST_SIZE_COLOR = ['match', ['get', '_sizeBand'],
   'major', '#dc2626', 'minor', '#ea580c', 'gone', '#6b7280', '#b45309'];
 
 const HIST_TILE_SOURCE = 'historical-tiles';
-const HIST_TILE_LAYERS = ['historical-parcels-fill', 'historical-parcels-line',
+const HIST_TILE_LAYERS = ['historical-zoning-fill', 'historical-zoning-line', 'historical-zoning-label',
+                          'historical-parcels-fill', 'historical-parcels-line',
                           'historical-survey-fill', 'historical-survey-line'];
 let historicalTilesUrlLoaded = null;
+// The archive floor is z11, but its z11 tiles are thinned to the 2 MB tile
+// budget (--drop-densest-as-needed), which drops about a quarter of the zoning
+// district pieces there. The overlay is meant to be read from z12
+// (HISTORICAL_MIN_ZOOM in main.js), so zoning starts there rather than
+// drawing a city with holes in it.
+const HIST_ZONING_MIN_ZOOM = 12;
 
 /** The layer the historical tile layers slot beneath: the hybrid-satellite
  *  reference rasters when present, else the neighbourhood lines that the
@@ -4307,6 +4285,38 @@ function historicalBeforeId(map) {
  * r/build_historical_tiles.R.
  */
 function addHistoricalTileLayers(map, beforeId) {
+  // Historical zoning (whole-city, as-of the snapshot) — source-layers
+  // `zoning` + `zoning-labels`, present only in snapshots that carry zoning.
+  // Added FIRST so it sits UNDER the dashed lots. Same map_colour palette and
+  // styling as the live Zoning overlay. Labels read the one-point-per-district
+  // layer: a symbol layer on the polygons would label once per tile spanned.
+  map.addLayer({
+    id: 'historical-zoning-fill', type: 'fill', source: HIST_TILE_SOURCE, 'source-layer': 'zoning',
+    minzoom: HIST_ZONING_MIN_ZOOM,
+    layout: { visibility: 'none' },
+    paint: {
+      'fill-color': ['match', ['get', 'map_colour'], ...ZONING_PALETTE, '#cccccc'],
+      'fill-opacity': 0.45,
+      'fill-outline-color': '#444',
+    },
+  }, beforeId);
+  map.addLayer({
+    id: 'historical-zoning-line', type: 'line', source: HIST_TILE_SOURCE, 'source-layer': 'zoning',
+    minzoom: HIST_ZONING_MIN_ZOOM,
+    layout: { visibility: 'none' },
+    paint: { 'line-color': '#333', 'line-width': 0.6, 'line-opacity': 0.7 },
+  }, beforeId);
+  map.addLayer({
+    id: 'historical-zoning-label', type: 'symbol', source: HIST_TILE_SOURCE, 'source-layer': 'zoning-labels',
+    minzoom: HIST_ZONING_MIN_ZOOM,
+    layout: {
+      visibility: 'none',
+      'text-field': ['case', ['<=', ['length', ['coalesce', ['get', 'zoning'], '']], 5], ['get', 'zoning'], ''],
+      'text-font': ['Open Sans Semibold'], 'text-size': 22,
+      'text-allow-overlap': false, 'text-ignore-placement': false,
+    },
+    paint: { 'text-color': '#1a1a1a', 'text-halo-color': '#ffffff', 'text-halo-width': 2.8 },
+  }, beforeId);
   map.addLayer({
     id: 'historical-parcels-fill', type: 'fill', source: HIST_TILE_SOURCE, 'source-layer': 'parcels',
     layout: { visibility: 'none' },
@@ -4380,14 +4390,6 @@ export function setHistoricalVisible(map, on) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
   }
   if (!on && histClickPopup?.isOpen()) histClickPopup.remove();
-}
-
-/** Push the whole-city historical zoning FC (or null to clear). Records `snap`
- *  so the zoning popup can state its as-of date. */
-export function setHistoricalZoningData(map, fc, snap) {
-  if (snap !== undefined) historicalSnap = snap;
-  const s = map.getSource('historical-zoning');
-  if (s) s.setData(fc || { type: 'FeatureCollection', features: [] });
 }
 
 export function setHistoricalZoningVisible(map, on) {
