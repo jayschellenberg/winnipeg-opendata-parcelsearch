@@ -18,7 +18,14 @@
 #
 # Layers (names are load-bearing — web/src/map.js reads them as
 # source-layers): `parcels` (assessment parcels) and `survey` (survey lots),
-# each only when the snapshot carries it.
+# plus `zoning` (the whole-city as-of zoning districts) and `zoning-labels`
+# (one point per district), each only when the snapshot carries it.
+#
+# Zoning used to be fetched by the browser as the snapshot's whole zoning.json
+# (18k polygons, ~12 MB) and parsed on the main thread. It is display only
+# (fill, outline, code label, click popup), so it rides in the same archive
+# now. The label points exist because a symbol layer on a Polygon labels once
+# PER TILE the district spans; a district is often several tiles wide at z14+.
 #
 # Output: web/public/wpg-hist-<snapshot>.pmtiles (gitignored) and the
 # committed sidecar web/public/historical-tiles-meta.json (built date, per-
@@ -66,12 +73,19 @@ HIST_TIPPECANOE_FLAGS <- c(
   "--simplification=2", "--full-detail=14",
   "--no-feature-limit", "--drop-densest-as-needed",
   "--maximum-tile-bytes=2000000", "--force",
+  # Keep every POINT at every zoom. Only zoning-labels has points, and without
+  # this tippecanoe's default drop rate (2.5x per zoom below the max) left 529
+  # of 18,425 district labels at z14 and 78 at z12 -- measured 2026-09-29.
+  # Polygons are unaffected by the drop rate.
+  "--drop-rate=1",
   "--quiet"   # no per-tile progress spew: a z18 run writes megabytes of it to the log
 )
 
 PARCEL_FIELDS <- c("roll_number", "full_address", "neighbourhood_area", "zoning",
                    "assessed_land_area", "total_assessed_value", "property_use_code")
 SURVEY_FIELDS <- c("survey_id", "plan", "lot", "block", "description")
+# What historicalZoningHtml and the historical-zoning-* layers read.
+ZONING_FIELDS <- c("zoning", "short_description", "long_description", "map_colour")
 
 SIZE_MINOR_PCT <- 5
 SIZE_MAJOR_PCT <- 25
@@ -214,6 +228,23 @@ build_snapshot <- function(snap, current) {
     s_path <- write_seq(survey, file.path(WORK_DIR, paste0(snap, "-survey.geojsonl")))
     layer_args <- c(layer_args, "-L", paste0("survey:", to_wsl_path(s_path)))
     layers$survey <- nrow(survey)
+  }
+  zoning_file <- file.path(snap_dir, "zoning.json")
+  if (file.exists(zoning_file)) {
+    zoning <- sf::st_read(zoning_file, quiet = TRUE)
+    for (k in ZONING_FIELDS) if (!k %in% names(zoning)) zoning[[k]] <- NA
+    zoning <- zoning[, ZONING_FIELDS]
+    sf::st_geometry(zoning) <- "geometry"
+    log("  zoning: ", nrow(zoning), " districts")
+    z_path <- write_seq(zoning, file.path(WORK_DIR, paste0(snap, "-zoning.geojsonl")))
+    # Point on surface, not centroid: an L-shaped or ring district's centroid
+    # can fall outside it. The labels only read the code.
+    labels <- suppressWarnings(sf::st_point_on_surface(zoning[, "zoning"]))
+    zl_path <- write_seq(labels, file.path(WORK_DIR, paste0(snap, "-zoning-labels.geojsonl")))
+    layer_args <- c(layer_args,
+                    "-L", paste0("zoning:", to_wsl_path(z_path)),
+                    "-L", paste0("zoning-labels:", to_wsl_path(zl_path)))
+    layers$zoning <- nrow(zoning)
   }
   if (!length(layer_args)) { log("  nothing to tile"); return(NULL) }
 

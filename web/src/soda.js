@@ -1501,11 +1501,30 @@ export function fetchHistoricalManifest(snap) {
   return fetchHistCached(`${snap}/manifest.json`, `wpg_hist_${HIST_VER}_man_${snap}`, HISTORICAL_LONG_TTL_MS);
 }
 
-/** A snapshot's whole-city zoning FeatureCollection (not sharded — ~18k
- *  districts in one file). Returns null if that snapshot has no zoning layer. */
-export function fetchHistoricalZoning(snap) {
-  return fetchHistCached(`${snap}/zoning.json`,
-    `wpg_hist_${HIST_VER}_${snap}_zoning`, HISTORICAL_LONG_TTL_MS);
+/** Historical zoning now streams from the snapshot's tile archive, but the
+ *  browser used to cache each snapshot's whole zoning.json (~12 MB) in
+ *  IndexedDB under `wpg_hist_<ver>_<snap>_zoning`, and nothing evicts cache
+ *  entries. Delete any such keys once per page load; fire-and-forget. */
+let _histZoningPurged = false;
+export async function purgeHistoricalZoningCache() {
+  if (_histZoningPurged) return;
+  _histZoningPurged = true;
+  try {
+    const db = await idbOpen();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      const req = tx.objectStore(IDB_STORE).openKeyCursor();
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (!cur) return;
+        const k = String(cur.key);
+        if (k.startsWith('wpg_hist_') && k.endsWith('_zoning')) tx.objectStore(IDB_STORE).delete(cur.key);
+        cur.continue();
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch { /* cache housekeeping only */ }
 }
 
 /** Lineage for one neighbourhood. dir = 'lineage' (assessment, by roll_number) |

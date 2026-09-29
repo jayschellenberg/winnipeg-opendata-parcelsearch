@@ -84,8 +84,8 @@ import {
   fetchNeighbourhoodClusters,
   fetchWinnipegStreets,
   fetchHistoricalIndex,
-  fetchHistoricalZoning,
   fetchHistoricalLineage,
+  purgeHistoricalZoningCache,
   fetchZoningAmendments,
   fetchRezoningNotices,
   searchAddresses,
@@ -103,7 +103,7 @@ import {
   setSubjectData, setSubjectRadiusData, setSalesPointsData,
   setParcelNumberData, setParcelNumbersVisible, setResultPin,
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
-  setHistoricalZoningData, setHistoricalZoningVisible,
+  setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
   setClusterSelection, wireClusterPicker,
 } from './map.js';
@@ -2933,7 +2933,6 @@ async function runAssessmentSearch(inputs) {
 let historicalActive = false;
 let historicalIndexCache = null;
 let historicalSnap = null;          // snapshot date currently driving the overlay
-let historicalZoningSnap = null;    // snapshot whose whole-city zoning is currently on the map (avoids re-pushing 18k polygons on a view-mode pan)
 // Monotonic load id: each load captures its own; a later load (a date change or
 // a pan/zoom mid-load) increments it, so a slower earlier response detects it's
 // been superseded and skips rendering — prevents an out-of-order overwrite where
@@ -3026,7 +3025,6 @@ async function toggleHistorical() {
 function deactivateHistorical() {
   historicalActive = false;
   historicalSnap = null;
-  historicalZoningSnap = null;   // re-fetch/re-set zoning on the next activation
   mapReady.then(() => { setHistoricalVisible(map, false); setHistoricalZoningVisible(map, false); });
   if ($historicalToggle) {
     $historicalToggle.classList.remove('active');
@@ -3040,20 +3038,19 @@ function deactivateHistorical() {
 // data or is zoomed too far out; a subsequent pan/zoom can reload).
 function clearHistoricalView() {
   setHistoricalVisible(map, false);
-  // Hide zoning too, but keep its data + historicalZoningSnap so panning back
-  // into a data-bearing view re-shows it without a refetch.
   setHistoricalZoningVisible(map, false);
   if ($historicalBanner) $historicalBanner.hidden = true;
 }
 
-// Point the overlay at snapshot `snap`: swap the tile source, then the
-// whole-city as-of zoning (still a keyed archive file), then the banner and
-// the count line. Called on toggle-on and on a date change. No Area, no zoom
+// Point the overlay at snapshot `snap`: swap the tile source (which carries
+// the lots and, when the snapshot has it, the as-of zoning), then the banner
+// and the count line. Called on toggle-on and on a date change. No Area, no zoom
 // guard, no per-view fetch: the archive streams whatever is in view, and the
 // size-change bands were baked in when it was built.
 async function loadHistorical(snap) {
   if (!$historicalToggle || !snap) return;
   const myId = ++historicalLoadId;
+  purgeHistoricalZoningCache();   // drop the pre-tiles zoning.json cache entry (once per page)
   $historicalToggle.disabled = true;
   $historicalToggle.textContent = 'Loading…';
   try {
@@ -3071,20 +3068,14 @@ async function loadHistorical(snap) {
     }
     setHistoricalTileSnapshot(map, url, snap);
     setHistoricalVisible(map, true);
-    // As-of zoning under the dashed lots (auto-on with the overlay). Only
-    // snapshots whose index entry declares a zoning layer have a zoning.json;
-    // re-fetched only when the snapshot changed.
-    const snapHasZoning = !!historicalIndexCache?.snapshots?.[snap]?.layers?.zoning;
-    if (historicalZoningSnap !== snap) {
-      const zoning = snapHasZoning ? await fetchHistoricalZoning(snap).catch(() => null) : null;
-      if (myId !== historicalLoadId) return;            // superseded during the zoning fetch
-      setHistoricalZoningData(map, zoning, snap);
-      historicalZoningSnap = snap;
-    }
-    setHistoricalZoningVisible(map, snapHasZoning);
-    updateHistoricalBanner(snap);
     const entry = meta?.snapshots?.[snap];
     const layers = entry?.layers || {};
+    // As-of zoning under the dashed lots (auto-on with the overlay). It rides
+    // in the same archive, so what decides it is the build record for THAT
+    // archive (historical-tiles-meta.json), not the archive index: an archive
+    // built before zoning was tiled has no zoning source-layer to show.
+    setHistoricalZoningVisible(map, !!layers.zoning);
+    updateHistoricalBanner(snap);
     const bits = [];
     if (layers.parcels) bits.push(`${Number(layers.parcels).toLocaleString('en-US')} assessment parcels`);
     if (layers.survey)  bits.push(`${Number(layers.survey).toLocaleString('en-US')} survey lots`);

@@ -265,7 +265,9 @@ process_survey <- function(f, out_dir) {
 # ~18k districts (vs 245k parcels), and a zoning district routinely spans several
 # neighbourhoods — representative-point binning would leave edge gaps, and
 # intersect-all binning would duplicate big districts across many shards. The
-# simplified whole file is ~12 MB (~3 MB gzipped), fine to fetch + render once.
+# simplified whole file is ~12 MB (~3 MB gzipped). The app no longer fetches it:
+# r/build_historical_tiles.R tiles it into the snapshot's PMTiles archive
+# (`zoning` + `zoning-labels` layers), so this file is that build's input.
 # Returns a layer_meta with neighbourhoods = NA (not sharded).
 process_zoning <- function(f, out_dir) {
   cat("  zoning  :", basename(f), "\n")
