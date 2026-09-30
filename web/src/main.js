@@ -177,6 +177,9 @@ const $addressFrom = document.getElementById('address-from');
 const $addressTo = document.getElementById('address-to');
 const $addressStreet = document.getElementById('address-street');
 const $zoning = document.getElementById('zoning');
+const $suite = document.getElementById('suite');
+const $condoUnit = document.getElementById('condo-unit');
+const $condoPlan = document.getElementById('condo-plan');
 const $duMode = document.getElementById('du-mode');
 const $waterFront = document.getElementById('water-front');
 const $waterNear  = document.getElementById('water-near');
@@ -923,7 +926,7 @@ $addressTo.addEventListener('focus', () => {
 // the accept must land before the search reads the field. Two listeners
 // on one element would have fired in registration order and searched the
 // half-typed text. createStreetSuggest calls runSearch itself, below.
-for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $zoning, $duMin]) {
+for (const el of [$lot, $block, $plan, $desc, $condoUnit, $condoPlan, $suite, $addressFrom, $addressTo, $zoning, $duMin]) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch();
   });
@@ -953,7 +956,7 @@ createMapAddressSearch({
   listId: 'map-address-list',
   fetchAddresses: (q) => suggestCivicAddresses(q),
   onPick: ({ from, to, street }) => {
-    for (const el of [$lot, $block, $plan, $desc]) el.value = '';
+    for (const el of [$lot, $block, $plan, $desc, $condoUnit, $condoPlan, $suite]) el.value = '';
     $addressFrom.value = from;
     $addressTo.value = to;
     $addressStreet.value = street;
@@ -1046,7 +1049,8 @@ function advancedFilterChips() {
   const chips = [];
   const text = [
     [$lot, 'Lot'], [$block, 'Block'], [$plan, 'Plan'],
-    [$desc, 'Description'], [$zoning, 'Zoning'],
+    [$desc, 'Description'], [$condoUnit, 'Condo Unit'],
+    [$condoPlan, 'Condo Plan'], [$suite, 'Suite'], [$zoning, 'Zoning'],
   ];
   for (const [el, label] of text) {
     const v = el?.value.trim() || '';
@@ -1286,6 +1290,9 @@ function captureUrlState() {
   if (v($addressTo))     s.addressTo     = v($addressTo);
   if (v($addressStreet)) s.addressStreet = v($addressStreet);
   if (v($zoning))        s.zoning        = v($zoning);
+  if (v($suite))         s.suite         = v($suite);
+  if (v($condoUnit))     s.condoUnit     = v($condoUnit);
+  if (v($condoPlan))     s.condoPlan     = v($condoPlan);
   if (v($duMode))        s.duMode        = v($duMode);
   const duMinNum = Number.parseInt(v($duMin), 10);
   if (Number.isFinite(duMinNum) && duMinNum >= 1) s.duMin = duMinNum;
@@ -1377,6 +1384,9 @@ function applyUrlState(state) {
   if ('addressTo' in state)     $addressTo.value     = state.addressTo;
   if ('addressStreet' in state) $addressStreet.value = state.addressStreet;
   if ('zoning' in state)        $zoning.value        = state.zoning;
+  if ('suite' in state)         $suite.value         = state.suite;
+  if ('condoUnit' in state)     $condoUnit.value     = state.condoUnit;
+  if ('condoPlan' in state)     $condoPlan.value     = state.condoPlan;
   if ('duMode' in state) {
     $duMode.value = state.duMode;
     $duMode.dispatchEvent(new Event('change'));
@@ -1483,7 +1493,7 @@ function queueUrlWrite() {
 
 // Hook every relevant input + button so each edit refreshes the URL.
 // Inputs fire 'input' on every keystroke; selects fire 'change'.
-for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $addressStreet, $zoning, $duMin]) {
+for (const el of [$lot, $block, $plan, $desc, $condoUnit, $condoPlan, $suite, $addressFrom, $addressTo, $addressStreet, $zoning, $duMin]) {
   if (el) el.addEventListener('input', queueUrlWrite);
 }
 if ($duMode) $duMode.addEventListener('change', queueUrlWrite);
@@ -1572,6 +1582,9 @@ async function runSearch() {
     addressTo:     $addressTo.value.trim(),
     addressStreet: $addressStreet.value.trim(),
     zoning: $zoning.value.trim(),
+    suite: $suite.value.trim(),
+    condoUnit: $condoUnit.value.trim(),
+    condoPlan: $condoPlan.value.trim(),
     // DU filter: 'zero' = vacant lots only, 'min' = ≥ N units, '' = no filter.
     // The minimum is captured separately so it persists across mode swaps.
     duMode: $duMode.value,
@@ -1584,11 +1597,12 @@ async function runSearch() {
     nearWater:  !!$waterNear?.checked,
   };
 
-  const anyLegal = inputs.lot || inputs.block || inputs.plan || inputs.desc;
+  const anyLegal = inputs.lot || inputs.block || inputs.plan || inputs.desc
+    || inputs.condoUnit || inputs.condoPlan;
   const anyDu = inputs.duMode === 'zero' || (inputs.duMode === 'min' && inputs.duMin > 0);
   const anyAddress = inputs.addressFrom || inputs.addressTo || inputs.addressStreet;
   const anyWater = inputs.waterfront || inputs.nearWater;
-  const anyAssess = inputs.roll || anyAddress || inputs.zoning || anyDu || anyWater;
+  const anyAssess = inputs.roll || anyAddress || inputs.zoning || inputs.suite || anyDu || anyWater;
 
   if (!anyLegal && !anyAssess) {
     setCount('Enter at least one search field.');
@@ -1633,7 +1647,7 @@ async function runSearch() {
  */
 function applyImportedRollList(rolls, stats = null) {
   if (!rolls?.length) return;
-  for (const el of [$lot, $block, $plan, $desc, $addressFrom, $addressTo, $addressStreet, $zoning]) {
+  for (const el of [$lot, $block, $plan, $desc, $condoUnit, $condoPlan, $suite, $addressFrom, $addressTo, $addressStreet, $zoning]) {
     if (el) el.value = '';
   }
   if ($duMode) $duMode.value = '';

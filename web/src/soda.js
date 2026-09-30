@@ -60,7 +60,7 @@ import { dedupeAddresses, groupAddressesByStreet } from './lib/addressFormat.js'
  *                          the waterfront filters. See lib/water.js.
  */
 const ASSESS_SELECT = [
-  'roll_number', 'full_address', 'zoning', 'property_use_code',
+  'roll_number', 'full_address', 'unit_number', 'zoning', 'property_use_code',
   'centroid_lat', 'centroid_lon', 'assessed_land_area', 'dwelling_units',
   'total_assessed_value', 'detail_url', 'current_assessment_year',
   'property_class_1', 'status_1', 'property_influences',
@@ -169,12 +169,16 @@ const TRAFFIC_STATION_SERIES_CACHE_KEY = 'trafficStationSeriesV1';
  * with SoQL `like '%x%'`. All provided fields are ANDed. Returns a
  * FeatureCollection (possibly empty).
  */
-export async function searchSurveyParcels({ plan, lot, block, desc }) {
+export async function searchSurveyParcels({ plan, lot, block, desc, condoUnit, condoPlan }) {
   const clauses = [];
   if (plan)  clauses.push(likeClause('plan', plan));
   if (lot)   clauses.push(likeClause('lot', lot));
   if (block) clauses.push(likeClause('block', block));
   if (desc)  clauses.push(likeClause('description', desc));
+  const cu = condoUnitClause(condoUnit);
+  if (cu)    clauses.push(cu);
+  const cp = condoPlanClause(condoPlan);
+  if (cp)    clauses.push(cp);
   if (clauses.length === 0) {
     return { type: 'FeatureCollection', features: [] };
   }
@@ -189,6 +193,31 @@ export async function searchSurveyParcels({ plan, lot, block, desc }) {
     allowTruncated: true,
     label: 'Survey parcel search',
   });
+}
+
+/**
+ * The roll for a condominium-unit survey parcel (lot "UNIT 38"), as a
+ * one-element array, or null when the parcel isn't a condo unit or no
+ * single roll fits.
+ *
+ * The centroid join can't do this. Every roll in a condo complex carries
+ * the complex's footprint and centroid, so the complex centroid is never
+ * inside one unit's small polygon, and the unit's centre is often outside
+ * the footprint. Measured on plan 43498 (1010 Wilkes): unit 38 matched no
+ * roll at all. What does line up is the number: the unit polygon touches
+ * the complex's 81 rolls (the complex plus 80 units) and exactly one of
+ * them is suite 38. When the numbering doesn't line up (no roll with that
+ * suite, or two), this returns null and the row falls back to the
+ * ordinary join rather than guessing.
+ */
+function condoUnitRoll(surveyFeature, assessFc) {
+  const m = /^UNIT\s+0*(\S+)$/i.exec(String(surveyFeature.properties?.lot ?? '').trim());
+  if (!m) return null;
+  const unit = m[1].toUpperCase();
+  const hits = assessFc.features.filter((a) =>
+    String(a.properties?.unit_number ?? '').trim().toUpperCase().replace(/^0+(?=.)/, '') === unit
+    && booleanIntersects(surveyFeature, a));
+  return hits.length === 1 ? hits : null;
 }
 
 /**
@@ -238,7 +267,8 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
   for (const s of surveyFc.features) {
     let matches;
     try {
-      matches = assessFc.features.filter((a) => parcelsOverlap(s, a));
+      matches = condoUnitRoll(s, assessFc)
+        ?? assessFc.features.filter((a) => parcelsOverlap(s, a));
     } catch (err) {
       console.warn('join error; falling back to unmatched row', err);
       matches = [];
@@ -268,7 +298,7 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
  * geometry suitable for rendering directly on the map.
  */
 export async function searchAssessmentParcels({
-  roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+  roll, addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
   waterfront, nearWater,
 }) {
   // A roll list longer than rollClause's IN cap is split here rather than
@@ -281,7 +311,7 @@ export async function searchAssessmentParcels({
   const rollTokens = splitRollTokens(roll);
   if (rollTokens.length > ROLL_IN_CAP) {
     const rest = {
-      addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+      addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
       waterfront, nearWater,
     };
     const chunks = [];
@@ -301,6 +331,8 @@ export async function searchAssessmentParcels({
   }
   const zc = zoningClause(zoning);
   if (zc)      clauses.push(zc);
+  const sc = suiteClause(suite);
+  if (sc)      clauses.push(sc);
   const duClause = buildDuClause(duMode, duMin);
   if (duClause) clauses.push(duClause);
   const wc = buildWaterClause({ waterfront, nearWater });
@@ -424,17 +456,17 @@ export async function searchAssessmentParcelsByRolls(rolls) {
  * stays consistent regardless of which path surfaced it.
  */
 export async function searchAssessmentParcelsExpanded({
-  roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+  roll, addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
   waterfront, nearWater,
 }) {
   const directPromise = searchAssessmentParcels({
-    roll, addressFrom, addressTo, addressStreet, zoning, duMode, duMin,
+    roll, addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
     waterfront, nearWater,
   });
   const xrefPromise = (addressFrom || addressTo || addressStreet)
     ? searchAddressesAndFindParcels(
         { addressFrom, addressTo, addressStreet },
-        { roll, zoning, duMode, duMin, waterfront, nearWater }
+        { roll, zoning, suite, duMode, duMin, waterfront, nearWater }
       )
     : Promise.resolve({ type: 'FeatureCollection', features: [] });
   const [directFc, xrefFc] = await Promise.all([directPromise, xrefPromise]);
@@ -980,6 +1012,8 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
   if (rc) extras.push(rc);
   const zc2 = zoningClause(extraFilters.zoning);
   if (zc2) extras.push(zc2);
+  const sc2 = suiteClause(extraFilters.suite);
+  if (sc2) extras.push(sc2);
   const duClause = buildDuClause(extraFilters.duMode, extraFilters.duMin);
   if (duClause) extras.push(duClause);
   // The water filter has to apply on THIS path too. Without it a
@@ -3417,6 +3451,56 @@ export function zoningClause(value) {
   const stripped = String(value).toUpperCase().replace(/-/g, '');
   if (!stripped) return null;
   return `upper(replace(zoning,'-','')) like '%${escapeSoql(stripped)}%'`;
+}
+
+/**
+ * Suite # clause against d4mq-wa44.unit_number. EXACT, not `like`: a
+ * partial "1" would match every suite with a 1 in it, and suite 101 is on
+ * nearly every apartment and condo building in the city. The column is
+ * inconsistent about leading zeros ("001-817 ST MARY'S ROAD" beside
+ * "1-480 CHALFONT ROAD") and this Socrata instance has no ltrim(), so the
+ * zero-padded spellings are listed out instead.
+ */
+export function suiteClause(value) {
+  const core = String(value ?? '').trim().toUpperCase().replace(/^#/, '').replace(/^0+(?=.)/, '');
+  if (!core) return null;
+  const spellings = [core, `0${core}`, `00${core}`, `000${core}`];
+  return `upper(unit_number) IN (${spellings.map((s) => `'${escapeSoql(s)}'`).join(',')})`;
+}
+
+/**
+ * Condo Unit clause against Survey Parcels (sjjm-nj47). A condominium
+ * unit is its own survey parcel with lot "UNIT 38" (sometimes "Unit 38")
+ * and description "Condominium"; the lot never carries a leading zero.
+ * Exact on the number for the same reason as suiteClause. The user may
+ * type "38" or "Unit 38".
+ */
+export function condoUnitClause(value) {
+  const core = String(value ?? '').trim().toUpperCase()
+    .replace(/^UNIT\s*/, '').replace(/^0+(?=.)/, '');
+  if (!core) return null;
+  return `upper(lot) = 'UNIT ${escapeSoql(core)}'`;
+}
+
+/**
+ * Condo plan clause against Survey Parcels. The open data has no
+ * condominium CORPORATION number (the WCC No.), so the Condo Corp box
+ * searches by condominium plan, which identifies the same building. A
+ * plan shows up two ways: each unit parcel carries it as `plan` beside
+ * description "Condominium", and the underlying survey lot says
+ * "Condominium Plan 43498" (sometimes after a prefix, "Part lot,
+ * Condominium Plan 46972"). Both are returned, so the search shows the
+ * units and the land under them. The description match is anchored on
+ * the number's end so plan 4 does not match plan 41894.
+ */
+export function condoPlanClause(value) {
+  const plan = String(value ?? '').trim().toUpperCase()
+    .replace(/^(CONDO(MINIUM)?\s*)?(PLAN|CORP(ORATION)?)?\s*(NO\.?\s*)?#?\s*/, '');
+  if (!plan) return null;
+  const p = escapeSoql(plan);
+  const desc = `upper(description) like '%CONDOMINIUM PLAN ${p}`;
+  return `((upper(description) = 'CONDOMINIUM' AND upper(plan) = '${p}')`
+    + ` OR ${desc}' OR ${desc},%' OR ${desc} %')`;
 }
 
 /**

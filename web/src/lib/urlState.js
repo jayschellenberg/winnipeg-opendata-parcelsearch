@@ -10,8 +10,9 @@
  * produces a clean URL.
  *
  * The schema covers 30 keys:
- *   - 11 search inputs (lot, block, plan, desc, roll, addressFrom,
- *     addressTo, addressStreet, zoning, duMode, duMin)
+ *   - 14 search inputs (lot, block, plan, desc, roll, addressFrom,
+ *     addressTo, addressStreet, zoning, suite, condoUnit, condoPlan,
+ *     duMode, duMin)
  *   - overlay toggles (survey, assess, allParcels, dwellingUnits, zoning,
  *     traffic, secondaryPlans, infill, mallsCorridors, transit,
  *     contam, dimensions, streets) — each a boolean
@@ -87,7 +88,7 @@ import { SORTABLE_COLUMN_KEYS } from './columnsRegistry.js';
 const SORT_COLS = SORTABLE_COLUMN_KEYS;
 
 export const SCHEMA = {
-  // --- Search inputs (11) ---
+  // --- Search inputs (14) ---
   lot:           { param: 'l',  validate: cleanString,            format: (v) => v },
   block:         { param: 'b',  validate: cleanString,            format: (v) => v },
   plan:          { param: 'p',  validate: cleanString,            format: (v) => v },
@@ -97,6 +98,9 @@ export const SCHEMA = {
   addressTo:     { param: 'at', validate: cleanString,            format: (v) => v },
   addressStreet: { param: 'as', validate: cleanString,            format: (v) => v },
   zoning:        { param: 'z',  validate: cleanString,            format: (v) => v },
+  suite:         { param: 'su', validate: cleanString,            format: (v) => v },
+  condoUnit:     { param: 'cu', validate: cleanString,            format: (v) => v },
+  condoPlan:     { param: 'cp', validate: cleanString,            format: (v) => v },
   duMode:        { param: 'du', validate: oneOf(['zero', 'min']), format: (v) => v },
   duMin:         { param: 'dn', validate: cleanInt(1, 9999),      format: (v) => String(v) },
 

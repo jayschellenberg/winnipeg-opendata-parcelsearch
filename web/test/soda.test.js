@@ -12,12 +12,16 @@
 import assert from 'node:assert/strict';
 import {
   parcelsOverlap,
+  joinSurveyWithAssessment,
   mergeSurveyFeatures,
   rollClause,
   normalizeRoll,
   buildAddressClauses,
   normalizeStreetQuery,
   zoningClause,
+  suiteClause,
+  condoUnitClause,
+  condoPlanClause,
   isUsableCitywideFc,
 } from '../src/soda.js';
 
@@ -373,6 +377,69 @@ test('zoningClause — empty / hyphen-only input → null', () => {
   assert.equal(zoningClause(''), null);
   assert.equal(zoningClause(null), null);
   assert.equal(zoningClause('--'), null);
+});
+
+// ---------- condo unit join ----------
+
+// A condo unit's survey polygon sits at the edge of the complex footprint,
+// away from the complex centroid every unit roll shares (1010 Wilkes).
+function condoFixture() {
+  const roll = (n, unit) => square(0, 0, 10, {
+    roll_number: n, unit_number: unit, centroid_lat: 5, centroid_lon: 5,
+  });
+  return {
+    assessFc: { type: 'FeatureCollection', features: [
+      roll('complex', undefined), roll('r1', '1'), roll('r38', '038'), roll('r39', '39'),
+    ] },
+    unit: (lot) => square(8, 9, 3, { id: 7, lot, plan: '43498', description: 'Condominium' }),
+  };
+}
+
+test('joinSurveyWithAssessment — condo UNIT lot picks the roll with that suite', () => {
+  const { assessFc, unit } = condoFixture();
+  const rows = joinSurveyWithAssessment({ type: 'FeatureCollection', features: [unit('UNIT 38')] }, assessFc);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].assess.properties.roll_number, 'r38');
+});
+
+test('joinSurveyWithAssessment — condo UNIT with no matching suite falls back to the centroid join', () => {
+  const { assessFc, unit } = condoFixture();
+  const rows = joinSurveyWithAssessment({ type: 'FeatureCollection', features: [unit('UNIT 77')] }, assessFc);
+  assert.equal(rows[0].assess, null);
+});
+
+// ---------- suite / condo clauses ----------
+
+test('suiteClause — exact, leading zeros listed out, case-insensitive', () => {
+  const want = "upper(unit_number) IN ('1','01','001','0001')";
+  assert.equal(suiteClause('1'), want);
+  assert.equal(suiteClause('001'), want);
+  assert.equal(suiteClause(' #1 '), want);
+  assert.equal(suiteClause('12a'), "upper(unit_number) IN ('12A','012A','0012A','00012A')");
+  assert.equal(suiteClause('0'), "upper(unit_number) IN ('0','00','000','0000')");
+  assert.equal(suiteClause(''), null);
+  assert.equal(suiteClause(null), null);
+});
+
+test('condoUnitClause — "38" and "Unit 038" both mean lot UNIT 38', () => {
+  assert.equal(condoUnitClause('38'), "upper(lot) = 'UNIT 38'");
+  assert.equal(condoUnitClause('Unit 038'), "upper(lot) = 'UNIT 38'");
+  assert.equal(condoUnitClause('unit'), null);
+  assert.equal(condoUnitClause(''), null);
+});
+
+test('condoPlanClause — unit rows by plan + lots described by the plan, anchored', () => {
+  const c = condoPlanClause('43498');
+  assert.ok(c.includes("upper(description) = 'CONDOMINIUM' AND upper(plan) = '43498'"));
+  assert.ok(c.includes("like '%CONDOMINIUM PLAN 43498'"));
+  assert.ok(c.includes("like '%CONDOMINIUM PLAN 43498,%'"));
+  // Anchored: no open-ended '%CONDOMINIUM PLAN 43498%' that would let
+  // plan 4 match plan 41894.
+  assert.ok(!c.includes("PLAN 43498%'"));
+  assert.equal(condoPlanClause('Condo Plan 43498'), c);
+  assert.equal(condoPlanClause('Condominium Plan No. 43498'), c);
+  assert.equal(condoPlanClause('Condo Corp #43498'), c);
+  assert.equal(condoPlanClause(''), null);
 });
 
 // A citywide overlay that comes back empty means a stale dataset id, not a

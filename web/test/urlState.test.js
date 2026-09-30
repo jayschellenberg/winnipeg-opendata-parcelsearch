@@ -68,6 +68,7 @@ test('encodeState — every search input', () => {
     lot: '21', block: 'A', plan: '129', desc: 'PCL G',
     roll: '12082288000', addressFrom: '100', addressTo: '200',
     addressStreet: 'HARGRAVE', zoning: 'R1', duMode: 'min', duMin: 3,
+    suite: '1203', condoUnit: '38', condoPlan: '43498',
   });
   const params = new URLSearchParams(out);
   assert.equal(params.get('l'),  '21');
@@ -81,14 +82,18 @@ test('encodeState — every search input', () => {
   assert.equal(params.get('z'),  'R1');
   assert.equal(params.get('du'), 'min');
   assert.equal(params.get('dn'), '3');
+  assert.equal(params.get('su'), '1203');
+  assert.equal(params.get('cu'), '38');
+  assert.equal(params.get('cp'), '43498');
 });
 
 test('decodeState — every search input round-trip', () => {
-  const result = decodeState('l=21&b=A&p=129&d=PCL+G&r=12082288000&af=100&at=200&as=HARGRAVE&z=R1&du=min&dn=3');
+  const result = decodeState('l=21&b=A&p=129&d=PCL+G&r=12082288000&af=100&at=200&as=HARGRAVE&z=R1&su=1203&cu=38&cp=43498&du=min&dn=3');
   assert.deepEqual(result, {
     lot: '21', block: 'A', plan: '129', desc: 'PCL G',
     roll: '12082288000', addressFrom: '100', addressTo: '200',
-    addressStreet: 'HARGRAVE', zoning: 'R1', duMode: 'min', duMin: 3,
+    addressStreet: 'HARGRAVE', zoning: 'R1', suite: '1203', condoUnit: '38',
+    condoPlan: '43498', duMode: 'min', duMin: 3,
   });
 });
 
@@ -318,8 +323,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 36 entries (11 inputs + 14 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 36);
+test('SCHEMA — has exactly 39 entries (14 inputs + 14 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 39);
 });
 
 test('the retired rise param is no longer honoured', () => {

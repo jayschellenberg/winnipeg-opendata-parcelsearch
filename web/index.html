@@ -308,26 +308,45 @@
             id="advanced-filters-badge"
             hidden
           ></span></summary>
-          <span class="field">
-            <input id="lot"     type="text" placeholder="Lot (or River Lot or Section)" />
-            <span class="tip">Lot (or River Lot or Section)</span>
-          </span>
-          <span class="field">
-            <input id="block"   type="text" placeholder="Block (or RL/OT or Twp)" />
-            <span class="tip">Block (or RL/OT or Twp)</span>
-          </span>
-          <span class="field">
-            <input id="plan"    type="text" placeholder="Plan (or Parish Code or Range)" />
-            <span class="tip">Plan (or Parish Code — BO, NO, JA, JO, VT, CH — or Range like 2E)</span>
-          </span>
-          <span class="field">
-            <input id="desc"    type="text" placeholder="Description (contains)" />
-            <span class="tip">Description (contains)</span>
-          </span>
-          <span class="field">
-            <input id="zoning"  type="text" placeholder="Zoning (contains)" />
-            <span class="tip">Zoning (contains)</span>
-          </span>
+          <!-- Two boxes per row. The placeholders are the short form so
+               they fit half the sidebar; each tip carries the full name.
+               Lot / Block / Plan / Description / Condo Unit / Condo Corp
+               search Survey Parcels; Suite # and Zoning search the
+               assessment roll. -->
+          <div class="additional-grid">
+            <span class="field">
+              <input id="lot"     type="text" placeholder="Lot / RL / Sec." aria-label="Lot (or River Lot or Section)" />
+              <span class="tip">Lot (or River Lot or Section)</span>
+            </span>
+            <span class="field">
+              <input id="block"   type="text" placeholder="Block / Twp" aria-label="Block (or RL/OT or Twp)" />
+              <span class="tip">Block (or RL/OT or Twp)</span>
+            </span>
+            <span class="field">
+              <input id="plan"    type="text" placeholder="Plan / Parish" aria-label="Plan (or Parish Code or Range)" />
+              <span class="tip">Plan (or Parish Code — BO, NO, JA, JO, VT, CH — or Range like 2E)</span>
+            </span>
+            <span class="field">
+              <input id="desc"    type="text" placeholder="Description" aria-label="Description (contains)" />
+              <span class="tip">Description (contains)</span>
+            </span>
+            <span class="field">
+              <input id="condo-unit" type="text" placeholder="Condo Unit" aria-label="Condo Unit" autocomplete="off" />
+              <span class="tip">Condominium unit number, exact — "38" or "Unit 38". Searches the survey parcel the Land Titles Office registered for the unit, so it finds bare-land and townhouse condos whose units are mapped separately; units inside an apartment-style building usually aren't. Pair it with Condo Corp to pick one unit out of one building.</span>
+            </span>
+            <span class="field">
+              <input id="condo-plan" type="text" placeholder="Condo Corp" aria-label="Condo Corp (condominium plan number)" autocomplete="off" />
+              <span class="tip">Condominium plan number, exact — e.g. 43498. The City's open data has no condominium corporation (WCC) number, so a condo is found by its registered condominium plan instead. Returns the units on that plan plus the survey lot underneath it.</span>
+            </span>
+            <span class="field">
+              <input id="suite"   type="text" placeholder="Suite #" aria-label="Suite number" autocomplete="off" />
+              <span class="tip">Suite / unit number on the assessment roll, exact — the "1203" in "1203-50 Main St". Leading zeros don't matter (1 matches 001). Covers condo suites and apartment rolls; combine with an address to find one suite in one building.</span>
+            </span>
+            <span class="field">
+              <input id="zoning"  type="text" placeholder="Zoning" aria-label="Zoning (contains)" />
+              <span class="tip">Zoning (contains)</span>
+            </span>
+          </div>
           <div class="du-row">
             <span class="field du-mode-field">
               <select id="du-mode">

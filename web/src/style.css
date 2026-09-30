@@ -346,6 +346,22 @@ body {
   gap: 6px;
 }
 
+/* Additional Searches text boxes, two per row. minmax(0, 1fr) rather than
+   1fr so a long value can't widen its column past half. */
+.sidebar .additional-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+
+.sidebar .additional-grid > .field { min-width: 0; }
+
+.sidebar .additional-grid input { padding-left: 8px; padding-right: 6px; }
+
+/* A right-column tip anchored at the field's left edge would run up to
+   320px past the sidebar; hang it off the right edge instead. */
+.sidebar .additional-grid > .field:nth-child(even) > .tip { left: auto; right: 0; }
+
 .sidebar .du-row .du-mode-field { flex: 1 1 auto; min-width: 0; }
 .sidebar .du-row .du-min-field  { flex: 0 0 64px; min-width: 0; }
 
