@@ -5621,6 +5621,7 @@ async function runSalesAnalysis() {
       liveUseCode: p._noLiveMatch ? null : p.property_use_code,
       buildVerdict: p._buildVerdict,
       demoVerdict: p._demoVerdict,
+      manual: !!p._pucOverride,
     });
   }
 

@@ -74,6 +74,11 @@ export const SALES_HEADER_ALIASES = {
   // means "not matched yet" — the N1 filter reads that as the queue of
   // sales still to be entered into N1.
   'N1 ID':              ['n1 id', 'n1id', 'n1'],
+  // Jason's manual use-code corrections, stamped by the same offline step
+  // (mao-scrape config/wpg_puc_overrides.csv). Par Use Code already holds
+  // the corrected code; these carry SABRE's original and the reason.
+  'Par Use Code (SABRE)': ['par use code sabre', 'sabre use code'],
+  'PUC Override':         ['puc override', 'use code override'],
 };
 
 /**

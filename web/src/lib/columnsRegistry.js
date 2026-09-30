@@ -283,6 +283,15 @@ export const COLUMNS = [
       const cell = badgeTd(a._saleUseCode || null, pucsBadgeClass(a._salePropertyType));
       const name = pucsName(a._saleUseCode);
       if (name) cell.title = `${String(a._saleUseCode).toUpperCase()} — ${name}`;
+      // A manual correction reads as one at a glance, and the tooltip says
+      // what SABRE had and why it was changed.
+      if (a._pucOverride) {
+        const badge = cell.firstElementChild || cell;
+        badge.textContent += '*';
+        cell.title = `${cell.title || String(a._saleUseCode).toUpperCase()}
+`
+          + `Overridden — SABRE had ${a._saleUseCodeSabre || '(blank)'}: ${a._pucOverride}`;
+      }
       return cell;
     },
     csv: { header: 'PUCS', extract: (a) => a._saleUseCode } },

@@ -222,6 +222,16 @@ test('judgement — RESGC Residential Group Care is Special Purpose, not Multi-F
 
 // --- saleCategory: the roll's code after the permit record has its say -
 
+test('saleCategory — a manual override is final', () => {
+  // Jason's correction (PUC Override) beats the permit instruments: a
+  // teardown verdict must not pull an overridden condo sale back to Land.
+  assert.equal(saleCategory({ saleUseCode: 'CNRES', demoVerdict: 'teardown', manual: true }), 'Condominium');
+  assert.equal(saleCategory({ saleUseCode: 'CNRES', demoVerdict: 'teardown' }), 'Land');
+  assert.equal(saleCategory({
+    saleUseCode: 'VRES1', liveUseCode: 'RESSD', buildVerdict: 'already-built', manual: true,
+  }), 'Land');
+});
+
 test('saleCategory — a plain vacant sale stays Land', () => {
   // No permit evidence means nothing contradicts the assessor.
   assert.equal(saleCategory({ saleUseCode: 'VRES1' }), 'Land');

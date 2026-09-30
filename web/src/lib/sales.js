@@ -360,6 +360,12 @@ export function dedupAndGroupSales(rows) {
           yearBuilt: years.length ? years.join(', ') : null,
           yearBuiltNumeric: years.length ? years[0] : null,
           useCode: r['Par Use Code'] || null,
+          // Jason's manual correction of SABRE's code, stamped offline by
+          // mao-scrape/scripts/wpg_puc_overrides.mjs: useCode above is
+          // already the corrected code, these keep SABRE's original and
+          // the reason. Null on every sale nobody has overridden.
+          useCodeSabre: String(r['Par Use Code (SABRE)'] ?? '').trim() || null,
+          pucOverride: String(r['PUC Override'] ?? '').trim() || null,
           propertyType: r['Property Type'] || null,
           propertySubType: r['Property Sub Type'] || null,
           zoning: r['Zoning'] || null,
@@ -403,6 +409,8 @@ export function dedupAndGroupSales(rows) {
         // row above, so both year fields were final before this branch
         // ever ran.
         if (!existing.useCode && r['Par Use Code']) existing.useCode = r['Par Use Code'];
+        if (!existing.useCodeSabre && r['Par Use Code (SABRE)']) existing.useCodeSabre = String(r['Par Use Code (SABRE)']).trim();
+        if (!existing.pucOverride && r['PUC Override']) existing.pucOverride = String(r['PUC Override']).trim();
         if (!existing.zoning && r['Zoning']) existing.zoning = r['Zoning'];
         // The crosswalk stamps its ID on specific rows; when component rows
         // merge, the surviving record must not lose the ID just because an
@@ -573,6 +581,8 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     p._saleKey = saleKey(sale.roll, sale.instrument);
     p._saleGroupSize = group.length;
     p._saleUseCode = sale.useCode;
+    p._saleUseCodeSabre = sale.useCodeSabre || null;
+    p._pucOverride = sale.pucOverride || null;
     p._salePropertyType = sale.propertyType;
     p._saleLivingArea = sale.livingArea > 0 ? sale.livingArea : null;
     // Both halves of Year Built. The display string lists every section

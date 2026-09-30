@@ -443,6 +443,8 @@ export function pucsCategory(value) {
  * @param {string} [o.liveUseCode] property_use_code on the parcel today
  * @param {string} [o.buildVerdict] 'already-built' | 'land-then-built' | null
  * @param {string} [o.demoVerdict]  'teardown' | 'confirms-vacant' | null
+ * @param {boolean} [o.manual]      the code is Jason's own correction (the
+ *   `PUC Override` column): final, so no permit verdict re-files it
  * @returns {string|null} category, or null when the code is unknown
  */
 export function saleCategory(input) {
@@ -450,8 +452,12 @@ export function saleCategory(input) {
   // actually looks like coming out of JSON.parse or an IndexedDB
   // record, and one null row throwing here would abort the grid
   // render mid-loop and blank the table.
-  const { saleUseCode, liveUseCode, buildVerdict, demoVerdict } = input || {};
+  const { saleUseCode, liveUseCode, buildVerdict, demoVerdict, manual } = input || {};
   const base = pucsCategory(saleUseCode);
+  // A human looked at this sale and set its code. The permit instruments
+  // are inferences about the same question, and an inference does not
+  // overrule the person who checked (DESIGN-SALE-RECLASS.md §2, MB twin).
+  if (manual) return base;
   if (buildVerdict === 'already-built') {
     const live = pucsCategory(liveUseCode);
     if (live && live !== 'Land') return live;

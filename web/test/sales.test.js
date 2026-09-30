@@ -55,6 +55,17 @@ test('dedupAndGroupSales — one record per (roll, instrument); rolls are 11-dig
   assert.equal(out.sales[0].saleDate, '2024-03-01');
 });
 
+test('dedupAndGroupSales — carries a manual use-code override and SABRE’s original', () => {
+  const out = dedupAndGroupSales([row({
+    'Par Use Code': 'CNRES', 'Par Use Code (SABRE)': 'CNVAC', 'PUC Override': 'roll lagged',
+  })]);
+  assert.equal(out.sales[0].useCode, 'CNRES');
+  assert.equal(out.sales[0].useCodeSabre, 'CNVAC');
+  assert.equal(out.sales[0].pucOverride, 'roll lagged');
+  const plain = dedupAndGroupSales([row({ 'Par Use Code (SABRE)': '', 'PUC Override': '' })]);
+  assert.equal(plain.sales[0].pucOverride, null);
+});
+
 test('dedupAndGroupSales — multi-building rows sum living area and list every section year', () => {
   const out = dedupAndGroupSales([
     row({ 'Living Area': '1200', 'Year Built': '2012' }),
