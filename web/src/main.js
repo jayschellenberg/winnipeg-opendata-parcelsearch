@@ -1048,9 +1048,10 @@ placeNumberingRow(getActiveTab());
 function advancedFilterChips() {
   const chips = [];
   const text = [
+    [$suite, 'Condo Suite #'], [$condoUnit, 'Condo Legal Unit'],
+    [$condoPlan, 'Condo Corp #'], [$zoning, 'Zoning'],
     [$lot, 'Lot'], [$block, 'Block'], [$plan, 'Plan'],
-    [$desc, 'Description'], [$condoUnit, 'Condo Unit'],
-    [$condoPlan, 'Condo Plan'], [$suite, 'Suite'], [$zoning, 'Zoning'],
+    [$desc, 'Description'],
   ];
   for (const [el, label] of text) {
     const v = el?.value.trim() || '';
