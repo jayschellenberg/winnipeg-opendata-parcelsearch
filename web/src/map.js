@@ -185,6 +185,7 @@ import {
   applyCitywideParcelsBasemapStyle,
 } from './lib/citywideParcelsStyle.js';
 import { formatDollars } from './lib/cells.js';
+import { pucOverrideUrl } from './lib/links.js';
 import { buildingLines, saleLines } from './lib/salePopupLines.js';
 import { assessFillOpacity } from './lib/assessFillOpacity.js';
 import { properCaseAddress } from './lib/addressFormat.js';
@@ -3823,6 +3824,16 @@ function combinedPopupHtml(primary, context, { actions: withActions = false } = 
     const actions = rolls.map((roll) => rollCopyLink(roll, rolls.length > 1));
     actions.push('<a href="#" class="parcel-coords-copy" role="button"'
       + ' title="Copy parcel centroid (lat, lng) to clipboard">GPS Coordinates</a>');
+    // A loaded SABRE sale gets a way into the use-code override tool, opened
+    // on this exact sale. Only sales tab features carry _saleInstrument, so
+    // the Property tab never shows it.
+    const sale = [primary, context].find((p) => p?._saleInstrument);
+    const fixUrl = sale && pucOverrideUrl(sale._saleRoll || sale.roll_number, sale._saleInstrument);
+    if (fixUrl) {
+      actions.push(`<a href="${escapeHtml(fixUrl)}" target="_blank" rel="noreferrer"`
+        + ' title="Correct this sale’s SABRE use code in the local override tool'
+        + ' (run wpg-puc-override.bat in mao-scrape first)">Override PUCS</a>');
+    }
     blocks.push(`<div style="margin-top:4px">${actions.join(' &nbsp;·&nbsp; ')}</div>`);
   }
   return blocks.join(POPUP_RULE);

@@ -20,6 +20,26 @@ export function assessmentUrl(props) {
 }
 
 /**
+ * Deep link into the SABRE use-code override tool (mao-scrape
+ * tools/wpg_puc_override.html), opened on this sale. The tool is LOCAL:
+ * it only answers while wpg-puc-override.bat is running, on port 5189,
+ * because the ledger it edits and the stamped sales it reads never leave
+ * Jason's machine. Plain navigation to http://localhost is allowed from
+ * the HTTPS site; CSP governs fetches, not links.
+ *
+ * Null for a sale with no SABRE record to correct: N1-only rows carry a
+ * synthetic `N1-<id>` instrument and MLS-only rows `MLS-<n>`, and the
+ * override ledger keys on SABRE's own roll + instrument.
+ */
+export const PUC_OVERRIDE_TOOL = 'http://localhost:5189/wpg_puc_override.html';
+export function pucOverrideUrl(roll, instrument) {
+  const r = String(roll ?? '').replace(/\D/g, '');
+  const inst = String(instrument ?? '').trim();
+  if (!r || !inst || /^(N1|MLS)-/i.test(inst)) return null;
+  return `${PUC_OVERRIDE_TOOL}?roll=${encodeURIComponent(r.padStart(11, '0'))}&inst=${encodeURIComponent(inst)}`;
+}
+
+/**
  * Build a Walk Score URL from a civic address. Walk Score's web page at
  * /score/<address> renders Walk / Transit / Bike scores on arrival, no
  * API key needed. Returns null when the address is missing or only

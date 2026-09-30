@@ -579,6 +579,9 @@ export function buildSaleFeatures(visibleSales, liveByRoll, groups) {
     // not always spelled the way the CSV spells it, so the key is built
     // from the sale rather than from the feature.
     p._saleKey = saleKey(sale.roll, sale.instrument);
+    // The roll as the SALE spells it (11-digit padded), for anything keyed
+    // on SABRE's own roll + instrument -- the use-code override link.
+    p._saleRoll = sale.roll;
     p._saleGroupSize = group.length;
     p._saleUseCode = sale.useCode;
     p._saleUseCodeSabre = sale.useCodeSabre || null;
