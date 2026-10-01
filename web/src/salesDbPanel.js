@@ -138,13 +138,29 @@ export function initSalesDbPanel({ onLoad, setStatus, getDateWindow } = {}) {
       // the panel says — and the question it has to answer is "is my
       // archive current?". Row and file counts cannot answer that; the
       // newest sale date can, and a stale one is visible at a glance
-      // without opening anything (Jason, 2026-09-16).
-      $status.textContent = connected
-        ? `${fmtN(info.files)} file${info.files === 1 ? '' : 's'} · ${fmtN(info.rows)} rows`
-          + (info.maxSaleDate ? ` · to ${dateLabel(info.maxSaleDate)}` : '')
-        : 'Not connected';
-      $status.title = connected && info.maxSaleDate
-        ? `Newest sale in the connected export folder: ${dateLabel(info.maxSaleDate)}. Open Coverage for the per-file ranges.`
+      // without opening anything (Jason, 2026-09-16). The oldest date sits
+      // beside it so the full span of the archive is readable too
+      // (Jason, 2026-10-01).
+      const hasRange = !!(info.minSaleDate || info.maxSaleDate);
+      const range = hasRange
+        ? `${info.minSaleDate ? dateLabel(info.minSaleDate) : '—'} → ${info.maxSaleDate ? dateLabel(info.maxSaleDate) : '—'}`
+        : '';
+      // Counts and range are separate unbreakable chunks so a narrow
+      // sidebar wraps the range onto its own line instead of overflowing.
+      $status.textContent = '';
+      const chunks = connected
+        ? [`${fmtN(info.files)} file${info.files === 1 ? '' : 's'} · ${fmtN(info.rows)} rows`,
+          ...(hasRange ? [`· ${range}`] : [])]
+        : ['Not connected'];
+      chunks.forEach((text, i) => {
+        if (i) $status.append(' ');
+        const part = document.createElement('span');
+        part.className = 'sales-db-status-part';
+        part.textContent = text;
+        $status.append(part);
+      });
+      $status.title = connected && hasRange
+        ? `Sales in the connected export folder run ${range}. Open Coverage for the per-file ranges.`
         : '';
     }
     if (connected && $daterangeHint) {

@@ -4734,6 +4734,13 @@ button.topbar-link {
   font-size: 11px;
   font-weight: 400;
   color: var(--ui-muted);
+  /* Wraps only between the counts and the sale-date range (each a
+     nowrap part), so the range drops to a second line on a narrow
+     sidebar rather than widening it. */
+  min-width: 0;
+  text-align: right;
+}
+.sales-db-status-part {
   white-space: nowrap;
 }
 .sales-db-empty,
