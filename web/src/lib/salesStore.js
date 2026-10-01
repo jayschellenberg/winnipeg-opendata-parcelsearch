@@ -37,6 +37,7 @@
 import { analyzeSalesCsv, mergeSalesFiles } from './salesDbMerge.js';
 import { SALES_REQUIRED_COLS } from './salesImport.js';
 import { isMlsHeader } from './mlsImport.js';
+import { resolveAppFolder, filterAppFiles } from './appMarketData.js';
 
 const DB_NAME = 'wpg-parcel-sales';
 const DB_VERSION = 1;
@@ -133,7 +134,9 @@ export function fsAccessSupported() {
 /** Ask the user to nominate the export folder. Requires a user gesture. */
 export async function pickSalesDirectory() {
   if (!fsAccessSupported()) throw new Error('File System Access not supported in this browser');
-  const handle = await window.showDirectoryPicker({ id: 'wpg-sabre-sales', mode: 'read' });
+  const picked = await window.showDirectoryPicker({ id: 'wpg-sabre-sales', mode: 'read' });
+  // AppMarketData or SalesData also work: step down to the Winnipeg subfolder.
+  const handle = await resolveAppFolder(picked, ['SalesData', 'Winnipeg']);
   await putMeta('dirHandle', handle);   // handles are structured-cloneable
   return handle;
 }
@@ -301,6 +304,7 @@ export async function checkForUpdates(dirHandle) {
  * replaces the whole archive (same folder-is-truth rule as above).
  */
 export async function importFromFileList(fileList, { onProgress } = {}) {
+  fileList = filterAppFiles(fileList, ['SalesData', 'Winnipeg']);
   const files = Array.from(fileList || []).filter((f) => CSV_FILE_RE.test(f.name));
   if (!files.length) throw new Error('No .csv files in that selection.');
 
