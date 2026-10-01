@@ -297,8 +297,8 @@ Access directory handle, which is what lets a new export dropped into the
 folder be noticed on the next visit rather than re-imported by hand. Chrome
 and Edge support the handle; Firefox and Safari fall back to a manual folder
 pick, which works without the auto-refresh. Firm users connect the shared
-`AppMarketData\SalesData\Winnipeg` folder; picking `AppMarketData` or
-`SalesData` instead also works, because `src/lib/appMarketData.js` steps down
+`AppMarketData\SalesData\Winnipeg` folder (the on-page hint says so). A
+mistaken pick of `AppMarketData` or `SalesData` still works, because `src/lib/appMarketData.js` steps down
 to `Winnipeg` before the handle is saved. Its coverage is shown only in the
 sales panel's own Coverage dialog — never in Data Status, which is public.
 
