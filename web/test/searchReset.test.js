@@ -98,6 +98,7 @@ const PER_RESULT = [
   'currentRows', 'fullRows', 'shapeShown', 'shapeTotal',
   'numberable', 'pinPoint', 'propertyRollOrder',
   'lastFullSurveyFc', 'lastFullAssessFc', 'lastSurveyFc', 'lastCountBase',
+  'lastDimAssessFc',   // the assessment parcels the Dimensions overlay groups lots by
   'drawCapped',
   'deselectedRowKeys',   // row culling belongs to the result set it was done on
   'locationMapRowFeature',   // the Location Map's clicked row belongs to the result set it was clicked in
@@ -126,6 +127,7 @@ const PERSISTENT = {
   chartsChannel: 'the BroadcastChannel to the charts tab, opened once',
   zoningAmendmentsIndex: 'session memo for the DMIS + Public Notices amendment index; keyed by roll, not by search',
   zoningAmendmentsLoad: 'the in-flight load of that index, shared by concurrent pill clicks',
+  addressFromBefore: "the From # field's previous value, so To can follow it; input bookkeeping, not a result",
 };
 
 console.log('main.js — what a new Search must not inherit');

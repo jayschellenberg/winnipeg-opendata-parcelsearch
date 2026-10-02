@@ -89,7 +89,9 @@ import {
   fetchZoningAmendments,
   fetchRezoningNotices,
   searchAddresses,
+  parcelsOverlap,
 } from './soda.js';
+import { buildDimensionLabels } from './lib/dimensionLabels.js';
 import { historicalTilesUrl, sizeChangeSummaryText } from './lib/historicalTiles.js';
 import {
   ZONING_CHANGE_MODES, buildAmendmentIndex, amendmentCellText, latestAmendmentYear, dmisRecordUrl,
@@ -406,6 +408,9 @@ let locationMapState = { label: 'SUBJECT', direction: 'auto', base: 'winnipeg' }
 // re-running the search.
 let zoningMode = 'off';
 let lastSurveyFc = { type: 'FeatureCollection', features: [] };
+// The assessment parcels drawn with lastSurveyFc. The Dimensions overlay
+// groups survey lots by the property they fall in.
+let lastDimAssessFc = { type: 'FeatureCollection', features: [] };
 let trafficEnabled = false;
 let trafficLoaded = false;
 let contamEnabled = false;
@@ -927,6 +932,20 @@ $addressTo.addEventListener('focus', () => {
     // re-collapse the selection on the trailing focus tick.
     setTimeout(() => $addressTo.select(), 0);
   }
+});
+// Editing From later keeps To in step while To is still a copy of the old
+// From (the exact-match default above), so changing the number needs no
+// Clear first. A To the user typed as a range end is left alone. The old
+// value is taken on focus as well, since a restore / Clear / map lookup
+// sets the fields without an input event.
+let addressFromBefore = $addressFrom.value.trim();
+$addressFrom.addEventListener('focus', () => { addressFromBefore = $addressFrom.value.trim(); });
+$addressFrom.addEventListener('input', () => {
+  const from = $addressFrom.value.trim();
+  if ($addressTo.value.trim() !== '' && $addressTo.value.trim() === addressFromBefore) {
+    $addressTo.value = from;
+  }
+  addressFromBefore = from;
 });
 
 // Phase 5: #roll is a chip-input now; the chip wrapper handles its
@@ -1750,6 +1769,7 @@ function setParcels(surveyFc, assessFc = EMPTY_FC, { fit = true } = {}) {
   // MapLibre happened to return first — confusing UX. Dedupe the MAP
   // (so the polygon is drawn once) while the TABLE keeps every row.
   const mapAssessFc = dedupeByGeometryHash(assessFc);
+  lastDimAssessFc = mapAssessFc;
   mapReady.then(() => {
     showResults(map, surveyFc, mapAssessFc, { fit });
     refreshZoning();
@@ -2452,61 +2472,40 @@ async function toggleDimensions() {
  *  Tied to survey lots only — the legal-lot dimensions are what an
  *  appraiser cares about ("33 ft × 120 ft"). Assessment polygons
  *  describe building footprints / aggregations, so their edges aren't
- *  meaningful as "lot dimensions". */
+ *  meaningful as "lot dimensions". The lots ARE grouped by assessment
+ *  parcel, though, so a property of several lots is labelled as one
+ *  site (lib/dimensionLabels.js). */
 function refreshDimensions() {
   if (!dimensionsEnabled) return;
-  const fc = buildDimensionLabels(lastSurveyFc);
+  const fc = buildDimensionLabels(lastSurveyFc, dimensionGroupOf(lastSurveyFc, lastDimAssessFc));
   mapReady.then(() => setDimensions(map, fc));
 }
 
 /**
- * For each polygon in `parcelFc`, emit one LineString feature per outer-
- * ring edge with `length_label` already pre-formatted ("98 ft", "1,240
- * ft", etc). Skips edges shorter than 5 ft to avoid stamping near-
- * duplicate labels at digitization waypoints.
+ * Which property each survey lot belongs to, for merging dimensions: the
+ * roll of the one assessment parcel it overlaps (the same test the table
+ * join uses). A lot that overlaps none, or more than one — a partial lot
+ * split between rolls — keeps its own dimensions.
  */
-function buildDimensionLabels(parcelFc) {
-  if (!parcelFc?.features?.length) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-  const features = [];
-  // Adjacent survey lots share their side edges — without dedupe, each
-  // shared edge would emit two labels at the same midpoint and
-  // MapLibre's collision detection would render them as a smeared
-  // double-text or drop one arbitrarily. Canonicalising endpoint
-  // coordinates so [a,b] keys the same as [b,a] gives us one label
-  // per unique geometric edge.
-  const seenEdges = new Set();
-  for (const f of parcelFc.features) {
-    try {
-      const geom = f.geometry;
-      const rings = [];
-      if (geom.type === 'Polygon') {
-        rings.push(geom.coordinates[0]);
-      } else if (geom.type === 'MultiPolygon') {
-        for (const p of geom.coordinates) rings.push(p[0]);
-      } else {
-        continue;
-      }
-      for (const ring of rings) {
-        for (let i = 0; i < ring.length - 1; i++) {
-          const a = ring[i];
-          const b = ring[i + 1];
-          const lenFt = haversineFt(a, b);
-          if (lenFt < 5) continue;
-          const key = canonicalEdgeKey(a, b);
-          if (seenEdges.has(key)) continue;
-          seenEdges.add(key);
-          features.push({
-            type: 'Feature',
-            geometry: { type: 'LineString', coordinates: [a, b] },
-            properties: { length_label: `${Math.round(lenFt).toLocaleString('en-US')} ft` },
-          });
-        }
-      }
-    } catch { /* skip a single malformed feature; rest of set still labels */ }
-  }
-  return { type: 'FeatureCollection', features };
+function dimensionGroupOf(surveyFc, assessFc) {
+  const boxes = (assessFc?.features || []).map((a) => {
+    try { return bbox(a); } catch { return null; }
+  });
+  return (f, i) => {
+    let sb;
+    try { sb = bbox(f); } catch { return `lot:${i}`; }
+    let hit = null;
+    for (let j = 0; j < boxes.length; j++) {
+      const b = boxes[j];
+      if (!b || b[0] > sb[2] || b[2] < sb[0] || b[1] > sb[3] || b[3] < sb[1]) continue;
+      let overlaps = false;
+      try { overlaps = parcelsOverlap(f, assessFc.features[j]); } catch { /* treat as no overlap */ }
+      if (!overlaps) continue;
+      if (hit !== null) return `lot:${i}`;   // partial lot
+      hit = j;
+    }
+    return hit === null ? `lot:${i}` : `prop:${hit}`;
+  };
 }
 
 /**
@@ -2648,31 +2647,6 @@ function geometryHash(f) {
     if (![minLon, minLat, maxLon, maxLat].every(Number.isFinite)) return null;
     return `${minLon.toFixed(6)},${minLat.toFixed(6)},${maxLon.toFixed(6)},${maxLat.toFixed(6)}`;
   } catch { return null; }
-}
-
-/** Canonical key for an undirected edge between two [lon, lat] points.
- *  Rounding to 6 dp (~10 cm) collapses near-identical endpoints from
- *  digitization noise; sorting ensures [a,b] and [b,a] produce the
- *  same key. */
-function canonicalEdgeKey(a, b) {
-  const aStr = `${a[0].toFixed(6)},${a[1].toFixed(6)}`;
-  const bStr = `${b[0].toFixed(6)},${b[1].toFixed(6)}`;
-  return aStr < bStr ? `${aStr}|${bStr}` : `${bStr}|${aStr}`;
-}
-
-/** Haversine great-circle distance between two [lon, lat] points,
- *  returned in feet. Cheap inline implementation; avoids a turf dep. */
-function haversineFt(a, b) {
-  const R_M = 6371000;
-  const toRad = (d) => d * Math.PI / 180;
-  const dLat = toRad(b[1] - a[1]);
-  const dLon = toRad(b[0] - a[0]);
-  const lat1 = toRad(a[1]);
-  const lat2 = toRad(b[1]);
-  const x = Math.sin(dLat / 2) ** 2
-          + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-  return R_M * c * 3.28084;
 }
 
 async function togglePolicyOverlay(name) {
@@ -5826,6 +5800,7 @@ async function runSalesAnalysis() {
   // the setParcels call below) and runs enrichAssessmentZoning then
   // re-renders. See toggleZoning.
   lastSurveyFc = EMPTY_FC;
+  lastDimAssessFc = EMPTY_FC;
 
   // Assessment class. Unlike PUCS this can only run HERE: the class
   // lives on the live record, so it doesn't exist until the roll lookup

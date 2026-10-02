@@ -202,8 +202,8 @@ export const DIRECTIONS = {
   ne: -40, e: 0, se: 40, s: 90, sw: 140, w: 180, nw: -140, n: -90,
 };
 /** The map pin standing on the subject: a maroon teardrop, tip on the
- *  point, white rim and centre dot. `gap` is how far short of its outline
- *  an arrowhead stops. */
+ *  point, white rim and centre dot. Arrows point at its base (the subject
+ *  itself); `gap` is how far short of the base an arrowhead stops. */
 export const PIN = { height: 32, radius: 11, gap: 1.5 };
 
 /** Pin outline as a polygon (page points): the head circle plus the two
@@ -228,31 +228,24 @@ export function pinBox(p) {
   return [p[0] - PIN.radius, p[1] - PIN.height, p[0] + PIN.radius, p[1]];
 }
 
-/** Where an arrow from `tail` toward the pin at `p` should end: the first
- *  point where it meets the pin's outline (aiming at the head centre),
- *  pulled back by PIN.gap. Falls back to the tip itself. */
+/** Where an arrow from `tail` to the pin at `p` ends: the pin's base —
+ *  the subject point — pulled back by PIN.gap. */
 export function arrowTipAtPin(tail, p) {
-  const head = [p[0], p[1] - (PIN.height - PIN.radius)];
-  const dx = head[0] - tail[0];
-  const dy = head[1] - tail[1];
+  const dx = p[0] - tail[0];
+  const dy = p[1] - tail[1];
   const len = Math.hypot(dx, dy);
   if (!len) return p;
-  const pts = pinOutline(p);
-  let best = Infinity;
-  for (let i = 0; i < pts.length; i++) {
-    const [ax, ay] = pts[i];
-    const [bx, by] = pts[(i + 1) % pts.length];
-    const ex = bx - ax;
-    const ey = by - ay;
-    const den = dx * ey - dy * ex;
-    if (!den) continue;
-    const t = ((ax - tail[0]) * ey - (ay - tail[1]) * ex) / den;   // along the arrow
-    const u = ((ax - tail[0]) * dy - (ay - tail[1]) * dx) / den;   // along the edge
-    if (t >= 0 && t <= 1 && u >= 0 && u <= 1 && t < best) best = t;
-  }
-  if (best === Infinity) return p;
-  const d = Math.max(0, best * len - PIN.gap);
+  const d = Math.max(0, len - PIN.gap);
   return [tail[0] + (dx / len) * d, tail[1] + (dy / len) * d];
+}
+
+/** Arrows aimed at the base must not come down through the pin itself:
+ *  seen from the base, the pin fills about 32 degrees either side of
+ *  straight up, so a tail inside this wider cone is refused. */
+const PIN_CONE_DEG = 45;
+export function clearOfPin(tail, p) {
+  const ang = Math.atan2(tail[1] - p[1], tail[0] - p[0]) * 180 / Math.PI;   // -90 = straight up
+  return Math.abs(((ang + 90 + 540) % 360) - 180) > PIN_CONE_DEG;
 }
 
 const MIN_ARROW = 16;             // shortest visible arrow, tail to pin
@@ -315,13 +308,13 @@ function candidateBox(p, angle, leader, w, h) {
  * Returns { box: [x0, y0, x1, y1], tails: [[x, y]], targets: [p] } — each
  * tail is where an arrow leaves the box; its tip is the matching target.
  */
-export function placeCallout(p, width, { map = BASE_MAPS.manitoba, direction = 'auto', height = CALLOUT.height } = {}) {
+export function placeCallout(p, width, { map = BASE_MAPS.manitoba, direction = 'auto', height = CALLOUT.height, spread = 20 } = {}) {
   // Every 10 degrees: the south of Manitoba is crowded enough that the
   // eight compass points alone often all land on a label when a spot 10-20
   // degrees off one of them is clear. A forced side searches +-20 degrees.
   const angles = [];
   if (direction in DIRECTIONS) {
-    for (let d = -20; d <= 20; d += 10) angles.push(DIRECTIONS[direction] + d);
+    for (let d = -spread; d <= spread; d += 10) angles.push(DIRECTIONS[direction] + d);
   } else {
     for (let a = -180; a < 180; a += 10) angles.push(a);
   }
@@ -331,6 +324,7 @@ export function placeCallout(p, width, { map = BASE_MAPS.manitoba, direction = '
       const box = candidateBox(p, angle, leader, width, height);
       if (!onPage(box, map) || overlapArea(box, pinBox(p)) > 0) continue;
       const tail = boxExit(box, p);
+      if (!clearOfPin(tail, p)) continue;
       const tip = arrowTipAtPin(tail, p);
       if (Math.hypot(tip[0] - tail[0], tip[1] - tail[1]) < MIN_ARROW) continue;
       const turn = Math.abs(((angle - PREFERRED + 540) % 360) - 180);
@@ -341,6 +335,9 @@ export function placeCallout(p, width, { map = BASE_MAPS.manitoba, direction = '
   if (!best) {
     // Nothing fits (only possible with a forced direction into the page
     // edge): fall back to the automatic choice rather than draw off-page.
+    // 'Above' first widens to +-60 degrees: straight up is the pin's
+    // own cone, so the box goes up and to one side instead.
+    if (direction !== 'auto' && spread < 60) return placeCallout(p, width, { map, direction, height, spread: 60 });
     if (direction !== 'auto') return placeCallout(p, width, { map, height });
     return null;
   }
@@ -366,6 +363,7 @@ export function placeTwinCallout(pMain, pInset, width, { map = BASE_MAPS.winnipe
       const t1 = boxExit(box, pMain);
       const t2 = boxExit(box, pInset);
       // Arrow lengths to where they stop, short of each pin.
+      if (!clearOfPin(t1, pMain) || !clearOfPin(t2, pInset)) continue;
       const e1 = arrowTipAtPin(t1, pMain);
       const e2 = arrowTipAtPin(t2, pInset);
       const l1 = Math.hypot(e1[0] - t1[0], e1[1] - t1[1]);

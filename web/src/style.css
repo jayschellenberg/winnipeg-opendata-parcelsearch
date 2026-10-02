@@ -4269,6 +4269,11 @@ body.shape-drawing .maplibregl-canvas {
    captures above it. */
 .sidebar .export-row > #export.export-btn {
   flex: 0 0 calc(50% - 3px);   /* the grid's half, less half its gap */
+  /* Same box as Current Map View beside-above it. */
+  min-height: 32px;
+  padding: 6px 4px;
+  font-size: 12.5px;
+  font-weight: 700;
   background: #217346;
   border-color: #217346;
   color: #fff;

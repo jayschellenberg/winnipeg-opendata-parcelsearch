@@ -70,7 +70,8 @@ for (const [key, angle] of Object.entries(DIRECTIONS)) {
   const cy = (r.box[1] + r.box[3]) / 2 - mid[1];
   const got = Math.atan2(cy, cx) * 180 / Math.PI;
   const diff = Math.abs(((got - angle + 540) % 360) - 180);
-  assert.ok(diff < 50, `direction ${key}: box at ${got.toFixed(0)}°, want ~${angle}°`);
+  // Straight above is the pin's own cone, so 'n' lands up and to one side.
+  assert.ok(diff < (key === 'n' ? 75 : 50), `direction ${key}: box at ${got.toFixed(0)}°, want ~${angle}°`);
 }
 // ...and falls back to auto instead of leaving the page when it can't.
 assert.ok(inside(placeCallout(MB.project(-101.9, 59.9), w, { map: MB, direction: 'nw' }).box, MB),
@@ -117,12 +118,27 @@ for (const [lng, lat] of [[-97.1083, 49.8236], [-97.2266, 49.9045], [-97.0, 49.8
 
 // ---- Map pin ----------------------------------------------------------------
 
-const segDist = (p, a, b) => {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
-  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+const inPolygon = (q, poly) => {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i];
+    const [xj, yj] = poly[j];
+    if ((yi > q[1]) !== (yj > q[1]) && q[0] < ((xj - xi) * (q[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 };
+// The arrow's shaft never runs through the pin on its way to the base.
+const shaftClear = (tail, p) => {
+  const tip = arrowTipAtPin(tail, p);
+  const pin = pinOutline(p);
+  for (let k = 0; k <= 40; k++) {
+    const q = [tail[0] + (tip[0] - tail[0]) * k / 40, tail[1] + (tip[1] - tail[1]) * k / 40];
+    if (Math.hypot(q[0] - p[0], q[1] - p[1]) < 3) continue;   // the base itself
+    if (inPolygon(q, pin)) return false;
+  }
+  return true;
+};
+
 // The outline's tip is the subject point and its top is the pin height above.
 {
   const p = [200, 200];
@@ -130,30 +146,33 @@ const segDist = (p, a, b) => {
   assert.deepEqual(pts[0], p, 'pin tip on the subject');
   const top = Math.min(...pts.map((q) => q[1]));
   assert.ok(Math.abs(top - (p[1] - PIN.height)) < 0.05, 'pin top at its height');
-  // An arrow from any side stops just outside the pin, never on the point.
+  // Every arrow points at the base: it ends PIN.gap short of the subject,
+  // on the line to it.
   for (let a = 0; a < 360; a += 15) {
-    const tail = [p[0] + 60 * Math.cos(a * Math.PI / 180), p[1] - 10 + 60 * Math.sin(a * Math.PI / 180)];
+    const tail = [p[0] + 60 * Math.cos(a * Math.PI / 180), p[1] + 60 * Math.sin(a * Math.PI / 180)];
     const tip = arrowTipAtPin(tail, p);
-    const d = Math.min(...pts.map((q, i) => segDist(tip, q, pts[(i + 1) % pts.length])));
-    assert.ok(d > 0.2 && d <= PIN.gap + 0.05, `arrow at ${a}° ends ${d.toFixed(2)} from the pin outline`);
-    assert.ok(Math.hypot(tip[0] - tail[0], tip[1] - tail[1]) < Math.hypot(p[0] - tail[0], p[1] - 10 - tail[1]) + 1,
-      `arrow at ${a}° does not overshoot`);
+    assert.ok(Math.abs(Math.hypot(tip[0] - p[0], tip[1] - p[1]) - PIN.gap) < 0.01, `arrow at ${a}° ends at the base`);
+    const cross = (tip[0] - tail[0]) * (p[1] - tail[1]) - (tip[1] - tail[1]) * (p[0] - tail[0]);
+    assert.ok(Math.abs(cross) < 0.01, `arrow at ${a}° aims at the base`);
   }
 }
-// Callout boxes never sit on the pin, on either map or in the inset.
+// Callout boxes never sit on the pin, the arrow reaches the base without
+// crossing the pin, and enough of it shows — on either map, every side.
 for (const [map, lng, lat] of [[MB, -96.684, 49.526], [WPG, -97.1083, 49.8236], [WPG, -97.2266, 49.9045]]) {
   const at = locateOnMap(map, lng, lat);
   for (const dir of ['auto', ...Object.keys(DIRECTIONS)]) {
     const r = placeCallout(at.main, w, { map, direction: dir });
     assert.equal(overlap(r.box, pinBox(at.main)), 0, `${map.id} ${dir}: box clear of the pin`);
+    assert.ok(shaftClear(r.tails[0], at.main), `${map.id} ${dir}: arrow clear of the pin`);
     const tip = arrowTipAtPin(r.tails[0], at.main);
-    assert.ok(Math.hypot(tip[0] - r.tails[0][0], tip[1] - r.tails[0][1]) >= 15.9, `${map.id} ${dir}: arrow visible past the pin`);
+    assert.ok(Math.hypot(tip[0] - r.tails[0][0], tip[1] - r.tails[0][1]) >= 15.9, `${map.id} ${dir}: arrow long enough`);
   }
 }
-{
-  const at = locateOnMap(WPG, -97.1384, 49.8954);
+for (const [name, lng, lat] of [['Portage & Main', -97.1384, 49.8954], ['Legislature', -97.146, 49.8847], ['The Forks', -97.131, 49.8873]]) {
+  const at = locateOnMap(WPG, lng, lat);
   const r = placeTwinCallout(at.main, at.inset, w, { map: WPG });
-  assert.equal(overlap(r.box, pinBox(at.main)) + overlap(r.box, pinBox(at.inset)), 0, 'twin box clear of both pins');
+  assert.equal(overlap(r.box, pinBox(at.main)) + overlap(r.box, pinBox(at.inset)), 0, `${name}: twin box clear of both pins`);
+  assert.ok(shaftClear(r.tails[0], at.main) && shaftClear(r.tails[1], at.inset), `${name}: both arrows clear of their pins`);
 }
 
 // ---- Assets and wiring ----------------------------------------------------
