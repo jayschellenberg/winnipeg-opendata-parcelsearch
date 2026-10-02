@@ -4,7 +4,7 @@
 // Run: cd web && node test/dimensionLabels.test.js
 
 import assert from 'node:assert/strict';
-import { buildDimensionLabels, haversineFt, formatFeet } from '../src/lib/dimensionLabels.js';
+import { buildDimensionLabels, haversineFt, formatFeet, sideLabelAnchor } from '../src/lib/dimensionLabels.js';
 
 // A local grid in feet near Winnipeg, converted to [lon, lat].
 const LAT0 = 49.9;
@@ -68,6 +68,23 @@ assert.equal(formatFeet(120.4), '120 ft');
 assert.equal(formatFeet(100.6), '101 ft');
 assert.equal(formatFeet(1240.4), '1,240 ft');
 assert.match(buildDimensionLabels(sargent, () => 'p').features[0].properties.length_label, /^\d+(\.\d)? ft$/);
+
+// Labels are Points (a GeoJSON source cuts LineStrings at tile edges and
+// line placement then labels each piece twice), halfway along the side,
+// rotated along it and never upside down.
+const one = buildDimensionLabels(fc(lot(0, 0, 66, 120)));
+assert.ok(one.features.every((f) => f.geometry.type === 'Point'), 'labels are points');
+for (const f of one.features) {
+  const r = f.properties.rot;
+  assert.ok(r >= -90 && r <= 90, `rotation ${r} reads upright`);
+}
+const south = sideLabelAnchor([pt(0, 0), pt(66, 0)]);
+assert.equal(Math.abs(south.rot), 0, 'an east-west side reads horizontally');
+assert.ok(Math.abs(south.point[0] - pt(33, 0)[0]) < 1e-9, 'label sits halfway along the side');
+assert.equal(Math.abs(sideLabelAnchor([pt(0, 0), pt(0, 120)]).rot), 90, 'a north-south side reads vertically');
+// A merged side (several collinear pieces) is still one label, at its middle.
+const merged = sideLabelAnchor([pt(0, 0), pt(31, 0), pt(62, 0)]);
+assert.ok(Math.abs(merged.point[0] - pt(31, 0)[0]) < 1e-9, 'merged side labelled at its middle');
 
 // Malformed and empty input.
 assert.equal(buildDimensionLabels(null).features.length, 0);

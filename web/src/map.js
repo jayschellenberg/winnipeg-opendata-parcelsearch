@@ -1754,12 +1754,14 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         },
       });
 
-      // Parcel-edge dimension labels. Source carries one LineString per
-      // polygon edge with `length_label` already pre-formatted. The
-      // symbol layer uses `symbol-placement: 'line'` so each label
-      // auto-rotates along the edge it describes (looks like a survey
-      // plat). minzoom 17 keeps the labels suppressed at city-wide
-      // views where they'd just clutter the map.
+      // Parcel-edge dimension labels. Source carries one Point per
+      // property side, at its middle, with `length_label` pre-formatted
+      // and `rot` laying the text along the side (looks like a survey
+      // plat). Points rather than the sides themselves: the GeoJSON
+      // source cuts lines at tile edges and line placement labelled every
+      // piece, so a side crossing a tile edge showed its length twice.
+      // minzoom 17 keeps the labels suppressed at city-wide views where
+      // they'd just clutter the map.
       //
       // Added AFTER civic-addresses-label so the dimensions paint over
       // the address text rather than under it (Jason, 2026-09-21): a
@@ -1780,14 +1782,16 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           'text-field': ['get', 'length_label'],
           'text-font': ['Open Sans Semibold'],
           'text-size': 20,
-          // line-center: exactly one label at each LineString's midpoint,
-          // auto-rotated along the edge. text-allow-overlap forces the
-          // label to render even when the edge is shorter than the
-          // label width (typical for 40-50 ft residential lot fronts at
-          // zoom 18). text-ignore-placement keeps these labels from
-          // being suppressed by other symbol layers (civic addresses),
-          // and the layer order above puts them on top of those.
-          'symbol-placement': 'line-center',
+          // Rotated with the map so the text lies along its side.
+          // text-allow-overlap forces the label to render even when the
+          // edge is shorter than the label width (typical for 40-50 ft
+          // residential lot fronts at zoom 18). text-ignore-placement
+          // keeps these labels from being suppressed by other symbol
+          // layers (civic addresses), and the layer order above puts them
+          // on top of those.
+          'text-rotate': ['get', 'rot'],
+          'text-rotation-alignment': 'map',
+          'text-pitch-alignment': 'map',
           'text-allow-overlap': true,
           'text-ignore-placement': true,
         },

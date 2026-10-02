@@ -4333,6 +4333,12 @@ body.shape-drawing .maplibregl-canvas {
 .sidebar .overlay-grid .overlay-group-collapse {
   grid-column: 1 / -1;
 }
+/* Half the grid's 8px row gap between one section and the next (Planning,
+   Reference, Historical, Website links) to save vertical room. The button
+   rows above keep the full gap. */
+.sidebar .overlay-grid .overlay-group-collapse + .overlay-group-collapse {
+  margin-top: -4px;
+}
 .sidebar .overlay-grid .overlay-group-summary {
   cursor: pointer;
   display: flex;

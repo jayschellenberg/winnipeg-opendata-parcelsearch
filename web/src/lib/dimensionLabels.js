@@ -164,8 +164,42 @@ export function formatFeet(ft) {
 }
 
 /**
- * One LineString per property side in `surveyFc`, with `length_label`
- * pre-formatted ("62.8 ft", "1,240 ft"). `groupOf(feature, index)` returns
+ * Where a side's label goes: the point halfway along it (by length) and the
+ * rotation, in degrees clockwise, that lays the text along the side there,
+ * kept within [-90, 90] so it never reads upside down.
+ */
+export function sideLabelAnchor(coords) {
+  const k = Math.cos((coords[0][1] * Math.PI) / 180);
+  const xy = coords.map((c) => [c[0] * k, c[1]]);
+  const seg = (i) => Math.hypot(xy[i][0] - xy[i - 1][0], xy[i][1] - xy[i - 1][1]);
+  let half = 0;
+  for (let i = 1; i < xy.length; i++) half += seg(i);
+  half /= 2;
+  for (let i = 1; i < xy.length; i++) {
+    const len = seg(i);
+    if (len >= half || i === xy.length - 1) {
+      const t = len > 0 ? Math.min(1, half / len) : 0;
+      const a = coords[i - 1], b = coords[i];
+      // Bearing clockwise from north; horizontal text runs east (90 deg).
+      const bearing = (Math.atan2(xy[i][0] - xy[i - 1][0], xy[i][1] - xy[i - 1][1]) * 180) / Math.PI;
+      let rot = bearing - 90;
+      while (rot > 90) rot -= 180;
+      while (rot < -90) rot += 180;
+      return { point: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], rot: Math.round(rot * 10) / 10 };
+    }
+    half -= len;
+  }
+  return null;
+}
+
+/**
+ * One Point per property side in `surveyFc`, at the middle of the side,
+ * with `length_label` pre-formatted ("62.8 ft", "1,240 ft") and `rot`, the
+ * text rotation that lays the label along the side.
+ *
+ * Points, not the sides' LineStrings: a GeoJSON source cuts lines at tile
+ * boundaries, and `line-center` placement then labels EACH piece, so a side
+ * crossing a tile edge showed its length twice. A point is never cut. `groupOf(feature, index)` returns
  * the property a lot belongs to; lots with the same key merge. Sides
  * shorter than 5 ft are skipped, and a side two properties share (same
  * end points) is labelled once.
@@ -193,10 +227,12 @@ export function buildDimensionLabels(surveyFc, groupOf = (f, i) => i) {
       const key = canonicalEdgeKey(coords[0], coords[coords.length - 1]);
       if (seen.has(key)) continue;
       seen.add(key);
+      const anchor = sideLabelAnchor(coords);
+      if (!anchor) continue;
       features.push({
         type: 'Feature',
-        geometry: { type: 'LineString', coordinates: coords },
-        properties: { length_label: formatFeet(ft) },
+        geometry: { type: 'Point', coordinates: anchor.point },
+        properties: { length_label: formatFeet(ft), rot: anchor.rot },
       });
     }
   }
