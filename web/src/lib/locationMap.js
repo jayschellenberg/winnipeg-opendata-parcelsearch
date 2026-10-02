@@ -204,7 +204,7 @@ export const DIRECTIONS = {
 /** The map pin standing on the subject: a maroon teardrop, tip on the
  *  point, white rim and centre dot. `gap` is how far short of its outline
  *  an arrowhead stops. */
-export const PIN = { height: 16, radius: 5.5, gap: 1.2 };
+export const PIN = { height: 32, radius: 11, gap: 1.5 };
 
 /** Pin outline as a polygon (page points): the head circle plus the two
  *  tangents running down to the tip at `p`. */
@@ -255,6 +255,7 @@ export function arrowTipAtPin(tail, p) {
   return [tail[0] + (dx / len) * d, tail[1] + (dy / len) * d];
 }
 
+const MIN_ARROW = 16;             // shortest visible arrow, tail to pin
 const PREFERRED = -40;            // up and to the right, the usual look
 const LEADERS = [32, 42, 52, 64, 78, 94, 112];
 const MARGIN = 4;                 // keep the box this far inside the page
@@ -329,6 +330,9 @@ export function placeCallout(p, width, { map = BASE_MAPS.manitoba, direction = '
     for (const leader of LEADERS) {
       const box = candidateBox(p, angle, leader, width, height);
       if (!onPage(box, map) || overlapArea(box, pinBox(p)) > 0) continue;
+      const tail = boxExit(box, p);
+      const tip = arrowTipAtPin(tail, p);
+      if (Math.hypot(tip[0] - tail[0], tip[1] - tail[1]) < MIN_ARROW) continue;
       const turn = Math.abs(((angle - PREFERRED + 540) % 360) - 180);
       const score = coveredArea(box, map.obstacles) + leader * 0.25 + turn * 0.3;
       if (!best || score < best.score) best = { score, box };
@@ -366,7 +370,7 @@ export function placeTwinCallout(pMain, pInset, width, { map = BASE_MAPS.winnipe
       const e2 = arrowTipAtPin(t2, pInset);
       const l1 = Math.hypot(e1[0] - t1[0], e1[1] - t1[1]);
       const l2 = Math.hypot(e2[0] - t2[0], e2[1] - t2[1]);
-      if (l1 < 18 || l2 < 18) continue;   // room for the arrowheads to read
+      if (l1 < MIN_ARROW || l2 < MIN_ARROW) continue;   // room for the arrowheads to read
       const score = coveredArea(box, map.obstacles) + (l1 + l2) * 0.3 + Math.abs(l1 - l2) * 0.15;
       if (!best || score < best.score) best = { score, box, tails: [t1, t2] };
     }

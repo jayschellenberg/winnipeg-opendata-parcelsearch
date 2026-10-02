@@ -216,9 +216,13 @@ body {
   color: var(--color-primary-500, #1e293b);
 }
 
+/* Empty on desktop; hidden so it doesn't add a second sidebar gap above
+   Map Layers. lib/phoneMode.js fills it on a phone. */
+.phone-results-slot:empty { display: none; }
+
 .sidebar h2.sidebar-section-title-second {
-  margin-top: 14px;
-  padding-top: 12px;
+  margin-top: 0;
+  padding-top: 8px;
   border-top: 1px solid var(--color-neutral-200, #e4e4e7);
 }
 
@@ -809,8 +813,9 @@ body {
 
 .count {
   display: block;
-  margin: 6px 0 2px;
-  padding: 6px 10px;
+  margin: 6px 0 0;
+  padding: 2px 10px;
+  line-height: 1.35;
   background: #eef2fb;
   border: 1px solid #c7d2ec;
   border-radius: 4px;
@@ -4255,14 +4260,24 @@ body.shape-drawing .maplibregl-canvas {
   font-size: 11px;
 }
 
-/* Export CSV at the foot of the sidebar, under Generate Map. Full width:
-   it is the one action in its row and a half-width button beside empty
-   space reads as though something failed to load. */
+/* Export CSV at the foot of the sidebar, under Current Map View. */
 .sidebar .export-row {
   margin-top: 6px;
   margin-bottom: 2px;
 }
-.sidebar .export-row > #export { width: 100%; }
+/* Excel green, half width: an output action, set apart from the map
+   captures above it. */
+.sidebar .export-row > #export.export-btn {
+  flex: 0 0 calc(50% - 3px);   /* the grid's half, less half its gap */
+  background: #217346;
+  border-color: #217346;
+  color: #fff;
+}
+.sidebar .export-row > #export.export-btn:hover:not(:disabled) {
+  background: #185c37;
+  border-color: #185c37;
+  color: #fff;
+}
 
 /* Active imported-list pill on the Sales tab. */
 .sales-list-filter {

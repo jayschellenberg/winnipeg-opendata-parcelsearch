@@ -146,6 +146,8 @@ for (const [map, lng, lat] of [[MB, -96.684, 49.526], [WPG, -97.1083, 49.8236], 
   for (const dir of ['auto', ...Object.keys(DIRECTIONS)]) {
     const r = placeCallout(at.main, w, { map, direction: dir });
     assert.equal(overlap(r.box, pinBox(at.main)), 0, `${map.id} ${dir}: box clear of the pin`);
+    const tip = arrowTipAtPin(r.tails[0], at.main);
+    assert.ok(Math.hypot(tip[0] - r.tails[0][0], tip[1] - r.tails[0][1]) >= 15.9, `${map.id} ${dir}: arrow visible past the pin`);
   }
 }
 {
