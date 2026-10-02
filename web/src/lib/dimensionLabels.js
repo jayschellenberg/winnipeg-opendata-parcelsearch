@@ -157,9 +157,14 @@ function propertySides(lots) {
   return sides;
 }
 
+/** "62.8 ft", "99 ft", "1,240.5 ft" — one decimal, dropped when it is .0. */
+export function formatFeet(ft) {
+  return `${ft.toLocaleString('en-US', { maximumFractionDigits: 1 })} ft`;
+}
+
 /**
  * One LineString per property side in `surveyFc`, with `length_label`
- * pre-formatted ("62 ft", "1,240 ft"). `groupOf(feature, index)` returns
+ * pre-formatted ("62.8 ft", "1,240.5 ft"). `groupOf(feature, index)` returns
  * the property a lot belongs to; lots with the same key merge. Sides
  * shorter than 5 ft are skipped, and a side two properties share (same
  * end points) is labelled once.
@@ -190,7 +195,7 @@ export function buildDimensionLabels(surveyFc, groupOf = (f, i) => i) {
       features.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: coords },
-        properties: { length_label: `${Math.round(ft).toLocaleString('en-US')} ft` },
+        properties: { length_label: formatFeet(ft) },
       });
     }
   }

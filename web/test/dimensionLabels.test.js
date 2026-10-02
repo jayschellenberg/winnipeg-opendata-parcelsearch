@@ -4,7 +4,7 @@
 // Run: cd web && node test/dimensionLabels.test.js
 
 import assert from 'node:assert/strict';
-import { buildDimensionLabels, haversineFt } from '../src/lib/dimensionLabels.js';
+import { buildDimensionLabels, haversineFt, formatFeet } from '../src/lib/dimensionLabels.js';
 
 // A local grid in feet near Winnipeg, converted to [lon, lat].
 const LAT0 = 49.9;
@@ -16,7 +16,10 @@ const lot = (x0, y0, x1, y1) => ({
   properties: {},
   geometry: { type: 'Polygon', coordinates: [[pt(x0, y0), pt(x1, y0), pt(x1, y1), pt(x0, y1), pt(x0, y0)]] },
 });
-const labels = (fc) => fc.features.map((f) => f.properties.length_label).sort();
+// The test grid is only approximately feet, so compare whole feet here;
+// the one-decimal format is checked on its own below.
+const labels = (fc) => fc.features
+  .map((f) => `${Math.round(parseFloat(f.properties.length_label.replace(/,/g, '')))} ft`).sort();
 const fc = (...features) => ({ type: 'FeatureCollection', features });
 
 // Sanity: the grid is in feet.
@@ -54,6 +57,14 @@ const bent = {
   geometry: { type: 'Polygon', coordinates: [[pt(0, 0), pt(50, 0), pt(100, 8), pt(100, 60), pt(0, 60), pt(0, 0)]] },
 };
 assert.ok(labels(buildDimensionLabels(fc(bent))).includes('50 ft'), 'bent frontage stays two sides');
+
+// One decimal, dropped when it is .0; thousands separators.
+assert.equal(formatFeet(62.8349), '62.8 ft');
+assert.equal(formatFeet(99), '99 ft');
+assert.equal(formatFeet(98.96), '99 ft');
+assert.equal(formatFeet(31.46), '31.5 ft');
+assert.equal(formatFeet(1240.5), '1,240.5 ft');
+assert.match(buildDimensionLabels(sargent, () => 'p').features[0].properties.length_label, /^\d+(\.\d)? ft$/);
 
 // Malformed and empty input.
 assert.equal(buildDimensionLabels(null).features.length, 0);
