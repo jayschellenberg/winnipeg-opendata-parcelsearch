@@ -123,6 +123,7 @@ import {
 } from './lib/shapeFilter.js';
 import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
+import { showLocationMapPanel } from './lib/locationMapPanel.js';
 import { initParcelListImport } from './lib/parcelListImport.js';
 import {
   buildClusterIndex, clusterForFeature, clusterForPoint, nearestCluster,
@@ -390,6 +391,13 @@ const RECENT_CAP = 5;
 // feature we fly to is whichever side has geometry that's most useful
 // (assessment if available, else survey). Cleared on every renderTable.
 const rowFeatureMap = new Map();
+// The parcel whose table row was last clicked — what the Location Map
+// points at, ahead of the whole result set. Per-result: cleared with
+// rowFeatureMap on every renderTable.
+let locationMapRowFeature = null;
+// Location Map choices (callout text, side) — a display preference that
+// carries across searches.
+let locationMapState = { label: 'SUBJECT', direction: 'auto', base: 'winnipeg' };
 
 // Zoning overlay state. `zoningMode` cycles 'off' -> 'shading' -> 'labels' ->
 // 'off' via the Zoning button. Deferred sales-mode zoning enrichment reads
@@ -887,6 +895,11 @@ document.querySelector('.zoning-changes-pill')?.addEventListener('click', (e) =>
 if ($staticMapBtn) $staticMapBtn.addEventListener('click', () => generateStaticMap());
 if ($staticMapLegendBtn) {
   $staticMapLegendBtn.addEventListener('click', () => generateStaticMap({ withLegend: true }));
+}
+const $locationMapBtn = document.getElementById('location-map-btn');
+const LOCATION_MAP_LABEL = $locationMapBtn?.textContent || 'Location Map';
+if ($locationMapBtn) {
+  $locationMapBtn.addEventListener('click', () => generateLocationMap());
 }
 // Historical (as-of-date) overlay: a date picker feeds the toggle, which loads
 // the parcel + survey shards (and lineage) for the neighbourhoods in the current
@@ -3379,6 +3392,7 @@ function renderTable(rows) {
   $tbody.innerHTML = '';
   currentRows = shown;
   rowFeatureMap.clear();
+  locationMapRowFeature = null;
   showEmptyState(shown.length === 0);
   // Must precede sortRows: `seq` is a sortable column, so the key has to
   // exist before the comparator can read it.
@@ -3447,6 +3461,7 @@ function renderTable(rows) {
     }
     tr.addEventListener('click', () => {
       const f = rowFeatureMap.get(tr.dataset.rowKey);
+      if (f) locationMapRowFeature = f;
       if (f) mapReady.then(() => flyToFeature(map, f));
       // Phase 5: also populate the parcel-summary card above the
       // table. Closure captures the row's properties so we don't
@@ -3962,6 +3977,76 @@ function updateLegendAvailability() {
   $staticMapLegendBtn.title = any
     ? "Capture the current map view as a PNG with the map's visible legends drawn into it, stacked in the bottom-right corner just above the credit line — the same corner they occupy on screen. The image keeps its normal dimensions, so the legend sits over the map rather than beside it."
     : 'No legend on screen to include — turn on an overlay that has one (zoning, traffic, neighbourhoods).';
+}
+
+/**
+ * Where the Location Map's SUBJECT arrow points: the parcel whose row was
+ * last clicked, else the middle of the whole result set. Returns
+ * { lng, lat, note } or null when nothing is loaded; `note` says which, so
+ * a multi-parcel set pointing at its middle is never mistaken for one
+ * property's location.
+ */
+function resolveLocationMapSubject() {
+  if (locationMapRowFeature?.geometry) {
+    const c = shapeFeatureCentroid(locationMapRowFeature);
+    if (c) return { ...c, note: 'the selected parcel' };
+  }
+  const fc = lastFullAssessFc?.features?.length ? lastFullAssessFc : lastFullSurveyFc;
+  const feats = (fc?.features || []).filter((f) => f?.geometry);
+  if (feats.length === 0) return null;
+  const [minX, minY, maxX, maxY] = bbox({ type: 'FeatureCollection', features: feats });
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+  return {
+    lng: (minX + maxX) / 2,
+    lat: (minY + maxY) / 2,
+    note: feats.length === 1 ? 'the search result' : `the middle of all ${feats.length} result parcels`,
+  };
+}
+
+/** Save an in-memory Blob under `filename`. */
+function downloadLocationBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/**
+ * Location Map: the Winnipeg map with a SUBJECT callout at the searched
+ * property, rendered as a PNG under the table with Copy / Download
+ * (lib/locationMapPanel.js, shared with the Manitoba app). A downtown
+ * property gets one box between the downtown circle and the inset, with
+ * an arrow to each.
+ */
+async function generateLocationMap() {
+  if (!$staticMapOutput) return;
+  const subject = resolveLocationMapSubject();
+  $staticMapOutput.hidden = false;
+  $staticMapOutput.innerHTML = '';
+  if (!subject) {
+    $staticMapOutput.innerHTML = '<p class="static-map-hint">Search for a property first — the location map points at the search result.</p>';
+    $staticMapOutput.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  const btn = $locationMapBtn;
+  if (btn) { btn.disabled = true; btn.textContent = 'Rendering…'; }
+  try {
+    await showLocationMapPanel({
+      container: $staticMapOutput,
+      subject,
+      maps: ['winnipeg'],
+      state: locationMapState,
+      onState: (next) => { locationMapState = next; },
+      download: downloadLocationBlob,
+    });
+    $staticMapOutput.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = LOCATION_MAP_LABEL; }
+  }
 }
 
 /**
