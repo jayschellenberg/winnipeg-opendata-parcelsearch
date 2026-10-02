@@ -183,7 +183,7 @@ export function locateOnMap(map, lng, lat) {
 
 /** Callout look, in page points. Matches the hand-made report figures:
  *  maroon box, white rule inside its edge, white bold caps, soft shadow,
- *  maroon arrow whose tip sits on the subject. */
+ *  maroon arrow that stops just short of the subject's map pin. */
 export const CALLOUT = {
   fill: '#8c1c22',
   text: '#ffffff',
@@ -201,6 +201,60 @@ export const CALLOUT = {
 export const DIRECTIONS = {
   ne: -40, e: 0, se: 40, s: 90, sw: 140, w: 180, nw: -140, n: -90,
 };
+/** The map pin standing on the subject: a maroon teardrop, tip on the
+ *  point, white rim and centre dot. `gap` is how far short of its outline
+ *  an arrowhead stops. */
+export const PIN = { height: 16, radius: 5.5, gap: 1.2 };
+
+/** Pin outline as a polygon (page points): the head circle plus the two
+ *  tangents running down to the tip at `p`. */
+export function pinOutline(p, { height = PIN.height, radius = PIN.radius } = {}) {
+  const cy = p[1] - (height - radius);            // head centre
+  const half = Math.asin(radius / (height - radius)); // tangent half-angle at the tip
+  const pts = [[p[0], p[1]]];
+  // Tangent points sit at +-(90deg - half) from straight down; walk the
+  // circle the long way round, over the top.
+  const a0 = Math.PI - half;
+  const a1 = 2 * Math.PI + half;
+  for (let i = 0; i <= 24; i++) {
+    const a = a0 + (a1 - a0) * (i / 24);
+    pts.push([p[0] + radius * Math.cos(a), cy + radius * Math.sin(a)]);
+  }
+  return pts;
+}
+
+/** Bounding box of the pin at `p`. */
+export function pinBox(p) {
+  return [p[0] - PIN.radius, p[1] - PIN.height, p[0] + PIN.radius, p[1]];
+}
+
+/** Where an arrow from `tail` toward the pin at `p` should end: the first
+ *  point where it meets the pin's outline (aiming at the head centre),
+ *  pulled back by PIN.gap. Falls back to the tip itself. */
+export function arrowTipAtPin(tail, p) {
+  const head = [p[0], p[1] - (PIN.height - PIN.radius)];
+  const dx = head[0] - tail[0];
+  const dy = head[1] - tail[1];
+  const len = Math.hypot(dx, dy);
+  if (!len) return p;
+  const pts = pinOutline(p);
+  let best = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i];
+    const [bx, by] = pts[(i + 1) % pts.length];
+    const ex = bx - ax;
+    const ey = by - ay;
+    const den = dx * ey - dy * ex;
+    if (!den) continue;
+    const t = ((ax - tail[0]) * ey - (ay - tail[1]) * ex) / den;   // along the arrow
+    const u = ((ax - tail[0]) * dy - (ay - tail[1]) * dx) / den;   // along the edge
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1 && t < best) best = t;
+  }
+  if (best === Infinity) return p;
+  const d = Math.max(0, best * len - PIN.gap);
+  return [tail[0] + (dx / len) * d, tail[1] + (dy / len) * d];
+}
+
 const PREFERRED = -40;            // up and to the right, the usual look
 const LEADERS = [32, 42, 52, 64, 78, 94, 112];
 const MARGIN = 4;                 // keep the box this far inside the page
@@ -274,7 +328,7 @@ export function placeCallout(p, width, { map = BASE_MAPS.manitoba, direction = '
   for (const angle of angles) {
     for (const leader of LEADERS) {
       const box = candidateBox(p, angle, leader, width, height);
-      if (!onPage(box, map)) continue;
+      if (!onPage(box, map) || overlapArea(box, pinBox(p)) > 0) continue;
       const turn = Math.abs(((angle - PREFERRED + 540) % 360) - 180);
       const score = coveredArea(box, map.obstacles) + leader * 0.25 + turn * 0.3;
       if (!best || score < best.score) best = { score, box };
@@ -304,11 +358,15 @@ export function placeTwinCallout(pMain, pInset, width, { map = BASE_MAPS.winnipe
     for (let cx = width / 2 + MARGIN; cx <= map.width - width / 2 - MARGIN; cx += step) {
       const box = [cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2];
       if (contains(box, pMain) || contains(box, pInset)) continue;
+      if (overlapArea(box, pinBox(pMain)) > 0 || overlapArea(box, pinBox(pInset)) > 0) continue;
       const t1 = boxExit(box, pMain);
       const t2 = boxExit(box, pInset);
-      const l1 = Math.hypot(pMain[0] - t1[0], pMain[1] - t1[1]);
-      const l2 = Math.hypot(pInset[0] - t2[0], pInset[1] - t2[1]);
-      if (l1 < 24 || l2 < 24) continue;   // room for the arrowheads to read
+      // Arrow lengths to where they stop, short of each pin.
+      const e1 = arrowTipAtPin(t1, pMain);
+      const e2 = arrowTipAtPin(t2, pInset);
+      const l1 = Math.hypot(e1[0] - t1[0], e1[1] - t1[1]);
+      const l2 = Math.hypot(e2[0] - t2[0], e2[1] - t2[1]);
+      if (l1 < 18 || l2 < 18) continue;   // room for the arrowheads to read
       const score = coveredArea(box, map.obstacles) + (l1 + l2) * 0.3 + Math.abs(l1 - l2) * 0.15;
       if (!best || score < best.score) best = { score, box, tails: [t1, t2] };
     }
@@ -391,9 +449,16 @@ function drawCallout(ctx, { box, tails, targets }, text) {
   ctx.fillStyle = CALLOUT.fill;
   ctx.lineWidth = CALLOUT.lineWidth;
   ctx.lineCap = 'round';
-  tails.forEach((tail, i) => drawArrow(ctx, tail, targets[i]));
+  tails.forEach((tail, i) => drawArrow(ctx, tail, arrowTipAtPin(tail, targets[i])));
+  ctx.restore();
+
+  // A pin on every subject point (main map and, downtown, the inset).
+  for (const p of targets) drawPin(ctx, p);
 
   // Box with a drop shadow, then the inner white rule and the label.
+  ctx.save();
+  ctx.fillStyle = CALLOUT.fill;
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
   ctx.shadowBlur = 3;
   ctx.shadowOffsetX = 1.5;
   ctx.shadowOffsetY = 1.5;
@@ -409,6 +474,29 @@ function drawCallout(ctx, { box, tails, targets }, text) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x0 + w / 2, y0 + h / 2 + 0.6);
+}
+
+function drawPin(ctx, p) {
+  const outline = pinOutline(p);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 2;
+  ctx.shadowOffsetX = 0.8;
+  ctx.shadowOffsetY = 0.8;
+  ctx.beginPath();
+  outline.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.fillStyle = CALLOUT.fill;
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 0.9;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(p[0], p[1] - (PIN.height - PIN.radius), PIN.radius * 0.38, 0, 2 * Math.PI);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
 }
 
 function roundRect(ctx, x, y, w, h, r) {

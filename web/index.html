@@ -438,7 +438,7 @@
           <div
             id="numbering-toggle-label"
             class="mode-pill-row numbering-toggle"
-            title="Number the result parcels 1..N on the map and show a matching # column in the grid. Ordered by roll number (or by entry order); a multi-parcel sale and a repeat sale of the same parcel each carry one number. The number stays fixed to a parcel through re-sorts and area filters, and joins the Generate Map image and the CSV export."
+            title="Number the result parcels 1..N on the map and show a matching # column in the grid. Ordered by roll number (or by entry order); a multi-parcel sale and a repeat sale of the same parcel each carry one number. The number stays fixed to a parcel through re-sorts and area filters, and joins the Current Map View image and the CSV export."
           >
             <span class="mode-pill-prefix">Numbering:</span>
             <div class="mode-pill" role="radiogroup" aria-label="Parcel numbering" data-pill="numbering">
@@ -455,7 +455,7 @@
           <input type="checkbox" id="pin-toggle" class="pill-backing" hidden />
           <div
             class="mode-pill-row numbering-toggle"
-            title="Show the one parcel found as a map pin instead of its shape — easier to find when zoomed out to the cluster or city. Clicking where the parcel is still opens it, and the pin is included in the Generate Map image."
+            title="Show the one parcel found as a map pin instead of its shape — easier to find when zoomed out to the cluster or city. Clicking where the parcel is still opens it, and the pin is included in the Current Map View image."
           >
             <span class="mode-pill-prefix">Locator:</span>
             <div class="mode-pill" role="radiogroup" aria-label="Single-parcel locator" data-pill="locator">
@@ -1138,11 +1138,17 @@
 
         <h2 class="sidebar-section-title sidebar-section-title-second">Map Layers</h2>
         <div class="overlay-grid overlay-grid-grouped">
-          <h3 class="overlay-group-title">Parcel layers</h3>
+          <!-- Two columns: each citywide layer beside its results layer,
+               then the most-used toggles pulled up out of Planning and
+               Reference. They keep their group data-layer-set (and its
+               text colour). -->
           <button id="all-parcels-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show every assessment parcel in the city as a faint grey wash. Search results highlight in yellow on top.">All Assessment Parcels</button>
+          <button id="assess-toggle" type="button" class="secondary active" data-layer-set="parcel" aria-pressed="true" title="Show / hide the red assessment-parcel polygons of the current search results. Dark = shown. Not the citywide grey wash — that is All Assessment Parcels, which highlights the same results in yellow.">Assessment Results</button>
           <button id="all-survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show every survey lot (legal lot) in the city as thin blue lines, from zoom 15 in. Hover for Lot / Block / Plan plus the assessment roll and address under it. Rebuilt monthly with the citywide parcel tiles; not live data.">All Survey Parcels</button>
           <button id="survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show / hide the blue survey-lot (legal lot) polygons of the current search results. Dark = shown.">Survey Parcel Results</button>
-          <button id="assess-toggle" type="button" class="secondary active" data-layer-set="parcel" aria-pressed="true" title="Show / hide the red assessment-parcel polygons of the current search results. Dark = shown. Not the citywide grey wash — that is All Assessment Parcels, which highlights the same results in yellow.">Assessment Results</button>
+          <button id="zoning-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="City-wide zoning by-law districts (cached 7 days). Click to cycle three states: 1st click = coloured shading (fill + outlines + zone-code labels); 2nd click = labels only (zone codes + district outlines, no colour fill, so it doesn't obscure the map); 3rd click = off. The colour legend shows in the shaded state.">Zoning</button>
+          <button id="neighbourhoods-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg neighbourhood boundaries. Click cycles: Off to Clusters to Neighbourhoods to Off. Click a polygon for the name and cluster.">Neighbourhoods</button>
+          <button id="dimensions-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
 
           <!-- Planning is collapsed by default like Reference and Historical
                below. Closed <details> content stays in the DOM, so main.js
@@ -1151,7 +1157,6 @@
           <details class="overlay-group-collapse" id="planning-group">
             <summary class="overlay-group-title overlay-group-summary">Planning</summary>
             <div class="overlay-group-body">
-          <button id="zoning-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="City-wide zoning by-law districts (cached 7 days). Click to cycle three states: 1st click = coloured shading (fill + outlines + zone-code labels); 2nd click = labels only (zone codes + district outlines, no colour fill, so it doesn't obscure the map); 3rd click = off. The colour legend shows in the shaded state.">Zoning</button>
           <button id="secondary-plans-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Secondary Plans</button>
           <button id="infill-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Infill Area</button>
           <button id="malls-corridors-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
@@ -1184,7 +1189,7 @@
           </details>
 
           <!-- Reference is collapsed by default, same reasoning as
-               Historical below: seven overlays that most sessions never
+               Historical below: six overlays that most sessions never
                touch, sitting between Planning and Quick links and
                pushing both Historical and Quick links below the fold.
                A native <details> keeps it keyboard-accessible with no
@@ -1195,10 +1200,8 @@
             <div class="overlay-group-body">
           <button id="dwelling-units-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Show dwelling-unit totals for qualifying residential assessment parcels. Condominium units are grouped by civic address and shown once at the group centroid. Multi-unit totals appear from zoom 13; ordinary parcels show 1 from zoom 16.">Dwelling Units</button>
           <button id="traffic-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Latest available 24-hour average traffic volumes from City midblock and permanent count stations">Traffic</button>
-          <button id="dimensions-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
           <button id="contam-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Manitoba Contaminated Sites Registry — designated and impacted sites in Winnipeg. Click any circle for details + a link to the official registry record.">Environmentally Tracked Sites</button>
           <button id="transit-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg Transit bus route lines and stops. Routes use colours from the agency GTFS feed; stops appear from zoom 12+. Click a route or stop for details.">Transit</button>
-          <button id="neighbourhoods-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg neighbourhood boundaries. Click cycles: Off to Clusters to Neighbourhoods to Off. Click a polygon for the name and cluster.">Neighbourhoods</button>
           <button id="water-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Paint the result parcels by water influence — dark blue = adjacent to a river, creek or retention pond (frontage), pale blue = near water without frontage. From the City assessment record's property influences; a screening aid, not a measured distance.">Water Influence</button>
           <button id="streets-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Current City of Winnipeg street centrelines and names (Open Data Road Network). Automatically shown over City aerial imagery; turn off for a clean historical image. Street names appear from zoom 13.">Current Winnipeg Streets</button>
             </div>
@@ -1225,17 +1228,23 @@
             </div>
           </details>
 
-          <h3 class="overlay-group-title">Quick links</h3>
+          <!-- Quick links collapsed by default, like the groups above:
+               outbound links most sessions never open. -->
+          <details class="overlay-group-collapse" id="quick-links-group">
+            <summary class="overlay-group-title overlay-group-summary">Quick links</summary>
+            <div class="overlay-group-body">
           <a class="overlay-link secondary" data-layer-set="quick" href="https://winnipeg.ca/node/44825" target="_blank" rel="noreferrer" title="City of Winnipeg index of all 42 adopted Local Area Plans (Secondary Plans)">Secondary Plan Index</a>
           <a class="overlay-link secondary" data-layer-set="quick" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer" title="City of Winnipeg Planning, Property &amp; Development Property Map">PP&amp;D Property Map</a>
           <a class="overlay-link secondary" data-layer-set="quick" href="https://dmis.winnipeg.ca/" target="_blank" rel="noreferrer" title="City of Winnipeg Development Management Information System (development applications, permits, plans)">DMIS</a>
+            </div>
+          </details>
         </div>
         <div class="generate-map-row">
-          <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the rendered image below the table and Save Image As to drop into a report.">📸 Generate Map</button>
+          <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the rendered image below the table and Save Image As to drop into a report.">📸 Current Map View</button>
           <button id="static-map-legend-btn" type="button" class="generate-map-btn generate-map-btn-legend" disabled title="Capture the current map view as a PNG with the map's visible legends drawn into it, stacked in the bottom-right corner just above the credit line — the same corner they occupy on screen. The image keeps its normal dimensions, so the legend sits over the map rather than beside it.">📸 Map w/Legend</button>
         </div>
-        <button id="location-map-btn" type="button" class="generate-map-btn generate-map-btn-location" title="Render the Winnipeg map with a SUBJECT callout pointing at the searched property — the location figure for a report. A downtown property gets one box between the downtown circle and the inset, with an arrow to each. Shown below the table as a sharp PNG with Copy and Download; the callout text and side can be changed there.">🗺️ Location Map</button>
-        <!-- Export CSV, below Generate Map (the Manitoba pattern). It
+        <button id="location-map-btn" type="button" class="generate-map-btn generate-map-btn-location" title="Render the Winnipeg map with a pin at the searched property and a SUBJECT callout pointing at it — the location figure for a report. A downtown property gets one box between the downtown circle and the inset, with an arrow to each. Shown below the table as a sharp PNG with Copy and Download; the callout text and side can be changed there.">🗺️ Winnipeg Overall Location Map</button>
+        <!-- Export CSV, below Current Map View (the Manitoba pattern). It
              used to sit beside Search / Clear, which put an OUTPUT action
              in the row that starts a search. Both ways of getting the
              results out of the app now live together at the foot of the
@@ -1384,7 +1393,7 @@
                  rather than in the table chrome. -->
             <!-- "Include legend in map image" used to sit here as a checkbox.
                  It is now the sidebar's "📸 Map w/Legend" button beside
-                 Generate Map (the Manitoba pattern), so the choice is made
+                 Current Map View (the Manitoba pattern), so the choice is made
                  where the capture is triggered. -->
             <div class="results-toolbar-spacer"></div>
             <div class="columns-popover-wrap">

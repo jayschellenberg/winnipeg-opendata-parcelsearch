@@ -12,8 +12,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
-  BASE_MAPS, DIRECTIONS,
+  BASE_MAPS, DIRECTIONS, PIN,
   locateOnMap, placeCallout, placeTwinCallout, estimateTextWidth,
+  pinBox, pinOutline, arrowTipAtPin,
 } from '../src/lib/locationMap.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -112,6 +113,45 @@ for (const [lng, lat] of [[-97.1083, 49.8236], [-97.2266, 49.9045], [-97.0, 49.8
   const at = locateOnMap(WPG, lng, lat);
   const r = placeCallout(at.main, w, { map: WPG });
   assert.ok(r && inside(r.box, WPG) && !covers(r.box, at.main), `single callout at ${lng},${lat}`);
+}
+
+// ---- Map pin ----------------------------------------------------------------
+
+const segDist = (p, a, b) => {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+};
+// The outline's tip is the subject point and its top is the pin height above.
+{
+  const p = [200, 200];
+  const pts = pinOutline(p);
+  assert.deepEqual(pts[0], p, 'pin tip on the subject');
+  const top = Math.min(...pts.map((q) => q[1]));
+  assert.ok(Math.abs(top - (p[1] - PIN.height)) < 0.05, 'pin top at its height');
+  // An arrow from any side stops just outside the pin, never on the point.
+  for (let a = 0; a < 360; a += 15) {
+    const tail = [p[0] + 60 * Math.cos(a * Math.PI / 180), p[1] - 10 + 60 * Math.sin(a * Math.PI / 180)];
+    const tip = arrowTipAtPin(tail, p);
+    const d = Math.min(...pts.map((q, i) => segDist(tip, q, pts[(i + 1) % pts.length])));
+    assert.ok(d > 0.2 && d <= PIN.gap + 0.05, `arrow at ${a}° ends ${d.toFixed(2)} from the pin outline`);
+    assert.ok(Math.hypot(tip[0] - tail[0], tip[1] - tail[1]) < Math.hypot(p[0] - tail[0], p[1] - 10 - tail[1]) + 1,
+      `arrow at ${a}° does not overshoot`);
+  }
+}
+// Callout boxes never sit on the pin, on either map or in the inset.
+for (const [map, lng, lat] of [[MB, -96.684, 49.526], [WPG, -97.1083, 49.8236], [WPG, -97.2266, 49.9045]]) {
+  const at = locateOnMap(map, lng, lat);
+  for (const dir of ['auto', ...Object.keys(DIRECTIONS)]) {
+    const r = placeCallout(at.main, w, { map, direction: dir });
+    assert.equal(overlap(r.box, pinBox(at.main)), 0, `${map.id} ${dir}: box clear of the pin`);
+  }
+}
+{
+  const at = locateOnMap(WPG, -97.1384, 49.8954);
+  const r = placeTwinCallout(at.main, at.inset, w, { map: WPG });
+  assert.equal(overlap(r.box, pinBox(at.main)) + overlap(r.box, pinBox(at.inset)), 0, 'twin box clear of both pins');
 }
 
 // ---- Assets and wiring ----------------------------------------------------
