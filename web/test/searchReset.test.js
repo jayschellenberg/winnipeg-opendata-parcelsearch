@@ -100,6 +100,7 @@ const PER_RESULT = [
   'lastFullSurveyFc', 'lastFullAssessFc', 'lastSurveyFc', 'lastCountBase',
   'drawCapped',
   'deselectedRowKeys',   // row culling belongs to the result set it was done on
+  'locationMapRowFeature',   // the Location Map's clicked row belongs to the result set it was clicked in
   // The map's sale-category colour assignment describes the sale set it
   // was built for; a property search clears it so the previous comp
   // search's colours cannot sit over unrelated parcels.
@@ -112,6 +113,7 @@ const PERSISTENT = {
   numberingOn: 'a display preference that should carry across searches',
   numberingEntryOrder: 'travels with numberingOn',
   pinOn: 'the one-parcel Locator choice (Shape or Pin), a display preference like numberingOn',
+  locationMapState: 'the Location Map callout text and side, a display preference like numberingOn',
   currentSort: "the user's sort preference, not a property of the results",
   salesRollOrder: 'belongs to the sales import, which outlives a property search',
   lastChartRows: 'the charts tab mirrors the sales set; a property search does not publish to it',

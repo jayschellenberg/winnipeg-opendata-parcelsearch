@@ -1612,6 +1612,56 @@ body {
   cursor: zoom-in;
 }
 
+/* Location Map panel (lib/locationMapPanel.js). The image is a printed
+   page, so cap its on-screen width; the PNG itself stays full resolution
+   for Copy / Download. */
+.static-map-output .static-map-hint {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.static-map-output img.location-map-img {
+  max-width: min(100%, 640px);
+  cursor: default;
+}
+.location-map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+.location-map-controls input,
+.location-map-controls select,
+.location-map-controls button {
+  font: inherit;
+  font-size: 13px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid #c2c5cc;
+  border-radius: 4px;
+  background: #fff;
+  color: #1a1a1a;
+}
+.location-map-controls input {
+  width: 9em;
+}
+.location-map-controls button {
+  cursor: pointer;
+  font-weight: 600;
+}
+.location-map-controls button.location-map-copy {
+  background: #8c1c22;
+  border-color: #8c1c22;
+  color: #fff;
+}
+.location-map-controls button:hover {
+  filter: brightness(0.95);
+}
+.sidebar .generate-map-btn-location {
+  margin-top: 6px;
+}
+
 .disclaimer {
   margin: 0;
   padding: 14px 20px 22px;
