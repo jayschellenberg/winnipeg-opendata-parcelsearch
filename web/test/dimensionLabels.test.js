@@ -58,12 +58,15 @@ const bent = {
 };
 assert.ok(labels(buildDimensionLabels(fc(bent))).includes('50 ft'), 'bent frontage stays two sides');
 
-// One decimal, dropped when it is .0; thousands separators.
+// One decimal under 100 ft, dropped when it is .0; whole feet from 100 up.
 assert.equal(formatFeet(62.8349), '62.8 ft');
 assert.equal(formatFeet(99), '99 ft');
 assert.equal(formatFeet(98.96), '99 ft');
 assert.equal(formatFeet(31.46), '31.5 ft');
-assert.equal(formatFeet(1240.5), '1,240.5 ft');
+assert.equal(formatFeet(99.94), '99.9 ft');
+assert.equal(formatFeet(120.4), '120 ft');
+assert.equal(formatFeet(100.6), '101 ft');
+assert.equal(formatFeet(1240.4), '1,240 ft');
 assert.match(buildDimensionLabels(sargent, () => 'p').features[0].properties.length_label, /^\d+(\.\d)? ft$/);
 
 // Malformed and empty input.
