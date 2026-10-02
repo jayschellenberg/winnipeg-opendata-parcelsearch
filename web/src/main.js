@@ -661,6 +661,19 @@ if (import.meta.env?.DEV) window.__handleLocate = handleLocate;   // dev-only ha
 
 $search.addEventListener('click', runSearch);
 $clear.addEventListener('click', clearAll);
+
+// The topbar title is the app's home button: everything Clear does, landing
+// on Property Search. setActiveTab writes the remembered tab, so the reload
+// in clearAll comes back on Property Search even from the Sales tab.
+const $topbarHome = document.getElementById('topbar-home');
+function goHome() {
+  setActiveTab('property', { skipFocus: true });
+  clearAll();
+}
+$topbarHome?.addEventListener('click', goHome);
+$topbarHome?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goHome(); }
+});
 $export.addEventListener('click', exportCsv);
 $salesExport?.addEventListener('click', exportCsv);
 document.getElementById('criteria-save')?.addEventListener('click', saveCriteria);
