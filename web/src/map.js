@@ -4612,6 +4612,13 @@ export function setResultPin(map, point) {
     for (const [id, prop, v] of map._resultPinSaved || []) map.setPaintProperty(id, prop, v ?? 1);
     map._resultPinSaved = null;
   }
+  // The zoning code sits on the centroid, which is where the pin's tip
+  // stands, so the pin would cover it. While the pin is up, hang the code
+  // just below the tip instead.
+  if (map.getLayer('zoning-label')) {
+    map.setLayoutProperty('zoning-label', 'text-anchor', on ? 'top' : 'center');
+    map.setLayoutProperty('zoning-label', 'text-offset', on ? [0, 0.3] : [0, 0]);
+  }
   map._resultPinOn = on;
   applyAssessFillOpacity(map);
 }
