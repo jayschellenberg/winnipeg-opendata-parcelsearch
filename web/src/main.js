@@ -1042,6 +1042,21 @@ applyUrlState(decodeState(location.search));
 const $rollChip = document.querySelector('.chip-input[data-target="roll"]');
 if ($rollChip) initChipInput($rollChip, { onEnterEmpty: () => runSearch() });
 
+// Typing a roll # and tabbing out clears the civic-address row (Jason,
+// 2026-10-06): a roll is the whole lookup, and a leftover street number or
+// name would AND against it and return nothing. Only a freshly TYPED roll
+// triggers it — tabbing through a field whose chips are already set leaves
+// an address the user may have entered on purpose. `change` only: an
+// `input` on Street Name would reopen its suggestion list.
+$rollChip?.querySelector('.chip-input-text')?.addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab' || !e.target.value.trim()) return;
+  for (const el of [$addressFrom, $addressTo, $addressStreet]) {
+    if (!el || !el.value) continue;
+    el.value = '';
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+});
+
 // Walk every .field > .tip and turn it into an info-icon popover.
 initInfoIcons();
 
