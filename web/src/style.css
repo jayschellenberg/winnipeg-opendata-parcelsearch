@@ -343,12 +343,18 @@ body {
   background: #fff;
 }
 
-/* DU mode + min-# in a side-by-side row inside the sidebar. Mode select
-   takes most of the width; min input is a fixed narrow column. */
+/* DU mode + min-# side by side, the two BOXES an exact 50/50 split
+   (Jason, 2026-10-06; it was a 64px # column beside a wide select). The
+   # field also holds the row's info icon, so the icon gets its own 25px
+   column and the # field spans into it — the box left over equals the
+   select. Matches the Manitoba sidebar's du-row. */
 .sidebar .du-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) 25px;
   gap: 6px;
 }
+.sidebar .du-row > .field { min-width: 0; }
+.sidebar .du-row > .field:last-child { grid-column: span 2; }
 
 /* Additional Searches text boxes, two per row. minmax(0, 1fr) rather than
    1fr so a long value can't widen its column past half. */
@@ -366,8 +372,6 @@ body {
    320px past the sidebar; hang it off the right edge instead. */
 .sidebar .additional-grid > .field:nth-child(even) > .tip { left: auto; right: 0; }
 
-.sidebar .du-row .du-mode-field { flex: 1 1 auto; min-width: 0; }
-.sidebar .du-row .du-min-field  { flex: 0 0 64px; min-width: 0; }
 
 /* From-#, To-#, Street Name all share a single row inside the sidebar.
    The two number boxes are fixed-narrow (room for ~5 digits each);
