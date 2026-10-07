@@ -1241,11 +1241,16 @@
             </div>
           </details>
         </div>
-        <div class="generate-map-row">
-          <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view (extent, zoom, basemap, every active overlay) as a PNG. Right-click the rendered image below the table and Save Image As to drop into a report.">📸 Current Map View</button>
-          <button id="static-map-legend-btn" type="button" class="generate-map-btn generate-map-btn-legend" disabled title="Capture the current map view as a PNG with the map's visible legends drawn into it, stacked in the bottom-right corner just above the credit line — the same corner they occupy on screen. The image keeps its normal dimensions, so the legend sits over the map rather than beside it.">📸 Map w/Legend</button>
+        <!-- The two report-figure captures share one row, half the width
+             each (Jason, 2026-10-07; same as the Manitoba app). Capture Map
+             replaced Current Map View + Map w/Legend: it opens
+             #map-capture-modal, where the legend is a tick box and the image
+             is copied or downloaded in place. Alt+C copies the view straight
+             to the clipboard. -->
+        <div class="capture-row">
+          <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view as a 1950 × 1050 image (6.5 × 3.5 in at 300 dpi), whatever size the map is on screen. Opens a preview with Include legend, Copy image and Download. Shortcut: Alt+C copies the view straight to the clipboard.">📸 Capture Map <span class="kbd-hint">Alt+C</span></button>
+          <button id="location-map-btn" type="button" class="generate-map-btn generate-map-btn-location" title="Render the Winnipeg map with a pin at the searched property and a SUBJECT callout pointing at it — the location figure for a report. A downtown property gets one box between the downtown circle and the inset, with an arrow to each. Opens in a pop-up as a sharp PNG with Copy and Download; the callout text and side can be changed there.">🗺️ Wpg Overall Map</button>
         </div>
-        <button id="location-map-btn" type="button" class="generate-map-btn generate-map-btn-location" title="Render the Winnipeg map with a pin at the searched property and a SUBJECT callout pointing at it — the location figure for a report. A downtown property gets one box between the downtown circle and the inset, with an arrow to each. Shown below the table as a sharp PNG with Copy and Download; the callout text and side can be changed there.">🗺️ Winnipeg Overall Location Map</button>
         <!-- Export CSV, below Current Map View (the Manitoba pattern). It
              used to sit beside Search / Clear, which put an OUTPUT action
              in the row that starts a search. Both ways of getting the
@@ -1453,10 +1458,6 @@
       </main>
     </div>
 
-    <section id="static-map-section" class="static-map-section">
-      <div id="static-map-output" class="static-map-output" hidden></div>
-    </section>
-
     <details class="hint hint-page">
       <summary>How to search River Lots, Outer Two Mile, and Section-Township-Range parcels</summary>
       <div class="hint-body">
@@ -1490,6 +1491,41 @@
          header aliases and the delimiter. On Load the driver hands
          { name, text } straight to handleSalesUpload, the same pipeline
          the dropzone uses. -->
+    <!-- Capture Map panel. main.js generateStaticMap() shoots a 1950 x 1050
+         frame; the panel previews it with the credit (and legend, when
+         ticked) burned in, and copies or downloads it. -->
+    <dialog id="map-capture-modal" class="sales-modal map-capture-modal" aria-labelledby="map-capture-title">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title" id="map-capture-title">Map image <span class="map-capture-size">1950 × 1050 px · 6.5 × 3.5 in at 300 dpi</span></h2>
+          <button type="button" class="sales-modal-close" data-close aria-label="Close">×</button>
+        </header>
+        <p id="map-capture-note" class="map-capture-note" hidden></p>
+        <img id="map-capture-img" class="map-capture-img" alt="Captured map view">
+        <div class="map-capture-actions">
+          <label class="map-capture-legend"><input type="checkbox" id="map-capture-legend"> Include legend</label>
+          <span class="map-capture-spacer"></span>
+          <button type="button" id="map-capture-copy" class="sales-modal-btn primary">Copy image</button>
+          <button type="button" id="map-capture-download" class="sales-modal-btn">Download PNG</button>
+          <button type="button" id="map-capture-download-jpg" class="sales-modal-btn" title="JPEG is a fraction of the PNG file size for satellite imagery — lighter in a report, with no visible loss.">Download JPG (smaller)</button>
+        </div>
+        <p class="map-capture-tip">Tip: <kbd>Alt</kbd>+<kbd>C</kbd> copies the current map view straight to the clipboard, using this legend setting.</p>
+      </div>
+    </dialog>
+
+    <!-- Location Map pop-up. main.js generateLocationMap() hands the body
+         to lib/locationMapPanel.js (shared with the Manitoba app), which
+         draws the callout controls, Copy image / Download PNG and the image. -->
+    <dialog id="location-map-modal" class="sales-modal location-map-modal" aria-labelledby="location-map-title">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title" id="location-map-title">Winnipeg Overall Map</h2>
+          <button type="button" class="sales-modal-close" data-close aria-label="Close">×</button>
+        </header>
+        <div id="location-map-output" class="static-map-output"></div>
+      </div>
+    </dialog>
+
     <dialog id="sales-import-modal" class="sales-modal">
       <div class="sales-modal-inner">
         <header class="sales-modal-header">

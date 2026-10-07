@@ -271,8 +271,10 @@ body {
   max-width: min(1280px, 100%);
   background: #eaeaec;
   position: relative;
-  /* 16:9 derived from the (capped) width. */
-  aspect-ratio: 16 / 9;
+  /* 1950:1050 derived from the (capped) width — the same shape as the
+     Capture Map image, so the screen shows exactly what gets captured
+     (Jason, 2026-10-07). */
+  aspect-ratio: 1950 / 1050;
   min-height: 320px;
 }
 
@@ -1598,14 +1600,9 @@ body {
 /* Static-map capture section sits between the results table and the
    disclaimer. Header is one row (button + helper text); the output box
    is initially hidden and reveals after the user clicks Generate. */
-/* Static-map section now just wraps the captured-PNG output. The
-   capture button lives in the sidebar's overlay grid alongside the
-   other map-related controls; this section is intentionally empty
-   (zero padding, hidden output) until the user clicks the button. */
-.static-map-section {
-  padding: 0 20px;
-}
-
+/* Location-map panel body (lib/locationMapPanel.js). Since 2026-10-07 it
+   renders inside the #location-map-modal pop-up rather than in a section
+   under the table. */
 .static-map-output {
   margin: 12px 0 0;
   padding: 8px;
@@ -2745,7 +2742,13 @@ body {
 }
 
 .map-pane {
-  max-width: 100%;
+  /* Sized from the screen height so the map AND five grid rows fit under
+     the topbar on a laptop (Jason, 2026-10-07; same rule as the Manitoba
+     app) — the WIDTH is capped, not the height, so the 1950:1050 shape
+     never changes. The reserve is measured: table-pane padding + toolbar,
+     header, 5 nowrap rows, plus the grid's horizontal scrollbar. */
+  --map-table-reserve: 300px;
+  max-width: min(100%, calc((100dvh - var(--topbar-height, 44px) - var(--map-table-reserve)) * 1950 / 1050));
   background: #dfe6e2;
   border-bottom: 1px solid var(--ui-line);
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.65);
@@ -5262,47 +5265,40 @@ button.topbar-link {
 /* The numbering pill sits under the Search / Clear strip. */
 .sidebar .numbering-row .mode-pill-row { padding-left: 0; }
 
-/* Generate Map / Map w/Legend share one row, half the width each. The
-   buttons keep their full-width styling for any other placement; the row
-   is what halves them. min-width:0 lets a long label ellipsis rather than
-   push its sibling narrower than half. */
-.sidebar .generate-map-row {
+/* Capture Map + Winnipeg Overall Map share one row, half the width each.
+   min-width:0 lets a label ellipsis on a narrow sidebar rather than push
+   its sibling narrower than half. */
+.sidebar .capture-row {
   display: flex;
   gap: 6px;
   margin-top: 8px;
 }
-.sidebar .generate-map-row .generate-map-btn {
+.sidebar .capture-row .generate-map-btn {
   flex: 1 1 0;
   min-width: 0;
   margin-top: 0;
-  font-size: 12.5px;   /* fits "Current Map View" in the fixed-width sidebar */
+  font-size: 12.5px;
   padding-inline: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* "Map w/Legend" is blue so the pair reads as two distinct actions at a
-   glance instead of one button rendered twice (the brand button is
-   near-black). Disabled = no legend on screen, so nothing to draw: it goes
-   flat rather than silently producing an identical image. */
-.sidebar .generate-map-btn-legend,
-.sidebar .generate-map-btn-legend:disabled {
-  background: #2563eb;
-  border-color: #1d4ed8;
-  color: #fff;
+/* At half width the labels stop fitting below ~1450 px (measured: "Winnipeg
+   Overall Map" clipped at 1366, so the label is now "Wpg Overall Map"), so drop the Alt+C hint and a half point.
+   The shortcut is still in the tooltip and the panel. */
+@media (max-width: 1450px) {
+  .sidebar .capture-row .kbd-hint { display: none; }
+  .sidebar .capture-row .generate-map-btn { font-size: 12px; }
 }
-.sidebar .generate-map-btn-legend:hover:not(:disabled) {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
-}
-.sidebar .generate-map-btn-legend:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  box-shadow: none;
+/* The shortcut, quietly, inside the Capture Map button. */
+.sidebar .generate-map-btn .kbd-hint {
+  margin-left: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.7;
 }
 /* Callout red (CALLOUT.fill in lib/locationMap.js), so the button reads as
-   the image it makes — and as a third action beside the black Current Map
-   View and the blue Map w/Legend. */
+   the image it makes, beside the black Capture Map. */
 .sidebar .generate-map-btn-location {
   background: #8c1c22;
   border-color: #8c1c22;
@@ -6043,4 +6039,109 @@ body.phone .maplibregl-ctrl-group button {
   grid-column: 1 / -1;
   font-size: 11.5px;
   color: var(--ui-ink-soft, #64748b);
+}
+
+/* -------------------------------------------------------------
+   Capture Map panel (#map-capture-modal), the Location Map pop-up
+   (#location-map-modal) and the Alt+C toast. Both dialogs use the
+   app's .sales-modal frame; these rules size them and lay out the
+   body. Same design as the Manitoba app (2026-10-07).
+   ------------------------------------------------------------- */
+.map-capture-modal {
+  width: min(1100px, calc(100vw - 32px));
+  max-height: 94vh;
+}
+.location-map-modal {
+  width: min(760px, calc(100vw - 32px));
+  max-height: 94vh;
+}
+.map-capture-size {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #64748b;
+}
+.map-capture-note {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #fff7e6;
+  color: #92400e;
+  font-size: 12.5px;
+}
+.map-capture-img {
+  display: block;
+  width: 100%;
+  /* Never taller than the room the dialog has, keeping the shape. */
+  max-height: calc(94vh - 170px);
+  object-fit: contain;
+  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
+}
+.map-capture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.map-capture-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.map-capture-legend:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.map-capture-spacer { flex: 1 1 auto; }
+.map-capture-tip {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+.map-capture-tip kbd {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 0 4px;
+  border: 1px solid #cbd5e1;
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: #f8fafc;
+}
+.map-capture-toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translate(-50%, -6px);
+  z-index: 20;
+  padding: 7px 14px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #fff;
+  font-size: 13px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s, transform 0.18s;
+}
+.map-capture-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+/* The location panel body inside its pop-up: no card, image held to the
+   visible height (a tall portrait page). */
+.location-map-modal .static-map-output {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+.location-map-modal .static-map-output img.location-map-img {
+  max-width: 100%;
+  max-height: calc(94vh - 190px);
+  width: auto;
+  margin: 0 auto;
 }
