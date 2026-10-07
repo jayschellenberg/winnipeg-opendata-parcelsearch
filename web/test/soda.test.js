@@ -100,6 +100,14 @@ test('parcelsOverlap — missing centroid props falls back to polygon intersecti
   assert.equal(parcelsOverlap(survey, disjoint), false);
 });
 
+test('parcelsOverlap — centroid prop outside the roll footprint still matches by centroid', () => {
+  // The bbox prefilter must test the centroid against the SURVEY box, not
+  // require the two polygons' boxes to overlap.
+  const survey = square(20, 20, 2);
+  const assess = square(0, 0, 2, { centroid_lat: 21, centroid_lon: 21 });
+  assert.equal(parcelsOverlap(survey, assess), true);
+});
+
 // ---------- mergeSurveyFeatures ----------
 
 test('mergeSurveyFeatures — empty → null; single non-partial passes through unchanged', () => {
@@ -462,6 +470,57 @@ test('filterMatched* / computePartialSurveyIds — skip shapeless features inste
   assert.deepEqual(filterMatchedSurveys(surveys, assesses).features, [lot]);
   assert.deepEqual(filterMatchedAssessments(assesses, surveys).features, [assess]);
   assert.equal(computePartialSurveyIds(surveys, assesses).size, 0);
+});
+
+// ---------- grid index matches brute force at city scale ----------
+
+// The joins look up candidates in a ~200 m grid instead of testing every
+// pair. Lots and rolls here are city-sized (tens of metres) and scattered
+// across a few grid cells, with rolls straddling lots, centroids recorded
+// outside their own footprint, and one shapeless roll, so every candidate
+// rule is exercised. The indexed result must equal plain parcelsOverlap.
+test('joins — grid-indexed matches equal brute-force parcelsOverlap', () => {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const at = (x, y, w, h, properties) => {
+    const f = square(x, y, 1, properties);
+    f.geometry.coordinates[0] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
+    return f;
+  };
+  const X0 = -97.15, Y0 = 49.88;
+  const surveys = [];
+  for (let i = 0; i < 300; i++) {
+    surveys.push(at(X0 + rnd() * 0.006, Y0 + rnd() * 0.006, 0.0002 + rnd() * 0.0004, 0.0002 + rnd() * 0.0004,
+      { id: i, lot: String(i), plan: '1', _rowKey: `s${i}` }));
+  }
+  const assesses = [];
+  for (let i = 0; i < 300; i++) {
+    const x = X0 + rnd() * 0.006, y = Y0 + rnd() * 0.006;
+    const w = 0.0002 + rnd() * 0.003, h = 0.0002 + rnd() * 0.001;
+    const props = { roll_number: `r${i}`, _rowKey: `a${i}` };
+    if (i % 3 === 0) { props.centroid_lon = x + w / 2; props.centroid_lat = y + h / 2; }
+    if (i % 3 === 1) { props.centroid_lon = X0 + rnd() * 0.006; props.centroid_lat = Y0 + rnd() * 0.006; }
+    assesses.push(at(x, y, w, h, props));
+  }
+  assesses.push(shapeless({ roll_number: 'rX' }));
+  const sFc = fc(surveys), aFc = fc(assesses);
+
+  const rows = joinAssessmentWithSurvey(aFc, sFc);
+  rows.forEach(({ survey, assess }) => {
+    const want = mergeSurveyFeatures(surveys.filter((s) => parcelsOverlap(s, assess)));
+    assert.deepEqual(survey?.properties ?? null, want?.properties ?? null, assess.properties.roll_number);
+  });
+  const legal = joinSurveyWithAssessment(sFc, aFc);
+  legal.forEach(({ survey, assess }, i) => {
+    const hits = assesses.filter((a) => parcelsOverlap(surveys[i], a));
+    assert.equal(assess?.properties.roll_number ?? null,
+      hits.length ? hits.map((a) => a.properties.roll_number).join(', ') : null, `lot ${i}`);
+    assert.equal(survey.properties.id, i);
+  });
+  const wantPartials = surveys.filter((s) => assesses.filter((a) => parcelsOverlap(s, a)).length > 1).map((s) => s.properties.id);
+  assert.deepEqual([...computePartialSurveyIds(sFc, aFc)].sort((a, b) => a - b), wantPartials);
+  assert.ok(wantPartials.length > 5, 'fixture should produce partial lots');
+  assert.ok(rows.filter((r) => r.survey).length > 50, 'fixture should produce matches');
 });
 
 // ---------- suite / condo clauses ----------

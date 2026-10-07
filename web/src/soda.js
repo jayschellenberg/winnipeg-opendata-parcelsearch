@@ -265,11 +265,12 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
   // touches each survey. So `matches.length > 1` for a survey is a true
   // partial signal, no extra fetch needed.
   const partialSurveyIds = new Set();
+  const nearAssess = gridIndex(assessFc.features, assessKeys);
   for (const s of surveyFc.features) {
     let matches;
     try {
       matches = condoUnitRoll(s, assessFc)
-        ?? assessFc.features.filter((a) => parcelsOverlap(s, a));
+        ?? nearAssess(surveyKeys(s)).filter((a) => parcelsOverlap(s, a));
     } catch (err) {
       console.warn('join error; falling back to unmatched row', err);
       matches = [];
@@ -2525,10 +2526,11 @@ export async function fetchSurveyOverlap(assessFc) {
  */
 export function joinAssessmentWithSurvey(assessFc, surveyFc, partialSurveyIds = null) {
   const rows = [];
+  const nearSurvey = gridIndex(surveyFc.features, surveyKeys);
   for (const a of assessFc.features) {
     let matches;
     try {
-      matches = surveyFc.features.filter((s) => parcelsOverlap(s, a));
+      matches = nearSurvey(assessKeys(a)).filter((s) => parcelsOverlap(s, a));
     } catch (err) {
       console.warn('join error; falling back to unmatched row', err);
       matches = [];
@@ -2569,10 +2571,12 @@ function assessCentroidInSurvey(assessFeature, surveyFeature) {
   const lat = parseFloat(assessFeature.properties?.centroid_lat);
   const lon = parseFloat(assessFeature.properties?.centroid_lon);
   if (Number.isFinite(lat) && Number.isFinite(lon)) {
-    return booleanPointInPolygon([lon, lat], surveyFeature);
+    return pointInBox(lon, lat, geomBbox(surveyFeature))
+      && booleanPointInPolygon([lon, lat], surveyFeature);
   }
   // No centroid — fall back to full polygon intersection.
-  return booleanIntersects(assessFeature, surveyFeature);
+  return boxesOverlap(geomBbox(assessFeature), geomBbox(surveyFeature))
+    && booleanIntersects(assessFeature, surveyFeature);
 }
 
 /**
@@ -2582,10 +2586,108 @@ function assessCentroidInSurvey(assessFeature, surveyFeature) {
  * interior-overlap check. Used in the bidirectional join below.
  */
 function surveyCenterInAssess(surveyFeature, assessFeature) {
-  const [minX, minY, maxX, maxY] = bbox(surveyFeature);
+  const [minX, minY, maxX, maxY] = geomBbox(surveyFeature);
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
-  return booleanPointInPolygon([cx, cy], assessFeature);
+  return pointInBox(cx, cy, geomBbox(assessFeature))
+    && booleanPointInPolygon([cx, cy], assessFeature);
+}
+
+// Bbox prefilter for the joins. They are all-pairs (computePartialSurveyIds
+// on a Street Name = "Portage" search is thousands of lots × thousands of
+// rolls), and turf recomputing a bbox and walking every ring per pair froze
+// the tab for ~5 minutes. Each check below is the exact precondition of the
+// turf call it guards, so matches are unchanged. Bboxes are cached per
+// geometry object: fetched geometry is never mutated in place.
+const bboxCache = new WeakMap();
+function geomBbox(feature) {
+  let b = bboxCache.get(feature.geometry);
+  if (!b) {
+    b = bbox(feature);
+    bboxCache.set(feature.geometry, b);
+  }
+  return b;
+}
+
+function pointInBox(x, y, [minX, minY, maxX, maxY]) {
+  return x >= minX && x <= maxX && y >= minY && y <= maxY;
+}
+
+function boxesOverlap(a, b) {
+  return !(a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]);
+}
+
+// The boxes a parcel can be matched through: a survey lot only by its own
+// bbox, a roll by its bbox and by its recorded centroid (which
+// assessCentroidInSurvey tests against the lot's box, and which need not
+// sit inside the roll's own box). Shapeless or unreadable → none.
+function surveyKeys(s) {
+  try { return s?.geometry ? [geomBbox(s)] : []; } catch { return []; }
+}
+function assessKeys(a) {
+  const keys = surveyKeys(a);
+  if (!keys.length) return keys;
+  const lat = parseFloat(a.properties?.centroid_lat);
+  const lon = parseFloat(a.properties?.centroid_lon);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) keys.push([lon, lat, lon, lat]);
+  return keys;
+}
+
+/**
+ * Uniform-grid index over `features` (boxes from `keysOf`). Returns
+ * near(boxes) → the features whose boxes touch any of `boxes`, in their
+ * original order. A superset of what parcelsOverlap can accept, so callers
+ * still run it; the point is to stop the joins being all-pairs, which on a
+ * 1037-roll Street Name = "Portage" search kept the tab frozen for a minute
+ * in computePartialSurveyIds alone. ~200 m cells; a box spanning more
+ * than GRID_MAX_CELLS (a huge park, or a test fixture in whole degrees)
+ * skips the grid: indexed, it is a candidate for everything; as a query,
+ * it scans every feature.
+ */
+const GRID_CELL = 0.002;
+const GRID_MAX_CELLS = 1024;
+function gridIndex(features, keysOf) {
+  const cells = new Map();
+  const everywhere = [];
+  const cellRange = ([minX, minY, maxX, maxY]) => {
+    if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+    const r = [Math.floor(minX / GRID_CELL), Math.floor(minY / GRID_CELL),
+      Math.floor(maxX / GRID_CELL), Math.floor(maxY / GRID_CELL)];
+    r.huge = (r[2] - r[0] + 1) * (r[3] - r[1] + 1) > GRID_MAX_CELLS;
+    return r;
+  };
+  features.forEach((f, i) => {
+    for (const box of keysOf(f)) {
+      const r = cellRange(box);
+      if (!r) continue;
+      if (r.huge) {
+        if (everywhere[everywhere.length - 1] !== i) everywhere.push(i);
+        continue;
+      }
+      for (let x = r[0]; x <= r[2]; x++) {
+        for (let y = r[1]; y <= r[3]; y++) {
+          const k = `${x},${y}`;
+          const list = cells.get(k);
+          if (!list) cells.set(k, [i]);
+          else if (list[list.length - 1] !== i) list.push(i);
+        }
+      }
+    }
+  });
+  return (boxes) => {
+    const hit = new Set(everywhere);
+    for (const box of boxes) {
+      const r = cellRange(box);
+      if (!r) continue;
+      if (r.huge) return features;
+      for (let x = r[0]; x <= r[2]; x++) {
+        for (let y = r[1]; y <= r[3]; y++) {
+          for (const i of cells.get(`${x},${y}`) || []) hit.add(i);
+        }
+      }
+    }
+    return [...hit].sort((a, b) => a - b).map((i) => features[i]);
+  };
 }
 
 /**
@@ -2769,8 +2871,9 @@ function naturalLotCompare(a, b) {
  */
 export function filterMatchedSurveys(surveyFc, assessFc) {
   const features = [];
+  const nearAssess = gridIndex(assessFc.features, assessKeys);
   for (const s of surveyFc.features) {
-    const match = assessFc.features.find((a) => parcelsOverlap(s, a));
+    const match = nearAssess(surveyKeys(s)).find((a) => parcelsOverlap(s, a));
     if (!match) continue;
     s.properties = s.properties || {};
     if (match.properties?._rowKey != null) {
@@ -2788,8 +2891,9 @@ export function filterMatchedSurveys(surveyFc, assessFc) {
  */
 export function filterMatchedAssessments(assessFc, surveyFc) {
   const features = [];
+  const nearSurvey = gridIndex(surveyFc.features, surveyKeys);
   for (const a of assessFc.features) {
-    const match = surveyFc.features.find((s) => parcelsOverlap(s, a));
+    const match = nearSurvey(assessKeys(a)).find((s) => parcelsOverlap(s, a));
     if (!match) continue;
     a.properties = a.properties || {};
     if (match.properties?._rowKey != null) {
@@ -2802,9 +2906,10 @@ export function filterMatchedAssessments(assessFc, surveyFc) {
 
 export function computePartialSurveyIds(surveyFc, assessFc) {
   const partials = new Set();
+  const nearAssess = gridIndex(assessFc.features, assessKeys);
   for (const s of surveyFc.features) {
     let count = 0;
-    for (const a of assessFc.features) {
+    for (const a of nearAssess(surveyKeys(s))) {
       if (parcelsOverlap(s, a)) {
         count++;
         if (count > 1) break;
