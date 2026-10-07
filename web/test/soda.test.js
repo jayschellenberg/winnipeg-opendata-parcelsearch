@@ -13,6 +13,10 @@ import assert from 'node:assert/strict';
 import {
   parcelsOverlap,
   joinSurveyWithAssessment,
+  joinAssessmentWithSurvey,
+  filterMatchedSurveys,
+  filterMatchedAssessments,
+  computePartialSurveyIds,
   mergeSurveyFeatures,
   rollClause,
   normalizeRoll,
@@ -94,6 +98,14 @@ test('parcelsOverlap — missing centroid props falls back to polygon intersecti
   const disjoint = square(20, 20, 2);    // no centroid_lat / centroid_lon
   assert.equal(parcelsOverlap(survey, containing), true);
   assert.equal(parcelsOverlap(survey, disjoint), false);
+});
+
+test('parcelsOverlap — centroid prop outside the roll footprint still matches by centroid', () => {
+  // The bbox prefilter must test the centroid against the SURVEY box, not
+  // require the two polygons' boxes to overlap.
+  const survey = square(20, 20, 2);
+  const assess = square(0, 0, 2, { centroid_lat: 21, centroid_lon: 21 });
+  assert.equal(parcelsOverlap(survey, assess), true);
 });
 
 // ---------- mergeSurveyFeatures ----------
@@ -406,6 +418,109 @@ test('joinSurveyWithAssessment — condo UNIT with no matching suite falls back 
   const { assessFc, unit } = condoFixture();
   const rows = joinSurveyWithAssessment({ type: 'FeatureCollection', features: [unit('UNIT 77')] }, assessFc);
   assert.equal(rows[0].assess, null);
+});
+
+// ---------- shapeless parcels (geometry: null) ----------
+
+// Socrata hands back the odd parcel with `geometry: null`. Measured on a
+// Street Name = "Portage" search: one shapeless survey lot made turf throw
+// inside parcelsOverlap, which blanked the legal column for every row (the
+// per-row catch swallowed it once per assessment) and then escaped from
+// filterMatchedSurveys, leaving the count line on "loading legal
+// descriptions…" forever.
+function shapeless(properties = {}) {
+  return { type: 'Feature', properties, geometry: null };
+}
+const fc = (features) => ({ type: 'FeatureCollection', features });
+
+test('parcelsOverlap — a feature with no geometry never overlaps (and never throws)', () => {
+  const assess = square(2, 2, 2, { centroid_lat: 3, centroid_lon: 3 });
+  const assessNoCentroid = square(2, 2, 2);
+  assert.equal(parcelsOverlap(shapeless(), assess), false);
+  assert.equal(parcelsOverlap(shapeless(), assessNoCentroid), false);
+  assert.equal(parcelsOverlap(square(0, 0, 10), shapeless({ centroid_lat: 3, centroid_lon: 3 })), false);
+  assert.equal(parcelsOverlap(square(0, 0, 10), shapeless()), false);
+});
+
+test('joinAssessmentWithSurvey — one shapeless survey lot does not blank the other rows', () => {
+  const assess = square(0, 0, 10, { roll_number: 'r1', centroid_lat: 5, centroid_lon: 5 });
+  const lot = square(4, 4, 2, { id: 1, lot: '7', block: '2', plan: '129' });
+  const rows = joinAssessmentWithSurvey(fc([assess]), fc([shapeless({ id: 2, lot: '8' }), lot]));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].survey?.properties.lot, '7');
+});
+
+test('joinSurveyWithAssessment — a shapeless survey lot or roll keeps the rest of the join', () => {
+  const assess = square(0, 0, 10, { roll_number: 'r1', unit_number: '38', centroid_lat: 5, centroid_lon: 5 });
+  const lot = square(4, 4, 2, { id: 1, lot: '7' });
+  const rows = joinSurveyWithAssessment(
+    fc([shapeless({ id: 2, lot: 'UNIT 38' }), lot]),
+    fc([shapeless({ roll_number: 'r0', unit_number: '38' }), assess]),
+  );
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].assess, null);
+  assert.equal(rows[1].assess?.properties.roll_number, 'r1');
+});
+
+test('filterMatched* / computePartialSurveyIds — skip shapeless features instead of throwing', () => {
+  const assess = square(0, 0, 10, { roll_number: 'r1', _rowKey: 'a', centroid_lat: 5, centroid_lon: 5 });
+  const lot = square(4, 4, 2, { id: 1, _rowKey: 's' });
+  const surveys = fc([shapeless({ id: 2 }), lot]);
+  const assesses = fc([shapeless({ roll_number: 'r0' }), assess]);
+  assert.deepEqual(filterMatchedSurveys(surveys, assesses).features, [lot]);
+  assert.deepEqual(filterMatchedAssessments(assesses, surveys).features, [assess]);
+  assert.equal(computePartialSurveyIds(surveys, assesses).size, 0);
+});
+
+// ---------- grid index matches brute force at city scale ----------
+
+// The joins look up candidates in a ~200 m grid instead of testing every
+// pair. Lots and rolls here are city-sized (tens of metres) and scattered
+// across a few grid cells, with rolls straddling lots, centroids recorded
+// outside their own footprint, and one shapeless roll, so every candidate
+// rule is exercised. The indexed result must equal plain parcelsOverlap.
+test('joins — grid-indexed matches equal brute-force parcelsOverlap', () => {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const at = (x, y, w, h, properties) => {
+    const f = square(x, y, 1, properties);
+    f.geometry.coordinates[0] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
+    return f;
+  };
+  const X0 = -97.15, Y0 = 49.88;
+  const surveys = [];
+  for (let i = 0; i < 300; i++) {
+    surveys.push(at(X0 + rnd() * 0.006, Y0 + rnd() * 0.006, 0.0002 + rnd() * 0.0004, 0.0002 + rnd() * 0.0004,
+      { id: i, lot: String(i), plan: '1', _rowKey: `s${i}` }));
+  }
+  const assesses = [];
+  for (let i = 0; i < 300; i++) {
+    const x = X0 + rnd() * 0.006, y = Y0 + rnd() * 0.006;
+    const w = 0.0002 + rnd() * 0.003, h = 0.0002 + rnd() * 0.001;
+    const props = { roll_number: `r${i}`, _rowKey: `a${i}` };
+    if (i % 3 === 0) { props.centroid_lon = x + w / 2; props.centroid_lat = y + h / 2; }
+    if (i % 3 === 1) { props.centroid_lon = X0 + rnd() * 0.006; props.centroid_lat = Y0 + rnd() * 0.006; }
+    assesses.push(at(x, y, w, h, props));
+  }
+  assesses.push(shapeless({ roll_number: 'rX' }));
+  const sFc = fc(surveys), aFc = fc(assesses);
+
+  const rows = joinAssessmentWithSurvey(aFc, sFc);
+  rows.forEach(({ survey, assess }) => {
+    const want = mergeSurveyFeatures(surveys.filter((s) => parcelsOverlap(s, assess)));
+    assert.deepEqual(survey?.properties ?? null, want?.properties ?? null, assess.properties.roll_number);
+  });
+  const legal = joinSurveyWithAssessment(sFc, aFc);
+  legal.forEach(({ survey, assess }, i) => {
+    const hits = assesses.filter((a) => parcelsOverlap(surveys[i], a));
+    assert.equal(assess?.properties.roll_number ?? null,
+      hits.length ? hits.map((a) => a.properties.roll_number).join(', ') : null, `lot ${i}`);
+    assert.equal(survey.properties.id, i);
+  });
+  const wantPartials = surveys.filter((s) => assesses.filter((a) => parcelsOverlap(s, a)).length > 1).map((s) => s.properties.id);
+  assert.deepEqual([...computePartialSurveyIds(sFc, aFc)].sort((a, b) => a - b), wantPartials);
+  assert.ok(wantPartials.length > 5, 'fixture should produce partial lots');
+  assert.ok(rows.filter((r) => r.survey).length > 50, 'fixture should produce matches');
 });
 
 // ---------- suite / condo clauses ----------
