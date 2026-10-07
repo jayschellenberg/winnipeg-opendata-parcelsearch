@@ -10,6 +10,12 @@ export default defineConfig({
   // classes and emits the generated stylesheet for the
   // `web/src/lib/tailwind.css` entry. Plain ES modules otherwise.
   plugins: [tailwindcss()],
+  // Dev cache outside Dropbox when VITE_CACHE_DIR is set. Dropbox locks
+  // node_modules/.vite while Vite renames deps_temp_* into place (EBUSY),
+  // and the server then answers every dep with "504 Outdated Optimize Dep"
+  // so the app never starts. Same escape hatch as the Manitoba app; the
+  // default is unchanged.
+  cacheDir: process.env.VITE_CACHE_DIR || 'node_modules/.vite',
   build: {
     target: 'es2020',
     // MapLibre alone is ~700 kB minified; without splitting it the
