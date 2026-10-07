@@ -2528,6 +2528,9 @@ export function joinAssessmentWithSurvey(assessFc, surveyFc, partialSurveyIds = 
   const rows = [];
   const nearSurvey = gridIndex(surveyFc.features, surveyKeys);
   for (const a of assessFc.features) {
+    // A roll with no shape can't match any lot; flag it so the Lot cell
+    // says so instead of looking unloaded.
+    if (!a.geometry) (a.properties = a.properties || {})._noShape = true;
     let matches;
     try {
       matches = nearSurvey(assessKeys(a)).filter((s) => parcelsOverlap(s, a));

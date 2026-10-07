@@ -17,7 +17,7 @@
 import { formatSqFt, formatAcres } from './format.js';
 import { assessmentUrl, walkscoreUrl, floodToolUrl } from './links.js';
 import {
-  td, badgeTd, truncatedTd, addressTd, linkTd, assessmentTd,
+  td, badgeTd, truncatedTd, addressTd, linkTd, assessmentTd, noShapeTd,
   formatDollars, formatPct, formatZone2, formatCoord, formatDist,
   stripZoningCode, propertyTypeBadgeClass, pucsBadgeClass,
 } from './cells.js';
@@ -592,7 +592,9 @@ export const COLUMNS = [
     csv: { header: 'Rooms', extract: (a) => a.rooms } },
 
   { key: 'lot',          header: 'Lot',           mode: 'always', sortable: true,
-    render: (_a, s) => truncatedTd(s.lot, 10),
+    // _noShape is stamped by joinAssessmentWithSurvey on a roll with no
+    // geometry: the lot is unknowable, not still loading.
+    render: (a, s) => (a._noShape && s.lot == null ? noShapeTd() : truncatedTd(s.lot, 10)),
     csv: { header: 'Lot', extract: (_a, s) => s.lot } },
 
   { key: 'block',        header: 'Block',         mode: 'always', sortable: true,

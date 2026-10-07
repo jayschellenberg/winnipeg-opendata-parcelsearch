@@ -31,6 +31,19 @@ export function td(value, className) {
 }
 
 /**
+ * Lot cell for a roll whose parcel has no shape in the City data
+ * (Socrata `geometry: null`). No survey lot can be matched to it, so
+ * say why instead of leaving a bare em-dash that reads as "not loaded".
+ */
+export function noShapeTd() {
+  const el = document.createElement('td');
+  el.textContent = 'no shape';
+  el.title = 'This roll has no parcel shape in the City data, so no legal lot can be matched to it.';
+  el.classList.add('empty');
+  return el;
+}
+
+/**
  * Add one or more space-separated classes. `classList.add` THROWS on a
  * multi-token string ("num sworn-mismatch"), which is easy to hit as
  * soon as a column composes a base class with a conditional modifier —

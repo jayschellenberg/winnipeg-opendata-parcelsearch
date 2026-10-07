@@ -234,6 +234,30 @@ test('Built CSV — the three verdicts and the unjudged mark are all distinct', 
   assert.equal(extract({ _buildVerdict: 'already-built', _buildUnjudged: true }), 'ALREADY BUILT');
 });
 
+test('Lot cell — a shapeless roll says "no shape"; a matched or still-loading roll does not', () => {
+  // Just enough DOM for lib/cells: the registry is DOM-free at import.
+  const realDocument = globalThis.document;
+  globalThis.document = {
+    createElement: () => {
+      const classes = [];
+      return { classes, title: '', textContent: '', classList: { add: (c) => classes.push(c) } };
+    },
+  };
+  try {
+    const lot = COLUMNS.find((c) => c.key === 'lot');
+    const noShape = lot.render({ _noShape: true }, {});
+    assert.equal(noShape.textContent, 'no shape');
+    assert.ok(noShape.classes.includes('empty'));
+    assert.match(noShape.title, /no parcel shape/);
+    assert.equal(lot.render({}, {}).textContent, '—');
+    assert.equal(lot.render({ _noShape: true }, { lot: '7' }).textContent, '7');
+    // CSV stays blank: "no shape" is a note, not a lot value.
+    assert.equal(lot.csv.extract({ _noShape: true }, {}), undefined);
+  } finally {
+    globalThis.document = realDocument;
+  }
+});
+
 console.log('');
 console.log(`${passed}/${passed + failed} passed`);
 if (failed > 0) process.exit(1);
