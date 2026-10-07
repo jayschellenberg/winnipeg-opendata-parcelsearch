@@ -24,7 +24,7 @@ import {
 import {
   waterOf, waterLoaded, waterColor, waterCellText, waterTooltip, waterCsvCells,
 } from './water.js';
-import { pucsName, UNCLASSIFIED_CATEGORY } from './pucs.js';
+import { pucsName, pucsCode, pucsCategory, UNCLASSIFIED_CATEGORY } from './pucs.js';
 import { properCaseAddress } from './addressFormat.js';
 
 /**
@@ -206,7 +206,9 @@ function swornCellClass(a) {
 // Per-column entry:
 //   key          stable identifier (data-col attribute, sort key, URL param)
 //   header       <th> text content
-//   mode         'always' | 'sales' (drives the .sales-only thead class)
+//   mode         'always' | 'sales' | 'property' (drives the .sales-only /
+//                .property-only thead class; 'property' = Property Search
+//                only, hidden while a sales set is loaded)
 //   sortable     true → entry contributes to SORTABLE_COLUMN_KEYS
 //   theadClass   optional extra class string for the <th>
 //                (e.g. 'subj-col' for the sales-mode Dist column)
@@ -266,6 +268,29 @@ export const COLUMNS = [
       + 'hover a multi-address cell to see the split.',
     render: (a) => addressTd(a.full_address, 40),
     csv: { header: 'Full Address', extract: (a) => properCaseAddress(a.full_address) } },
+
+  // The parcel's CURRENT Par Use Code, from the City's assessment roll
+  // (property_use_code, "RESSD - DETACHED SINGLE DWELLING"). Property Search
+  // only: the sales tab's PUCS column (useCode, below) is the code SABRE
+  // recorded AT THE SALE, which can differ, so the two are kept apart rather
+  // than one silently falling back to the other. Default-visible in Property
+  // Search (Jason, 2026-10-07). Badge tinted by the code's category, plain
+  // name on hover — the same look as the sales column.
+  { key: 'pucs',         header: 'PUCS',          mode: 'property', sortable: true,
+    theadTitle: 'Par Use Code — the City assessment roll’s current use code for the parcel (e.g. RESSD, RESMC, CMRRE). '
+      + 'Hover a cell for the code’s plain name.',
+    render: (a) => {
+      const code = pucsCode(a.property_use_code);
+      const cell = badgeTd(code || null, pucsBadgeClass(pucsCategory(code)));
+      const name = pucsName(code);
+      if (name) cell.title = `${code} — ${name}`;
+      else if (a.property_use_code) cell.title = String(a.property_use_code);
+      return cell;
+    },
+    csv: [
+      { header: 'PUCS', extract: (a) => pucsCode(a.property_use_code) },
+      { header: 'Use', extract: (a) => pucsName(a.property_use_code) || a.property_use_code },
+    ] },
 
   { key: 'saleDate',     header: 'Sale Date',     mode: 'sales',  sortable: true,
     theadTitle: 'Sale date from the uploaded CSV',
@@ -662,7 +687,9 @@ export const SORTABLE_COLUMN_KEYS = COLUMNS.filter((c) => c.sortable).map((c) =>
 
 /** Columns emitted by exportCsv for a given mode ('property' | 'sales'). */
 export function columnsForMode(mode) {
-  return COLUMNS.filter((c) => c.mode === 'always' || (mode === 'sales' && c.mode === 'sales'));
+  return COLUMNS.filter((c) => c.mode === 'always'
+    || (mode === 'sales' && c.mode === 'sales')
+    || (mode !== 'sales' && c.mode === 'property'));
 }
 
 /**
@@ -721,8 +748,9 @@ export function csvSchemaForMode(mode, { numbering = false } = {}) {
  */
 export function columnCellClasses(col) {
   const classes = [];
-  if (col.mode === 'sales') classes.push('sales-only');
-  if (col.theadClass)       classes.push(col.theadClass);
+  if (col.mode === 'sales')    classes.push('sales-only');
+  if (col.mode === 'property') classes.push('property-only');
+  if (col.theadClass)          classes.push(col.theadClass);
   return classes;
 }
 

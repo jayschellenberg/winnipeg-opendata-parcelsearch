@@ -10,7 +10,7 @@
  * trample their property-mode preferences and vice versa.
  *
  * The baked-in presets:
- *   - Quick lookup:    lot, block, plan, roll, address, water, area
+ *   - Quick lookup:    roll, address, pucs, dwellingUnits, water, value
  *   - Residential:     roll, address, buildingType, yearBuilt,
  *                      livingArea, rooms, dwellingUnits, area, zoning,
  *                      water, value
@@ -60,6 +60,22 @@ const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'sou
   'rise'];
 
 /*
+ * The same problem for the PROPERTY set, in both directions. The stored
+ * property set wins over QUICK_LOOKUP, so changing the default reaches no
+ * one who has used the app. Each entry is applied ONCE (tracked in
+ * PROPERTY_ONCE_KEY by its 'add:'/'drop:' tag); after that the user's own
+ * ticks stick. Full detail (a null set) is left alone — it shows everything.
+ *
+ * 2026-10-07 (Jason): the default moved from the legal description to
+ * PUCS / DU / Assessment.
+ */
+const PROPERTY_ONCE_KEY = 'wps_table_columns_property_once_v1';
+const PROPERTY_ONCE = [
+  ['add', 'pucs'], ['add', 'dwellingUnits'], ['add', 'value'],
+  ['drop', 'lot'], ['drop', 'block'], ['drop', 'plan'], ['drop', 'area'],
+];
+
+/*
  * Columns this module does not govern. `seq` (the map badge "#") is gated
  * solely by the "Number parcels" toggle, via a `body.numbering-on` CSS
  * rule — so it must never also be marked col-hidden here, and it isn't
@@ -75,7 +91,13 @@ const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'sou
  */
 const UNGOVERNED = new Set(['seq', 'select']);
 
-const QUICK_LOOKUP = ['lot', 'block', 'plan', 'roll', 'address', 'water', 'area'];
+// The Property Search default (Jason, 2026-10-07): what the parcel IS and
+// is worth — current PUCS, dwelling units, assessed value — beside its
+// identity and water influence. The legal lot/block/plan columns left the
+// default (they are a lookup detail, one gear click away and still in
+// Zoning detail), and so did Lot Size, which was not in the list Jason
+// asked for. See PROPERTY_ONCE for stored sets.
+const QUICK_LOOKUP = ['roll', 'address', 'pucs', 'dwellingUnits', 'water', 'value'];
 // Residential property search: what actually matters on a house — the
 // dwelling itself (type, age, floor area, rooms, units), the lot, its
 // zoning and water influence, and the assessment. Deliberately omits
@@ -312,6 +334,29 @@ export function initColumns() {
       localStorage.setItem(STORAGE_KEY_SALES, JSON.stringify(v == null ? null : [...v]));
     }
   } catch { /* localStorage unavailable — defaults already include the keys */ }
+
+  // One-time property-set changes — see PROPERTY_ONCE. Written straight to
+  // STORAGE_KEY_PROPERTY for the same reason as the sales block above.
+  try {
+    const done = new Set(JSON.parse(localStorage.getItem(PROPERTY_ONCE_KEY) || '[]'));
+    let changed = false;
+    for (const [op, key] of PROPERTY_ONCE) {
+      const tag = `${op}:${key}`;
+      if (done.has(tag)) continue;
+      done.add(tag);
+      const v = visibleByMode.property;
+      if (v != null) {
+        if (op === 'add') v.add(key);
+        else v.delete(key);
+      }
+      changed = true;
+    }
+    if (changed) {
+      localStorage.setItem(PROPERTY_ONCE_KEY, JSON.stringify([...done]));
+      const v = visibleByMode.property;
+      localStorage.setItem(STORAGE_KEY_PROPERTY, JSON.stringify(v == null ? null : [...v]));
+    }
+  } catch { /* localStorage unavailable — QUICK_LOOKUP already has the new default */ }
 
   const gear = document.getElementById('columns-gear');
   const popover = document.getElementById('columns-popover');
