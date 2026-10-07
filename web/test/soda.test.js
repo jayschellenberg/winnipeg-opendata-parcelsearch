@@ -13,6 +13,10 @@ import assert from 'node:assert/strict';
 import {
   parcelsOverlap,
   joinSurveyWithAssessment,
+  joinAssessmentWithSurvey,
+  filterMatchedSurveys,
+  filterMatchedAssessments,
+  computePartialSurveyIds,
   mergeSurveyFeatures,
   rollClause,
   normalizeRoll,
@@ -406,6 +410,58 @@ test('joinSurveyWithAssessment — condo UNIT with no matching suite falls back 
   const { assessFc, unit } = condoFixture();
   const rows = joinSurveyWithAssessment({ type: 'FeatureCollection', features: [unit('UNIT 77')] }, assessFc);
   assert.equal(rows[0].assess, null);
+});
+
+// ---------- shapeless parcels (geometry: null) ----------
+
+// Socrata hands back the odd parcel with `geometry: null`. Measured on a
+// Street Name = "Portage" search: one shapeless survey lot made turf throw
+// inside parcelsOverlap, which blanked the legal column for every row (the
+// per-row catch swallowed it once per assessment) and then escaped from
+// filterMatchedSurveys, leaving the count line on "loading legal
+// descriptions…" forever.
+function shapeless(properties = {}) {
+  return { type: 'Feature', properties, geometry: null };
+}
+const fc = (features) => ({ type: 'FeatureCollection', features });
+
+test('parcelsOverlap — a feature with no geometry never overlaps (and never throws)', () => {
+  const assess = square(2, 2, 2, { centroid_lat: 3, centroid_lon: 3 });
+  const assessNoCentroid = square(2, 2, 2);
+  assert.equal(parcelsOverlap(shapeless(), assess), false);
+  assert.equal(parcelsOverlap(shapeless(), assessNoCentroid), false);
+  assert.equal(parcelsOverlap(square(0, 0, 10), shapeless({ centroid_lat: 3, centroid_lon: 3 })), false);
+  assert.equal(parcelsOverlap(square(0, 0, 10), shapeless()), false);
+});
+
+test('joinAssessmentWithSurvey — one shapeless survey lot does not blank the other rows', () => {
+  const assess = square(0, 0, 10, { roll_number: 'r1', centroid_lat: 5, centroid_lon: 5 });
+  const lot = square(4, 4, 2, { id: 1, lot: '7', block: '2', plan: '129' });
+  const rows = joinAssessmentWithSurvey(fc([assess]), fc([shapeless({ id: 2, lot: '8' }), lot]));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].survey?.properties.lot, '7');
+});
+
+test('joinSurveyWithAssessment — a shapeless survey lot or roll keeps the rest of the join', () => {
+  const assess = square(0, 0, 10, { roll_number: 'r1', unit_number: '38', centroid_lat: 5, centroid_lon: 5 });
+  const lot = square(4, 4, 2, { id: 1, lot: '7' });
+  const rows = joinSurveyWithAssessment(
+    fc([shapeless({ id: 2, lot: 'UNIT 38' }), lot]),
+    fc([shapeless({ roll_number: 'r0', unit_number: '38' }), assess]),
+  );
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].assess, null);
+  assert.equal(rows[1].assess?.properties.roll_number, 'r1');
+});
+
+test('filterMatched* / computePartialSurveyIds — skip shapeless features instead of throwing', () => {
+  const assess = square(0, 0, 10, { roll_number: 'r1', _rowKey: 'a', centroid_lat: 5, centroid_lon: 5 });
+  const lot = square(4, 4, 2, { id: 1, _rowKey: 's' });
+  const surveys = fc([shapeless({ id: 2 }), lot]);
+  const assesses = fc([shapeless({ roll_number: 'r0' }), assess]);
+  assert.deepEqual(filterMatchedSurveys(surveys, assesses).features, [lot]);
+  assert.deepEqual(filterMatchedAssessments(assesses, surveys).features, [assess]);
+  assert.equal(computePartialSurveyIds(surveys, assesses).size, 0);
 });
 
 // ---------- suite / condo clauses ----------

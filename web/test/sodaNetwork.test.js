@@ -25,6 +25,7 @@ import {
   fetchAssessmentOverlap,
   searchAssessmentParcelsExpanded,
   isHistoricalPinStale,
+  enrichAssessmentAddresses,
 } from '../src/soda.js';
 
 const tests = [];
@@ -375,6 +376,32 @@ test('searchAssessmentParcels — every chunk carries the other filters', async 
 });
 
 // ---------- async runner ----------
+
+// ---------- shapeless parcel in the address pass ----------
+
+test('enrichAssessmentAddresses — a parcel with geometry: null is skipped quietly', async () => {
+  const lot = {
+    type: 'Feature',
+    properties: { roll_number: 'r1', full_address: '' },
+    geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]] },
+  };
+  const shapeless = { type: 'Feature', properties: { roll_number: 'r0', full_address: '5 X ST' }, geometry: null };
+  stubFetch([{ status: 200, json: [
+    { full_address: '10 PORTAGE AVE', point: { type: 'Point', coordinates: [0.5, 0.5] } },
+  ] }]);
+  const warnings = [];
+  const prevWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let parcels;
+  try {
+    ({ parcels } = await enrichAssessmentAddresses({ type: 'FeatureCollection', features: [shapeless, lot] }));
+  } finally {
+    console.warn = prevWarn;
+  }
+  assert.equal(parcels.features[1].properties.full_address, '10 PORTAGE AVE');
+  assert.equal(parcels.features[0].properties.full_address, '5 X ST');
+  assert.deepEqual(warnings, []);
+});
 
 let passed = 0;
 let failed = 0;

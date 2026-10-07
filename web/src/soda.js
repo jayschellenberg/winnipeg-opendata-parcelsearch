@@ -213,10 +213,11 @@ export async function searchSurveyParcels({ plan, lot, block, desc, condoUnit, c
 function condoUnitRoll(surveyFeature, assessFc) {
   const m = /^UNIT\s+0*(\S+)$/i.exec(String(surveyFeature.properties?.lot ?? '').trim());
   if (!m) return null;
+  if (!surveyFeature.geometry) return null;
   const unit = m[1].toUpperCase();
   const hits = assessFc.features.filter((a) =>
     String(a.properties?.unit_number ?? '').trim().toUpperCase().replace(/^0+(?=.)/, '') === unit
-    && booleanIntersects(surveyFeature, a));
+    && a.geometry && booleanIntersects(surveyFeature, a));
   return hits.length === 1 ? hits : null;
 }
 
@@ -848,6 +849,9 @@ export async function enrichAssessmentAddresses(assessFc) {
     // abort the whole pass and leave the rest of the table without
     // address enrichment. (booleanPointInPolygon can throw on edge-
     // case geometries; better to skip the parcel than the batch.)
+    // A shapeless parcel (Socrata's `geometry: null`) contains no address
+    // point, and turf throws on it.
+    if (!parcel.geometry) continue;
     try {
       const insideAddrs = addressesFc.features.filter(
         (addr) => booleanPointInPolygon(addr, parcel)
@@ -2599,8 +2603,13 @@ function surveyCenterInAssess(surveyFeature, assessFeature) {
  * neither centroid sits inside the *adjacent* parcel — the original bug
  * `booleanIntersects` triggered on shared edges, which both centroid checks
  * correctly avoid.
+ *
+ * A parcel with no shape (Socrata returns the odd `geometry: null`) overlaps
+ * nothing. Without this guard turf throws on it, and one shapeless lot in a
+ * big result (Street Name = "Portage") blanked every row's legal description.
  */
 export function parcelsOverlap(surveyFeature, assessFeature) {
+  if (!surveyFeature?.geometry || !assessFeature?.geometry) return false;
   return assessCentroidInSurvey(assessFeature, surveyFeature)
       || surveyCenterInAssess(surveyFeature, assessFeature);
 }
