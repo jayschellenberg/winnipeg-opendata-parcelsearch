@@ -155,7 +155,7 @@ import { radiusCircleFc } from './lib/radiusCircle.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures, saleKey } from './lib/sales.js';
 import {
-  saleCategory, pucsName, PUCS_CATEGORY_ORDER, UNCLASSIFIED_CATEGORY,
+  saleCategory, pucsName, pucsCode, PUCS_CATEGORY_ORDER, UNCLASSIFIED_CATEGORY,
 } from './lib/pucs.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
 import { properCaseAddress } from './lib/addressFormat.js';
@@ -584,6 +584,8 @@ const SORT_KEYS = {
   // plain-language column by its underlying code would move rows into
   // an order the reader cannot see a reason for.
   useCodeName:  (r) => strKey(pucsName(r.assess?.properties?._saleUseCode)),
+  // Property Search PUCS: the current roll's code, as the badge shows it.
+  pucs:         (r) => strKey(pucsCode(r.assess?.properties?.property_use_code)),
   numUnits:     (r) => finiteOrNeg(r.assess?.properties?._saleNumUnits),
   unitLabel:    (r) => strKey(r.assess?.properties?._saleUnitLabel),
   saleZoning:   (r) => strKey(r.assess?.properties?._saleZoning),

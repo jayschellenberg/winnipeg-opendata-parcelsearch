@@ -2446,6 +2446,12 @@ body {
 body:not(.sales-mode) .sales-only {
   display: none !important;
 }
+/* The mirror: Property Search-only columns (the current-roll PUCS) hide
+   while a sales set is loaded. Applied to th AND td alike by
+   columnCellClasses, so header and cells stay in step. */
+body.sales-mode .property-only {
+  display: none !important;
+}
 body:not(.subject-set) .subj-col {
   display: none !important;
 }
