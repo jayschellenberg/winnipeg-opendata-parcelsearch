@@ -126,6 +126,7 @@ import {
 import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
 import { showLocationMapPanel } from './lib/locationMapPanel.js';
+import { waitForMapIdle, MapRenderTimeoutError } from './lib/snapshotCapture.js';
 import { initParcelListImport } from './lib/parcelListImport.js';
 import {
   buildClusterIndex, clusterForFeature, clusterForPoint, nearestCluster,
@@ -222,12 +223,37 @@ wireRowSelection();   // header tick-all + delegated row boxes (needs the thead)
 
 const $mapEl = document.getElementById('map');
 const $staticMapBtn = document.getElementById('static-map-btn');
-const $staticMapLegendBtn = document.getElementById('static-map-legend-btn');
-const $staticMapOutput = document.getElementById('static-map-output');
-// True while a Generate Map / Map w/Legend capture owns the two buttons.
-// Declared up here because updateLegendAvailability() runs at init, well
-// before generateStaticMap's definition further down.
+// The Capture Map panel: preview + Include legend + Copy / Download.
+const $captureModal      = document.getElementById('map-capture-modal');
+const $captureImg        = document.getElementById('map-capture-img');
+const $captureNote       = document.getElementById('map-capture-note');
+const $captureLegend     = document.getElementById('map-capture-legend');
+const $captureCopy       = document.getElementById('map-capture-copy');
+const $captureDownload   = document.getElementById('map-capture-download');
+const $captureDownloadJpg = document.getElementById('map-capture-download-jpg');
+const CAPTURE_LEGEND_KEY = 'wpgps.captureLegend';
+// The Location Map pop-up: lib/locationMapPanel.js renders into its body.
+const $locationMapModal  = document.getElementById('location-map-modal');
+const $locationMapOutput = document.getElementById('location-map-output');
+// Every Capture Map image is exactly this size: 6.5 x 3.5 in at 300 dpi, the
+// same as the Sales Charts PNGs and the Manitoba app (Jason, 2026-10-07). The
+// on-screen map is the same shape, and the capture redraws it at a higher
+// pixel ratio rather than upscaling, so a small laptop map still gives a
+// sharp full-size image.
+const CAPTURE_W = 1950;
+const CAPTURE_H = 1050;
+// The raw (legend-free, credit-free) frame of the last capture, kept so the
+// panel's "Include legend" box can recompose without re-shooting the map.
+let captureFrame = null;
+// True while a capture is composing. Declared up here because
+// updateLegendAvailability() runs at init, well before generateStaticMap's
+// definition further down. The capture button is disabled for the duration
+// so a second click (or Alt+C) can't start one on top of the first.
 let captureInFlight = false;
+// How long a capture waits for the map to go idle before shooting the frame
+// that is on screen. 'idle' never fires while any source is stuck loading,
+// so an unbounded wait hangs the button; waitForMapIdle counts visible time.
+const STATIC_MAP_IDLE_TIMEOUT_MS = 6000;
 const $zoningLegend = document.getElementById('zoning-legend');
 const $infillLegend = document.getElementById('infill-legend');
 const $airportLegend = document.getElementById('airport-legend');
@@ -910,10 +936,27 @@ document.querySelector('.zoning-changes-pill')?.addEventListener('click', (e) =>
   setZoningChangesMode(btn.dataset.mode);
 });
 
-if ($staticMapBtn) $staticMapBtn.addEventListener('click', () => generateStaticMap());
-if ($staticMapLegendBtn) {
-  $staticMapLegendBtn.addEventListener('click', () => generateStaticMap({ withLegend: true }));
+if ($staticMapBtn) {
+  $staticMapBtn.addEventListener('click', () => {
+    generateStaticMap().then(openCapturePanel).catch(showCaptureError);
+  });
 }
+wireCapturePanel();
+if ($locationMapModal) {
+  for (const el of $locationMapModal.querySelectorAll('[data-close]')) {
+    el.addEventListener('click', () => $locationMapModal.close());
+  }
+  $locationMapModal.addEventListener('click', (e) => { if (e.target === $locationMapModal) $locationMapModal.close(); });
+}
+// Alt+C: copy the current map view to the clipboard, no panel. e.code so a
+// non-QWERTY layout still finds it; skipped while a dialog is open.
+document.addEventListener('keydown', (e) => {
+  if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === 'KeyC'
+      && !document.querySelector('dialog[open]')) {
+    e.preventDefault();
+    copyMapToClipboard();
+  }
+});
 const $locationMapBtn = document.getElementById('location-map-btn');
 const LOCATION_MAP_LABEL = $locationMapBtn?.textContent || 'Location Map';
 if ($locationMapBtn) {
@@ -1688,7 +1731,33 @@ async function runSearch() {
     }
   } finally {
     setBusy(false);
+    // In finally, not after the awaits: a late step (the legal-description
+    // join) can throw after the parcels are already on the grid, and those
+    // results still deserve the fabric under them. The function's own
+    // "found anything" check keeps an empty or failed search from turning
+    // it on.
+    autoEnableCitywideParcels();
   }
+}
+
+/**
+ * Turn All Assessment Parcels on after a search lands, so the results sit
+ * on the grey citywide parcel wash by default (Jason, 2026-10-07; the same
+ * default as the Manitoba app's Assessment Parcels). Property Search only.
+ * Only when the search found something: both result sets are emptied at
+ * the start of every search, so a non-empty one means this search's
+ * results. Goes through the layer's own toggle so its button state stays
+ * honest, and is not awaited, so the tiles load behind the finished
+ * results. One citywide PMTiles archive, so unlike Manitoba there is no
+ * per-area fetch to cap.
+ */
+function autoEnableCitywideParcels() {
+  if (getActiveTab() !== 'property') return;
+  if (citywideParcelsEnabled || !$allParcelsToggle) return;
+  const found = (lastFullAssessFc?.features?.length || 0) + (lastFullSurveyFc?.features?.length || 0);
+  if (found === 0) return;
+  toggleCitywideParcels()
+    .catch((err) => console.warn('auto All Assessment Parcels failed', err));
 }
 
 /**
@@ -3963,22 +4032,34 @@ function publishSalesToCharts(rows) {
   try { chartsBus()?.postMessage({ type: 'sales', rows: lastChartRows }); } catch { /* no receiver */ }
 }
 
-/**
- * Show the "Include legend in map image" tick only once a legend is
- * actually on screen. Watching the map pane for hidden/style flips
- * beats hooking each of the dozen overlay handlers — one observer
- * cannot be forgotten when a new overlay is added.
- */
-function updateLegendAvailability() {
-  if (!$staticMapLegendBtn || !$mapEl) return;
-  // A capture owns the buttons until it finishes; it re-runs this itself.
-  if (captureInFlight) return;
-  const any = [...$mapEl.querySelectorAll('.map-legend')]
+/** Whether any map legend is showing right now. */
+function anyLegendVisible() {
+  if (!$mapEl) return false;
+  return [...$mapEl.querySelectorAll('.map-legend')]
     .some((el) => !el.hidden && el.offsetParent !== null);
-  $staticMapLegendBtn.disabled = !any;
-  $staticMapLegendBtn.title = any
-    ? "Capture the current map view as a PNG with the map's visible legends drawn into it, stacked in the bottom-right corner just above the credit line — the same corner they occupy on screen. The image keeps its normal dimensions, so the legend sits over the map rather than beside it."
-    : 'No legend on screen to include — turn on an overlay that has one (zoning, traffic, neighbourhoods).';
+}
+
+/**
+ * Enable the Capture Map panel's "Include legend" box only while a legend
+ * is on screen. Watching the map pane for hidden/style flips beats hooking
+ * each of the dozen overlay handlers — one observer cannot be forgotten
+ * when a new overlay is added.
+ *
+ * The tick is only re-read from storage when availability FLIPS (or the
+ * panel opens, `sync`). This runs from the map pane's MutationObserver, and
+ * a mouse click on the box itself fires that observer between the click and
+ * its 'change' event — re-ticking from storage there silently undid every
+ * untick (found in the Manitoba app, 2026-10-07).
+ */
+function updateLegendAvailability({ sync = false } = {}) {
+  if (!$captureLegend) return;
+  const has = anyLegendVisible();
+  const flipped = $captureLegend.disabled !== !has;
+  $captureLegend.disabled = !has;
+  if (sync || flipped) $captureLegend.checked = has && captureLegendWanted();
+  $captureLegend.closest('label')?.setAttribute('title', has
+    ? "Draw the map's visible legends into the image, stacked bottom-right above the credit line — the same corner they sit in on screen."
+    : 'No legend on screen to include — turn on an overlay that has one (zoning, traffic, neighbourhoods).');
 }
 
 /**
@@ -4019,113 +4100,275 @@ function downloadLocationBlob(blob, filename) {
 
 /**
  * Location Map: the Winnipeg map with a SUBJECT callout at the searched
- * property, rendered as a PNG under the table with Copy / Download
- * (lib/locationMapPanel.js, shared with the Manitoba app). A downtown
- * property gets one box between the downtown circle and the inset, with
- * an arrow to each.
+ * property, rendered as a PNG in a pop-up with Copy / Download, the same
+ * shape as the Capture Map panel (lib/locationMapPanel.js, shared with the
+ * Manitoba app, renders the panel body unchanged). A downtown property gets
+ * one box between the downtown circle and the inset, with an arrow to each.
  */
 async function generateLocationMap() {
-  if (!$staticMapOutput) return;
+  if (!$locationMapModal || !$locationMapOutput) return;
   const subject = resolveLocationMapSubject();
-  $staticMapOutput.hidden = false;
-  $staticMapOutput.innerHTML = '';
+  $locationMapOutput.innerHTML = '';
   if (!subject) {
-    $staticMapOutput.innerHTML = '<p class="static-map-hint">Search for a property first — the location map points at the search result.</p>';
-    $staticMapOutput.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $locationMapOutput.innerHTML = '<p class="static-map-hint">Search for a property first — the location map points at the search result.</p>';
+    if (!$locationMapModal.open) $locationMapModal.showModal();
     return;
   }
   const btn = $locationMapBtn;
   if (btn) { btn.disabled = true; btn.textContent = 'Rendering…'; }
   try {
     await showLocationMapPanel({
-      container: $staticMapOutput,
+      container: $locationMapOutput,
       subject,
       maps: ['winnipeg'],
       state: locationMapState,
       onState: (next) => { locationMapState = next; },
       download: downloadLocationBlob,
     });
-    $staticMapOutput.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!$locationMapModal.open) $locationMapModal.showModal();
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = LOCATION_MAP_LABEL; }
   }
 }
 
 /**
- * Capture the current interactive-map view as a static <img> embedded
- * below the table. Forces a synchronous repaint first (waits for the
- * `idle` event) so the snapshot captures every layer in its final
- * state — without that, mid-loading tiles or a half-finished animation
- * frame can show up in the PNG.
+ * Capture the current map view as an exact CAPTURE_W x CAPTURE_H frame.
  *
- * The map was created with preserveDrawingBuffer:true so that
- * canvas.toDataURL() returns real bytes; without that flag the buffer
- * is cleared between frames and the read returns transparent black.
+ * The map is redrawn at whatever pixel ratio makes its 1950:1050 window
+ * CAPTURE_W device pixels wide, so the image has a fixed size however small
+ * the map is on screen — labels and line widths scale with it, so the image
+ * looks like the screen, just sharper. The ratio is put back in `finally`.
+ * The on-screen map is already 1950:1050; the centre crop only bites when
+ * the map is expanded (or on a phone), where the pane has another shape.
+ *
+ * The map was created with preserveDrawingBuffer:true, which keeps the
+ * framebuffer readable after the frame so drawImage() reads real pixels.
+ *
+ * Resolves { frame, staleFrame }; the panel / Alt+C path composes the credit
+ * and legend on top. Rejects when a capture is already running.
  */
-async function generateStaticMap({ withLegend = false } = {}) {
-  if (!$staticMapOutput) return;
+async function generateStaticMap() {
   await mapReady;
-  if (captureInFlight) return;
-  // `withLegend` is the one difference between the two buttons: Generate
-  // Map is the plain view, Map w/Legend draws the visible legends into it.
-  // Both buttons go busy for the capture so a second click can't overlap.
-  const btn = withLegend && $staticMapLegendBtn ? $staticMapLegendBtn : $staticMapBtn;
-  const busyBtns = [$staticMapBtn, $staticMapLegendBtn].filter(Boolean);
+  if (captureInFlight) throw new Error('A map capture is already running.');
+  const btn = $staticMapBtn;
+  const wasDisabled = btn ? btn.disabled : false;
+  const originalLabel = btn?.innerHTML;
   captureInFlight = true;
-  for (const b of busyBtns) b.disabled = true;
-  const originalLabel = btn.textContent;
-  btn.textContent = 'Capturing…';
+  if (btn) { btn.disabled = true; btn.textContent = 'Capturing…'; }
+  const canvas = map.getCanvas();
+  const prevRatio = map.getPixelRatio();
   try {
-    await new Promise((resolve) => {
-      const onIdle = () => { map.off('idle', onIdle); resolve(); };
-      map.on('idle', onIdle);
-      map.triggerRepaint();
-    });
-    const canvas = map.getCanvas();
-    const dataUrl = composeWithAttribution(canvas, { withLegend });
-    $staticMapOutput.hidden = false;
-    $staticMapOutput.innerHTML = '';
-    const img = document.createElement('img');
-    img.src = dataUrl;
-    img.alt = 'Static snapshot of the current map view';
-    img.title = 'Right-click → Save Image As… to drop into a report';
-    $staticMapOutput.appendChild(img);
-    $staticMapOutput.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (err) {
-    console.error('static map capture failed', err);
-    $staticMapOutput.hidden = false;
-    $staticMapOutput.innerHTML = '<p style="color:#c0392b">Capture failed — try toggling the satellite basemap and re-trying. If it persists, check the browser console.</p>';
+    const cssW = canvas.clientWidth;
+    const cssH = canvas.clientHeight;
+    const cropCssW = Math.min(cssW, cssH * CAPTURE_W / CAPTURE_H);
+    // Never drop below the screen's own ratio: on a high-DPI screen the
+    // map may already have more pixels than the export needs, and the
+    // downscale below then only sharpens it.
+    map.setPixelRatio(Math.max(prevRatio, CAPTURE_W / cropCssW));
+    map.triggerRepaint();
+    // BOUNDED. 'idle' only fires once every source has finished loading,
+    // so one overlay tile that never resolves means it never fires at all;
+    // the old bare `new Promise` + map.on('idle') wait hung the button on
+    // "Capturing…" with captureInFlight stuck true. A timeout is NOT fatal:
+    // preserveDrawingBuffer keeps the last rendered frame readable, and
+    // capturing it beats refusing to; the panel says a layer may be partial.
+    let staleFrame = false;
+    try {
+      await waitForMapIdle(map, STATIC_MAP_IDLE_TIMEOUT_MS);
+    } catch (err) {
+      if (!(err instanceof MapRenderTimeoutError)) throw err;
+      staleFrame = true;
+      console.warn('static map: map never went idle, capturing current frame', err);
+    }
+    const sw = canvas.width;
+    const sh = canvas.height;
+    const cropW = Math.min(sw, sh * CAPTURE_W / CAPTURE_H);
+    const cropH = cropW * CAPTURE_H / CAPTURE_W;
+    const frame = document.createElement('canvas');
+    frame.width = CAPTURE_W;
+    frame.height = CAPTURE_H;
+    const fctx = frame.getContext('2d');
+    fctx.imageSmoothingQuality = 'high';
+    fctx.drawImage(canvas, (sw - cropW) / 2, (sh - cropH) / 2, cropW, cropH, 0, 0, CAPTURE_W, CAPTURE_H);
+    return { frame, staleFrame };
   } finally {
+    map.setPixelRatio(prevRatio);
     captureInFlight = false;
-    for (const b of busyBtns) b.disabled = false;
-    btn.textContent = originalLabel;
-    updateLegendAvailability();   // the legend button's enabled state is its own, not the capture's
+    if (btn) { btn.disabled = wasDisabled; btn.innerHTML = originalLabel; }
   }
 }
 
+/** The legend box's remembered choice; on unless the user turned it off. */
+function captureLegendWanted() {
+  try { return localStorage.getItem(CAPTURE_LEGEND_KEY) !== '0'; } catch { return true; }
+}
+
+/** The composed image for the current frame + legend choice. */
+function composedCapture() {
+  if (!captureFrame) return null;
+  const withLegend = !!$captureLegend && !$captureLegend.disabled && $captureLegend.checked;
+  return composeWithAttribution(captureFrame.frame, { withLegend });
+}
+
+function canvasToBlob(canvas, mime = 'image/png', quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('image encode failed'))), mime, quality);
+  });
+}
+
+/** Re-draw the panel preview from the stored frame (legend box changed). */
+async function refreshCapturePreview() {
+  const out = composedCapture();
+  if (!out || !$captureImg) return;
+  const blob = await canvasToBlob(out);
+  if ($captureImg.src) URL.revokeObjectURL($captureImg.src);
+  $captureImg.src = URL.createObjectURL(blob);
+}
+
+/** Show a finished capture in the Copy / Download panel. */
+async function openCapturePanel(capture) {
+  if (!$captureModal) return;
+  captureFrame = capture;
+  updateLegendAvailability({ sync: true });
+  if ($captureNote) {
+    $captureNote.hidden = !capture.staleFrame;
+    $captureNote.textContent = 'The map was still loading — close and capture again if a layer looks incomplete.';
+  }
+  await refreshCapturePreview();
+  if (!$captureModal.open) $captureModal.showModal();
+  $captureCopy?.focus();
+}
+
+function showCaptureError(err) {
+  console.error('static map capture failed', err);
+  if (captureInFlight) return;
+  window.alert('Map capture failed — try toggling the satellite basemap and re-trying. If it persists, check the browser console.');
+}
+
+/** "wpg-map-YYYY-MM-DD" for the download. */
+function captureFilename(ext) {
+  return `wpg-map-${new Date().toISOString().slice(0, 10)}.${ext}`;
+}
+
+/** Brief label swap on a button to confirm an action. */
+function flashButton(btn, text) {
+  if (!btn) return;
+  const original = btn.dataset.label || btn.textContent;
+  btn.dataset.label = original;
+  btn.textContent = text;
+  clearTimeout(btn._flashTimer);
+  btn._flashTimer = setTimeout(() => { btn.textContent = original; }, 1800);
+}
+
+/** Small confirmation over the map, for Alt+C (which opens no panel). */
+function mapToast(text) {
+  const pane = $mapEl?.closest('.map-pane') || $mapEl;
+  if (!pane) return;
+  let el = pane.querySelector('.map-capture-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'map-capture-toast';
+    el.setAttribute('role', 'status');
+    pane.appendChild(el);
+  }
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function wireCapturePanel() {
+  if (!$captureModal) return;
+  if ($captureLegend) {
+    $captureLegend.checked = captureLegendWanted();
+    $captureLegend.addEventListener('change', () => {
+      try { localStorage.setItem(CAPTURE_LEGEND_KEY, $captureLegend.checked ? '1' : '0'); } catch { /* private mode */ }
+      refreshCapturePreview().catch((err) => console.error('capture preview failed', err));
+    });
+  }
+  $captureCopy?.addEventListener('click', async () => {
+    const out = composedCapture();
+    if (!out) return;
+    try {
+      // The Blob PROMISE goes straight into ClipboardItem, so the write is
+      // registered inside the click's user activation.
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': canvasToBlob(out) })]);
+      flashButton($captureCopy, 'Copied ✓');
+    } catch (err) {
+      console.warn('map capture copy failed', err);
+      flashButton($captureCopy, 'Copy blocked — use Download');
+    }
+  });
+  $captureDownload?.addEventListener('click', async () => {
+    const out = composedCapture();
+    if (out) downloadLocationBlob(await canvasToBlob(out), captureFilename('png'));
+  });
+  $captureDownloadJpg?.addEventListener('click', async () => {
+    const out = composedCapture();
+    if (out) downloadLocationBlob(await canvasToBlob(out, 'image/jpeg', 0.9), captureFilename('jpg'));
+  });
+  for (const el of $captureModal.querySelectorAll('[data-close]')) {
+    el.addEventListener('click', () => $captureModal.close());
+  }
+  // Click on the backdrop closes it too.
+  $captureModal.addEventListener('click', (e) => { if (e.target === $captureModal) $captureModal.close(); });
+}
+
 /**
- * Compose a new canvas with the map canvas content + a credit pill in
- * the bottom-right. Pulls the live MapLibre attribution string so the
- * pill stays in sync with whichever sources/overlays are visible
- * (basemap + zoning + survey + assess) without us having to enumerate
- * them. Returns a PNG data URL ready for an <img>.src.
+ * Alt+C: capture and copy straight to the clipboard, no panel. Uses the
+ * legend box's remembered choice. ClipboardItem takes the Blob promise so
+ * the write is registered inside the keypress's user activation; the
+ * capture itself takes a second or two.
  */
-function composeWithAttribution(srcCanvas, { withLegend = false } = {}) {
-  const w = srcCanvas.width;
-  const h = srcCanvas.height;
+function copyMapToClipboard() {
+  if (captureInFlight) return;
+  const blob = generateStaticMap().then(async (capture) => {
+    captureFrame = capture;
+    const withLegend = captureLegendWanted() && anyLegendVisible();
+    const out = composeWithAttribution(capture.frame, { withLegend });
+    return canvasToBlob(out);
+  });
+  mapToast('Capturing map…');
+  navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+    .then(() => mapToast(`Map copied — ${CAPTURE_W} × ${CAPTURE_H} px`))
+    .catch((err) => {
+      console.warn('Alt+C map copy failed', err);
+      mapToast('Copy failed — use 📸 Capture Map instead');
+    });
+}
+
+/**
+ * Burn the live attribution (and, when asked, the visible legends) into a
+ * copy of a captured map frame. Pulls the live MapLibre attribution string
+ * so the pill stays in sync with whichever sources/overlays are visible
+ * (basemap + zoning + survey + assess) without us having to enumerate them.
+ *
+ * `frame` is the CAPTURE_W x CAPTURE_H frame generateStaticMap() cropped out
+ * of the map canvas. It is left untouched so the panel's "Include legend"
+ * box can recompose from it. Returns a new canvas of the same size.
+ */
+function composeWithAttribution(frame, { withLegend = false } = {}) {
+  const w = frame.width;
+  const h = frame.height;
   const out = document.createElement('canvas');
   out.width = w;
   out.height = h;
   const ctx = out.getContext('2d');
-  ctx.drawImage(srcCanvas, 0, 0);
+  // White backing: the JPEG download has no alpha, so any transparent pixel
+  // would otherwise encode as black.
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(frame, 0, 0);
 
   const attribEl = $mapEl.querySelector('.maplibregl-ctrl-attrib-inner') ||
                    $mapEl.querySelector('.maplibregl-ctrl-attrib');
   let text = attribEl ? attribEl.innerText.replace(/\s+/g, ' ').trim() : '';
   if (!text) text = '© OpenStreetMap © CARTO';
 
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
-  const fontSize = Math.max(11, Math.round(11 * dpr * 0.9));
+  // Sized from the image width (the image is always CAPTURE_W wide), so the
+  // credit and legend keep their proportion to the map — the same rule as
+  // the Manitoba app.
+  const fontSize = Math.max(11, Math.round(w * 0.011));
   ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
   ctx.textBaseline = 'middle';
   const maxWidth = Math.floor(w * 0.85);
@@ -4171,7 +4414,7 @@ function composeWithAttribution(srcCanvas, { withLegend = false } = {}) {
       paintMapLegends(ctx, boxes, legendFont);
     }
   }
-  return out.toDataURL('image/png');
+  return out;
 }
 
 /** Greedy word-wrap on a 2D canvas context. */
