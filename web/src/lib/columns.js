@@ -67,12 +67,20 @@ const ADOPT_ONCE_SALES = ['n1Id', 'demo', 'demoDate', 'built', 'builtDate', 'sou
  * ticks stick. Full detail (a null set) is left alone — it shows everything.
  *
  * 2026-10-07 (Jason): the default moved from the legal description to
- * PUCS / DU / Assessment.
+ * PUCS / DU / Assessment, keeping Lot Size.
+ *
+ * Tags are permanent: one that has shipped must never be edited or
+ * removed, only superseded by a new one. That is why 'drop:area' is gone
+ * but 'add:area' follows it — the first cut of this change dropped Lot
+ * Size, a browser that loaded it carries 'drop:area' as done, and only a
+ * NEW tag can put the column back for it (a fresh browser just gets
+ * 'add:area' on a set that already has it).
  */
 const PROPERTY_ONCE_KEY = 'wps_table_columns_property_once_v1';
 const PROPERTY_ONCE = [
   ['add', 'pucs'], ['add', 'dwellingUnits'], ['add', 'value'],
-  ['drop', 'lot'], ['drop', 'block'], ['drop', 'plan'], ['drop', 'area'],
+  ['drop', 'lot'], ['drop', 'block'], ['drop', 'plan'],
+  ['add', 'area'],
 ];
 
 /*
@@ -92,12 +100,11 @@ const PROPERTY_ONCE = [
 const UNGOVERNED = new Set(['seq', 'select']);
 
 // The Property Search default (Jason, 2026-10-07): what the parcel IS and
-// is worth — current PUCS, dwelling units, assessed value — beside its
-// identity and water influence. The legal lot/block/plan columns left the
-// default (they are a lookup detail, one gear click away and still in
-// Zoning detail), and so did Lot Size, which was not in the list Jason
-// asked for. See PROPERTY_ONCE for stored sets.
-const QUICK_LOOKUP = ['roll', 'address', 'pucs', 'dwellingUnits', 'water', 'value'];
+// is worth — current PUCS, dwelling units, assessed value, lot size —
+// beside its identity and water influence. The legal lot/block/plan
+// columns left the default (they are a lookup detail, one gear click away
+// and still in Zoning detail). See PROPERTY_ONCE for stored sets.
+const QUICK_LOOKUP = ['roll', 'address', 'pucs', 'dwellingUnits', 'area', 'water', 'value'];
 // Residential property search: what actually matters on a house — the
 // dwelling itself (type, age, floor area, rooms, units), the lot, its
 // zoning and water influence, and the assessment. Deliberately omits

@@ -33,11 +33,11 @@ function test(name, fn) {
 
 console.log('Property Search column defaults');
 
-test('the default is roll, address, PUCS, DU, water, assessment', () => {
+test('the default is roll, address, PUCS, DU, lot size, water, assessment', () => {
   assert.deepEqual([...DEFAULT_VISIBLE].sort(),
-    ['address', 'dwellingUnits', 'pucs', 'roll', 'value', 'water']);
+    ['address', 'area', 'dwellingUnits', 'pucs', 'roll', 'value', 'water']);
   assert.deepEqual([...PRESETS['Quick lookup']].sort(), [...DEFAULT_VISIBLE].sort());
-  for (const k of ['lot', 'block', 'plan', 'area']) assert.ok(!DEFAULT_VISIBLE.has(k), `${k} is gear-only`);
+  for (const k of ['lot', 'block', 'plan']) assert.ok(!DEFAULT_VISIBLE.has(k), `${k} is gear-only`);
 });
 
 test('every default key is a real column', () => {
@@ -50,10 +50,10 @@ test('a stored set from before the change is migrated once', () => {
   stored.set('wps_table_columns_v1', JSON.stringify(['lot', 'block', 'plan', 'roll', 'address', 'water', 'area']));
   initColumns();
   setMode('property');
-  for (const k of ['pucs', 'dwellingUnits', 'value', 'roll', 'address', 'water']) {
+  for (const k of ['pucs', 'dwellingUnits', 'value', 'roll', 'address', 'water', 'area']) {
     assert.equal(isColumnVisible(k), true, `${k} should be visible after the migration`);
   }
-  for (const k of ['lot', 'block', 'plan', 'area']) {
+  for (const k of ['lot', 'block', 'plan']) {
     assert.equal(isColumnVisible(k), false, `${k} should be hidden after the migration`);
   }
   // Once only: the user's own ticks survive the next load.
@@ -62,6 +62,21 @@ test('a stored set from before the change is migrated once', () => {
   initColumns();
   assert.equal(isColumnVisible('lot'), true, 'a re-ticked Lot is not dropped again');
   assert.equal(isColumnVisible('value'), false, 'an unticked Assessment is not re-added');
+});
+
+test('a browser that ran the first cut (which dropped Lot Size) gets it back', () => {
+  stored.clear();
+  // What the first deploy left behind: Lot Size dropped, its tag recorded.
+  stored.set('wps_table_columns_v1', JSON.stringify(['roll', 'address', 'water', 'pucs', 'dwellingUnits', 'value']));
+  stored.set('wps_table_columns_property_once_v1', JSON.stringify(
+    ['add:pucs', 'add:dwellingUnits', 'add:value', 'drop:lot', 'drop:block', 'drop:plan', 'drop:area']));
+  initColumns();
+  setMode('property');
+  assert.equal(isColumnVisible('area'), true, 'Lot Size is restored by the add:area tag');
+  assert.equal(isColumnVisible('lot'), false, 'the earlier drops are not re-run');
+  setColumnVisible('area', false);
+  initColumns();
+  assert.equal(isColumnVisible('area'), false, 'and an untick after that sticks');
 });
 
 test('Full detail (a null stored set) is left alone', () => {
