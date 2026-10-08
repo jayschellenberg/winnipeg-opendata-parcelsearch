@@ -250,8 +250,26 @@ test('the Addenda Pack button builds the pack and always restores the map', () =
   assert.match(fin, /setBasemapByKey\(basemap\)/, 'the pack does not put the basemap back in its finally');
   assert.match(fin, /map\.jumpTo\(camera\)/, 'the pack does not put the camera back in its finally');
   assert.match(body, /buildStoreZip\(/, 'the pack never zips anything');
+  assert.match(fin, /setAddendaMarks\(userMarks\)/, 'the pack does not put the pin / numbers / dimensions back in its finally');
+  assert.match(fin, /cycleZoningTo\(zoningWas\)/, 'the pack does not put the zoning overlay back in its finally');
+  assert.match(fin, /setCitywideParcels\(citywideWas\)/, 'the pack does not put All Assessment Parcels back in its finally');
+  assert.match(body, /buildStoreZip\(/, 'the pack never zips anything');
   assert.match(fnBodyOf('captureAddendaView'), /furniture:\s*capture/,
     'addenda maps are composed without their scale bar / north arrow');
+});
+
+test('the addenda maps carry the Manitoba app\'s marks (Jason, 2026-10-08)', () => {
+  const body = fnBodyOf('buildAddendaPack');
+  assert.match(body, /locatorMarks = pinPoint\s*\?\s*\{ pin: true/, 'a lone parcel no longer gets the locator pin');
+  assert.match(body, /numbers: numberable/, 'several parcels are no longer numbered on the locator maps');
+  assert.match(body, /dims: true[\s\S]{0,200}aerialKey/, 'the aerial no longer carries dimensions');
+  assert.match(body, /cycleZoningTo\('shading'\)[\s\S]{0,300}withLegend: true/, 'the zoning map is not shaded with its legend');
+  assert.match(body, /'zoning-map\.png'/, 'the zoning map is never added to the pack');
+  assert.match(body, /title: true/, 'the location map has lost its title box');
+  const hood = body.slice(body.indexOf("step('neighbourhood')"), body.indexOf("'neighbourhood-map.png'"));
+  assert.match(hood, /setCitywideParcels\(false\)/, 'the neighbourhood map keeps the citywide parcel wash');
+  assert.match(hood, /size: ADDENDA_NEIGHBOURHOOD_SIZE, cornerLabel: hoodName/, 'the neighbourhood map is not tall / labelled');
+  assert.match(fnBodyOf('generateStaticMap'), /frame\.height = height/, 'the capture ignores the requested size');
 });
 
 function fnBodyOf(name) { return functionBody(main, name); }
