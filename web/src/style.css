@@ -5313,6 +5313,23 @@ button.topbar-link {
   background: #a3262d;
   border-color: #a3262d;
 }
+/* Exhibit Pack: full width under the two captures, slate so it reads as
+   "both of the above, bundled" rather than a third capture. While it runs
+   its label is the progress line, so it must not look disabled-grey. */
+.sidebar .generate-map-btn-pack {
+  width: 100%;
+  margin-top: 6px;
+  background: #334155;
+  border-color: #334155;
+}
+.sidebar .generate-map-btn-pack:hover:not(:disabled) {
+  background: #1e293b;
+  border-color: #1e293b;
+}
+.sidebar .generate-map-btn-pack:disabled {
+  opacity: 0.85;
+  cursor: progress;
+}
 
 /* Links inside map popups (Roll #, Assessment →, GPS Coordinates) read as
    links: the popup otherwise inherits the body ink with no underline, so
