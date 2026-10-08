@@ -251,7 +251,7 @@ const $captureDownloadJpg = document.getElementById('map-capture-download-jpg');
 const CAPTURE_LEGEND_KEY = 'wpgps.captureLegend';
 const $captureFurniture  = document.getElementById('map-capture-furniture');
 const CAPTURE_FURNITURE_KEY = 'wpgps.captureFurniture';
-const $exhibitPackBtn    = document.getElementById('exhibit-pack-btn');
+const $addendaPackBtn    = document.getElementById('addenda-pack-btn');
 // The Location Map pop-up: lib/locationMapPanel.js renders into its body.
 const $locationMapModal  = document.getElementById('location-map-modal');
 const $locationMapOutput = document.getElementById('location-map-output');
@@ -964,11 +964,11 @@ if ($staticMapBtn) {
     generateStaticMap().then(openCapturePanel).catch(showCaptureError);
   });
 }
-if ($exhibitPackBtn) {
-  $exhibitPackBtn.addEventListener('click', () => {
-    buildExhibitPack().catch((err) => {
-      console.error('exhibit pack failed', err);
-      window.alert(`Exhibit pack failed: ${err?.message || err}`);
+if ($addendaPackBtn) {
+  $addendaPackBtn.addEventListener('click', () => {
+    buildAddendaPack().catch((err) => {
+      console.error('addenda pack failed', err);
+      window.alert(`Addenda pack failed: ${err?.message || err}`);
     });
   });
 }
@@ -4177,10 +4177,11 @@ async function generateLocationMap() {
   }
 }
 
-// ---------- Exhibit Pack ----------
+// ---------- Addenda Pack ----------
 //
-// One click, one ZIP of the standard report map exhibits for the current
-// search (Jason, 2026-10-07; same design as the Manitoba app): the Winnipeg
+// One click, one ZIP of the standard report addenda maps for the current
+// search (Jason, 2026-10-07; renamed from "Exhibit Pack" 2026-10-08, as in
+// the Manitoba app): the Winnipeg
 // location map, a neighbourhood map, an aerial of the subject and — with
 // more than one parcel — a map of the whole result set. Every map is the
 // 1950 x 1050 Capture Map image with credit, scale bar and north arrow; the
@@ -4188,12 +4189,12 @@ async function generateLocationMap() {
 // driving the live map (basemap menu + camera) and putting both back.
 
 // How wide each framed view is at least, in metres — city-block scale.
-const EXHIBIT_NEIGHBOURHOOD_MIN_M = 1500;
-const EXHIBIT_AERIAL_MIN_M = 120;
-const EXHIBIT_RESULTS_MIN_M = 400;
+const ADDENDA_NEIGHBOURHOOD_MIN_M = 1500;
+const ADDENDA_AERIAL_MIN_M = 120;
+const ADDENDA_RESULTS_MIN_M = 400;
 
 /** Every result parcel with a shape (assessment, else survey). */
-function exhibitResultFeatures() {
+function addendaResultFeatures() {
   const fc = lastFullAssessFc?.features?.length ? lastFullAssessFc : lastFullSurveyFc;
   return (fc?.features || []).filter((f) => f?.geometry);
 }
@@ -4202,11 +4203,11 @@ function exhibitResultFeatures() {
  * The parcel the pack is about: the row last clicked (the Location Map's
  * subject too), else the search's only result. `specific` is false when
  * there are several results and none was picked — the neighbourhood and
- * aerial exhibits are then left out rather than framed on a scattered set.
+ * aerial maps are then left out rather than framed on a scattered set.
  */
-function exhibitSubjectFeatures() {
+function addendaSubjectFeatures() {
   if (locationMapRowFeature?.geometry) return { feats: [locationMapRowFeature], note: 'the selected parcel', specific: true };
-  const feats = exhibitResultFeatures();
+  const feats = addendaResultFeatures();
   if (!feats.length) return null;
   if (feats.length === 1) return { feats, note: 'the search result', specific: true };
   return { feats, note: `all ${feats.length} result parcels`, specific: false };
@@ -4231,7 +4232,7 @@ function setBasemapByKey(key) {
 }
 /** The sharpest imagery on offer: the newest City aerial (listed newest
  *  first in the menu), else Esri satellite. */
-function exhibitAerialKey() {
+function addendaAerialKey() {
   return document.querySelector('.basemap-menu-item[data-key^="ortho-"]')?.dataset.key || 'satellite';
 }
 
@@ -4240,7 +4241,7 @@ async function blobBytes(blob) {
 }
 
 /** Frame the live map on `bounds` with `basemap`, north-up, and capture it. */
-async function captureExhibitView(bounds, basemap, { withLegend }) {
+async function captureAddendaView(bounds, basemap, { withLegend }) {
   setBasemapByKey(basemap);
   map.jumpTo({ bearing: 0, pitch: 0 });
   map.fitBounds(bounds, { padding: 0, animate: false });
@@ -4249,13 +4250,13 @@ async function captureExhibitView(bounds, basemap, { withLegend }) {
   return { bytes: await blobBytes(await canvasToBlob(out)), stale: capture.staleFrame };
 }
 
-async function buildExhibitPack() {
-  const btn = $exhibitPackBtn;
+async function buildAddendaPack() {
+  const btn = $addendaPackBtn;
   if (!btn || btn.disabled || captureInFlight) return;
-  const subject = exhibitSubjectFeatures();
+  const subject = addendaSubjectFeatures();
   const subjectBox = subject && bboxOfFeatures(subject.feats);
   if (!subjectBox) {
-    window.alert('Search for a property first — the exhibit pack is built around the search result.');
+    window.alert('Search for a property first — the addenda pack is built around the search result.');
     return;
   }
   await mapReady;
@@ -4263,12 +4264,12 @@ async function buildExhibitPack() {
   btn.disabled = true;
   const camera = { center: map.getCenter(), zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() };
   const basemap = currentBasemapKey();
-  const aerialKey = exhibitAerialKey();
+  const aerialKey = addendaAerialKey();
   const withLegend = captureLegendWanted() && anyLegendVisible();
-  const allFeats = exhibitResultFeatures();
+  const allFeats = addendaResultFeatures();
   const total = 1 + (subject.specific ? 2 : 0) + (allFeats.length > 1 ? 1 : 0);
   let n = 0;
-  const step = (what) => { btn.textContent = `Exhibit ${++n}/${total}: ${what}…`; };
+  const step = (what) => { btn.textContent = `Addenda ${++n}/${total}: ${what}…`; };
   const files = [];
   const listing = [];
   const stale = [];
@@ -4297,21 +4298,21 @@ async function buildExhibitPack() {
     if (subject.specific) {
       // Neighbourhood — streets, wide enough to show the surroundings.
       step('neighbourhood');
-      const hood = await captureExhibitView(
-        framedBounds(subjectBox, { padFrac: 0.1, minWidthM: EXHIBIT_NEIGHBOURHOOD_MIN_M }), 'streets', { withLegend });
+      const hood = await captureAddendaView(
+        framedBounds(subjectBox, { padFrac: 0.1, minWidthM: ADDENDA_NEIGHBOURHOOD_MIN_M }), 'streets', { withLegend });
       add('neighbourhood-map.png', hood.bytes, `Streets, centred on ${subject.note}`, hood.stale);
       // Aerial — the newest City aerial (else satellite), close on the subject.
       step('aerial');
-      const aerial = await captureExhibitView(
-        framedBounds(subjectBox, { padFrac: 0.35, minWidthM: EXHIBIT_AERIAL_MIN_M }), aerialKey, { withLegend });
+      const aerial = await captureAddendaView(
+        framedBounds(subjectBox, { padFrac: 0.35, minWidthM: ADDENDA_AERIAL_MIN_M }), aerialKey, { withLegend });
       const aerialName = aerialKey.startsWith('ortho-') ? `City of Winnipeg aerial ${aerialKey.slice(6)}` : 'Satellite imagery';
       add('subject-aerial.png', aerial.bytes, `${aerialName} of ${subject.note}`, aerial.stale);
     }
     // Results — every result parcel, when there is more than one.
     if (allFeats.length > 1) {
       step('results');
-      const results = await captureExhibitView(
-        framedBounds(bboxOfFeatures(allFeats), { padFrac: 0.08, minWidthM: EXHIBIT_RESULTS_MIN_M }), 'streets', { withLegend });
+      const results = await captureAddendaView(
+        framedBounds(bboxOfFeatures(allFeats), { padFrac: 0.08, minWidthM: ADDENDA_RESULTS_MIN_M }), 'streets', { withLegend });
       add('results-map.png', results.bytes,
         `All ${allFeats.length} result parcels${numberingOn ? ', numbered as in the grid' : ''}`, results.stale);
     }
@@ -4326,7 +4327,7 @@ async function buildExhibitPack() {
   const credit = attribEl ? attribEl.innerText.replace(/\s+/g, ' ').trim() : '';
   const stamp = localDateStamp();
   const readme = [
-    `Winnipeg Parcel Search — exhibit pack, ${stamp}`,
+    `Winnipeg Parcel Search — addenda pack, ${stamp}`,
     '',
     ...listing,
     '',
@@ -4342,7 +4343,7 @@ async function buildExhibitPack() {
     '',
   ].join('\r\n');
   files.push({ name: 'README.txt', data: new TextEncoder().encode(readme) });
-  downloadLocationBlob(buildStoreZip(files), `wpg-exhibits-${stamp}.zip`);
+  downloadLocationBlob(buildStoreZip(files), `wpg-addenda-${stamp}.zip`);
 }
 
 /**
