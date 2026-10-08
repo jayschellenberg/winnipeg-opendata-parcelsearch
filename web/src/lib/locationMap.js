@@ -143,6 +143,10 @@ export const BASE_MAPS = {
     scale: 4,
     project: manitobaPage,
     obstacles: MANITOBA_OBSTACLES,
+    // The title box in the top-left corner runs out to here, ending just
+    // above the "Hudson Bay / Baie d'Hudson" label (its right edge, page
+    // points) — Jason, 2026-10-08.
+    titleRight: 241,
   },
   winnipeg: {
     id: 'winnipeg',
@@ -196,22 +200,33 @@ export const CALLOUT = {
   headHalfWidth: 3.6,
 };
 
-/** The optional figure title — "Subject Property Location / within
- *  Manitoba" — boxed in a corner of the page: black on white with a thin
- *  rule, so it reads as a caption rather than a second callout. */
+/** The optional figure title — "Subject Property Location within
+ *  Manitoba" — one line boxed in a corner of the page: the callout's dark
+ *  red for the rule and the text, on white, so it reads as part of the same
+ *  figure without competing with the solid SUBJECT box. One line, so on the
+ *  Manitoba page the box stays clear above the Hudson Bay label it runs
+ *  out to (`titleRight`). */
 export const TITLE = {
   font: 'bold 11px Arial, Helvetica, sans-serif',
   lineHeight: 13,
   padX: 6,
-  padY: 5,
+  padY: 4,
   fill: '#ffffff',
-  rule: '#333333',
-  text: '#1a1a1a',
+  rule: CALLOUT.fill,
+  ruleWidth: 1.2,
+  text: CALLOUT.fill,
 };
 
-/** The title's two lines for `map`. */
+/** The title's lines for `map`. */
 export function titleLines(map) {
-  return ['Subject Property Location', `within ${map.label}`];
+  return [`Subject Property Location within ${map.label}`];
+}
+
+/** The title box's [width, height] in page points: wide enough for the
+ *  text, and out to the map's `titleRight` where it has one. */
+export function titleSize(map, textWidth, lineCount = 1) {
+  const w = Math.max(Math.ceil(textWidth + TITLE.padX * 2), map.titleRight ? map.titleRight - MARGIN : 0);
+  return [w, lineCount * TITLE.lineHeight + TITLE.padY * 2];
 }
 
 /**
@@ -460,9 +475,8 @@ export async function renderLocationMap({ map = BASE_MAPS.manitoba, lng, lat, la
   if (title) {
     const lines = titleLines(map);
     ctx.font = TITLE.font;
-    const w = Math.ceil(Math.max(...lines.map((l) => ctx.measureText(l).width)) + TITLE.padX * 2);
-    const h = lines.length * TITLE.lineHeight + TITLE.padY * 2;
-    const box = placeTitle([w, h], where.inset ? [where.main, where.inset] : [where.main], { map });
+    const size = titleSize(map, Math.max(...lines.map((l) => ctx.measureText(l).width)), lines.length);
+    const box = placeTitle(size, where.inset ? [where.main, where.inset] : [where.main], { map });
     if (box) {
       drawTitle(ctx, box, lines);
       placeOn = { ...map, keepOut: [...(map.keepOut || []), box] };
@@ -488,14 +502,15 @@ function drawTitle(ctx, [x0, y0, x1, y1], lines) {
   ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
   ctx.restore();
   ctx.strokeStyle = TITLE.rule;
-  ctx.lineWidth = 0.8;
+  ctx.lineWidth = TITLE.ruleWidth;
   ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
   ctx.fillStyle = TITLE.text;
   ctx.font = TITLE.font;
-  ctx.textAlign = 'left';
+  // Centred, so a box stretched out to `titleRight` keeps even margins.
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   lines.forEach((line, i) => {
-    ctx.fillText(line, x0 + TITLE.padX, y0 + TITLE.padY + TITLE.lineHeight * (i + 0.5));
+    ctx.fillText(line, (x0 + x1) / 2, y0 + TITLE.padY + TITLE.lineHeight * (i + 0.5) + 0.5);
   });
 }
 
