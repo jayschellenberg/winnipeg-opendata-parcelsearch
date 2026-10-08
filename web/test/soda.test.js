@@ -450,6 +450,14 @@ test('joinAssessmentWithSurvey — one shapeless survey lot does not blank the o
   assert.equal(rows[0].survey?.properties.lot, '7');
 });
 
+test('joinAssessmentWithSurvey — a shapeless roll is flagged _noShape; a shaped one is not', () => {
+  const assess = square(0, 0, 10, { roll_number: 'r1', centroid_lat: 5, centroid_lon: 5 });
+  const rows = joinAssessmentWithSurvey(fc([shapeless({ roll_number: 'r0' }), assess]), fc([square(4, 4, 2, { id: 1, lot: '7' })]));
+  assert.equal(rows[0].assess.properties._noShape, true);
+  assert.equal(rows[0].survey, null);
+  assert.equal(rows[1].assess.properties._noShape, undefined);
+});
+
 test('joinSurveyWithAssessment — a shapeless survey lot or roll keeps the rest of the join', () => {
   const assess = square(0, 0, 10, { roll_number: 'r1', unit_number: '38', centroid_lat: 5, centroid_lon: 5 });
   const lot = square(4, 4, 2, { id: 1, lot: '7' });
