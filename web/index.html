@@ -368,6 +368,17 @@
               <span class="tip">Dwelling units (DU) filter. "0 DU only" surfaces vacant or non-residential parcels; "Min DU" pairs with the # box for parcels with at least that many units.</span>
             </span>
           </div>
+          <!-- Property use (PUCS). A server-side filter like water: whole
+               categories first, then every code with its plain name.
+               main.js fills it from lib/pucs.js (Jason, 2026-10-07). -->
+          <div class="pucs-row">
+            <span class="field pucs-field">
+              <select id="pucs-filter" aria-label="Property use (PUCS)">
+                <option value="">Any property use (PUCS)</option>
+              </select>
+              <span class="tip">Property use (PUCS) — the City assessment roll's current use code. Pick a whole category (e.g. All Multi-Family) or one code. Narrows the search on the City's server, so every matching parcel comes back; on its own it searches the whole city (first 1,000 or so), so pair it with a street or zoning.</span>
+            </span>
+          </div>
           <!-- Water influence. Two boxes, not one Yes/No: a lot
                fronting the Red River and a lot across the road from it
                are both "near water" and are not comparable, so the

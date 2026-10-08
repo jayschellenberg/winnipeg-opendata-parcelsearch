@@ -25,6 +25,7 @@ import {
   waterOf, waterLoaded, waterColor, waterCellText, waterTooltip, waterCsvCells,
 } from './water.js';
 import { pucsName, pucsCode, pucsCategory, UNCLASSIFIED_CATEGORY } from './pucs.js';
+import { assessmentPerDu } from './assessmentRates.js';
 import { properCaseAddress } from './addressFormat.js';
 
 /**
@@ -659,6 +660,16 @@ export const COLUMNS = [
       { header: 'Assessment Year',      extract: (a) => a.current_assessment_year },
       { header: 'Assessment URL',       extract: (a) => assessmentUrl(a) },
     ] },
+
+  // Assessed value per dwelling unit (Jason, 2026-10-07) — screening multi-
+  // family and checking assessment equity without a spreadsheet. Blank when
+  // the roll records no dwelling units. Same arithmetic as the Manitoba
+  // app (lib/assessmentRates.js, shared). Gear-only: not in any default.
+  { key: 'perDu',        header: 'Asmt $/DU',     mode: 'always', sortable: true,
+    theadTitle: 'Assessment divided by dwelling units — the assessed value per unit, for screening multi-family '
+      + 'and checking assessment equity. Blank when the roll records no dwelling units.',
+    render: (a) => td(formatDollars(assessmentPerDu(a.total_assessed_value, a.dwelling_units)), 'num'),
+    csv: { header: 'Asmt $/DU', extract: (a) => assessmentPerDu(a.total_assessed_value, a.dwelling_units) } },
 
   // walk/flood are link-only columns. They keep sortable: true to preserve
   // the existing UI affordance (click-to-sort never errors), even though

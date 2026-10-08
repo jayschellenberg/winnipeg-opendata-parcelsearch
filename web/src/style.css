@@ -357,6 +357,17 @@ body {
 }
 .sidebar .du-row > .field { min-width: 0; }
 .sidebar .du-row > .field:last-child { grid-column: span 2; }
+/* Property use (PUCS) drop-down: one full-width field under the DU row,
+   same gap. The option labels are long ("RESMC — Multifamily
+   Conversion"), so the closed select truncates rather than widening the
+   sidebar. */
+.sidebar .pucs-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 6px;
+}
+.sidebar .pucs-row > .field { min-width: 0; }
+.sidebar .pucs-row select { width: 100%; min-width: 0; text-overflow: ellipsis; }
 
 /* Additional Searches text boxes, two per row. minmax(0, 1fr) rather than
    1fr so a long value can't widen its column past half. */

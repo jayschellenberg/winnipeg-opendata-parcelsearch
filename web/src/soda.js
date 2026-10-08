@@ -301,7 +301,7 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
  */
 export async function searchAssessmentParcels({
   roll, addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
-  waterfront, nearWater,
+  waterfront, nearWater, pucs,
 }) {
   // A roll list longer than rollClause's IN cap is split here rather than
   // silently truncated there. Before the Import list modal existed, no UI
@@ -314,7 +314,7 @@ export async function searchAssessmentParcels({
   if (rollTokens.length > ROLL_IN_CAP) {
     const rest = {
       addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
-      waterfront, nearWater,
+      waterfront, nearWater, pucs,
     };
     const chunks = [];
     for (let i = 0; i < rollTokens.length; i += ROLL_IN_CAP) {
@@ -339,6 +339,8 @@ export async function searchAssessmentParcels({
   if (duClause) clauses.push(duClause);
   const wc = buildWaterClause({ waterfront, nearWater });
   if (wc)      clauses.push(wc);
+  const pc = pucsClause(pucs);
+  if (pc)      clauses.push(pc);
   if (clauses.length === 0) {
     return { type: 'FeatureCollection', features: [] };
   }
@@ -459,16 +461,16 @@ export async function searchAssessmentParcelsByRolls(rolls) {
  */
 export async function searchAssessmentParcelsExpanded({
   roll, addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
-  waterfront, nearWater,
+  waterfront, nearWater, pucs,
 }) {
   const directPromise = searchAssessmentParcels({
     roll, addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
-    waterfront, nearWater,
+    waterfront, nearWater, pucs,
   });
   const xrefPromise = (addressFrom || addressTo || addressStreet)
     ? searchAddressesAndFindParcels(
         { addressFrom, addressTo, addressStreet },
-        { roll, zoning, suite, duMode, duMin, waterfront, nearWater }
+        { roll, zoning, suite, duMode, duMin, waterfront, nearWater, pucs }
       )
     : Promise.resolve({ type: 'FeatureCollection', features: [] });
   const [directFc, xrefFc] = await Promise.all([directPromise, xrefPromise]);
@@ -1027,6 +1029,10 @@ async function fetchAssessmentByAddressPoints(addressFc, extraFilters = {}) {
   // non-waterfront rows into the result.
   const wc = buildWaterClause(extraFilters);
   if (wc) extras.push(wc);
+  // Same for the PUCS filter: a side-door address must not pull in a
+  // parcel of a different use.
+  const pc = pucsClause(extraFilters.pucs);
+  if (pc) extras.push(pc);
   return fetchPerPointIntersects({
     baseUrl: ASSESS_URL,
     geomColumn: 'geometry',
@@ -3568,6 +3574,24 @@ export function zoningClause(value) {
   const stripped = String(value).toUpperCase().replace(/-/g, '');
   if (!stripped) return null;
   return `upper(replace(zoning,'-','')) like '%${escapeSoql(stripped)}%'`;
+}
+
+/**
+ * Property Search's PUCS filter (Jason, 2026-10-07). `codes` is the list
+ * lib/pucs.js pucsFilterCodes() resolved from the drop-down. The column
+ * holds "RESSD - DETACHED SINGLE DWELLING", so each code matches as a
+ * prefix; every code is five letters, so none is a prefix of another.
+ * SERVER-SIDE, like the water filter: a post-filter over the first page
+ * would return "the RESMC ones among the first N", not all of them. Codes
+ * are validated to letters/digits, so nothing user-typed reaches the SoQL.
+ */
+export function pucsClause(codes) {
+  const clean = (Array.isArray(codes) ? codes : [])
+    .map((c) => String(c).trim().toUpperCase())
+    .filter((c) => /^[A-Z0-9]{2,8}$/.test(c));
+  if (!clean.length) return null;
+  const likes = clean.map((c) => `upper(property_use_code) like '${c}%'`);
+  return likes.length === 1 ? likes[0] : `(${likes.join(' OR ')})`;
 }
 
 /**

@@ -482,3 +482,58 @@ export function saleCategory(input) {
   if (demoVerdict === 'teardown') return 'Land';
   return base;
 }
+
+
+// ---------- Property Search PUCS filter ----------
+//
+// The Property Search tab's "Property use" drop-down (Jason, 2026-10-07).
+// Its value is "cat:<Category>" (every code in a category) or
+// "code:<CODE>" (one code); '' is no filter. Kept here, beside the tables
+// it reads, so the drop-down, the SoQL clause and the chip all agree on
+// what a value selects. Pure.
+
+/** Every code in a category, in PUCS_NAMES order. */
+function codesInCategory(category) {
+  return Object.keys(PUCS_NAMES).filter((code) => PUCS_CATEGORIES[code] === category);
+}
+
+/**
+ * The drop-down's option groups: one group of whole categories first
+ * ("All Multi-Family (9 codes)"), then one group per category listing its
+ * codes with their plain names. Categories with no codes are left out.
+ */
+export function pucsFilterOptions() {
+  const cats = PUCS_CATEGORY_ORDER.filter((c) => codesInCategory(c).length > 0);
+  return [
+    {
+      group: 'Whole category',
+      options: cats.map((c) => {
+        const n = codesInCategory(c).length;
+        return { value: `cat:${c}`, label: `All ${c} (${n} code${n === 1 ? '' : 's'})` };
+      }),
+    },
+    ...cats.map((c) => ({
+      group: c,
+      options: codesInCategory(c).map((code) => ({ value: `code:${code}`, label: `${code} — ${PUCS_NAMES[code]}` })),
+    })),
+  ];
+}
+
+/** The codes a drop-down value selects; [] for blank or unknown. */
+export function pucsFilterCodes(value) {
+  const s = String(value ?? '').trim();
+  if (s.startsWith('cat:')) return codesInCategory(s.slice(4));
+  if (s.startsWith('code:')) {
+    const code = pucsCode(s.slice(5));
+    return PUCS_NAMES[code] ? [code] : [];
+  }
+  return [];
+}
+
+/** Short chip label for a drop-down value: "RESMC" or "All Multi-Family". */
+export function pucsFilterLabel(value) {
+  const s = String(value ?? '').trim();
+  if (s.startsWith('cat:') && pucsFilterCodes(s).length) return `All ${s.slice(4)}`;
+  if (s.startsWith('code:') && pucsFilterCodes(s).length) return pucsCode(s.slice(5));
+  return '';
+}

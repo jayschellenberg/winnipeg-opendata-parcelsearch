@@ -107,5 +107,14 @@ test('PUCS reads the City code format and names it', () => {
   assert.equal(code.extract({}), '');
 });
 
+test('Asmt $/DU: a gear-only column on both tabs, assessment ÷ dwelling units', () => {
+  const col = COLUMNS.find((c) => c.key === 'perDu');
+  assert.ok(col, 'no perDu column');
+  assert.equal(col.mode, 'always');
+  assert.ok(!DEFAULT_VISIBLE.has('perDu'), 'not in the Property Search default');
+  assert.equal(col.csv.extract({ total_assessed_value: '1200000', dwelling_units: '8' }), 150000);
+  assert.equal(col.csv.extract({ total_assessed_value: '500000', dwelling_units: '0' }), null);
+});
+
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
