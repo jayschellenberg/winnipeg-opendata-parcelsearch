@@ -1663,6 +1663,21 @@ body {
 .location-map-controls input {
   width: 9em;
 }
+/* The Title checkbox and its word, sized like the controls beside it. */
+.location-map-controls .location-map-title-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  min-height: 30px;
+  cursor: pointer;
+}
+.location-map-controls .location-map-title-toggle input {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+}
 .location-map-controls button {
   cursor: pointer;
   font-weight: 600;
@@ -5324,7 +5339,7 @@ button.topbar-link {
   background: #a3262d;
   border-color: #a3262d;
 }
-/* Exhibit Pack: full width under the two captures, slate so it reads as
+/* Addenda Pack: full width under the two captures, slate so it reads as
    "both of the above, bundled" rather than a third capture. While it runs
    its label is the progress line, so it must not look disabled-grey. */
 .sidebar .generate-map-btn-pack {

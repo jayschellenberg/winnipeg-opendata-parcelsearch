@@ -242,16 +242,16 @@ test('composing draws the furniture when asked', () => {
   assert.match(fnBodyOf('copyMapToClipboard'), /furniture/, 'Alt+C ignores the scale-bar setting');
 });
 
-test('the Exhibit Pack button builds the pack and always restores the map', () => {
-  assert.match(main, /\$exhibitPackBtn\.addEventListener\(\s*'click'[\s\S]{0,80}buildExhibitPack\(\)/,
-    'the Exhibit Pack button never calls buildExhibitPack()');
-  const body = fnBodyOf('buildExhibitPack');
+test('the Addenda Pack button builds the pack and always restores the map', () => {
+  assert.match(main, /\$addendaPackBtn\.addEventListener\(\s*'click'[\s\S]{0,80}buildAddendaPack\(\)/,
+    'the Addenda Pack button never calls buildAddendaPack()');
+  const body = fnBodyOf('buildAddendaPack');
   const fin = body.slice(body.indexOf('finally'));
   assert.match(fin, /setBasemapByKey\(basemap\)/, 'the pack does not put the basemap back in its finally');
   assert.match(fin, /map\.jumpTo\(camera\)/, 'the pack does not put the camera back in its finally');
   assert.match(body, /buildStoreZip\(/, 'the pack never zips anything');
-  assert.match(fnBodyOf('captureExhibitView'), /furniture:\s*capture/,
-    'exhibit maps are composed without their scale bar / north arrow');
+  assert.match(fnBodyOf('captureAddendaView'), /furniture:\s*capture/,
+    'addenda maps are composed without their scale bar / north arrow');
 });
 
 function fnBodyOf(name) { return functionBody(main, name); }

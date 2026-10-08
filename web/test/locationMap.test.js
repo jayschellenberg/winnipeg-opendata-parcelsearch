@@ -14,7 +14,7 @@ import path from 'node:path';
 import {
   BASE_MAPS, DIRECTIONS, PIN,
   locateOnMap, placeCallout, placeTwinCallout, estimateTextWidth,
-  pinBox, pinOutline, arrowTipAtPin,
+  pinBox, pinOutline, arrowTipAtPin, placeTitle, titleLines,
 } from '../src/lib/locationMap.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -173,6 +173,33 @@ for (const [name, lng, lat] of [['Portage & Main', -97.1384, 49.8954], ['Legisla
   const r = placeTwinCallout(at.main, at.inset, w, { map: WPG });
   assert.equal(overlap(r.box, pinBox(at.main)) + overlap(r.box, pinBox(at.inset)), 0, `${name}: twin box clear of both pins`);
   assert.ok(shaftClear(r.tails[0], at.main) && shaftClear(r.tails[1], at.inset), `${name}: both arrows clear of their pins`);
+}
+
+// ---- Title box --------------------------------------------------------------
+
+// Top-left by default; a subject pin under that corner moves it on to the
+// next clear corner; the callout never lands on it.
+{
+  const size = [150, 36];
+  const steinbach = locateOnMap(MB, -96.684, 49.526).main;
+  const box = placeTitle(size, [steinbach], { map: MB });
+  assert.deepEqual(box.slice(0, 2), [4, 4], 'title top-left for a southern subject');
+  assert.ok(inside(box, MB), 'title on the page');
+  const lacBrochet = locateOnMap(MB, -101.47, 58.62).main;   // under the top-left corner
+  const moved = placeTitle(size, [lacBrochet], { map: MB });
+  assert.ok(moved && overlap(moved, pinBox(lacBrochet)) === 0, 'title clears a pin in its corner');
+  assert.notDeepEqual(moved.slice(0, 2), [4, 4], 'title left the top-left corner');
+  assert.deepEqual(titleLines(MB), ['Subject Property Location', 'within Manitoba']);
+  // A subject just below the title (Brochet) keeps it top-left, and its
+  // callout still goes somewhere clear of it.
+  const north = locateOnMap(MB, -101.67, 57.88).main;
+  const t = placeTitle(size, [north], { map: MB });
+  assert.deepEqual(t.slice(0, 2), [4, 4], 'title stays top-left above Brochet');
+  for (const dir of ['auto', ...Object.keys(DIRECTIONS)]) {
+    const r = placeCallout(north, w, { map: { ...MB, keepOut: [t] }, direction: dir });
+    assert.ok(r, `callout placed beside the title (${dir})`);
+    assert.equal(overlap(r.box, t), 0, `callout clear of the title (${dir})`);
+  }
 }
 
 // ---- Assets and wiring ----------------------------------------------------
