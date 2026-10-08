@@ -104,7 +104,7 @@ import {
   setCitywideParcelsVisible, setCitywideSurveyVisible, CITYWIDE_SURVEY_MIN_ZOOM, surveyTilesUrl, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
   setContamData, setContamVisible, setWaterInfluenceVisible,
   setSubjectData, setSubjectRadiusData, setSalesPointsData,
-  setParcelNumberData, setParcelNumbersVisible, setResultPin,
+  setParcelNumberData, setParcelNumbersVisible, setResultPin, setCommunityMask,
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
   setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
@@ -4205,7 +4205,27 @@ async function generateLocationMap() {
 // leaves All Assessment Parcels off. The aerial carries Dimensions.
 
 // How wide each framed view is at least, in metres — city-block scale.
-const ADDENDA_NEIGHBOURHOOD_MIN_M = 1500;
+// Slightly tighter on the community, by the same 75% as the Manitoba
+// app's 6 km -> 4.5 km (Jason, 2026-10-08).
+const ADDENDA_NEIGHBOURHOOD_MIN_M = 1125;
+// The City has one zoning by-law; the open-data layer carries no number.
+const ADDENDA_ZONING_LABEL = 'Zoning Map — By-law 200/2006';
+// Most result parcels the neighbourhood and zoning maps will number.
+const ADDENDA_NUMBER_MAX = 25;
+
+/** The neighbourhood cluster `hood` belongs to (its `cluster` property,
+ *  matched in wpg-neighbourhood-clusters.geojson), or null. */
+async function addendaCluster(hood) {
+  const name = String(hood?.properties?.cluster || '').trim();
+  if (!name) return null;
+  try {
+    const fc = await fetchNeighbourhoodClusters();
+    return (fc?.features || []).find((f) => f?.geometry && f.properties?.cluster === name) || null;
+  } catch (err) {
+    console.warn('addenda pack: cluster lookup failed', err);
+    return null;
+  }
+}
 const ADDENDA_AERIAL_MIN_M = 120;
 const ADDENDA_ZONING_MIN_M = 500;
 const ADDENDA_RESULTS_MIN_M = 400;
@@ -4263,7 +4283,7 @@ async function blobBytes(blob) {
  *  `size` overrides the frame size (the taller neighbourhood map);
  *  `cornerLabel` boxes a name top-left; `prepare` runs once the camera is
  *  where the capture will be. */
-async function captureAddendaView(bounds, basemap, { withLegend, size = null, cornerLabel = '', prepare = null }) {
+async function captureAddendaView(bounds, basemap, { withLegend, size = null, cornerLabel = '', cornerScale = 1, prepare = null, scaleNote = '' }) {
   setBasemapByKey(basemap);
   map.jumpTo({ bearing: 0, pitch: 0 });
   // Fit the bounds inside the part of the pane the capture crops out, not
@@ -4281,8 +4301,9 @@ async function captureAddendaView(bounds, basemap, { withLegend, size = null, co
   map.fitBounds(bounds, { padding: { left: padX, right: padX, top: padY, bottom: padY }, animate: false });
   if (prepare) prepare();
   const capture = await generateStaticMap(size || undefined);
+  if (scaleNote) capture.scaleNote = scaleNote;
   const out = composeWithAttribution(capture.frame, { withLegend, furniture: capture });
-  if (cornerLabel) drawCornerLabel(out, cornerLabel);
+  if (cornerLabel) drawCornerLabel(out, cornerLabel, cornerScale);
   return { bytes: await blobBytes(await canvasToBlob(out)), stale: capture.staleFrame };
 }
 
@@ -4303,10 +4324,12 @@ function zoningInView(fc) {
 
 /** A bold boxed label in the top-left corner of a composed map — the
  *  corner the credit, legend, scale bar and north arrow all leave free. */
-function drawCornerLabel(canvas, text) {
+function drawCornerLabel(canvas, text, scale = 1) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
-  const fontSize = Math.max(14, Math.round(w * 0.017));
+  // 33 px on a 1950 px map (about 8 pt printed at 6.5 in); `scale`
+  // enlarges it, as on the neighbourhood map.
+  const fontSize = Math.max(14, Math.round(w * 0.017 * scale));
   const pad = Math.round(w * 0.008);
   const padX = Math.round(fontSize * 0.6);
   const padY = Math.round(fontSize * 0.4);
@@ -4324,9 +4347,10 @@ function drawCornerLabel(canvas, text) {
   ctx.fillText(text, pad + padX, pad + boxH / 2);
 }
 
-/** The City neighbourhood the subject's centre sits in, or '' when none
- *  does (or the boundaries could not be loaded). */
-async function addendaNeighbourhoodName(feat) {
+/** The City neighbourhood the subject's centre sits in, as
+ *  { name, feature }; name '' and feature null when none does (or the
+ *  boundaries could not be loaded). */
+async function addendaNeighbourhood(feat) {
   try {
     const p = feat?.properties || {};
     let pt = [Number(p.centroid_lon), Number(p.centroid_lat)];
@@ -4336,10 +4360,10 @@ async function addendaNeighbourhoodName(feat) {
     }
     const fc = await fetchNeighbourhoods();
     const hit = (fc?.features || []).find((f) => f?.geometry && booleanPointInPolygon(pt, f));
-    return String(hit?.properties?.name || '').trim();
+    return { name: String(hit?.properties?.name || '').trim(), feature: hit || null };
   } catch (err) {
     console.warn('addenda pack: neighbourhood lookup failed', err);
-    return '';
+    return { name: '', feature: null };
   }
 }
 
@@ -4385,10 +4409,13 @@ async function buildAddendaPack() {
   const withLegend = captureLegendWanted() && anyLegendVisible();
   const allFeats = addendaResultFeatures();
   // The neighbourhood and zoning maps' marks: the Locator pin on a lone
-  // parcel, numbered shapes when the map holds several.
+  // parcel, numbered shapes when the map holds several — up to
+  // ADDENDA_NUMBER_MAX. Past that the callouts bury the map, so the shapes
+  // go unnumbered.
   const locatorMarks = pinPoint
     ? { pin: true, numbers: false, dims: false }
-    : { pin: false, numbers: numberable, dims: false };
+    : { pin: false, numbers: numberable && allFeats.length <= ADDENDA_NUMBER_MAX, dims: false };
+  const neighbourhoodsWas = neighbourhoodsMode;
   const total = 1 + (subject.specific ? 3 : 0) + (allFeats.length > 1 ? 1 : 0);
   let n = 0;
   const step = (what) => { btn.textContent = `Addenda ${++n}/${total}: ${what}…`; };
@@ -4425,21 +4452,35 @@ async function buildAddendaPack() {
       step('neighbourhood');
       await setAddendaMarks(locatorMarks);
       await setCitywideParcels(false);
-      const hoodName = await addendaNeighbourhoodName(subject.feats[0]);
-      const hood = await captureAddendaView(
-        framedBounds(subjectBox, { padFrac: 0.1, minWidthM: ADDENDA_NEIGHBOURHOOD_MIN_M }), 'streets',
-        { withLegend, size: ADDENDA_NEIGHBOURHOOD_SIZE, cornerLabel: hoodName });
+      const { name: hoodName, feature: hoodFeature } = await addendaNeighbourhood(subject.feats[0]);
+      // The individual neighbourhood boundaries on, framed on the whole
+      // parent cluster (Jason, 2026-10-08).
+      await setNeighbourhoodsMode('individual');
+      const cluster = await addendaCluster(hoodFeature);
+      // Light grey outside the neighbourhood, its limits dashed on top.
+      setCommunityMask(map, hoodFeature);
+      const hoodBounds = cluster
+        ? framedBounds(bbox(cluster), { padFrac: 0.04, minWidthM: ADDENDA_NEIGHBOURHOOD_MIN_M })
+        : framedBounds(subjectBox, { padFrac: 0.1, minWidthM: ADDENDA_NEIGHBOURHOOD_MIN_M });
+      const hood = await captureAddendaView(hoodBounds, 'streets',
+        // The neighbourhood label 1.5x the others: 50 px, about 12 pt printed.
+        { withLegend, size: ADDENDA_NEIGHBOURHOOD_SIZE, cornerLabel: hoodName, cornerScale: 1.5 });
       add('neighbourhood-map.png', hood.bytes,
-        `Streets, centred on ${subject.note}${hoodName ? ` in ${hoodName}` : ''}${marked}, `
+        `Streets, ${subject.note}${hoodName ? ` in ${hoodName}` : ''}`
+        + `${cluster ? `, framed on the ${cluster.properties.cluster} cluster` : ''}${marked}, `
         + `${ADDENDA_NEIGHBOURHOOD_SIZE.width} x ${ADDENDA_NEIGHBOURHOOD_SIZE.height} px`,
         hood.stale);
+      setCommunityMask(map, null);
+      await setNeighbourhoodsMode(neighbourhoodsWas);
       await setCitywideParcels(citywideWas);
       // Aerial — the newest City aerial (else satellite), close on the
       // subject, sides labelled.
       step('aerial');
       await setAddendaMarks({ pin: false, numbers: userMarks.numbers, dims: true });
       const aerial = await captureAddendaView(
-        framedBounds(subjectBox, { padFrac: 0.35, minWidthM: ADDENDA_AERIAL_MIN_M }), aerialKey, { withLegend });
+        framedBounds(subjectBox, { padFrac: 0.35, minWidthM: ADDENDA_AERIAL_MIN_M }), aerialKey,
+        { withLegend, cornerLabel: 'Aerial View (Subject Highlighted)',
+          scaleNote: 'Not a legal survey - site dimensions are approximate' });
       const aerialName = aerialKey.startsWith('ortho-') ? `City of Winnipeg aerial ${aerialKey.slice(6)}` : 'Satellite imagery';
       add('subject-aerial.png', aerial.bytes, `${aerialName} of ${subject.note}, with dimensions`, aerial.stale);
       // Zoning — streets with the shaded zoning districts and their legend
@@ -4452,7 +4493,8 @@ async function buildAddendaPack() {
         try {
           const zoning = await captureAddendaView(
             framedBounds(subjectBox, { padFrac: 0.2, minWidthM: ADDENDA_ZONING_MIN_M }), 'streets',
-            { withLegend: true, prepare: () => buildZoningLegend(zoningCodesByCategory(zoningInView(cityZoning)), { onlyListed: true }) });
+            { withLegend: true, cornerLabel: ADDENDA_ZONING_LABEL,
+              prepare: () => buildZoningLegend(zoningCodesByCategory(zoningInView(cityZoning)), { onlyListed: true }) });
           add('zoning-map.png', zoning.bytes, `Zoning around ${subject.note}${marked}`, zoning.stale);
         } finally {
           buildZoningLegend(zoningCodesByCategory(cityZoning));
@@ -4475,6 +4517,8 @@ async function buildAddendaPack() {
   } finally {
     // Put the user's map back exactly as it was, whatever happened above.
     if (zoningMode !== zoningWas) await cycleZoningTo(zoningWas).catch(() => {});
+    setCommunityMask(map, null);
+    if (neighbourhoodsMode !== neighbourhoodsWas) await setNeighbourhoodsMode(neighbourhoodsWas).catch(() => {});
     await setCitywideParcels(citywideWas).catch(() => {});
     await setAddendaMarks(userMarks).catch(() => {});
     setBasemapByKey(basemap);
@@ -4829,9 +4873,38 @@ function composeWithAttribution(frame, { withLegend = false, furniture = null } 
 }
 
 /** Scale bar + north arrow for a composed capture. */
-function drawCaptureFurniture(ctx, w, h, fontSize, { metersPerPx, bearing }) {
+/** One line of italic text in a white pill, its bottom-left corner at
+ *  (x, y), styled like the scale bar's pill. Returns the pill's height. */
+function drawScaleNote(ctx, { x, y, text, font }) {
+  const fs = Math.max(11, Math.round(font));
+  const padX = Math.round(fs * 0.6);
+  const padY = Math.round(fs * 0.4);
+  ctx.save();
+  ctx.font = `italic ${fs}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+  const w = Math.ceil(ctx.measureText(text).width + padX * 2);
+  const h = fs + padY * 2;
+  const x0 = Math.round(x);
+  const y0 = Math.round(y - h);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillRect(x0, y0, w, h);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+  ctx.fillStyle = '#1a1a1a';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText(text, x0 + padX, y0 + h / 2);
+  ctx.restore();
+  return h;
+}
+
+function drawCaptureFurniture(ctx, w, h, fontSize, { metersPerPx, bearing, scaleNote = '' }) {
   const pad = Math.round(w * 0.008);
-  drawScaleBar(ctx, { x: pad, y: h - pad, metersPerPx, maxWidthPx: w * 0.2, font: fontSize });
+  // An optional note (the aerial's survey disclaimer) sits under the scale
+  // bar in its own pill, and the bar moves up to make room for it.
+  const noteH = scaleNote ? drawScaleNote(ctx, { x: pad, y: h - pad, text: scaleNote, font: fontSize }) : 0;
+  const barBottom = noteH ? h - pad - noteH - Math.round(pad / 2) : h - pad;
+  drawScaleBar(ctx, { x: pad, y: barBottom, metersPerPx, maxWidthPx: w * 0.2, font: fontSize });
   const size = Math.round(w * 0.042);
   drawNorthArrow(ctx, { cx: w - pad - size / 2, cy: pad + size / 2, size, bearing });
 }

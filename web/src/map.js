@@ -4588,6 +4588,52 @@ function resultPinImage() {
   return { width: c.width, height: c.height, data: new Uint8Array(img.data.buffer) };
 }
 
+// ---- Community limits for the Addenda Pack neighbourhood map ------------
+
+const COMMUNITY_MASK_LAYERS = ['community-mask', 'community-limits-halo', 'community-limits-dash'];
+
+/**
+ * Grey back everything OUTSIDE `feature` (here the subject's City
+ * neighbourhood) and redraw its limits as a thin dashed blue line on top of
+ * every other layer, or pass null to take it all away. Used only while the
+ * Addenda Pack captures its neighbourhood map — the Manitoba app's rule
+ * (Jason, 2026-10-08), where it keeps municipal limits readable under the
+ * highways; here it shows the named neighbourhood. Added on demand, just
+ * under the number callouts and the locator pin.
+ */
+export function setCommunityMask(map, feature) {
+  for (const id of COMMUNITY_MASK_LAYERS) if (map.getLayer(id)) map.removeLayer(id);
+  for (const id of ['community-mask', 'community-limits']) if (map.getSource(id)) map.removeSource(id);
+  const g = feature?.geometry;
+  if (!g || (g.type !== 'Polygon' && g.type !== 'MultiPolygon')) return;
+  // The world with the community's outer rings cut out as holes.
+  const holes = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map((poly) => poly[0]);
+  const world = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+  map.addSource('community-mask', {
+    type: 'geojson',
+    data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [world, ...holes] } },
+  });
+  map.addSource('community-limits', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: g } });
+  // Under the number callouts and the locator pin, so the subject's marker
+  // stays the top layer; above the roads, parcels and everything else.
+  const before = ['parcel-num-leader-casing', 'result-pin'].find((id) => map.getLayer(id));
+  // Lightened from 0.22 (Jason, 2026-10-08).
+  map.addLayer({
+    id: 'community-mask', type: 'fill', source: 'community-mask',
+    paint: { 'fill-color': '#5b6470', 'fill-opacity': 0.12 },
+  }, before);
+  map.addLayer({
+    id: 'community-limits-halo', type: 'line', source: 'community-limits',
+    paint: { 'line-color': '#ffffff', 'line-width': 3.5, 'line-opacity': 0.8 },
+  }, before);
+  // The dash array counts in line widths: [4.5, 2.25] at 2 px is a 9 px
+  // dash and a 4.5 px gap.
+  map.addLayer({
+    id: 'community-limits-dash', type: 'line', source: 'community-limits',
+    paint: { 'line-color': '#1d4ed8', 'line-width': 2, 'line-dasharray': [4.5, 2.25] },
+  }, before);
+}
+
 /**
  * Show the locator pin at `point` ({lng, lat}) in place of the result
  * parcel's shape, or pass null to take it away and bring the shape back.
