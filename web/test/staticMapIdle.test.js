@@ -268,8 +268,21 @@ test('the addenda maps carry the Manitoba app\'s marks (Jason, 2026-10-08)', () 
   assert.match(body, /title: true/, 'the location map has lost its title box');
   const hood = body.slice(body.indexOf("step('neighbourhood')"), body.indexOf("'neighbourhood-map.png'"));
   assert.match(hood, /setCitywideParcels\(false\)/, 'the neighbourhood map keeps the citywide parcel wash');
-  assert.match(hood, /size: ADDENDA_NEIGHBOURHOOD_SIZE, cornerLabel: hoodName/, 'the neighbourhood map is not tall / labelled');
+  assert.match(hood, /size: ADDENDA_NEIGHBOURHOOD_SIZE, cornerLabel: hoodName, cornerScale: 1\.5/, 'the neighbourhood map is not tall / labelled large');
+  assert.match(hood, /setCommunityMask\(map, hoodFeature\)/, 'the neighbourhood map no longer greys out the area outside the neighbourhood');
   assert.match(fnBodyOf('generateStaticMap'), /frame\.height = height/, 'the capture ignores the requested size');
+});
+
+test('the addenda maps carry the Manitoba app\'s labels and mask (Jason, 2026-10-08)', () => {
+  const body = fnBodyOf('buildAddendaPack');
+  const afterHood = body.slice(body.indexOf("'neighbourhood-map.png'"), body.indexOf("step('aerial')"));
+  assert.match(afterHood, /setCommunityMask\(map, null\)/, 'the mask is left on after the neighbourhood map');
+  assert.match(body.slice(body.indexOf('finally')), /setCommunityMask\(map, null\)/, 'the mask is not cleared in the finally');
+  assert.match(body, /cornerLabel: 'Aerial View \(Subject Highlighted\)'/, 'the aerial has lost its label');
+  assert.match(body, /scaleNote: 'Not a legal survey - site dimensions are approximate'/, 'the aerial has lost its survey note');
+  assert.match(fnBodyOf('drawCaptureFurniture'), /drawScaleNote\(/, 'the scale note is never drawn');
+  assert.match(body, /cornerLabel: ADDENDA_ZONING_LABEL/, 'the zoning map has lost its by-law label');
+  assert.match(main, /ADDENDA_ZONING_LABEL = 'Zoning Map — By-law 200\/2006'/, 'the zoning label no longer names By-law 200/2006');
 });
 
 function fnBodyOf(name) { return functionBody(main, name); }
