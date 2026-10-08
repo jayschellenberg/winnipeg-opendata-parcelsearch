@@ -130,6 +130,7 @@ import { waitForMapIdle, MapRenderTimeoutError } from './lib/snapshotCapture.js'
 import { BASE_MAPS, locateOnMap, renderLocationMap } from './lib/locationMap.js';
 import { haversineMeters, drawScaleBar, drawNorthArrow, framedBounds, localDateStamp } from './lib/mapFurniture.js';
 import { buildStoreZip } from './lib/zipStore.js';
+import { assessmentPerDu } from './lib/assessmentRates.js';
 import { initParcelListImport } from './lib/parcelListImport.js';
 import {
   buildClusterIndex, clusterForFeature, clusterForPoint, nearestCluster,
@@ -159,6 +160,7 @@ import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js'
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures, saleKey } from './lib/sales.js';
 import {
   saleCategory, pucsName, pucsCode, PUCS_CATEGORY_ORDER, UNCLASSIFIED_CATEGORY,
+  pucsFilterOptions, pucsFilterCodes, pucsFilterLabel,
 } from './lib/pucs.js';
 import { assessmentUrl } from './lib/links.js';   // walkscoreUrl/floodToolUrl used only inside registry render functions now
 import { properCaseAddress } from './lib/addressFormat.js';
@@ -184,6 +186,18 @@ const $addressFrom = document.getElementById('address-from');
 const $addressTo = document.getElementById('address-to');
 const $addressStreet = document.getElementById('address-street');
 const $zoning = document.getElementById('zoning');
+// Property use (PUCS) filter — a drop-down of whole categories and single
+// codes, built from lib/pucs.js so it can never offer a code the filter
+// cannot resolve (Jason, 2026-10-07).
+const $pucsFilter = document.getElementById('pucs-filter');
+if ($pucsFilter) {
+  for (const { group, options } of pucsFilterOptions()) {
+    const og = document.createElement('optgroup');
+    og.label = group;
+    for (const { value, label } of options) og.appendChild(new Option(label, value));
+    $pucsFilter.appendChild(og);
+  }
+}
 const $suite = document.getElementById('suite');
 const $condoUnit = document.getElementById('condo-unit');
 const $condoPlan = document.getElementById('condo-plan');
@@ -557,6 +571,7 @@ const SORT_KEYS = {
   lat:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lat),
   lon:     (r) => finiteOrNeg(r.assess?.properties?.centroid_lon),
   value:   (r) => finiteOrNeg(r.assess?.properties?.total_assessed_value),
+  perDu:   (r) => finiteOrNeg(assessmentPerDu(r.assess?.properties?.total_assessed_value, r.assess?.properties?.dwelling_units)),
   // Walkscore + Flood are link-only columns; they don't sort meaningfully.
   // Use the raw address as a placeholder key so click-to-sort doesn't error.
   walk:    (r) => strKey(r.assess?.properties?.full_address),
@@ -1185,6 +1200,11 @@ function advancedFilterChips() {
       ? { label: `DU ≥ ${n}`, detail: `Dwelling units: at least ${n}` }
       : { label: 'Min DU', detail: 'Dwelling units: minimum set, no count entered yet' });
   }
+  const pucsLabel = pucsFilterLabel($pucsFilter?.value);
+  if (pucsLabel) {
+    const opt = $pucsFilter.selectedOptions?.[0];
+    chips.push({ label: pucsLabel, detail: `Property use: ${opt ? opt.textContent : pucsLabel}` });
+  }
   const front = !!$waterFront?.checked;
   const near = !!$waterNear?.checked;
   if (front && near) chips.push({ label: 'Water', detail: 'Water proximity: waterfront or near water' });
@@ -1410,6 +1430,7 @@ function captureUrlState() {
   if (v($addressTo))     s.addressTo     = v($addressTo);
   if (v($addressStreet)) s.addressStreet = v($addressStreet);
   if (v($zoning))        s.zoning        = v($zoning);
+  if (v($pucsFilter))    s.pucs          = v($pucsFilter);
   if (v($suite))         s.suite         = v($suite);
   if (v($condoUnit))     s.condoUnit     = v($condoUnit);
   if (v($condoPlan))     s.condoPlan     = v($condoPlan);
@@ -1504,6 +1525,9 @@ function applyUrlState(state) {
   if ('addressTo' in state)     $addressTo.value     = state.addressTo;
   if ('addressStreet' in state) $addressStreet.value = state.addressStreet;
   if ('zoning' in state)        $zoning.value        = state.zoning;
+  // Only a value the drop-down actually offers; a stale or hand-edited URL
+  // leaves the filter off rather than selecting nothing visible.
+  if ('pucs' in state && $pucsFilter && pucsFilterCodes(state.pucs).length) $pucsFilter.value = state.pucs;
   if ('suite' in state)         $suite.value         = state.suite;
   if ('condoUnit' in state)     $condoUnit.value     = state.condoUnit;
   if ('condoPlan' in state)     $condoPlan.value     = state.condoPlan;
@@ -1617,6 +1641,7 @@ for (const el of [$lot, $block, $plan, $desc, $condoUnit, $condoPlan, $suite, $a
   if (el) el.addEventListener('input', queueUrlWrite);
 }
 if ($duMode) $duMode.addEventListener('change', queueUrlWrite);
+if ($pucsFilter) $pucsFilter.addEventListener('change', queueUrlWrite);
 // #roll is a hidden input wrapped by chipInput; the chip module
 // dispatches 'input' on the hidden input when chips change, so the
 // same listener catches it.
@@ -1715,6 +1740,9 @@ async function runSearch() {
     // drive a search with no other field filled.
     waterfront: !!$waterFront?.checked,
     nearWater:  !!$waterNear?.checked,
+    // Property use: the PUCS codes the drop-down selects ([] = no filter).
+    // Like water, a real query on its own.
+    pucs: pucsFilterCodes($pucsFilter?.value),
   };
 
   const anyLegal = inputs.lot || inputs.block || inputs.plan || inputs.desc
@@ -1722,7 +1750,8 @@ async function runSearch() {
   const anyDu = inputs.duMode === 'zero' || (inputs.duMode === 'min' && inputs.duMin > 0);
   const anyAddress = inputs.addressFrom || inputs.addressTo || inputs.addressStreet;
   const anyWater = inputs.waterfront || inputs.nearWater;
-  const anyAssess = inputs.roll || anyAddress || inputs.zoning || inputs.suite || anyDu || anyWater;
+  const anyPucs = inputs.pucs.length > 0;
+  const anyAssess = inputs.roll || anyAddress || inputs.zoning || inputs.suite || anyDu || anyWater || anyPucs;
 
   if (!anyLegal && !anyAssess) {
     setCount('Enter at least one search field.');
@@ -1797,6 +1826,7 @@ function applyImportedRollList(rolls, stats = null) {
     if (el) el.value = '';
   }
   if ($duMode) $duMode.value = '';
+  if ($pucsFilter) $pucsFilter.value = '';
   if ($waterFront) $waterFront.checked = false;
   if ($waterNear) $waterNear.checked = false;
   // Set without events, so repaint the water pill and the badge by hand.

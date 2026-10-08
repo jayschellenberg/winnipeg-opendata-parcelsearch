@@ -98,6 +98,7 @@ export const SCHEMA = {
   addressTo:     { param: 'at', validate: cleanString,            format: (v) => v },
   addressStreet: { param: 'as', validate: cleanString,            format: (v) => v },
   zoning:        { param: 'z',  validate: cleanString,            format: (v) => v },
+  pucs:          { param: 'pu', validate: cleanString,            format: (v) => v },
   suite:         { param: 'su', validate: cleanString,            format: (v) => v },
   condoUnit:     { param: 'cu', validate: cleanString,            format: (v) => v },
   condoPlan:     { param: 'cp', validate: cleanString,            format: (v) => v },

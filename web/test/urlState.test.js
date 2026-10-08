@@ -323,8 +323,13 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 39 entries (14 inputs + 14 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 39);
+test('SCHEMA — has exactly 40 entries (15 inputs + 14 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 40);
+});
+
+test('decodeState — the PUCS filter round-trips', () => {
+  assert.deepEqual(decodeState('pu=cat%3AMulti-Family'), { pucs: 'cat:Multi-Family' });
+  assert.deepEqual(decodeState(encodeState({ pucs: 'code:RESMC' })), { pucs: 'code:RESMC' });
 });
 
 test('the retired rise param is no longer honoured', () => {
