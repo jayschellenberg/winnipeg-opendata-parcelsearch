@@ -223,6 +223,37 @@ test('runSearch turns All Assessment Parcels on when it finds something', () => 
     'the auto-on bypasses the layer\'s own toggle (its button state would lie)');
 });
 
+// --- Scale bar / north arrow + Exhibit Pack (2026-10-07) --------------------
+console.log('scale bar, north arrow and exhibit pack are wired');
+
+test('the capture records its ground scale and bearing', () => {
+  const body = fnBodyOf('generateStaticMap');
+  assert.match(body, /metersPerPx/, 'generateStaticMap() no longer measures metres per pixel');
+  assert.match(body, /bearing:\s*map\.getBearing\(\)/, 'generateStaticMap() no longer records the bearing');
+});
+
+test('composing draws the furniture when asked', () => {
+  assert.match(fnBodyOf('composeWithAttribution'), /if \(furniture\) drawCaptureFurniture\(/,
+    'composeWithAttribution() never draws the scale bar / north arrow');
+  const draw = fnBodyOf('drawCaptureFurniture');
+  assert.match(draw, /drawScaleBar\(/);
+  assert.match(draw, /drawNorthArrow\(/);
+  assert.match(fnBodyOf('composedCapture'), /furniture/, 'the panel ignores the scale-bar box');
+  assert.match(fnBodyOf('copyMapToClipboard'), /furniture/, 'Alt+C ignores the scale-bar setting');
+});
+
+test('the Exhibit Pack button builds the pack and always restores the map', () => {
+  assert.match(main, /\$exhibitPackBtn\.addEventListener\(\s*'click'[\s\S]{0,80}buildExhibitPack\(\)/,
+    'the Exhibit Pack button never calls buildExhibitPack()');
+  const body = fnBodyOf('buildExhibitPack');
+  const fin = body.slice(body.indexOf('finally'));
+  assert.match(fin, /setBasemapByKey\(basemap\)/, 'the pack does not put the basemap back in its finally');
+  assert.match(fin, /map\.jumpTo\(camera\)/, 'the pack does not put the camera back in its finally');
+  assert.match(body, /buildStoreZip\(/, 'the pack never zips anything');
+  assert.match(fnBodyOf('captureExhibitView'), /furniture:\s*capture/,
+    'exhibit maps are composed without their scale bar / north arrow');
+});
+
 function fnBodyOf(name) { return functionBody(main, name); }
 
 const failed = results.filter((r) => r === 0).length;
