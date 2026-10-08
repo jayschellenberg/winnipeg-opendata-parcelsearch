@@ -4598,8 +4598,8 @@ const COMMUNITY_MASK_LAYERS = ['community-mask', 'community-limits-halo', 'commu
  * every other layer, or pass null to take it all away. Used only while the
  * Addenda Pack captures its neighbourhood map — the Manitoba app's rule
  * (Jason, 2026-10-08), where it keeps municipal limits readable under the
- * highways; here it shows the named neighbourhood. Added on demand, so the
- * layers sit at the top of the stack.
+ * highways; here it shows the named neighbourhood. Added on demand, just
+ * under the number callouts and the locator pin.
  */
 export function setCommunityMask(map, feature) {
   for (const id of COMMUNITY_MASK_LAYERS) if (map.getLayer(id)) map.removeLayer(id);
@@ -4614,20 +4614,24 @@ export function setCommunityMask(map, feature) {
     data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [world, ...holes] } },
   });
   map.addSource('community-limits', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: g } });
+  // Under the number callouts and the locator pin, so the subject's marker
+  // stays the top layer; above the roads, parcels and everything else.
+  const before = ['parcel-num-leader-casing', 'result-pin'].find((id) => map.getLayer(id));
+  // Lightened from 0.22 (Jason, 2026-10-08).
   map.addLayer({
     id: 'community-mask', type: 'fill', source: 'community-mask',
-    paint: { 'fill-color': '#5b6470', 'fill-opacity': 0.22 },
-  });
+    paint: { 'fill-color': '#5b6470', 'fill-opacity': 0.12 },
+  }, before);
   map.addLayer({
     id: 'community-limits-halo', type: 'line', source: 'community-limits',
     paint: { 'line-color': '#ffffff', 'line-width': 3.5, 'line-opacity': 0.8 },
-  });
+  }, before);
   // The dash array counts in line widths: [4.5, 2.25] at 2 px is a 9 px
   // dash and a 4.5 px gap.
   map.addLayer({
     id: 'community-limits-dash', type: 'line', source: 'community-limits',
     paint: { 'line-color': '#1d4ed8', 'line-width': 2, 'line-dasharray': [4.5, 2.25] },
-  });
+  }, before);
 }
 
 /**

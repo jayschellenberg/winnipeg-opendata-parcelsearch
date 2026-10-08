@@ -270,6 +270,10 @@ test('the addenda maps carry the Manitoba app\'s marks (Jason, 2026-10-08)', () 
   assert.match(hood, /setCitywideParcels\(false\)/, 'the neighbourhood map keeps the citywide parcel wash');
   assert.match(hood, /size: ADDENDA_NEIGHBOURHOOD_SIZE, cornerLabel: hoodName, cornerScale: 1\.5/, 'the neighbourhood map is not tall / labelled large');
   assert.match(hood, /setCommunityMask\(map, hoodFeature\)/, 'the neighbourhood map no longer greys out the area outside the neighbourhood');
+  assert.match(hood, /setNeighbourhoodsMode\('individual'\)/, 'the neighbourhood map no longer shows the individual neighbourhoods');
+  assert.match(hood, /framedBounds\(bbox\(cluster\)/, 'the neighbourhood map no longer frames the parent cluster');
+  assert.match(body, /numbers: numberable && allFeats\.length <= ADDENDA_NUMBER_MAX/, 'the 25-parcel numbering cap is gone');
+  assert.match(body.slice(body.indexOf('finally')), /setNeighbourhoodsMode\(neighbourhoodsWas\)/, 'the Neighbourhoods layer is not put back in the finally');
   assert.match(fnBodyOf('generateStaticMap'), /frame\.height = height/, 'the capture ignores the requested size');
 });
 

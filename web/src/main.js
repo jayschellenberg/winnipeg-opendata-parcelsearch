@@ -4210,6 +4210,22 @@ async function generateLocationMap() {
 const ADDENDA_NEIGHBOURHOOD_MIN_M = 1125;
 // The City has one zoning by-law; the open-data layer carries no number.
 const ADDENDA_ZONING_LABEL = 'Zoning Map — By-law 200/2006';
+// Most result parcels the neighbourhood and zoning maps will number.
+const ADDENDA_NUMBER_MAX = 25;
+
+/** The neighbourhood cluster `hood` belongs to (its `cluster` property,
+ *  matched in wpg-neighbourhood-clusters.geojson), or null. */
+async function addendaCluster(hood) {
+  const name = String(hood?.properties?.cluster || '').trim();
+  if (!name) return null;
+  try {
+    const fc = await fetchNeighbourhoodClusters();
+    return (fc?.features || []).find((f) => f?.geometry && f.properties?.cluster === name) || null;
+  } catch (err) {
+    console.warn('addenda pack: cluster lookup failed', err);
+    return null;
+  }
+}
 const ADDENDA_AERIAL_MIN_M = 120;
 const ADDENDA_ZONING_MIN_M = 500;
 const ADDENDA_RESULTS_MIN_M = 400;
@@ -4393,10 +4409,13 @@ async function buildAddendaPack() {
   const withLegend = captureLegendWanted() && anyLegendVisible();
   const allFeats = addendaResultFeatures();
   // The neighbourhood and zoning maps' marks: the Locator pin on a lone
-  // parcel, numbered shapes when the map holds several.
+  // parcel, numbered shapes when the map holds several — up to
+  // ADDENDA_NUMBER_MAX. Past that the callouts bury the map, so the shapes
+  // go unnumbered.
   const locatorMarks = pinPoint
     ? { pin: true, numbers: false, dims: false }
-    : { pin: false, numbers: numberable, dims: false };
+    : { pin: false, numbers: numberable && allFeats.length <= ADDENDA_NUMBER_MAX, dims: false };
+  const neighbourhoodsWas = neighbourhoodsMode;
   const total = 1 + (subject.specific ? 3 : 0) + (allFeats.length > 1 ? 1 : 0);
   let n = 0;
   const step = (what) => { btn.textContent = `Addenda ${++n}/${total}: ${what}…`; };
@@ -4434,17 +4453,25 @@ async function buildAddendaPack() {
       await setAddendaMarks(locatorMarks);
       await setCitywideParcels(false);
       const { name: hoodName, feature: hoodFeature } = await addendaNeighbourhood(subject.feats[0]);
+      // The individual neighbourhood boundaries on, framed on the whole
+      // parent cluster (Jason, 2026-10-08).
+      await setNeighbourhoodsMode('individual');
+      const cluster = await addendaCluster(hoodFeature);
       // Light grey outside the neighbourhood, its limits dashed on top.
       setCommunityMask(map, hoodFeature);
-      const hood = await captureAddendaView(
-        framedBounds(subjectBox, { padFrac: 0.1, minWidthM: ADDENDA_NEIGHBOURHOOD_MIN_M }), 'streets',
+      const hoodBounds = cluster
+        ? framedBounds(bbox(cluster), { padFrac: 0.04, minWidthM: ADDENDA_NEIGHBOURHOOD_MIN_M })
+        : framedBounds(subjectBox, { padFrac: 0.1, minWidthM: ADDENDA_NEIGHBOURHOOD_MIN_M });
+      const hood = await captureAddendaView(hoodBounds, 'streets',
         // The neighbourhood label 1.5x the others: 50 px, about 12 pt printed.
         { withLegend, size: ADDENDA_NEIGHBOURHOOD_SIZE, cornerLabel: hoodName, cornerScale: 1.5 });
       add('neighbourhood-map.png', hood.bytes,
-        `Streets, centred on ${subject.note}${hoodName ? ` in ${hoodName}` : ''}${marked}, `
+        `Streets, ${subject.note}${hoodName ? ` in ${hoodName}` : ''}`
+        + `${cluster ? `, framed on the ${cluster.properties.cluster} cluster` : ''}${marked}, `
         + `${ADDENDA_NEIGHBOURHOOD_SIZE.width} x ${ADDENDA_NEIGHBOURHOOD_SIZE.height} px`,
         hood.stale);
       setCommunityMask(map, null);
+      await setNeighbourhoodsMode(neighbourhoodsWas);
       await setCitywideParcels(citywideWas);
       // Aerial — the newest City aerial (else satellite), close on the
       // subject, sides labelled.
@@ -4491,6 +4518,7 @@ async function buildAddendaPack() {
     // Put the user's map back exactly as it was, whatever happened above.
     if (zoningMode !== zoningWas) await cycleZoningTo(zoningWas).catch(() => {});
     setCommunityMask(map, null);
+    if (neighbourhoodsMode !== neighbourhoodsWas) await setNeighbourhoodsMode(neighbourhoodsWas).catch(() => {});
     await setCitywideParcels(citywideWas).catch(() => {});
     await setAddendaMarks(userMarks).catch(() => {});
     setBasemapByKey(basemap);
