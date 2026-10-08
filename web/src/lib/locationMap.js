@@ -196,6 +196,44 @@ export const CALLOUT = {
   headHalfWidth: 3.6,
 };
 
+/** The optional figure title — "Subject Property Location / within
+ *  Manitoba" — boxed in a corner of the page: black on white with a thin
+ *  rule, so it reads as a caption rather than a second callout. */
+export const TITLE = {
+  font: 'bold 11px Arial, Helvetica, sans-serif',
+  lineHeight: 13,
+  padX: 6,
+  padY: 5,
+  fill: '#ffffff',
+  rule: '#333333',
+  text: '#1a1a1a',
+};
+
+/** The title's two lines for `map`. */
+export function titleLines(map) {
+  return ['Subject Property Location', `within ${map.label}`];
+}
+
+/**
+ * Where the title box goes: the top-left corner unless a subject pin would
+ * sit under it, then the next clear corner. `size` is [width, height] in
+ * page points. Returns [x0, y0, x1, y1], or null when every corner is taken.
+ */
+export function placeTitle(size, pins, { map = BASE_MAPS.manitoba } = {}) {
+  const [w, h] = size;
+  const corners = [
+    [MARGIN, MARGIN],
+    [map.width - MARGIN - w, MARGIN],
+    [MARGIN, map.height - MARGIN - h],
+    [map.width - MARGIN - w, map.height - MARGIN - h],
+  ];
+  for (const [x, y] of corners) {
+    const box = [x, y, x + w, y + h];
+    if (!pins.some((p) => overlapArea(box, pinBox(p)) > 0)) return box;
+  }
+  return null;
+}
+
 /** Compass choices for the callout. Angles are screen angles (y down):
  *  0 = east, -90 = north. 'auto' searches all of them. */
 export const DIRECTIONS = {
@@ -264,6 +302,12 @@ function overlapArea(a, b) {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
+/** Does `box` touch any of the map's hard keep-out boxes (the title)?
+ *  Obstacles are only scored against; a keep-out box is never covered. */
+function inKeepOut(box, map) {
+  return (map.keepOut || []).some((k) => overlapArea(box, k) > 0);
+}
+
 function coveredArea(box, obstacles) {
   let covered = 0;
   for (const o of obstacles) covered += overlapArea(box, o);
@@ -322,7 +366,7 @@ export function placeCallout(p, width, { map = BASE_MAPS.manitoba, direction = '
   for (const angle of angles) {
     for (const leader of LEADERS) {
       const box = candidateBox(p, angle, leader, width, height);
-      if (!onPage(box, map) || overlapArea(box, pinBox(p)) > 0) continue;
+      if (!onPage(box, map) || overlapArea(box, pinBox(p)) > 0 || inKeepOut(box, map)) continue;
       const tail = boxExit(box, p);
       if (!clearOfPin(tail, p)) continue;
       const tip = arrowTipAtPin(tail, p);
@@ -358,7 +402,7 @@ export function placeTwinCallout(pMain, pInset, width, { map = BASE_MAPS.winnipe
   for (let cy = height / 2 + MARGIN; cy <= map.height - height / 2 - MARGIN; cy += step) {
     for (let cx = width / 2 + MARGIN; cx <= map.width - width / 2 - MARGIN; cx += step) {
       const box = [cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2];
-      if (contains(box, pMain) || contains(box, pInset)) continue;
+      if (contains(box, pMain) || contains(box, pInset) || inKeepOut(box, map)) continue;
       if (overlapArea(box, pinBox(pMain)) > 0 || overlapArea(box, pinBox(pInset)) > 0) continue;
       const t1 = boxExit(box, pMain);
       const t2 = boxExit(box, pInset);
@@ -393,10 +437,12 @@ function loadBaseMap(url) {
 /**
  * Draw `map` plus the callout into a new canvas `map.scale` pixels per page
  * point. The SVG is drawn straight at the output size, so the browser
- * rasterises the vectors at that resolution rather than upscaling. Returns
- * null when the property is off this map.
+ * rasterises the vectors at that resolution rather than upscaling. With
+ * `title`, the "Subject Property Location within <map>" box goes in a corner
+ * first and the callout is placed around it. Returns null when the property
+ * is off this map.
  */
-export async function renderLocationMap({ map = BASE_MAPS.manitoba, lng, lat, label = 'SUBJECT', direction = 'auto' }) {
+export async function renderLocationMap({ map = BASE_MAPS.manitoba, lng, lat, label = 'SUBJECT', direction = 'auto', title = false }) {
   const where = locateOnMap(map, lng, lat);
   if (!where) return null;
   const img = await loadBaseMap(map.svgUrl);
@@ -410,14 +456,47 @@ export async function renderLocationMap({ map = BASE_MAPS.manitoba, lng, lat, la
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
   ctx.scale(scale, scale);
+  let placeOn = map;
+  if (title) {
+    const lines = titleLines(map);
+    ctx.font = TITLE.font;
+    const w = Math.ceil(Math.max(...lines.map((l) => ctx.measureText(l).width)) + TITLE.padX * 2);
+    const h = lines.length * TITLE.lineHeight + TITLE.padY * 2;
+    const box = placeTitle([w, h], where.inset ? [where.main, where.inset] : [where.main], { map });
+    if (box) {
+      drawTitle(ctx, box, lines);
+      placeOn = { ...map, keepOut: [...(map.keepOut || []), box] };
+    }
+  }
   ctx.font = CALLOUT.font;
   const text = String(label || 'SUBJECT').trim() || 'SUBJECT';
   const width = Math.ceil(ctx.measureText(text).width + CALLOUT.padX * 2);
   const placed = where.inset
-    ? placeTwinCallout(where.main, where.inset, width, { map })
-    : placeCallout(where.main, width, { map, direction });
+    ? placeTwinCallout(where.main, where.inset, width, { map: placeOn })
+    : placeCallout(where.main, width, { map: placeOn, direction });
   if (placed) drawCallout(ctx, placed, text);
   return canvas;
+}
+
+function drawTitle(ctx, [x0, y0, x1, y1], lines) {
+  ctx.save();
+  ctx.fillStyle = TITLE.fill;
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = 2;
+  ctx.shadowOffsetX = 0.8;
+  ctx.shadowOffsetY = 0.8;
+  ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+  ctx.restore();
+  ctx.strokeStyle = TITLE.rule;
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  ctx.fillStyle = TITLE.text;
+  ctx.font = TITLE.font;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  lines.forEach((line, i) => {
+    ctx.fillText(line, x0 + TITLE.padX, y0 + TITLE.padY + TITLE.lineHeight * (i + 0.5));
+  });
 }
 
 function drawArrow(ctx, tail, tip) {

@@ -21,7 +21,8 @@ const DIRECTION_NAMES = {
  * ({ lng, lat, note }) and render the first image.
  *
  *   maps      base-map ids this app offers, preferred first
- *   state     { label, direction, base } — the last choices, reused
+ *   state     { label, direction, base, title } — the last choices, reused;
+ *             the title box is on unless `title` is false
  *   onState   called with the new state whenever a choice changes
  *   download  (blob, filename) => void — the app's own download helper
  *
@@ -76,6 +77,14 @@ export async function showLocationMapPanel({ container, subject, maps, state, on
   }
   dirSelect.value = state.direction in DIRECTIONS ? state.direction : 'auto';
 
+  const titleBox = document.createElement('input');
+  titleBox.type = 'checkbox';
+  titleBox.checked = state.title !== false;
+  const titleLabel = document.createElement('label');
+  titleLabel.className = 'location-map-title-toggle';
+  titleLabel.title = 'Box a "Subject Property Location within ..." title in the corner of the map';
+  titleLabel.append(titleBox, ' Title');
+
   const copyBtn = document.createElement('button');
   copyBtn.type = 'button';
   copyBtn.className = 'location-map-copy';
@@ -83,7 +92,7 @@ export async function showLocationMapPanel({ container, subject, maps, state, on
   const dlBtn = document.createElement('button');
   dlBtn.type = 'button';
   dlBtn.textContent = 'Download PNG';
-  controls.append(baseSelect, labelInput, dirSelect, copyBtn, dlBtn);
+  controls.append(baseSelect, labelInput, dirSelect, titleLabel, copyBtn, dlBtn);
 
   const img = document.createElement('img');
   img.className = 'location-map-img';
@@ -94,7 +103,7 @@ export async function showLocationMapPanel({ container, subject, maps, state, on
   const render = async () => {
     const seq = ++renderSeq;
     const map = BASE_MAPS[baseSelect.value];
-    onState({ label: labelInput.value, direction: dirSelect.value, base: map.id });
+    onState({ label: labelInput.value, direction: dirSelect.value, base: map.id, title: titleBox.checked });
     // Downtown on the Winnipeg map draws one box between the circles with
     // two arrows; the side choice does not apply there.
     const twin = !!locateOnMap(map, subject.lng, subject.lat)?.inset;
@@ -111,6 +120,7 @@ export async function showLocationMapPanel({ container, subject, maps, state, on
       lat: subject.lat,
       label: labelInput.value,
       direction: dirSelect.value,
+      title: titleBox.checked,
     });
     if (!canvas) return;
     const b = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -126,6 +136,7 @@ export async function showLocationMapPanel({ container, subject, maps, state, on
   labelInput.addEventListener('input', () => { render().catch(showError); });
   dirSelect.addEventListener('change', () => { render().catch(showError); });
   baseSelect.addEventListener('change', () => { render().catch(showError); });
+  titleBox.addEventListener('change', () => { render().catch(showError); });
   copyBtn.addEventListener('click', async () => {
     if (!blob) return;
     try {

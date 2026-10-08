@@ -1663,6 +1663,21 @@ body {
 .location-map-controls input {
   width: 9em;
 }
+/* The Title checkbox and its word, sized like the controls beside it. */
+.location-map-controls .location-map-title-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  min-height: 30px;
+  cursor: pointer;
+}
+.location-map-controls .location-map-title-toggle input {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+}
 .location-map-controls button {
   cursor: pointer;
   font-weight: 600;
