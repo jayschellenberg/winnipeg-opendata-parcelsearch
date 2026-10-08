@@ -14,7 +14,7 @@ import path from 'node:path';
 import {
   BASE_MAPS, DIRECTIONS, PIN,
   locateOnMap, placeCallout, placeTwinCallout, estimateTextWidth,
-  pinBox, pinOutline, arrowTipAtPin, placeTitle, titleLines,
+  pinBox, pinOutline, arrowTipAtPin, placeTitle, titleLines, titleSize,
 } from '../src/lib/locationMap.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -189,7 +189,15 @@ for (const [name, lng, lat] of [['Portage & Main', -97.1384, 49.8954], ['Legisla
   const moved = placeTitle(size, [lacBrochet], { map: MB });
   assert.ok(moved && overlap(moved, pinBox(lacBrochet)) === 0, 'title clears a pin in its corner');
   assert.notDeepEqual(moved.slice(0, 2), [4, 4], 'title left the top-left corner');
-  assert.deepEqual(titleLines(MB), ['Subject Property Location', 'within Manitoba']);
+  assert.deepEqual(titleLines(MB), ['Subject Property Location within Manitoba']);
+  assert.deepEqual(titleLines(WPG), ['Subject Property Location within Winnipeg']);
+  // On the Manitoba page the box runs out to just above the Hudson Bay
+  // label (x 188-241, top y 28): ends at its right edge, clear above it.
+  const mbBox = placeTitle(titleSize(MB, 223.1), [steinbach], { map: MB });
+  assert.equal(mbBox[2], 241, 'title ends at the right edge of the Hudson Bay label');
+  assert.ok(mbBox[3] < 28, 'title sits above the Hudson Bay label');
+  // Winnipeg has no stretch: the box fits its text.
+  assert.equal(titleSize(WPG, 200)[0], 212, 'Winnipeg title box fits its text');
   // A subject just below the title (Brochet) keeps it top-left, and its
   // callout still goes somewhere clear of it.
   const north = locateOnMap(MB, -101.67, 57.88).main;
