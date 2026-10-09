@@ -875,6 +875,29 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         },
       });
 
+      // Schedule AC Map 2 — the 800 m frequent-transit walkshed from the
+      // Winnipeg Zoning By-law (added by By-law 59/2025). One
+      // MultiPolygon, shipped as static GeoJSON under /public by
+      // web/scripts/build-walkshed-geojson.mjs. The colours are the
+      // City's own from the legacy Property Map legend (fill #F9DBF4,
+      // outline #E2A0F6) so a reader who has seen the City map
+      // recognises it; the outline is darkened a step so it survives
+      // the aerial basemaps, and dashed so it reads as a policy
+      // boundary like infill / airport rather than a parcel edge.
+      map.addSource('transit-walkshed', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'transit-walkshed-fill', type: 'fill', source: 'transit-walkshed',
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#e2a0f6', 'fill-opacity': 0.18 },
+      });
+      map.addLayer({
+        id: 'transit-walkshed-line', type: 'line', source: 'transit-walkshed',
+        layout: { visibility: 'none' },
+        // 4px like the other policy boundaries; short dash so it is
+        // distinct from infill (2,2) and airport (6,2) when stacked.
+        paint: { 'line-color': '#8a3fa8', 'line-width': 4, 'line-dasharray': [1, 1.5] },
+      });
+
       // Transit overlays (routes + stops). Both source FCs ship as
       // static GeoJSON under /public, generated from the Winnipeg
       // Transit GTFS feed by web/scripts/build-transit-geojson.mjs.
@@ -2312,6 +2335,29 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           <strong>${escapeHtml(p.pdo_kind ?? 'Malls and Corridors PDO')}</strong>
           ${p.feature_name ? `<br>${escapeHtml(p.feature_name)}` : ''}
         </div>`));
+      // Schedule AC Map 2. The source publishes one feature with a name
+      // and nothing else, so the popup carries what the by-law says the
+      // shaded area means. Section numbers are Schedule AC's own
+      // (By-law 59/2025, passed 26 June 2025).
+      onLayerClick(map, 'transit-walkshed-fill', policyClick(() => `
+        <div style="line-height:1.4;max-width:300px">
+          <strong>Transit Walkshed</strong> — Zoning Schedule AC, Map 2<br>
+          <em>Within 800 m walking distance of frequent transit</em>
+          <hr style="margin:6px 0;border:none;border-top:1px solid #ddd">
+          <small>Schedule AC (Development Requirements for Low Density
+          Infill, By-law 59/2025) gives a lot located <strong>entirely</strong>
+          inside this shaded area the most permissive infill rights:
+          a <strong>4-storey, 39 ft</strong> 4-unit dwelling is permitted
+          in R1, R2 and RMF-S (s. 15(1)(ii), 15.1), against 35 ft
+          elsewhere.
+          <br><br>
+          <span style="color:#b45309">Lots only partly inside are
+          excluded.</span> Boundary as drawn on the
+          <a href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer">City's Property Map</a>;
+          confirm against
+          <a href="https://clkapps.winnipeg.ca/DMIS/bylaw.asp?id=200-2006C" target="_blank" rel="noreferrer">By-law 200/2006</a>
+          Schedule AC before relying on it.</small>
+        </div>`));
 
       const transitPopup = new maplibregl.Popup({ closeButton: true });
       onLayerClick(map, 'transit-stops-circle', (e) => {
@@ -2461,6 +2507,29 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         map.getCanvas().style.cursor = 'help';
       });
       map.on('mouseleave', 'airport-area-fill', () => {
+        map.getCanvas().style.cursor = '';
+        hoodHoverPopup.remove();
+      });
+
+      // Transit walkshed hover — one unlabelled MultiPolygon, same as
+      // infill and airport.
+      map.on('mousemove', 'transit-walkshed-fill', (e) => {
+        if (isShapeDrawing() || isMeasuring()) { hoodHoverPopup.remove(); return; }
+        if (parcelAt(map, e.point)) { hoodHoverPopup.remove(); return; }
+        if (map.getLayoutProperty('transit-walkshed-fill', 'visibility') !== 'visible') {
+          hoodHoverPopup.remove();
+          return;
+        }
+        hoodHoverPopup
+          .setLngLat(e.lngLat)
+          .setHTML('<span class="hood-hover-label">Transit Walkshed — Zoning Schedule AC Map 2 (800 m)</span>')
+          .addTo(map);
+      });
+      map.on('mouseenter', 'transit-walkshed-fill', () => {
+        if (map.getLayoutProperty('transit-walkshed-fill', 'visibility') !== 'visible') return;
+        map.getCanvas().style.cursor = 'help';
+      });
+      map.on('mouseleave', 'transit-walkshed-fill', () => {
         map.getCanvas().style.cursor = '';
         hoodHoverPopup.remove();
       });

@@ -76,6 +76,7 @@ import {
   fetchSecondaryPlans,
   fetchInfillGuidelineArea,
   fetchAirportArea,
+  fetchFrequentTransitWalkshed,
   fetchMallsAndCorridors,
   fetchTrafficVolumes,
   fetchContaminatedSites,
@@ -220,6 +221,7 @@ const $assessToggle = document.getElementById('assess-toggle');
 const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
 const $infillToggle         = document.getElementById('infill-toggle');
 const $airportToggle        = document.getElementById('airport-toggle');
+const $transitWalkshedToggle = document.getElementById('transit-walkshed-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
@@ -278,6 +280,7 @@ const STATIC_MAP_IDLE_TIMEOUT_MS = 6000;
 const $zoningLegend = document.getElementById('zoning-legend');
 const $infillLegend = document.getElementById('infill-legend');
 const $airportLegend = document.getElementById('airport-legend');
+const $transitWalkshedLegend = document.getElementById('transit-walkshed-legend');
 const $trafficLegend = document.getElementById('traffic-legend');
 const $historicalToggle = document.getElementById('historical-toggle');
 const $historicalDate   = document.getElementById('historical-date');
@@ -486,6 +489,7 @@ const policyOverlayState = {
   secondaryPlans: { enabled: false, loaded: false },
   infill:         { enabled: false, loaded: false },
   airport:        { enabled: false, loaded: false },
+  transitWalkshed: { enabled: false, loaded: false },
   mallsCorridors: { enabled: false, loaded: false },
 };
 
@@ -534,6 +538,17 @@ const POLICY_OVERLAY_CONFIG = {
     // Same reason as infill: 3nva-2f66 publishes an `id` and nothing
     // else, so one unlabelled polygon needs the legend to name it.
     legend: () => $airportLegend,
+  },
+  transitWalkshed: {
+    btn:    () => $transitWalkshedToggle,
+    src:    'transit-walkshed',
+    fetch:  fetchFrequentTransitWalkshed,
+    onLabel:  'Hide Transit Walkshed',
+    offLabel: 'Transit Walkshed',
+    // One unlabelled MultiPolygon (Zoning Schedule AC Map 2), so like
+    // infill and airport it needs the legend to say what it is and
+    // what being inside it buys.
+    legend: () => $transitWalkshedLegend,
   },
   mallsCorridors: {
     btn:    () => $mallsCorridorsToggle,
@@ -750,6 +765,7 @@ $assessToggle.addEventListener('click', () => toggleLayer('assess'));
 $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secondaryPlans'));
 $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
 $airportToggle.addEventListener('click',        () => togglePolicyOverlay('airport'));
+$transitWalkshedToggle.addEventListener('click', () => togglePolicyOverlay('transitWalkshed'));
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
@@ -1444,7 +1460,7 @@ function captureUrlState() {
     surveyToggle: false, assessToggle: true, allParcelsToggle: false, allSurveyToggle: false, dwellingUnitsToggle: false,
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
-    airportToggle: false,
+    airportToggle: false, transitWalkshedToggle: false,
     transitToggle: false, contamToggle: false, dimensionsToggle: false,
     streetsToggle: false,
   };
@@ -1454,7 +1470,7 @@ function captureUrlState() {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
-    airportToggle: $airportToggle,
+    airportToggle: $airportToggle, transitWalkshedToggle: $transitWalkshedToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle,
@@ -1544,7 +1560,7 @@ function applyUrlState(state) {
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
-    airportToggle: $airportToggle,
+    airportToggle: $airportToggle, transitWalkshedToggle: $transitWalkshedToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle,
@@ -1653,6 +1669,7 @@ for (const btn of [
   $surveyToggle, $assessToggle, $allParcelsToggle, $allSurveyToggle, $dwellingUnitsToggle,
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle, $airportToggle,
+  $transitWalkshedToggle,
   $transitToggle,
   $neighbourhoodsToggle,
   $streetsToggle,

@@ -1174,6 +1174,11 @@
           <button id="infill-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Infill Area</button>
           <button id="malls-corridors-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
           <button id="airport-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Airport Area — the Complete Communities policy area around Richardson International. Not the Airport PDO (zoning) and not the provincial Airport Vicinity Protection Area.">Airport Area</button>
+          <!-- Schedule AC Map 2 of the Zoning By-law: the 800 m
+               frequent-transit walkshed. Not on Open Data; a static
+               GeoJSON built from the City map API behind the legacy
+               PP&D Property Map (web/scripts/build-walkshed-geojson.mjs). -->
+          <button id="transit-walkshed-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="Winnipeg Zoning Schedule AC Map 2 — land within 800 m walking distance of frequent transit. A lot entirely inside it may have a 4-storey, 39 ft 4-unit dwelling as-of-right in R1 / R2 / RMF-S (By-law 59/2025); 35 ft elsewhere. Lots only partly inside are excluded. Same boundary as the City's PP&D Property Map layer of that name.">Transit Walkshed</button>
           <!-- Zoning Changes — Off / Show / Filter (the Manitoba pattern).
                Show paints every parcel with a known rezoning by-law or a
                pending rezoning notice amber (citywide, and on the results);
@@ -1330,6 +1335,21 @@
                 around Richardson International.<br>
                 <span class="legend-caveat">Not the Airport PDO (zoning), not
                 the provincial AVPA.</span></p>
+            </div>
+            <!-- Transit Walkshed (Zoning Schedule AC Map 2). One
+                 unlabelled MultiPolygon, so the legend names it and
+                 says what being inside it buys. -->
+            <div id="transit-walkshed-legend" class="map-legend transit-walkshed-legend" hidden>
+              <strong>Transit Walkshed</strong>
+              <ul>
+                <li><span class="swatch transit-walkshed-swatch"></span>Zoning Schedule AC, Map 2</li>
+              </ul>
+              <p class="legend-note">Within 800&nbsp;m walking distance of
+                frequent transit. A lot entirely inside may have a 4-storey,
+                39&nbsp;ft 4-unit dwelling as-of-right in R1 / R2 / RMF-S
+                (By-law 59/2025).<br>
+                <span class="legend-caveat">Lots only partly inside are
+                excluded.</span></p>
             </div>
             <!-- Infill Area. The overlay is five big unlabelled polygons
                  (the dataset publishes no name field at all), so without

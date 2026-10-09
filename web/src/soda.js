@@ -2296,6 +2296,11 @@ const TRANSIT_ROUTES_URL = '/transit-routes.geojson';
 const TRANSIT_STOPS_URL = '/transit-stops.geojson';
 const NEIGHBOURHOODS_URL = '/wpg-neighbourhoods.geojson';
 const NEIGHBOURHOOD_CLUSTERS_URL = '/wpg-neighbourhood-clusters.geojson';
+// Winnipeg Zoning Schedule AC Map 2 — the 800 m frequent-transit
+// walkshed. Not on Open Data; built from the City map API behind the
+// legacy PP&D Property Map by web/scripts/build-walkshed-geojson.mjs
+// (`npm run refresh:walkshed`, quarterly via r/refresh_assets.ps1).
+const FREQUENT_TRANSIT_WALKSHED_URL = '/frequent-transit-walkshed.geojson';
 
 const STATIC_GEOJSON_CACHE = new Map();
 
@@ -2329,6 +2334,16 @@ export async function fetchNeighbourhoods() {
 
 export async function fetchNeighbourhoodClusters() {
   return fetchStaticGeoJson('neighbourhoodClusters', NEIGHBOURHOOD_CLUSTERS_URL);
+}
+
+/**
+ * Fetch the Schedule AC Map 2 walkshed (one MultiPolygon: the land
+ * within 800 m walking distance of frequent transit, where By-law
+ * 59/2025's as-of-right infill rules allow a 4-storey, 39 ft 4-unit
+ * dwelling in R1 / R2 / RMF-S).
+ */
+export async function fetchFrequentTransitWalkshed() {
+  return fetchStaticGeoJson('frequentTransitWalkshed', FREQUENT_TRANSIT_WALKSHED_URL);
 }
 
 // Session cache for the small whole-dataset overlay fetches above.

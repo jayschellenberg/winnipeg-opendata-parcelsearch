@@ -1164,11 +1164,23 @@ body {
   flex: none;
 }
 
+/* Matches transit-walkshed-fill / -line: the City's own Property Map
+   colours (pale pink wash, mauve outline, darkened a step), dashed like
+   the other policy boundaries. Same lock-step-by-hand caveat and the same
+   plain `swatch` class for the PNG export. */
+.transit-walkshed-swatch {
+  background: rgba(226, 160, 246, 0.18);
+  border: 2px dashed #8a3fa8;
+  flex: none;
+}
+
 .infill-legend,
-.airport-legend {
+.airport-legend,
+.transit-walkshed-legend {
   max-width: 210px;
 }
 
+.transit-walkshed-legend li,
 .airport-legend li {
   font-size: 11px;
   align-items: center;

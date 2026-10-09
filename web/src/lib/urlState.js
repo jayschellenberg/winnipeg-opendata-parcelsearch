@@ -105,7 +105,7 @@ export const SCHEMA = {
   duMode:        { param: 'du', validate: oneOf(['zero', 'min']), format: (v) => v },
   duMin:         { param: 'dn', validate: cleanInt(1, 9999),      format: (v) => String(v) },
 
-  // --- Overlay toggles (11) ---
+  // --- Overlay toggles (16) ---
   // Each is a boolean; the caller-side captureState() only emits a
   // toggle when its current value differs from the page default
   // (assess starts ON; everything else starts OFF). That keeps
@@ -120,6 +120,11 @@ export const SCHEMA = {
   secondaryPlansToggle: { param: 'sp', validate: cleanBool, format: formatBool },
   infillToggle:         { param: 'if', validate: cleanBool, format: formatBool },
   mallsCorridorsToggle: { param: 'mc', validate: cleanBool, format: formatBool },
+  // `aa` was missing when the Airport Area overlay shipped, so main.js
+  // captured the toggle and encodeState silently dropped it; the URL
+  // never carried it. Added 2026-10-09 with the walkshed.
+  airportToggle:        { param: 'aa', validate: cleanBool, format: formatBool },
+  transitWalkshedToggle: { param: 'ws', validate: cleanBool, format: formatBool },
   transitToggle:        { param: 'bt', validate: cleanBool, format: formatBool },
   contamToggle:         { param: 'cn', validate: cleanBool, format: formatBool },
   dimensionsToggle:     { param: 'dm', validate: cleanBool, format: formatBool },

@@ -323,8 +323,18 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 40 entries (15 inputs + 14 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 40);
+test('SCHEMA — has exactly 42 entries (15 inputs + 16 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 42);
+});
+
+test('encodeState / decodeState — Airport Area and Transit Walkshed toggles round-trip (aa, ws)', () => {
+  // Regression: airportToggle was captured by main.js but absent from the
+  // schema, so ?aa= never existed and the overlay did not survive a reload.
+  const out = encodeState({ airportToggle: true, transitWalkshedToggle: true });
+  const params = new URLSearchParams(out);
+  assert.equal(params.get('aa'), '1');
+  assert.equal(params.get('ws'), '1');
+  assert.deepEqual(decodeState(out), { airportToggle: true, transitWalkshedToggle: true });
 });
 
 test('decodeState — the PUCS filter round-trips', () => {
