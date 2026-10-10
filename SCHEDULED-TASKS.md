@@ -79,3 +79,16 @@ deletes the task. Nothing else runs.
 ## Known drift
 
 None between registrar and live tasks.
+
+## Cloud routine (not Task Scheduler)
+
+**Legacy Winnipeg Property Map - monthly new-layer check** runs in Claude Code's
+cloud routines (https://claude.ai/code/routines, id `trig_014CWeBskqpQLdewEDofkoYd`),
+1st of each month 07:00 Winnipeg (cron `0 13 1 * *` UTC), model claude-opus-5-5,
+no connectors. It clones this repo, re-reads the legend of
+https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm (the `legendlayer`
+tree in JS/aerialmap.js), diffs it against `docs/legacy-property-map-layers.json`,
+and when layers were added or removed opens a PR that updates that baseline and
+describes each new layer (mapapi id, metadata, Open Data match, how to wire it the
+way `web/scripts/build-legacy-map-geojson.mjs` does). No change, no PR. It needs
+nothing on this PC; created 2026-10-09.

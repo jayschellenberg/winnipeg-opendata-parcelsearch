@@ -9,6 +9,9 @@ AssessmentParcels_*.csv
 # committed so deploys ship them.
 !web/public/transit-*.geojson
 !web/public/wpg-neighbourhood*.geojson
+!web/public/frequent-transit-walkshed.geojson
+!web/public/district-planners.geojson
+!web/public/infill-guideline-areas.geojson
 
 # Web build outputs
 web/node_modules/

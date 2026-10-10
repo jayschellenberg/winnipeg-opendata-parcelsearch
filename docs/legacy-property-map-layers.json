@@ -1,0 +1,203 @@
+{
+  "_meta": {
+    "page": "https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm",
+    "legend_source": "https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/JS/aerialmap.js",
+    "captured": "2026-10-09",
+    "note": "Legend tree of the legacy PP&D Property Map (mapapi feature-set ids). The monthly routine re-extracts this and reports additions/removals."
+  },
+  "groups": [
+    {
+      "group": "Addressing",
+      "layers": [
+        {
+          "id": 12871,
+          "title": "[A] Address Annotation (Outer)"
+        },
+        {
+          "id": 12873,
+          "title": "[A] Address Annotation (Outer) - Proposed"
+        },
+        {
+          "id": 18010,
+          "title": "[A] Address Annotation (Inner)"
+        },
+        {
+          "id": 18011,
+          "title": "[A] Address Annotation (Inner) - Proposed"
+        }
+      ]
+    },
+    {
+      "group": "Assessment / Survey Parcels",
+      "layers": [
+        {
+          "id": 13937,
+          "title": "Current Assessment Parcel w/ Roll Number"
+        },
+        {
+          "id": 14275,
+          "title": "Survey Parcel Line"
+        },
+        {
+          "id": 12877,
+          "title": "[A] Parcel Dimensions (m)"
+        },
+        {
+          "id": 17936,
+          "title": "Parcel Dimensions Leader"
+        },
+        {
+          "id": 18014,
+          "title": "[A] ROW Dimensions (m)"
+        },
+        {
+          "id": 18012,
+          "title": "ROW Dimensions Leader"
+        }
+      ]
+    },
+    {
+      "group": "Winnipeg Zoning",
+      "layers": [
+        {
+          "id": 13959,
+          "title": "[A] Zoning Label"
+        },
+        {
+          "id": 13965,
+          "title": "Zoning Outline Only"
+        },
+        {
+          "id": 13954,
+          "title": "Zoning A"
+        },
+        {
+          "id": 13946,
+          "title": "Zoning C1 - C4"
+        },
+        {
+          "id": 17358,
+          "title": "Zoning CMU"
+        },
+        {
+          "id": 13957,
+          "title": "Zoning EI"
+        },
+        {
+          "id": 13947,
+          "title": "Zoning M1 - M3 & MMU"
+        },
+        {
+          "id": 13948,
+          "title": "Zoning PR"
+        },
+        {
+          "id": 13950,
+          "title": "Zoning R1"
+        },
+        {
+          "id": 13951,
+          "title": "Zoning R2"
+        },
+        {
+          "id": 13952,
+          "title": "Zoning RMF, RMH, RMU & TOD"
+        },
+        {
+          "id": 13953,
+          "title": "Zoning RR2 & RR5"
+        }
+      ]
+    },
+    {
+      "group": "Downtown Zoning",
+      "layers": [
+        {
+          "id": 13955,
+          "title": "Downtown Character Sector (C)"
+        },
+        {
+          "id": 13956,
+          "title": "Downtown Living Sector (D)"
+        },
+        {
+          "id": 13958,
+          "title": "Downtown Multiple-Use Sector (M)"
+        },
+        {
+          "id": 13949,
+          "title": "Downtown Riverbank Sector (R)"
+        }
+      ]
+    },
+    {
+      "group": "Infill Guideline Area",
+      "layers": [
+        {
+          "id": 17939,
+          "title": "Infill Guideline Area 1"
+        },
+        {
+          "id": 17965,
+          "title": "Infill Guideline Area 1 (Airport PDO)"
+        },
+        {
+          "id": 17966,
+          "title": "Infill Guideline Area 1 (Secondary Plan)"
+        },
+        {
+          "id": 17964,
+          "title": "Infill Guideline Area 2"
+        },
+        {
+          "id": 17967,
+          "title": "Infill Guideline Area 2 (Airport PDO)"
+        },
+        {
+          "id": 17968,
+          "title": "Infill Guideline Area 2 (Secondary Plan)"
+        }
+      ]
+    },
+    {
+      "group": "Malls and Corridors PDO",
+      "layers": [
+        {
+          "id": 18541,
+          "title": "Urban - Malls and Corridors PDO"
+        },
+        {
+          "id": 18542,
+          "title": "Regional - Malls and Corridors PDO"
+        }
+      ]
+    },
+    {
+      "group": "Winnipeg Zoning Schedule AC Map 2",
+      "layers": [
+        {
+          "id": 18787,
+          "title": "Winnipeg Zoning Schedule AC Map 2"
+        }
+      ]
+    },
+    {
+      "group": "Streets",
+      "layers": [
+        {
+          "id": "streetline",
+          "title": "Street Line (current year only)"
+        }
+      ]
+    },
+    {
+      "group": "District Planners",
+      "layers": [
+        {
+          "id": 18772,
+          "title": "District Planners"
+        }
+      ]
+    }
+  ]
+}
