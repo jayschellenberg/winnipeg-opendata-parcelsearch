@@ -2543,6 +2543,10 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         closeButton: false,
         closeOnClick: false,
         offset: 8,
+        // MapLibre caps popups at 240px; the one-line nowrap label
+        // (district + planner name) spills past the dark background
+        // at that width, so let it grow to fit.
+        maxWidth: 'none',
         className: 'hood-hover-popup hover-popup',
       });
       const hoodHoverHandler = (labelKey) => (e) => {

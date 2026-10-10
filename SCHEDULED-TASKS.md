@@ -62,7 +62,10 @@ changed. Delete the `git push` line for commit-only.
 
 **WpgParcelTilesBiMonthly.** Fetches parcels live, tiles via WSL tippecanoe, publishes to
 the GitHub release with a staged swap, copies to R2 and verifies size, pushes the meta and
-sha files. Day 2 so it never contends with the 1 June / 1 December download. Preflight
+sha files. Then (Step 9, non-fatal) reruns `npm run refresh:legacy-map` and commits
+`district-planners.geojson` / `frequent-transit-walkshed.geojson` if they changed, so
+district planner names stay within a month of the City's legacy Property Map.
+Day 2 so it never contends with the 1 June / 1 December download. Preflight
 fails fast if Rscript, tippecanoe, gh or rclone is missing.
 
 ## Alerting

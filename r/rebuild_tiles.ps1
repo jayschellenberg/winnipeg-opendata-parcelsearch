@@ -739,6 +739,47 @@ if ($LASTEXITCODE -ne 0) {
   Get-ChildItem $archiveRoot -File -Filter 'FAILED-survey-tiles-*.txt' -ErrorAction SilentlyContinue |
     ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
 }
+# --- Step 9: District Planners / walkshed refresh (non-fatal) --------------
+# The District Planners layer carries the planner's NAME, email and phone
+# per district, and those change as staff move - far more often than the
+# quarterly asset refresh catches. Rebuild the two legacy-map layers here on
+# the monthly clock (walkshed rides along; stableWrite leaves it untouched
+# unless the City re-cut it) and commit ONLY those two files, so this never
+# sweeps up unrelated working-tree changes. The quarterly refresh_assets.ps1
+# still runs the same script; a second pass is a no-op.
+Log 'Step 9: legacy-map layers (District Planners + walkshed) - npm run refresh:legacy-map'
+$legacyAssets = @('web/public/district-planners.geojson', 'web/public/frequent-transit-walkshed.geojson')
+& cmd /c "npm --prefix ""$(Join-Path $repo 'web')"" run refresh:legacy-map 2>&1" *>> $log
+if ($LASTEXITCODE -ne 0) {
+  $marker = Join-Path $archiveRoot ("FAILED-legacy-map-{0}.txt" -f (Get-Date -Format 'yyyy-MM-dd'))
+  "legacy-map refresh exited $LASTEXITCODE on $(Get-Date -Format 's'); rerun: cd $(Join-Path $repo 'web'); npm run refresh:legacy-map (see $log)" |
+    Set-Content -Path $marker -ErrorAction SilentlyContinue
+  Log "  legacy-map refresh FAILED (exit $LASTEXITCODE) - previous committed files keep serving; marker $marker"
+} else {
+  $legacyChanged = & git -C $repo status --porcelain -- $legacyAssets
+  if (-not $legacyChanged) {
+    Log '  legacy-map layers unchanged - nothing to commit.'
+  } else {
+    & git -C $repo add -- $legacyAssets
+    $legacyMsg = "Refresh District Planners / walkshed from the legacy Property Map (scheduled monthly)`n`nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+    & git -C $repo commit -m $legacyMsg *>> $log 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      Log "  legacy-map commit failed (exit $LASTEXITCODE) - files left in the working tree (non-fatal)"
+    } else {
+      $legacyPushed = $false
+      foreach ($wait in @(0, 15, 60)) {
+        if ($wait -gt 0) { Start-Sleep -Seconds $wait; & git -C $repo pull --rebase origin main *>> $log 2>&1 }
+        & git -C $repo push origin main *>> $log 2>&1
+        if ($LASTEXITCODE -eq 0) { $legacyPushed = $true; break }
+      }
+      if ($legacyPushed) { Log '  legacy-map layers changed - committed and pushed (Vercel auto-deploys).' }
+      else { Log '  legacy-map commit made but PUSH FAILED after 3 attempts - push manually (git push origin main) (non-fatal)' }
+    }
+  }
+  Get-ChildItem $archiveRoot -File -Filter 'FAILED-legacy-map-*.txt' -ErrorAction SilentlyContinue |
+    ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Log "cleared stale marker $($_.Name)" }
+}
+
 # --- Log retention (non-fatal) ---------------------------------------------
 # Every job writes a dated log here (~1-2 MB each); keep a year of them.
 Get-ChildItem $logDir -File -Filter '*.log' -ErrorAction SilentlyContinue |

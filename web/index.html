@@ -1179,6 +1179,10 @@
                GeoJSON built from the City map API behind the legacy
                PP&D Property Map (web/scripts/build-walkshed-geojson.mjs). -->
           <button id="transit-walkshed-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="Winnipeg Zoning Schedule AC Map 2 — land within 800 m walking distance of frequent transit. A lot entirely inside it may have a 4-storey, 39 ft 4-unit dwelling as-of-right in R1 / R2 / RMF-S (By-law 59/2025); 35 ft elsewhere. Lots only partly inside are excluded. Same boundary as the City's PP&D Property Map layer of that name.">Transit Walkshed</button>
+          <!-- District Planners: the six City planning districts with the
+               planner's name, email and phone. From the legacy PP&D
+               Property Map (web/scripts/build-legacy-map-geojson.mjs). -->
+          <button id="district-planners-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="The City's six planning districts, each with its district planner (name, email, phone). Click a district for the contact. Same boundaries as the PP&D Property Map's District Planners layer; planner contacts refreshed monthly.">District Planners</button>
           <!-- Zoning Changes — Off / Show / Filter (the Manitoba pattern).
                Show paints every parcel with a known rezoning by-law or a
                pending rezoning notice amber (citywide, and on the results);
@@ -1222,10 +1226,6 @@
           <button id="dwelling-units-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Show dwelling-unit totals for qualifying residential assessment parcels. Condominium units are grouped by civic address and shown once at the group centroid. Multi-unit totals appear from zoom 13; ordinary parcels show 1 from zoom 16.">Dwelling Units</button>
           <button id="streets-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Current City of Winnipeg street centrelines and names (Open Data Road Network). Automatically shown over City aerial imagery; turn off for a clean historical image. Street names appear from zoom 13.">Current Winnipeg Streets</button>
           <button id="water-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Paint the result parcels by water influence — dark blue = adjacent to a river, creek or retention pond (frontage), pale blue = near water without frontage. From the City assessment record's property influences; a screening aid, not a measured distance.">Water Influence</button>
-          <!-- District Planners: the six City planning districts with the
-               planner's name, email and phone. From the legacy PP&D
-               Property Map (web/scripts/build-legacy-map-geojson.mjs). -->
-          <button id="district-planners-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="The City's six planning districts, each with its district planner (name, email, phone). Click a district for the contact. Same boundaries as the PP&D Property Map's District Planners layer; rebuilt quarterly.">District Planners</button>
             </div>
           </details>
 

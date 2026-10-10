@@ -690,7 +690,7 @@ principal back and says loudly which one it got.
 
 | Job | When | Rebuilds | Stores history? |
 |---|---|---|---|
-| `WpgParcelTilesMonthly` | 2nd of each month, 03:00 | `parcels.pmtiles` — the Show All Parcels / Dwelling Units overlays. Fetches d4mq-wa44 live, tiles via WSL tippecanoe, publishes the release asset, commits the checksum, auto-deploys. Then `wpg-survey-parcels.pmtiles` (All Survey Parcels), and on even months the historical per-snapshot archives. | No |
+| `WpgParcelTilesMonthly` | 2nd of each month, 03:00 | `parcels.pmtiles` — the Show All Parcels / Dwelling Units overlays. Fetches d4mq-wa44 live, tiles via WSL tippecanoe, publishes the release asset, commits the checksum, auto-deploys. Then `wpg-survey-parcels.pmtiles` (All Survey Parcels), on even months the historical per-snapshot archives, and the District Planners / Transit Walkshed GeoJSON from the legacy Property Map (planner names change). | No |
 | `WpgOpenDataSemiAnnualDownload` | Jun 1 + Dec 1, 03:00 | Downloads the `r/wpg_datasets.R` layers into the WpgSnapshots archive. | **Yes** — the only job that does |
 | `WpgAssetRefreshQuarterly` | Jan/Apr/Jul/Oct 1, 03:30 | Transit + neighbourhood GeoJSON, and runs both staleness heartbeats. | No |
 
@@ -877,9 +877,10 @@ Data Portal, under the
 Transit overlays are derived from the Winnipeg Transit GTFS feed.
 Three overlays are not on Open Data and come from the City map API behind the
 [PP&D Property Map](https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm)
-(© City of Winnipeg), rebuilt quarterly: Transit Walkshed (Winnipeg Zoning
-Schedule AC Map 2) and District Planners by `web/scripts/build-legacy-map-geojson.mjs`,
-and the Infill Guideline Area 1 / 2 split (WMS-only there) traced from the
+(© City of Winnipeg): Transit Walkshed (Winnipeg Zoning Schedule AC Map 2)
+and District Planners by `web/scripts/build-legacy-map-geojson.mjs`, rebuilt
+monthly with the parcel tiles (the planner names change as staff move),
+and, rebuilt quarterly, the Infill Guideline Area 1 / 2 split (WMS-only there) traced from the
 raster by `web/scripts/build-infill-areas.py` under the OSGeo4W Python, so it
 is approximate to about one metre.
 Environmentally tracked sites: Manitoba Contaminated/Impacted Sites Registry.

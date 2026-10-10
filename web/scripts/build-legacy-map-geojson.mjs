@@ -37,11 +37,14 @@
  * corrupts the data.
  *
  * ---- REFRESH CADENCE ----
- * Quarterly, with the other static assets (r/refresh_assets.ps1 runs
- * `npm run refresh:legacy-map`). The boundaries change only when the City
- * re-cuts them. Writes go through stableWrite so an unchanged layer leaves
- * its file and git untouched. A decode that lands outside Winnipeg throws
- * and writes nothing.
+ * Monthly, as Step 9 of the parcel-tile rebuild (r/rebuild_tiles.ps1,
+ * WpgParcelTilesMonthly, the 2nd at 03:00): the District Planners layer
+ * carries planner names / emails / phones, which change as staff move.
+ * The quarterly r/refresh_assets.ps1 runs it too (a no-op if nothing
+ * moved). The boundaries change only when the City re-cuts them. Writes
+ * go through stableWrite so an unchanged layer leaves its file and git
+ * untouched. A decode that lands outside Winnipeg throws and writes
+ * nothing.
  *
  *   Manually:  cd web && npm run refresh:legacy-map
  * --------------------------------------------------------------- */
