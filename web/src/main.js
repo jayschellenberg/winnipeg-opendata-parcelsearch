@@ -3703,7 +3703,13 @@ function syncSelectAllBox() {
  *  All three read the selection themselves, so this is "look again". */
 function applySelectionEverywhere() {
   if (fullRows.length > 0) {
-    setParcels(lastFullSurveyFc, lastFullAssessFc, { fit: false });
+    // Re-frame on the parcels that are still ticked (Jason, 2026-10-10):
+    // culling the far end of a street should bring the rest back to the
+    // centre. Only while something is still ticked — an empty highlight
+    // would fly the camera back to the whole city, which throws away the
+    // user's place for no gain.
+    const anyTicked = deselectedCount(currentRows) < currentRows.length;
+    setParcels(lastFullSurveyFc, lastFullAssessFc, { fit: anyTicked });
   }
   if (document.body.classList.contains('sales-mode')) publishSalesToCharts(fullRows);
   refreshCount();
