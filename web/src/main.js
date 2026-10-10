@@ -1717,7 +1717,25 @@ for (const th of document.querySelectorAll('#results th[data-col]')) {
 // Search-input listeners attached above will start writing back to
 // the URL on the user's next edit.
 
+// Bumped by every run that replaces the displayed result set: a Property
+// Search (runSearch) and a sales analysis (runSalesAnalysis, which every
+// sales upload and sidebar filter goes through). Each run takes its own
+// generation before its first await.
+let searchGeneration = 0;
+/** True once a newer search or sales run has started since `gen` was
+ *  taken. Every async stage of a search checks this after each await and
+ *  stops cold. Without it a slow earlier search finishing after a newer one
+ *  overwrote the newer table and map with its own parcels: Enter in any
+ *  field starts a search while one is running (setBusy only locks the
+ *  Search button), and a 1,000-parcel search landing 5 s after a single
+ *  roll put the 1,000 back with its own status line. A superseded run must
+ *  not touch the status line or the busy state either: those belong to the
+ *  search that replaced it. Ported from the Manitoba app (PR #196). */
+function searchSuperseded(gen) { return gen !== searchGeneration; }
+
 async function runSearch() {
+  // Taken before the first await: see searchSuperseded().
+  const gen = ++searchGeneration;
   // A stale include shape from a previous area would filter the new
   // results down to nothing, so every fresh Search erases the drawn
   // shapes. Silent: this run repopulates the table itself, and an emit
@@ -1802,18 +1820,22 @@ async function runSearch() {
 
   try {
     if (anyAssess) {
-      await runAssessmentSearch(inputs);
+      await runAssessmentSearch(inputs, gen);
     } else {
-      await runLegalSearch(inputs);
+      await runLegalSearch(inputs, gen);
     }
   } finally {
-    setBusy(false);
-    // In finally, not after the awaits: a late step (the legal-description
-    // join) can throw after the parcels are already on the grid, and those
-    // results still deserve the fabric under them. The function's own
-    // "found anything" check keeps an empty or failed search from turning
-    // it on.
-    autoEnableCitywideParcels();
+    // A superseded run leaves both to the search that replaced it: its
+    // own finally clears the button and turns the fabric on for ITS set.
+    if (!searchSuperseded(gen)) {
+      setBusy(false);
+      // In finally, not after the awaits: a late step (the legal-description
+      // join) can throw after the parcels are already on the grid, and those
+      // results still deserve the fabric under them. The function's own
+      // "found anything" check keeps an empty or failed search from turning
+      // it on.
+      autoEnableCitywideParcels();
+    }
   }
 }
 
@@ -2958,15 +2980,17 @@ async function toggleDwellingUnits() {
 
 // ---------- Legal-description flow ----------
 
-async function runLegalSearch(inputs) {
+async function runLegalSearch(inputs, gen) {
   let surveyFc;
   try {
     surveyFc = await searchSurveyParcels(inputs);
   } catch (err) {
+    if (searchSuperseded(gen)) return;
     console.error(err);
     setCount(`Search failed: ${err.message}`);
     return;
   }
+  if (searchSuperseded(gen)) return;
 
   const n = surveyFc.features.length;
   if (n === 0) {
@@ -2993,10 +3017,12 @@ async function runLegalSearch(inputs) {
   try {
     assessFc = await fetchAssessmentOverlap(surveyFc);
   } catch (err) {
+    if (searchSuperseded(gen)) return;
     console.error(err);
     setCount(`${countMsg} · enrichment failed: ${err.message}`);
     return;
   }
+  if (searchSuperseded(gen)) return;
 
   // Enrich each assessment with its full civic-address list (e.g. so a
   // multi-address parcel reads "400 HARGRAVE STREET, 440 HARGRAVE ST"
@@ -3009,6 +3035,7 @@ async function runLegalSearch(inputs) {
   } catch (err) {
     console.warn('address enrichment threw, continuing without it', err);
   }
+  if (searchSuperseded(gen)) return;
   // Area-weighted top-2 zoning fills zoning_top1 / zoning_top2 +
   // their coverage %s. Non-fatal — on failure parcels keep their
   // original `zoning` text only.
@@ -3017,6 +3044,7 @@ async function runLegalSearch(inputs) {
   } catch (err) {
     console.warn('zoning enrichment threw, continuing without it', err);
   }
+  if (searchSuperseded(gen)) return;
 
   const rows = joinSurveyWithAssessment(surveyFc, assessFc);
   renderTable(rows);
@@ -3032,16 +3060,18 @@ async function runLegalSearch(inputs) {
 
 // ---------- Assessment-first flow (Roll # / Address / Zoning) ----------
 
-async function runAssessmentSearch(inputs) {
+async function runAssessmentSearch(inputs, gen) {
   let assessFc, civicAddresses = EMPTY_FC;
   try {
     ({ parcels: assessFc, addresses: civicAddresses } =
       await searchAssessmentParcelsExpanded(inputs));
   } catch (err) {
+    if (searchSuperseded(gen)) return;
     console.error(err);
     setCount(`Search failed: ${err.message}`);
     return;
   }
+  if (searchSuperseded(gen)) return;
 
   const n = assessFc.features.length;
   // For a multi-roll paste, surface a "(X of N requested rolls not
@@ -3079,10 +3109,12 @@ async function runAssessmentSearch(inputs) {
   try {
     surveyFc = await fetchSurveyOverlap(assessFc);
   } catch (err) {
+    if (searchSuperseded(gen)) return;
     console.error(err);
     setCount(`${countMsg} · legal-description lookup failed: ${err.message}`);
     return;
   }
+  if (searchSuperseded(gen)) return;
 
   // First render: legal descriptions filled in, partial markers not yet.
   renderTable(joinAssessmentWithSurvey(assessFc, surveyFc));
@@ -3102,11 +3134,13 @@ async function runAssessmentSearch(inputs) {
   // unmarked and the user still sees the legal descriptions.
   try {
     const allOverlapAssess = await fetchAssessmentOverlap(surveyFc);
+    if (searchSuperseded(gen)) return;
     const partialSurveyIds = computePartialSurveyIds(surveyFc, allOverlapAssess);
     renderTable(joinAssessmentWithSurvey(assessFc, surveyFc, partialSurveyIds));
   } catch (err) {
     console.warn('partial-lot detection failed', err);
   }
+  if (searchSuperseded(gen)) return;
   setCount(countMsg);
 }
 
@@ -5019,11 +5053,12 @@ const saleVerdictCache = new Map();
 // for the tri-state (null = no filter / Set = those only / empty Set =
 // show nothing). Both are reset on every fresh CSV.
 
-// Monotonically increasing token so concurrent runSalesAnalysis
-// calls (e.g. user rapid-clicking PUCS checkboxes) only let the
-// most recent run mutate the DOM. Earlier runs check the token
-// before render and abort if a newer run has started.
-let salesRunToken = 0;
+// Concurrent runSalesAnalysis calls (e.g. user rapid-clicking PUCS
+// checkboxes) only let the most recent run mutate the DOM: each takes a
+// generation from the shared searchGeneration counter (declared beside
+// runSearch) and aborts once a newer sales run OR a Property Search has
+// started. Sharing the counter is what stops a slow property search from
+// landing on top of a freshly loaded sale set, and vice versa.
 // Active imported-list filter on the Sales tab, or null. `{ rolls: Set,
 // label: string }`. Deliberately NOT cleared when a new CSV loads: the
 // list is the user's comp selection and survives swapping the sales
@@ -5940,12 +5975,13 @@ function setResultsProgress(text) {
  */
 async function runSalesAnalysis() {
   if (!salesData || !salesData.sales.length) return;
-  const myToken = ++salesRunToken;
+  const myToken = ++searchGeneration;
   // The rise lookup is fetched once per page load and answers both the
   // pre-join filter below and the column stamp after the join. Null when
   // the file is unavailable: the column stays blank and an active Rise
   // filter passes nothing, which is the honest reading of "unclassified".
   riseLookup = await loadRiseLookup();
+  if (searchSuperseded(myToken)) return;
   const hideSentinels = document.getElementById('sales-hide-sentinels')?.checked;
   let visibleSales = hideSentinels
     ? salesData.sales.filter((s) => s.salePrice > 1)
@@ -6107,10 +6143,12 @@ async function runSalesAnalysis() {
     await yieldToPaint();
     assessFc = await searchAssessmentParcelsByRolls(distinctRolls);
   } catch (err) {
+    if (searchSuperseded(myToken)) return;
     console.warn('Sales live-data fetch failed:', err);
     setSalesCount(`Couldn't fetch live data: ${err.message || 'unknown error'}.`, true);
     return;
   }
+  if (searchSuperseded(myToken)) return;
 
   // Resolve the subject parcel's centroid (if any) — pulled from
   // the result set first, then from a one-off fetch when the
@@ -6592,7 +6630,7 @@ async function runSalesAnalysis() {
   // awaiting the SODA + subject fetches, drop this run's results
   // on the floor. Otherwise an earlier (more permissive) filter's
   // late-resolving response could overwrite the latest filter.
-  if (myToken !== salesRunToken) return;
+  if (searchSuperseded(myToken)) return;
 
   // Zoning is deferred: even with the Zoning overlay toggle ON,
   // we don't auto-fetch zoning for every sale row. The toggle
