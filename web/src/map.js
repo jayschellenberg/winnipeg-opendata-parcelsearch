@@ -788,17 +788,38 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         },
       });
 
-      // Infill Guideline Area (OurWPG Mature Community) — 5 polygons,
-      // green outline only (no fill — these are big neighbourhoods and
-      // a fill would obscure everything underneath).
+      // Infill Guideline Area. One source, two kinds of feature (see
+      // fetchInfillGuidelineArea in soda.js): the OurWPG Mature
+      // Community envelope (kind 'outer', dashed green line, faint
+      // wash) and the City's six-way Area 1 / Area 2 split (kind
+      // 'class'), filled in the City Property Map's own colours so a
+      // reader who knows that map recognises them. The class fills sit
+      // under the outer line so the envelope still reads on top.
       map.addSource('infill-guideline', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({
         id: 'infill-guideline-fill', type: 'fill', source: 'infill-guideline',
+        filter: ['==', ['get', 'kind'], 'outer'],
         layout: { visibility: 'none' },
         paint: { 'fill-color': '#5aa05a', 'fill-opacity': 0.10 },
       });
       map.addLayer({
+        id: 'infill-class-fill', type: 'fill', source: 'infill-guideline',
+        filter: ['==', ['get', 'kind'], 'class'],
+        layout: { visibility: 'none' },
+        // Colour comes off the feature (`fill`, from the City's legend)
+        // rather than a match expression, so the trace and the map
+        // cannot disagree. Keep the swatches in style.css in step.
+        paint: { 'fill-color': ['coalesce', ['get', 'fill'], '#eff452'], 'fill-opacity': 0.35 },
+      });
+      map.addLayer({
+        id: 'infill-class-line', type: 'line', source: 'infill-guideline',
+        filter: ['==', ['get', 'kind'], 'class'],
+        layout: { visibility: 'none' },
+        paint: { 'line-color': ['coalesce', ['get', 'line'], '#9d9a1a'], 'line-width': 1, 'line-opacity': 0.8 },
+      });
+      map.addLayer({
         id: 'infill-guideline-line', type: 'line', source: 'infill-guideline',
+        filter: ['==', ['get', 'kind'], 'outer'],
         layout: { visibility: 'none' },
         // 4px rather than the 2.5 the other policy outlines use: with a
         // 10% fill these two boundaries are carried entirely by their
@@ -896,6 +917,48 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         // 4px like the other policy boundaries; short dash so it is
         // distinct from infill (2,2) and airport (6,2) when stacked.
         paint: { 'line-color': '#8a3fa8', 'line-width': 4, 'line-dasharray': [1, 1.5] },
+      });
+
+      // District Planners — the six City planning districts with the
+      // planner's contact in the popup. Red outline as on the City map
+      // (it draws no fill), plus a faint per-district tint so a click
+      // target exists and the districts tell apart at a glance, and the
+      // district name at the centroid.
+      map.addSource('district-planners', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'district-planners-fill', type: 'fill', source: 'district-planners',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': [
+            'match', ['get', 'division'],
+            '1', '#e07070',
+            '2', '#e0a070',
+            '3', '#c9b84a',
+            '4', '#70b070',
+            '5', '#7090d0',
+            'DOWNTOWN', '#b070c0',
+            '#999999',
+          ],
+          'fill-opacity': 0.10,
+        },
+      });
+      map.addLayer({
+        id: 'district-planners-line', type: 'line', source: 'district-planners',
+        layout: { visibility: 'none' },
+        paint: { 'line-color': '#c0392b', 'line-width': 2.5 },
+      });
+      map.addLayer({
+        id: 'district-planners-label', type: 'symbol', source: 'district-planners',
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 13,
+          'symbol-placement': 'point',
+          'text-max-width': 9,
+          'text-allow-overlap': false,
+        },
+        paint: { 'text-color': '#7a1f14', 'text-halo-color': '#ffffff', 'text-halo-width': 1.8 },
       });
 
       // Transit overlays (routes + stops). Both source FCs ship as
@@ -2293,6 +2356,34 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       // OUTER boundary only, and an appraiser reading "Infill Guidelines
       // apply" needs to know it does not tell them which area they are
       // in.
+      // The class fill sits above the outer fill, so a click inside the
+      // split lands here and says which Area applies; a click in the
+      // envelope but outside any class (rare: the two sources disagree
+      // by a lot or two at the edge) falls through to the outer handler.
+      const INFILL_VARIANT_NOTE = {
+        'Airport PDO': 'Also inside the Airport Planned Development Overlay of the Zoning By-law, whose height and use limits apply on top of the guidelines.',
+        'Secondary Plan': 'Also covered by an adopted secondary plan, whose policies may modify the guidelines; check the plan for the site.',
+      };
+      onLayerClick(map, 'infill-class-fill', policyClick((p) => {
+        const area = String(p.area ?? '');
+        const variant = String(p.variant ?? 'Plain');
+        const title = p.title ? escapeHtml(String(p.title)) : `Infill Guideline Area ${escapeHtml(area)}`;
+        const zone = area === '1' ? 'predominantly single-family (R1) streets'
+          : area === '2' ? 'predominantly two-family (R2) streets' : '';
+        const note = INFILL_VARIANT_NOTE[variant];
+        return `
+        <div style="line-height:1.4;max-width:300px">
+          <strong>${title}</strong><br>
+          <em>Residential Infill Guidelines, Area ${escapeHtml(area)}</em>
+          <hr style="margin:6px 0;border:none;border-top:1px solid #ddd">
+          <small>${zone ? `Area ${escapeHtml(area)} guidelines apply: ${zone}.` : ''}
+          ${note ? `<br><br>${escapeHtml(note)}` : ''}
+          <br><br>
+          <span style="color:#b45309">Traced from the City's map at about
+          1 m.</span> Verify which area applies at the lot line on the
+          <a href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer">City's Property Map</a>.</small>
+        </div>`;
+      }));
       onLayerClick(map, 'infill-guideline-fill', policyClick(() => `
         <div style="line-height:1.4;max-width:300px">
           <strong>Infill Area</strong> — Mature Community<br>
@@ -2302,14 +2393,32 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           1950 — grid streets, public lanes, connected sidewalks. A subset
           of Established Neighbourhoods.
           <br><br>
-          <span style="color:#b45309">Outer boundary only.</span> The City
-          splits this into Infill Guideline <strong>Area 1</strong>
-          (predominantly R1) and <strong>Area 2</strong> (predominantly
-          R2), each with Airport PDO and Secondary Plan variants. That
-          breakdown is not published on Open Data — check the
-          <a href="https://www.winnipeg.ca/building-development/property-records/winnipeg-property-map" target="_blank" rel="noreferrer">City's property map</a>
+          <span style="color:#b45309">Envelope only here.</span> This spot
+          is inside the OurWinnipeg Mature Community boundary but outside
+          every Infill Guideline Area class the City draws (Area 1 /
+          Area 2 and their Airport PDO and Secondary Plan variants);
+          check the
+          <a href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer">City's Property Map</a>
           for which one applies.</small>
         </div>`));
+      // District Planners: the contact is the point of the layer.
+      onLayerClick(map, 'district-planners-fill', policyClick((p) => {
+        const emails = String(p.email ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+        const emailHtml = emails.map((e) => `<a href="mailto:${escapeHtml(e)}">${escapeHtml(e)}</a>`).join(', ');
+        return `
+        <div style="line-height:1.4;max-width:300px">
+          <strong>${escapeHtml(String(p.name ?? 'Planning district'))}</strong><br>
+          <em>District Planner</em>
+          <hr style="margin:6px 0;border:none;border-top:1px solid #ddd">
+          ${p.planner ? `${escapeHtml(String(p.planner))}<br>` : ''}
+          ${emailHtml ? `${emailHtml}<br>` : ''}
+          ${p.phone ? `${escapeHtml(String(p.phone))}<br>` : ''}
+          <small>Planning, Property &amp; Development district as drawn on
+          the City's Property Map; contacts as published there. See the
+          <a href="https://www.winnipeg.ca/building-development/city-planning-design/find-district-planner" target="_blank" rel="noreferrer">find-a-district-planner page</a>
+          if a contact has changed.</small>
+        </div>`;
+      }));
       // Same situation as the infill boundary: 3nva-2f66 publishes an
       // `id` and nothing else, so the popup carries the City's own
       // description of what the policy area is for.
@@ -2485,6 +2594,55 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         map.getCanvas().style.cursor = 'help';
       });
       map.on('mouseleave', 'infill-guideline-fill', () => {
+        map.getCanvas().style.cursor = '';
+        hoodHoverPopup.remove();
+      });
+
+      // Infill class hover — names the Area / variant under the cursor.
+      map.on('mousemove', 'infill-class-fill', (e) => {
+        if (isShapeDrawing() || isMeasuring()) { hoodHoverPopup.remove(); return; }
+        if (parcelAt(map, e.point)) { hoodHoverPopup.remove(); return; }
+        if (map.getLayoutProperty('infill-class-fill', 'visibility') !== 'visible') {
+          hoodHoverPopup.remove();
+          return;
+        }
+        const p = e.features?.[0]?.properties ?? {};
+        const label = p.title ? String(p.title) : `Infill Guideline Area ${p.area ?? ''}`;
+        hoodHoverPopup
+          .setLngLat(e.lngLat)
+          .setHTML(`<span class="hood-hover-label">${escapeHtml(label)}</span>`)
+          .addTo(map);
+      });
+      map.on('mouseenter', 'infill-class-fill', () => {
+        if (map.getLayoutProperty('infill-class-fill', 'visibility') !== 'visible') return;
+        map.getCanvas().style.cursor = 'help';
+      });
+      map.on('mouseleave', 'infill-class-fill', () => {
+        map.getCanvas().style.cursor = '';
+        hoodHoverPopup.remove();
+      });
+
+      // District Planners hover — district name and planner.
+      map.on('mousemove', 'district-planners-fill', (e) => {
+        if (isShapeDrawing() || isMeasuring()) { hoodHoverPopup.remove(); return; }
+        if (parcelAt(map, e.point)) { hoodHoverPopup.remove(); return; }
+        if (map.getLayoutProperty('district-planners-fill', 'visibility') !== 'visible') {
+          hoodHoverPopup.remove();
+          return;
+        }
+        const p = e.features?.[0]?.properties ?? {};
+        const label = [p.name, p.planner].filter(Boolean).map(String).join(' — ');
+        if (!label) { hoodHoverPopup.remove(); return; }
+        hoodHoverPopup
+          .setLngLat(e.lngLat)
+          .setHTML(`<span class="hood-hover-label">${escapeHtml(label)}</span>`)
+          .addTo(map);
+      });
+      map.on('mouseenter', 'district-planners-fill', () => {
+        if (map.getLayoutProperty('district-planners-fill', 'visibility') !== 'visible') return;
+        map.getCanvas().style.cursor = 'help';
+      });
+      map.on('mouseleave', 'district-planners-fill', () => {
         map.getCanvas().style.cursor = '';
         hoodHoverPopup.remove();
       });

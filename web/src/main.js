@@ -77,6 +77,7 @@ import {
   fetchInfillGuidelineArea,
   fetchAirportArea,
   fetchFrequentTransitWalkshed,
+  fetchDistrictPlanners,
   fetchMallsAndCorridors,
   fetchTrafficVolumes,
   fetchContaminatedSites,
@@ -222,6 +223,7 @@ const $secondaryPlansToggle = document.getElementById('secondary-plans-toggle');
 const $infillToggle         = document.getElementById('infill-toggle');
 const $airportToggle        = document.getElementById('airport-toggle');
 const $transitWalkshedToggle = document.getElementById('transit-walkshed-toggle');
+const $districtPlannersToggle = document.getElementById('district-planners-toggle');
 const $mallsCorridorsToggle = document.getElementById('malls-corridors-toggle');
 const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
@@ -490,6 +492,7 @@ const policyOverlayState = {
   infill:         { enabled: false, loaded: false },
   airport:        { enabled: false, loaded: false },
   transitWalkshed: { enabled: false, loaded: false },
+  districtPlanners: { enabled: false, loaded: false },
   mallsCorridors: { enabled: false, loaded: false },
 };
 
@@ -522,11 +525,9 @@ const POLICY_OVERLAY_CONFIG = {
     fetch:  fetchInfillGuidelineArea,
     onLabel:  'Hide Infill Area',
     offLabel: 'Infill Area',
-    // The only overlay of the three that needs a legend: the dataset
-    // (5guk-f7xw) publishes an `id` and nothing else -- no name, no
-    // description -- so its five polygons cannot be labelled from their
-    // own data the way secondary-plans are. Without this the green
-    // dashed outline is unexplained on screen and in any exported map.
+    // Needs a legend: the six City classes are unlabelled fills and the
+    // outer boundary (5guk-f7xw) publishes an `id` and nothing else, so
+    // nothing on the map names itself the way secondary-plans do.
     legend: () => $infillLegend,
   },
   airport: {
@@ -549,6 +550,16 @@ const POLICY_OVERLAY_CONFIG = {
     // infill and airport it needs the legend to say what it is and
     // what being inside it buys.
     legend: () => $transitWalkshedLegend,
+  },
+  // Reference, not Planning, but the same shape of overlay: one static
+  // GeoJSON, fetched once, toggled by source. Named on the map by its
+  // own label layer, so no legend.
+  districtPlanners: {
+    btn:    () => $districtPlannersToggle,
+    src:    'district-planners',
+    fetch:  fetchDistrictPlanners,
+    onLabel:  'Hide District Planners',
+    offLabel: 'District Planners',
   },
   mallsCorridors: {
     btn:    () => $mallsCorridorsToggle,
@@ -766,6 +777,7 @@ $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secon
 $infillToggle.addEventListener('click',         () => togglePolicyOverlay('infill'));
 $airportToggle.addEventListener('click',        () => togglePolicyOverlay('airport'));
 $transitWalkshedToggle.addEventListener('click', () => togglePolicyOverlay('transitWalkshed'));
+$districtPlannersToggle.addEventListener('click', () => togglePolicyOverlay('districtPlanners'));
 $mallsCorridorsToggle.addEventListener('click', () => togglePolicyOverlay('mallsCorridors'));
 $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
@@ -1460,7 +1472,7 @@ function captureUrlState() {
     surveyToggle: false, assessToggle: true, allParcelsToggle: false, allSurveyToggle: false, dwellingUnitsToggle: false,
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
-    airportToggle: false, transitWalkshedToggle: false,
+    airportToggle: false, transitWalkshedToggle: false, districtPlannersToggle: false,
     transitToggle: false, contamToggle: false, dimensionsToggle: false,
     streetsToggle: false,
   };
@@ -1471,6 +1483,7 @@ function captureUrlState() {
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
     airportToggle: $airportToggle, transitWalkshedToggle: $transitWalkshedToggle,
+    districtPlannersToggle: $districtPlannersToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle,
@@ -1561,6 +1574,7 @@ function applyUrlState(state) {
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
     airportToggle: $airportToggle, transitWalkshedToggle: $transitWalkshedToggle,
+    districtPlannersToggle: $districtPlannersToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle,
@@ -1669,7 +1683,7 @@ for (const btn of [
   $surveyToggle, $assessToggle, $allParcelsToggle, $allSurveyToggle, $dwellingUnitsToggle,
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle, $airportToggle,
-  $transitWalkshedToggle,
+  $transitWalkshedToggle, $districtPlannersToggle,
   $transitToggle,
   $neighbourhoodsToggle,
   $streetsToggle,

@@ -90,5 +90,5 @@ https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm (the `legendlayer
 tree in JS/aerialmap.js), diffs it against `docs/legacy-property-map-layers.json`,
 and when layers were added or removed opens a PR that updates that baseline and
 describes each new layer (mapapi id, metadata, Open Data match, how to wire it the
-way `web/scripts/build-walkshed-geojson.mjs` does). No change, no PR. It needs
+way `web/scripts/build-legacy-map-geojson.mjs` does). No change, no PR. It needs
 nothing on this PC; created 2026-10-09.

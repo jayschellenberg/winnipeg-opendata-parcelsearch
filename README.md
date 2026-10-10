@@ -875,11 +875,13 @@ Parcel, zoning, address, traffic, and policy-area data: City of Winnipeg Open
 Data Portal, under the
 [Open Government Licence – Winnipeg](https://data.winnipeg.ca/open-data-licence).
 Transit overlays are derived from the Winnipeg Transit GTFS feed.
-The Transit Walkshed overlay (Winnipeg Zoning Schedule AC Map 2, the 800 m
-frequent-transit walkshed) is not on Open Data; it is rebuilt quarterly from
-the City map API behind the
+Three overlays are not on Open Data and come from the City map API behind the
 [PP&D Property Map](https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm)
-by `web/scripts/build-walkshed-geojson.mjs` (© City of Winnipeg).
+(© City of Winnipeg), rebuilt quarterly: Transit Walkshed (Winnipeg Zoning
+Schedule AC Map 2) and District Planners by `web/scripts/build-legacy-map-geojson.mjs`,
+and the Infill Guideline Area 1 / 2 split (WMS-only there) traced from the
+raster by `web/scripts/build-infill-areas.py` under the OSGeo4W Python, so it
+is approximate to about one metre.
 Environmentally tracked sites: Manitoba Contaminated/Impacted Sites Registry.
 Streets basemap © OpenStreetMap contributors, via Protomaps; satellite imagery © Esri and partners; aerial ortho imagery © City of Winnipeg (Open Government Licence – Winnipeg).
 

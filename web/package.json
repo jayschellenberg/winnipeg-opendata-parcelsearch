@@ -12,7 +12,7 @@
     "fetch:pmtiles": "node scripts/fetch-pmtiles.mjs",
     "refresh:transit": "node scripts/build-transit-geojson.mjs",
     "refresh:neighbourhoods": "node scripts/build-neighbourhoods-geojson.mjs",
-    "refresh:walkshed": "node scripts/build-walkshed-geojson.mjs",
+    "refresh:legacy-map": "node scripts/build-legacy-map-geojson.mjs",
     "check:sample": "node scripts/check-sample-list.mjs"
   },
   "dependencies": {

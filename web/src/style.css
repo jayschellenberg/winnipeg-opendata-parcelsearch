@@ -1155,6 +1155,17 @@ body {
   flex: none;
 }
 
+/* The six Infill Guideline Area classes, in the City Property Map's own
+   fill colours at the 0.35 opacity map.js paints them (hex from
+   web/scripts/build-infill-areas.py CLASSES). Thin outline in the class's
+   darker line colour, as on the map. */
+.infill-swatch-a1         { background: rgba(239, 244,  82, 0.35); border: 1px solid #9d9a1a; flex: none; }
+.infill-swatch-a1-airport { background: rgba(244, 212,  82, 0.35); border: 1px solid #9d8a1a; flex: none; }
+.infill-swatch-a1-secplan { background: rgba(244, 147,  82, 0.35); border: 1px solid #9d4e1a; flex: none; }
+.infill-swatch-a2         { background: rgba(188, 141, 244, 0.35); border: 1px solid #a21df0; flex: none; }
+.infill-swatch-a2-airport { background: rgba(235, 141, 244, 0.35); border: 1px solid #ea1df0; flex: none; }
+.infill-swatch-a2-secplan { background: rgba(153, 141, 244, 0.35); border: 1px solid #4d1df0; flex: none; }
+
 /* Matches airport-area-fill / -line: faint amber wash, long-dash amber
    outline. Same lock-step-by-hand caveat as .infill-swatch, and the same
    reason for the plain `swatch` class (the PNG export scrapes it). */

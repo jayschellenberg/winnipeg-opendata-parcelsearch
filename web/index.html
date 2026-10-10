@@ -1171,7 +1171,7 @@
             <summary class="overlay-group-title overlay-group-summary">Planning</summary>
             <div class="overlay-group-body">
           <button id="secondary-plans-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Secondary Plans</button>
-          <button id="infill-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Mature Communities — where the City's Infill Guidelines apply">Infill Area</button>
+          <button id="infill-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="Where the City's Residential Infill Guidelines apply, split the way the City's Property Map splits it: Infill Guideline Area 1 (predominantly R1) and Area 2 (predominantly R2), each with Airport PDO and Secondary Plan variants, inside the OurWinnipeg Mature Community boundary. The split is traced from the City map at about 1 m; verify at the lot line.">Infill Area</button>
           <button id="malls-corridors-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
           <button id="airport-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Airport Area — the Complete Communities policy area around Richardson International. Not the Airport PDO (zoning) and not the provincial Airport Vicinity Protection Area.">Airport Area</button>
           <!-- Schedule AC Map 2 of the Zoning By-law: the 800 m
@@ -1222,6 +1222,10 @@
           <button id="dwelling-units-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Show dwelling-unit totals for qualifying residential assessment parcels. Condominium units are grouped by civic address and shown once at the group centroid. Multi-unit totals appear from zoom 13; ordinary parcels show 1 from zoom 16.">Dwelling Units</button>
           <button id="streets-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Current City of Winnipeg street centrelines and names (Open Data Road Network). Automatically shown over City aerial imagery; turn off for a clean historical image. Street names appear from zoom 13.">Current Winnipeg Streets</button>
           <button id="water-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Paint the result parcels by water influence — dark blue = adjacent to a river, creek or retention pond (frontage), pale blue = near water without frontage. From the City assessment record's property influences; a screening aid, not a measured distance.">Water Influence</button>
+          <!-- District Planners: the six City planning districts with the
+               planner's name, email and phone. From the legacy PP&D
+               Property Map (web/scripts/build-legacy-map-geojson.mjs). -->
+          <button id="district-planners-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="The City's six planning districts, each with its district planner (name, email, phone). Click a district for the contact. Same boundaries as the PP&D Property Map's District Planners layer; rebuilt quarterly.">District Planners</button>
             </div>
           </details>
 
@@ -1351,20 +1355,26 @@
                 <span class="legend-caveat">Lots only partly inside are
                 excluded.</span></p>
             </div>
-            <!-- Infill Area. The overlay is five big unlabelled polygons
-                 (the dataset publishes no name field at all), so without
-                 this the green dashed outline is unexplained on screen and
-                 in any exported exhibit. -->
+            <!-- Infill Area. The six City classes are unlabelled fills in
+                 the City's own colours, inside the dashed Mature Community
+                 boundary; the legend is what names them on screen and in
+                 any exported exhibit. Swatch classes match the fill
+                 expression in map.js by hand. -->
             <div id="infill-legend" class="map-legend infill-legend" hidden>
               <strong>Infill Area</strong>
               <ul>
+                <li><span class="swatch infill-swatch-a1"></span>Area 1</li>
+                <li><span class="swatch infill-swatch-a1-airport"></span>Area 1 (Airport PDO)</li>
+                <li><span class="swatch infill-swatch-a1-secplan"></span>Area 1 (Secondary Plan)</li>
+                <li><span class="swatch infill-swatch-a2"></span>Area 2</li>
+                <li><span class="swatch infill-swatch-a2-airport"></span>Area 2 (Airport PDO)</li>
+                <li><span class="swatch infill-swatch-a2-secplan"></span>Area 2 (Secondary Plan)</li>
                 <li><span class="swatch infill-swatch"></span>Mature Community</li>
               </ul>
-              <p class="legend-note">Winnipeg&rsquo;s earliest neighbourhoods,
-                mostly planned before 1950. The City&rsquo;s Residential
-                Infill Guidelines apply here.<br>
-                <span class="legend-caveat">Outer boundary only &mdash; not
-                split into Area&nbsp;1 / Area&nbsp;2.</span></p>
+              <p class="legend-note">Residential Infill Guidelines: Area&nbsp;1
+                is predominantly R1, Area&nbsp;2 predominantly R2.<br>
+                <span class="legend-caveat">Split traced from the City map
+                (&asymp;1&nbsp;m); verify at the lot line.</span></p>
             </div>
           </div>
         </div>

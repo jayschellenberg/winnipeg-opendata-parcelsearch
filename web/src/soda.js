@@ -2231,12 +2231,38 @@ function tagPlanKind(feature, kind) {
 }
 
 /**
- * Fetch the OurWinnipeg "Mature Community" dataset (5guk-f7xw). These
- * are the pre-1950 neighbourhoods where the City's Mature Community
- * Infill Guidelines apply. Boundary-only — no useful per-polygon name.
+ * Fetch the Infill Area overlay: ONE feature collection carrying two
+ * kinds of feature, told apart by `kind`, so a single source / toggle
+ * drives both sets of layers.
+ *
+ *   kind 'outer'  the OurWinnipeg "Mature Community" boundary (5guk-f7xw,
+ *                 Open Data, five polygons, no attributes) — the envelope
+ *                 inside which the Residential Infill Guidelines apply.
+ *   kind 'class'  the City's six-way split from the legacy Property Map
+ *                 (Area 1 / Area 2, each plain, Airport PDO or Secondary
+ *                 Plan), traced from the WMS raster at ~1 m by
+ *                 web/scripts/build-infill-areas.py; properties `area`,
+ *                 `variant`, `title`, `fill`, `line`.
+ *
+ * The split ships as a static asset; if it is missing (a fork that has
+ * not run the trace) the overlay degrades to the outer boundary alone
+ * rather than failing.
  */
 export async function fetchInfillGuidelineArea() {
-  return fetchAllAndCache('infillGuideline', INFILL_GUIDELINE_URL);
+  const [outer, classes] = await Promise.all([
+    fetchAllAndCache('infillGuideline', INFILL_GUIDELINE_URL),
+    fetchStaticGeoJson('infillAreas', INFILL_AREAS_URL).catch((err) => {
+      console.warn('Infill Guideline Area split unavailable; outer boundary only', err);
+      return { type: 'FeatureCollection', features: [] };
+    }),
+  ]);
+  const tag = (fc, kind) => (fc?.features ?? []).map((f) => ({
+    ...f, properties: { ...(f.properties ?? {}), kind },
+  }));
+  return {
+    type: 'FeatureCollection',
+    features: [...tag(outer, 'outer'), ...tag(classes, 'class')],
+  };
 }
 
 /**
@@ -2301,6 +2327,13 @@ const NEIGHBOURHOOD_CLUSTERS_URL = '/wpg-neighbourhood-clusters.geojson';
 // legacy PP&D Property Map by web/scripts/build-walkshed-geojson.mjs
 // (`npm run refresh:walkshed`, quarterly via r/refresh_assets.ps1).
 const FREQUENT_TRANSIT_WALKSHED_URL = '/frequent-transit-walkshed.geojson';
+// District Planners (six planning districts + planner contact), same
+// builder and cadence as the walkshed.
+const DISTRICT_PLANNERS_URL = '/district-planners.geojson';
+// Infill Guideline Area 1 / 2 (+ Airport PDO / Secondary Plan variants),
+// traced from the legacy map's WMS raster by
+// web/scripts/build-infill-areas.py (OSGeo4W python, quarterly).
+const INFILL_AREAS_URL = '/infill-guideline-areas.geojson';
 
 const STATIC_GEOJSON_CACHE = new Map();
 
@@ -2344,6 +2377,14 @@ export async function fetchNeighbourhoodClusters() {
  */
 export async function fetchFrequentTransitWalkshed() {
   return fetchStaticGeoJson('frequentTransitWalkshed', FREQUENT_TRANSIT_WALKSHED_URL);
+}
+
+/**
+ * Fetch the six City planning districts, each with its district planner
+ * (name, email, phone) as published on the legacy Property Map.
+ */
+export async function fetchDistrictPlanners() {
+  return fetchStaticGeoJson('districtPlanners', DISTRICT_PLANNERS_URL);
 }
 
 // Session cache for the small whole-dataset overlay fetches above.

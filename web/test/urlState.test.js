@@ -323,18 +323,20 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 42 entries (15 inputs + 16 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 42);
+test('SCHEMA — has exactly 43 entries (15 inputs + 17 toggles + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 43);
 });
 
-test('encodeState / decodeState — Airport Area and Transit Walkshed toggles round-trip (aa, ws)', () => {
+test('encodeState / decodeState — Airport Area, Transit Walkshed and District Planners toggles round-trip (aa, ws, dp)', () => {
   // Regression: airportToggle was captured by main.js but absent from the
   // schema, so ?aa= never existed and the overlay did not survive a reload.
-  const out = encodeState({ airportToggle: true, transitWalkshedToggle: true });
+  const state = { airportToggle: true, transitWalkshedToggle: true, districtPlannersToggle: true };
+  const out = encodeState(state);
   const params = new URLSearchParams(out);
   assert.equal(params.get('aa'), '1');
   assert.equal(params.get('ws'), '1');
-  assert.deepEqual(decodeState(out), { airportToggle: true, transitWalkshedToggle: true });
+  assert.equal(params.get('dp'), '1');
+  assert.deepEqual(decodeState(out), state);
 });
 
 test('decodeState — the PUCS filter round-trips', () => {

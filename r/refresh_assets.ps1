@@ -326,17 +326,31 @@ $t = $LASTEXITCODE
 Log 'npm run refresh:neighbourhoods'
 & npm --prefix (Join-Path $repo 'web') run refresh:neighbourhoods *>> $log 2>&1
 $n = $LASTEXITCODE
-# Schedule AC Map 2 (800 m frequent-transit walkshed) from the City map API
-# behind the legacy PP&D Property Map; not on Open Data. The builder refuses
-# to write when the decode lands outside Winnipeg, so a bad run keeps the
-# previous committed file.
-Log 'npm run refresh:walkshed'
-& npm --prefix (Join-Path $repo 'web') run refresh:walkshed *>> $log 2>&1
+# Vector layers from the City map API behind the legacy PP&D Property Map
+# (Schedule AC Map 2 walkshed, District Planners); not on Open Data. The
+# builder refuses to write a decode that lands outside Winnipeg, so a bad
+# run keeps the previous committed files.
+Log 'npm run refresh:legacy-map'
+& npm --prefix (Join-Path $repo 'web') run refresh:legacy-map *>> $log 2>&1
 $w = $LASTEXITCODE
 if ($t -ne 0 -or $n -ne 0 -or $w -ne 0) {
-  $why = "refresh script(s) failed (transit=$t neighbourhoods=$n walkshed=$w) - NOT committing."
+  $why = "refresh script(s) failed (transit=$t neighbourhoods=$n legacy-map=$w) - NOT committing."
   Log $why; Mail-Fail $why
   exit 1
+}
+
+# Infill Guideline Areas 1 / 2 (+ Airport PDO / Secondary Plan variants):
+# WMS-only on the City map API, so traced from the raster by the OSGeo4W
+# Python (GDAL + numpy). Non-fatal: a missing OSGeo4W or a WMS outage keeps
+# the previous committed file, and the script refuses to write an empty
+# trace.
+$osgeoPy = 'C:\OSGeo4W\apps\Python312\python.exe'
+if (Test-Path $osgeoPy) {
+  Log 'build-infill-areas.py (OSGeo4W python)'
+  & $osgeoPy -I (Join-Path $repo 'web\scripts\build-infill-areas.py') *>> $log 2>&1
+  if ($LASTEXITCODE -ne 0) { Log "infill trace failed (exit $LASTEXITCODE) - keeping the previous file (non-fatal)" }
+} else {
+  Log "OSGeo4W python not found at $osgeoPy - skipping the infill trace (non-fatal)"
 }
 
 # Zoning amendments: refetch the DMIS amending by-law list (new by-laws
@@ -355,6 +369,8 @@ $assets = @(
   'web/public/wpg-neighbourhoods.geojson',
   'web/public/wpg-neighbourhood-clusters.geojson',
   'web/public/frequent-transit-walkshed.geojson',
+  'web/public/district-planners.geojson',
+  'web/public/infill-guideline-areas.geojson',
   'web/public/zoning-amendments.json'
 )
 $changed = & git -C $repo status --porcelain -- $assets
@@ -362,7 +378,7 @@ if (-not $changed) { Log 'no asset changes - nothing to deploy.'; Log '=== done 
 
 Log 'asset(s) changed - committing + pushing (Vercel will auto-deploy)'
 & git -C $repo add -- $assets
-$msg = "Refresh transit + neighbourhood + walkshed + zoning-amendment static assets (scheduled)`n`nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+$msg = "Refresh transit + neighbourhood + legacy-map + zoning-amendment static assets (scheduled)`n`nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 & git -C $repo commit -m $msg *>> $log 2>&1
 if ($LASTEXITCODE -ne 0) {
   $why = "git commit failed (exit $LASTEXITCODE) - nothing deployed."
