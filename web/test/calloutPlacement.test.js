@@ -207,6 +207,30 @@ assert.equal(badgeRadius(null), 13.2);
   assert.notEqual(edgeSlots.get('2'), 0);
 }
 
+// ---- leaders never cross while an uncrossed slot exists --------------
+// Two adjoining town lots side by side (Lac du Bonnet 1200 + 1300,
+// 2026-10-13): badge 1 took the canonical up-right slot, badge 2 was
+// bumped up-left, and the two leaders crossed.
+{
+  const cross = ([ax, ay, bx, by], [cx, cy, dx, dy]) => {
+    const o = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+    return o(cx, cy, dx, dy, ax, ay) * o(cx, cy, dx, dy, bx, by) < 0 &&
+      o(ax, ay, bx, by, cx, cy) * o(ax, ay, bx, by, dx, dy) < 0;
+  };
+  for (const gap of [2, 4, 8, 12, 20]) {
+    for (const [ox, oy] of [[gap, 0], [gap, gap / 2], [gap, -gap / 2]]) {
+      const items = [item(1, 400, 300), item(2, 400 + ox, 300 + oy)];
+      const slots = solveCalloutSlots(items, null);
+      assertNoOverlap(items, slots);
+      const [l1, l2] = items.map((it) => {
+        const b = badgeAt(it, slots);
+        return [it.x, it.y, b.x, b.y];
+      });
+      assert.ok(!cross(l1, l2), `leaders cross with dot 2 at +${ox},${oy}`);
+    }
+  }
+}
+
 // ---- degenerate input ------------------------------------------------
 {
   assert.equal(solveCalloutSlots([], null).size, 0);

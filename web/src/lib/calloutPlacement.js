@@ -183,22 +183,34 @@ export function solveCalloutSlots(items, prevSlots, viewport) {
 
   for (const it of live) grid.add(it.x, it.y, ANCHOR_DOT_RADIUS, it.key);
 
+  // Leaders already drawn, as [x1, y1, x2, y2]. A slot whose leader
+  // crosses one of them reads as each number pointing at the other's
+  // parcel (Lac du Bonnet 1200 + 1300, 2026-10-13), so crossing slots are
+  // refused while any uncrossed slot is left; only a cluster with none
+  // falls back to the plain overlap test.
+  const leaders = [];
   for (const it of live) {
     const held = prev ? prev.get(it.key) : undefined;
     let chosen = -1;
-    if (fits(grid, it, candidates[0], PAD_TAKE)) {
-      // First choice is free with room to spare — always snap back to it,
-      // so badges recover the canonical look as a cluster opens up.
-      chosen = 0;
-    } else if (
-      Number.isInteger(held) && held > 0 && held < candidates.length &&
-      fits(grid, it, candidates[held], PAD_KEEP)
-    ) {
-      chosen = held;
-    } else {
-      for (let s = 1; s < candidates.length; s++) {
-        if (fits(grid, it, candidates[s], PAD_TAKE)) { chosen = s; break; }
+    for (const avoidCross of [true, false]) {
+      const ok = (slot, pad) =>
+        fits(grid, it, candidates[slot], pad) &&
+        (!avoidCross || !crossesAny(leaders, it, candidates[slot]));
+      if (ok(0, PAD_TAKE)) {
+        // First choice is free with room to spare — always snap back to
+        // it, so badges recover the canonical look as a cluster opens up.
+        chosen = 0;
+      } else if (
+        Number.isInteger(held) && held > 0 && held < candidates.length &&
+        ok(held, PAD_KEEP)
+      ) {
+        chosen = held;
+      } else {
+        for (let s = 1; s < candidates.length; s++) {
+          if (ok(s, PAD_TAKE)) { chosen = s; break; }
+        }
       }
+      if (chosen >= 0) break;
     }
     // Nothing clear anywhere on the ladder (a very dense cluster): keep
     // whatever it had rather than snapping it home, and accept the
@@ -209,8 +221,27 @@ export function solveCalloutSlots(items, prevSlots, viewport) {
     // Placed badges block everyone INCLUDING their own parcel's later
     // tests, so pass no owner — only the anchor dot is self-exempt.
     grid.add(it.x + dx, it.y + dy, it.r, null);
+    leaders.push([it.x, it.y, it.x + dx, it.y + dy]);
   }
   return slots;
+}
+
+/** True when the leader from `it` to its badge at [dx, dy] properly
+ *  crosses any placed leader. Leaders that only touch at an end (two
+ *  parcels sharing an anchor point) do not count. */
+function crossesAny(leaders, it, [dx, dy]) {
+  const a = [it.x, it.y, it.x + dx, it.y + dy];
+  return leaders.some((b) => segmentsCross(a, b));
+}
+
+function segmentsCross([ax, ay, bx, by], [cx, cy, dx, dy]) {
+  const orient = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+  const d1 = orient(cx, cy, dx, dy, ax, ay);
+  const d2 = orient(cx, cy, dx, dy, bx, by);
+  const d3 = orient(ax, ay, bx, by, cx, cy);
+  const d4 = orient(ax, ay, bx, by, dx, dy);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+    ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
 }
 
 function fits(grid, it, [dx, dy], pad) {
