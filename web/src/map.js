@@ -1825,10 +1825,29 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           // a real string. Source-driven empty/populated is what
           // actually toggles the labels on screen.
           'visibility': 'visible',
-          'text-field': ['coalesce', ['get', 'full_address'], ['get', 'street_num'], ''],
+          // House number on its own line, street below it ("1129" /
+          // "FIFE STREET"), so a row of narrow lots is not a row of
+          // one-line addresses wider than the lots. The break is
+          // explicit: text-max-width's line balancing is as happy to
+          // give "1129 FIFE" / "STREET". A number range stays together
+          // ("21A - 21B" / "STREET"). Same split as mb-parcelsearch.
+          'text-field': [
+            'let', 'a', ['to-string', ['coalesce', ['get', 'full_address'], ['get', 'street_num'], '']],
+            ['let', 'r', ['index-of', ' - ', ['var', 'a']],
+              ['let', 'i', ['index-of', ' ', ['var', 'a'],
+                ['case', ['>', ['var', 'r'], 0], ['+', ['var', 'r'], 3], 0]],
+                ['case',
+                  ['>', ['var', 'i'], 0],
+                  ['concat',
+                    ['slice', ['var', 'a'], 0, ['var', 'i']],
+                    '\n',
+                    ['slice', ['var', 'a'], ['+', ['var', 'i'], 1]]],
+                  ['var', 'a']]]],
+          ],
           'text-font': ['Open Sans Semibold'],
           'text-size': 11,
           'text-anchor': 'center',
+          // Long street names still wrap below the number.
           'text-max-width': 8,
           'text-allow-overlap': false,
           'text-ignore-placement': false,
