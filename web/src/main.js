@@ -4283,6 +4283,11 @@ const ADDENDA_NEIGHBOURHOOD_MIN_M = 1125;
 const ADDENDA_ZONING_LABEL = 'Zoning Map — By-law 200/2006';
 // Most result parcels the neighbourhood and zoning maps will number.
 const ADDENDA_NUMBER_MAX = 25;
+// Several results with none picked still make one subject when there are
+// at most ADDENDA_GROUP_MAX of them within ADDENDA_GROUP_SPAN_M — a property
+// assessed under more than one roll (Jason, 2026-10-13).
+const ADDENDA_GROUP_MAX = 10;
+const ADDENDA_GROUP_SPAN_M = 500;
 
 /** The neighbourhood cluster `hood` belongs to (its `cluster` property,
  *  matched in wpg-neighbourhood-clusters.geojson), or null. */
@@ -4320,7 +4325,22 @@ function addendaSubjectFeatures() {
   const feats = addendaResultFeatures();
   if (!feats.length) return null;
   if (feats.length === 1) return { feats, note: 'the search result', specific: true };
+  if (addendaResultsAreOneProperty(feats)) {
+    return { feats, note: `the ${feats.length} subject parcels`, specific: true, group: true };
+  }
   return { feats, note: `all ${feats.length} result parcels`, specific: false };
+}
+
+/** True when the results read as one multi-roll property rather than a
+ *  scattered search: at most ADDENDA_GROUP_MAX parcels spanning no more
+ *  than ADDENDA_GROUP_SPAN_M either way. */
+function addendaResultsAreOneProperty(feats) {
+  if (feats.length < 2 || feats.length > ADDENDA_GROUP_MAX) return false;
+  const box = bboxOfFeatures(feats);
+  if (!box) return false;
+  const midLat = (box[1] + box[3]) / 2;
+  return haversineMeters([box[0], midLat], [box[2], midLat]) <= ADDENDA_GROUP_SPAN_M
+    && haversineMeters([box[0], box[1]], [box[0], box[3]]) <= ADDENDA_GROUP_SPAN_M;
 }
 
 /** [minX, minY, maxX, maxY] over several features; null when unusable. */
@@ -4487,7 +4507,10 @@ async function buildAddendaPack() {
     ? { pin: true, numbers: false, dims: false }
     : { pin: false, numbers: numberable && allFeats.length <= ADDENDA_NUMBER_MAX, dims: false };
   const neighbourhoodsWas = neighbourhoodsMode;
-  const total = 1 + (subject.specific ? 3 : 0) + (allFeats.length > 1 ? 1 : 0);
+  // A grouped subject is the whole result set, which the aerial and zoning
+  // maps already frame, so it gets no separate results map.
+  const wantResults = allFeats.length > 1 && !subject.group;
+  const total = 1 + (subject.specific ? 3 : 0) + (wantResults ? 1 : 0);
   let n = 0;
   const step = (what) => { btn.textContent = `Addenda ${++n}/${total}: ${what}…`; };
   const files = [];
@@ -4577,7 +4600,7 @@ async function buildAddendaPack() {
     }
     // Results — every result parcel, when there is more than one, marked
     // the way the user has them.
-    if (allFeats.length > 1) {
+    if (wantResults) {
       step('results');
       await setAddendaMarks(userMarks);
       const results = await captureAddendaView(
@@ -4612,7 +4635,7 @@ async function buildAddendaPack() {
     ...(!subject.specific
       ? ['No single subject was picked, so the neighbourhood, aerial and zoning maps were left out.',
         'Click a parcel row in the grid and build the pack again to include them.'] : []),
-    ...(allFeats.length > 1 && !numberingOn
+    ...(wantResults && !numberingOn
       ? ['Tip: turn on "Number parcels" before building the pack to number the results map.'] : []),
     ...(stale.length ? ['', `Still loading when captured (rebuild if a layer looks incomplete): ${stale.join(', ')}`] : []),
     ...(credit ? ['', `Map data: ${credit}`] : []),
