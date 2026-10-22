@@ -29,6 +29,7 @@
 // query and the two datasets don't share attribute columns so they can't
 // be combined in one SoQL where-clause.
 
+import { fetchMlsAreas, setMlsAreasData, setMlsAreasVisible } from './lib/mlsAreas.js';
 import './lib/tailwind.css';
 import { initChipInput } from './lib/chipInput.js';
 import { initInfoIcons } from './lib/infoIcon.js';
@@ -230,6 +231,7 @@ const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $allSurveyToggle      = document.getElementById('all-survey-toggle');
 const $dwellingUnitsToggle  = document.getElementById('dwelling-units-toggle');
 const $contamToggle         = document.getElementById('contam-toggle');
+const $mlsToggle            = document.getElementById('mls-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
 const $streetsToggle        = document.getElementById('streets-toggle');
@@ -467,6 +469,8 @@ let trafficEnabled = false;
 let trafficLoaded = false;
 let contamEnabled = false;
 let contamLoaded = false;
+let mlsEnabled = false;
+let mlsLoaded = false;
 let transitEnabled = false;
 let transitLoaded = false;
 let streetsEnabled = false;
@@ -784,6 +788,7 @@ $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($allSurveyToggle) $allSurveyToggle.addEventListener('click', toggleCitywideSurvey);
 if ($dwellingUnitsToggle) $dwellingUnitsToggle.addEventListener('click', toggleDwellingUnits);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
+if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
 if ($streetsToggle) $streetsToggle.addEventListener('click', toggleStreets);
@@ -1473,7 +1478,7 @@ function captureUrlState() {
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     airportToggle: false, transitWalkshedToggle: false, districtPlannersToggle: false,
-    transitToggle: false, contamToggle: false, dimensionsToggle: false,
+    transitToggle: false, contamToggle: false, mlsToggle: false, dimensionsToggle: false,
     streetsToggle: false,
   };
   const buttons = {
@@ -1485,7 +1490,7 @@ function captureUrlState() {
     airportToggle: $airportToggle, transitWalkshedToggle: $transitWalkshedToggle,
     districtPlannersToggle: $districtPlannersToggle,
     transitToggle: $transitToggle,
-    contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
+    contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
@@ -1576,7 +1581,7 @@ function applyUrlState(state) {
     airportToggle: $airportToggle, transitWalkshedToggle: $transitWalkshedToggle,
     districtPlannersToggle: $districtPlannersToggle,
     transitToggle: $transitToggle,
-    contamToggle: $contamToggle, dimensionsToggle: $dimensionsToggle,
+    contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
@@ -1687,7 +1692,7 @@ for (const btn of [
   $transitToggle,
   $neighbourhoodsToggle,
   $streetsToggle,
-  $contamToggle, $dimensionsToggle,
+  $contamToggle, $mlsToggle, $dimensionsToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
 }
@@ -2121,6 +2126,32 @@ async function toggleZoning() {
 // CSV (filtered to Winnipeg) on first toggle, then caches the FC
 // in IndexedDB for 7 days. Toggle is purely a layer-visibility flip
 // after the first load. Mirrors the toggleTraffic pattern.
+// MLS Areas overlay (lib/mlsAreas.js, shared with the Manitoba app): a
+// static same-origin file fetched on first toggle, then a visibility flip.
+async function toggleMls() {
+  mlsEnabled = !mlsEnabled;
+  $mlsToggle.setAttribute('aria-pressed', String(mlsEnabled));
+  $mlsToggle.classList.toggle('active', mlsEnabled);
+  await mapReady;
+  setMlsAreasVisible(map, mlsEnabled);
+  if (!mlsEnabled || mlsLoaded) return;
+  $mlsToggle.disabled = true;
+  $mlsToggle.textContent = 'Loading...';
+  try {
+    setMlsAreasData(map, await fetchMlsAreas());
+    mlsLoaded = true;
+  } catch (err) {
+    console.warn('MLS areas overlay failed', err);
+    mlsEnabled = false;
+    $mlsToggle.classList.remove('active');
+    $mlsToggle.setAttribute('aria-pressed', 'false');
+    setMlsAreasVisible(map, false);
+  } finally {
+    $mlsToggle.disabled = false;
+    $mlsToggle.textContent = 'MLS Areas';
+  }
+}
+
 async function toggleContam() {
   contamEnabled = !contamEnabled;
   $contamToggle.setAttribute('aria-pressed', String(contamEnabled));
