@@ -261,7 +261,7 @@ test('the Addenda Pack button builds the pack and always restores the map', () =
 test('the addenda maps carry the Manitoba app\'s marks (Jason, 2026-10-08)', () => {
   const body = fnBodyOf('buildAddendaPack');
   assert.match(body, /locatorMarks = pinPoint\s*\?\s*\{ pin: true/, 'a lone parcel no longer gets the locator pin');
-  assert.match(body, /numbers: numberable/, 'several parcels are no longer numbered on the locator maps');
+  assert.match(body, /numbers: numberingOn && numberable/, 'several parcels are no longer numbered on the locator maps');
   assert.match(body, /dims: true[\s\S]{0,200}aerialKey/, 'the aerial no longer carries dimensions');
   assert.match(body, /cycleZoningTo\('shading'\)[\s\S]{0,300}withLegend: true/, 'the zoning map is not shaded with its legend');
   assert.match(body, /'zoning-map\.png'/, 'the zoning map is never added to the pack');
@@ -272,7 +272,7 @@ test('the addenda maps carry the Manitoba app\'s marks (Jason, 2026-10-08)', () 
   assert.match(hood, /setCommunityMask\(map, hoodFeature\)/, 'the neighbourhood map no longer greys out the area outside the neighbourhood');
   assert.match(hood, /setNeighbourhoodsMode\('individual'\)/, 'the neighbourhood map no longer shows the individual neighbourhoods');
   assert.match(hood, /framedBounds\(bbox\(cluster\)/, 'the neighbourhood map no longer frames the parent cluster');
-  assert.match(body, /numbers: numberable && allFeats\.length <= ADDENDA_NUMBER_MAX/, 'the 25-parcel numbering cap is gone');
+  assert.match(body, /numbers: numberingOn && numberable && allFeats\.length <= ADDENDA_NUMBER_MAX/, 'the locator maps number parcels with Number parcels off, or the 25-parcel cap is gone');
   assert.match(body.slice(body.indexOf('finally')), /setNeighbourhoodsMode\(neighbourhoodsWas\)/, 'the Neighbourhoods layer is not put back in the finally');
   assert.match(fnBodyOf('generateStaticMap'), /frame\.height = height/, 'the capture ignores the requested size');
 });
