@@ -4500,12 +4500,13 @@ async function buildAddendaPack() {
   const withLegend = captureLegendWanted() && anyLegendVisible();
   const allFeats = addendaResultFeatures();
   // The neighbourhood and zoning maps' marks: the Locator pin on a lone
-  // parcel, numbered shapes when the map holds several — up to
+  // parcel, numbered shapes when the map holds several and Number parcels
+  // is on (Jason, 2026-10-22: off means off in the pack too) — up to
   // ADDENDA_NUMBER_MAX. Past that the callouts bury the map, so the shapes
   // go unnumbered.
   const locatorMarks = pinPoint
     ? { pin: true, numbers: false, dims: false }
-    : { pin: false, numbers: numberable && allFeats.length <= ADDENDA_NUMBER_MAX, dims: false };
+    : { pin: false, numbers: numberingOn && numberable && allFeats.length <= ADDENDA_NUMBER_MAX, dims: false };
   const neighbourhoodsWas = neighbourhoodsMode;
   // A grouped subject is the whole result set, which the aerial and zoning
   // maps already frame, so it gets no separate results map.
