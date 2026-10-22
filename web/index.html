@@ -662,6 +662,135 @@
             >×</button>
           </div>
 
+          <!-- The tune-later filters live behind a disclosure so the
+               panel stays a readable length. Same pattern as the property
+               tab's Additional Searches.
+
+               Directly under the import line (Jason, 2026-10-22, matching
+               the Manitoba app), so sale price, lot size and the rest are
+               set before Search rather than found after it. Price, size,
+               street and N1 are pre-join cuts in runSalesAnalysis — rows
+               they remove are never fetched — so this group sits with the
+               other fetch-narrowing controls above the Search divider. -->
+          <details class="more-filters sales-filters">
+            <!-- The badge is a WARNING that names every control in here
+                 that is set. It lives inside <summary> so it shows when
+                 the group is collapsed — the case where a forgotten Street
+                 or Far-Flung Exclude silently drops comps. Filled by
+                 renderSalesFiltersBadge() in main.js, which also repeats
+                 the list on the count line above the table. -->
+            <summary><span class="more-filters-title">Additional filters</span><span
+              class="sales-filters-badge"
+              id="sales-filters-badge"
+              hidden
+            ></span></summary>
+
+            <!-- Sale price range. The whole transaction's consideration,
+                 so a multi-parcel sale is tested once as one deal. -->
+            <div class="sales-range-row">
+              <span class="sales-range-label">Sale price:</span>
+              <input
+                type="number" min="0" step="1000"
+                id="sales-price-low" class="sales-range-input"
+                placeholder="Min" aria-label="Minimum sale price"
+                title="Minimum total sale price. Empty = no lower limit. $0 / $1 nominal transfers have no price to test and are excluded while this is set."
+              />
+              <span class="sales-range-sep" aria-hidden="true">–</span>
+              <input
+                type="number" min="0" step="1000"
+                id="sales-price-high" class="sales-range-input"
+                placeholder="Max" aria-label="Maximum sale price"
+                title="Maximum total sale price. Empty = no upper limit."
+              />
+            </div>
+
+            <!-- Lot size range, in square feet. Compares against the
+                 SALE's total land (the sum across a multi-parcel sale),
+                 which is the same denominator $/Lot SF uses — so the
+                 filter and the column can't disagree about how big a
+                 sale is. Either bound may be left empty. -->
+            <div class="sales-range-row">
+              <span class="sales-range-label">Lot size (sf):</span>
+              <input
+                type="number" min="0" step="1"
+                id="sales-size-low" class="sales-range-input"
+                placeholder="Min" aria-label="Minimum lot size in square feet"
+                title="Minimum total land area for the sale, in square feet. Empty = no lower limit. A sale whose CSV rows are missing Land Actual sqft can't be measured and is excluded while this filter is set."
+              />
+              <span class="sales-range-sep" aria-hidden="true">–</span>
+              <input
+                type="number" min="0" step="1"
+                id="sales-size-high" class="sales-range-input"
+                placeholder="Max" aria-label="Maximum lot size in square feet"
+                title="Maximum total land area for the sale, in square feet. Empty = no upper limit."
+              />
+            </div>
+
+            <!-- Street name substring. Matched against the CSV's own
+                 Street Number / Direction / Name, so it behaves the same
+                 whether or not the roll matched a live record. -->
+            <div class="sales-street-row">
+              <input
+                type="text"
+                id="sales-street-name"
+                class="sales-street-input"
+                placeholder="Street name"
+                autocomplete="off"
+                aria-label="Filter sales by street name"
+                title="Keep only sales whose address contains this text. Case-insensitive substring, so BANNER finds BANNERMAN. Empty = no filter."
+              />
+            </div>
+
+            <!-- Far-Flung + N1 share one row at half width each. Far-Flung
+                 wraps its threshold and its Keep/Exclude pill inside its own
+                 column instead of spanning the panel.
+
+                 Far-Flung marks multi-parcel sales whose own parcels lie
+                 farther apart than the threshold (largest centroid-to-
+                 centroid gap inside the one transaction) — a scattered
+                 portfolio whose blended $/Lot SF is not a local comp.
+                 Distinct from the subject radius, which measures distance
+                 to the SUBJECT. No default: Manitoba's calibrated 30 km came
+                 off rural portfolio sales and would never fire inside a city
+                 roughly that wide, so it starts blank (off).
+
+                 N1 is the crosswalk status. Matched = the row carries an N1
+                 ID (already in the comp database); Unmatched = blank, the
+                 data-entry queue. Row-level on purpose: a multi-parcel sale
+                 matched on some rolls only shows exactly its unmatched
+                 rows. -->
+            <div class="sales-filter-pair sales-tune-pair">
+              <div class="far-flung-controls-row">
+                <span class="far-flung-field">
+                  <label for="far-flung-km">Far-Flung &gt;</label>
+                  <input id="far-flung-km" type="number" min="0" step="1" placeholder="km" aria-label="Far-flung threshold in kilometres" />
+                  <span class="far-flung-unit">km</span>
+                </span>
+                <input type="checkbox" id="far-flung-exclude" class="pill-backing" hidden />
+                <div class="mode-pill-row far-flung-exclude" title="Marking alone removes nothing — a flagged sale just gets a ⚠ on its $/Lot SF, the figure the spread invalidates. Exclude drops flagged sales from the table, the map and the CSV export. A sale whose spread can't be measured (a parcel with no geometry) is never excluded. Blank or 0 km turns the marking off entirely.">
+                  <span class="mode-pill-prefix">Flagged:</span>
+                  <div class="mode-pill compact" role="radiogroup" aria-label="Far-flung sales" data-pill="farflung">
+                    <button type="button" class="mode-btn active mode-btn-off" data-mode="keep" aria-pressed="true">Keep</button>
+                    <button type="button" class="mode-btn" data-mode="exclude" aria-pressed="false">Exclude</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sales-n1-row">
+                <span class="sales-range-label">N1:</span>
+                <select
+                  id="sales-n1-filter"
+                  aria-label="N1 match filter"
+                  title="Filter by N1 crosswalk status. Matched = sale carries an N1 ID; Unmatched = no N1 record linked yet — the data-entry queue. CSVs without an N1 ID column read as entirely unmatched."
+                >
+                  <option value="any" selected>Any</option>
+                  <option value="matched">Matched</option>
+                  <option value="unmatched">Unmatched</option>
+                </select>
+              </div>
+            </div>
+          </details>
+
           <!-- Subject roll and its radius share one row at half width
                each: the radius is meaningless without the roll, and
                reading them as one control is the point. The placeholder
@@ -776,6 +905,8 @@
           <!-- THE DIVIDER. Everything above costs a fetch; everything below
                re-filters what is already loaded, instantly. The panel used
                to interleave the two with nothing to mark the boundary.
+               (Far-Flung, inside Additional filters above, is the one
+               display-side control above it: it rides with its panel.)
 
                Search is disabled until the SABRE folder is connected
                (salesDbPanel.js) rather than hidden, so the row keeps its
@@ -1027,129 +1158,6 @@
                  silently dropping comps. -->
             <span id="far-flung-count" class="far-flung-count"></span>
           </div>
-
-          <!-- The tune-later filters live behind a disclosure so the
-               panel leads with the pickers every comp search starts from
-               (date, use, class, zoning). Same pattern as the property
-               tab's Additional Searches. -->
-          <details class="more-filters sales-filters">
-            <!-- The badge is a WARNING that names every control in here
-                 that is set. It lives inside <summary> so it shows when
-                 the group is collapsed — the case where a forgotten Street
-                 or Far-Flung Exclude silently drops comps. Filled by
-                 renderSalesFiltersBadge() in main.js, which also repeats
-                 the list on the count line above the table. -->
-            <summary><span class="more-filters-title">Additional filters</span><span
-              class="sales-filters-badge"
-              id="sales-filters-badge"
-              hidden
-            ></span></summary>
-
-            <!-- Sale price range. The whole transaction's consideration,
-                 so a multi-parcel sale is tested once as one deal. -->
-            <div class="sales-range-row">
-              <span class="sales-range-label">Sale price:</span>
-              <input
-                type="number" min="0" step="1000"
-                id="sales-price-low" class="sales-range-input"
-                placeholder="Min" aria-label="Minimum sale price"
-                title="Minimum total sale price. Empty = no lower limit. $0 / $1 nominal transfers have no price to test and are excluded while this is set."
-              />
-              <span class="sales-range-sep" aria-hidden="true">–</span>
-              <input
-                type="number" min="0" step="1000"
-                id="sales-price-high" class="sales-range-input"
-                placeholder="Max" aria-label="Maximum sale price"
-                title="Maximum total sale price. Empty = no upper limit."
-              />
-            </div>
-
-            <!-- Lot size range, in square feet. Compares against the
-                 SALE's total land (the sum across a multi-parcel sale),
-                 which is the same denominator $/Lot SF uses — so the
-                 filter and the column can't disagree about how big a
-                 sale is. Either bound may be left empty. -->
-            <div class="sales-range-row">
-              <span class="sales-range-label">Lot size (sf):</span>
-              <input
-                type="number" min="0" step="1"
-                id="sales-size-low" class="sales-range-input"
-                placeholder="Min" aria-label="Minimum lot size in square feet"
-                title="Minimum total land area for the sale, in square feet. Empty = no lower limit. A sale whose CSV rows are missing Land Actual sqft can't be measured and is excluded while this filter is set."
-              />
-              <span class="sales-range-sep" aria-hidden="true">–</span>
-              <input
-                type="number" min="0" step="1"
-                id="sales-size-high" class="sales-range-input"
-                placeholder="Max" aria-label="Maximum lot size in square feet"
-                title="Maximum total land area for the sale, in square feet. Empty = no upper limit."
-              />
-            </div>
-
-            <!-- Street name substring. Matched against the CSV's own
-                 Street Number / Direction / Name, so it behaves the same
-                 whether or not the roll matched a live record. -->
-            <div class="sales-street-row">
-              <input
-                type="text"
-                id="sales-street-name"
-                class="sales-street-input"
-                placeholder="Street name"
-                autocomplete="off"
-                aria-label="Filter sales by street name"
-                title="Keep only sales whose address contains this text. Case-insensitive substring, so BANNER finds BANNERMAN. Empty = no filter."
-              />
-            </div>
-
-            <!-- Far-Flung + N1 share one row at half width each. Far-Flung
-                 wraps its threshold and its Keep/Exclude pill inside its own
-                 column instead of spanning the panel.
-
-                 Far-Flung marks multi-parcel sales whose own parcels lie
-                 farther apart than the threshold (largest centroid-to-
-                 centroid gap inside the one transaction) — a scattered
-                 portfolio whose blended $/Lot SF is not a local comp.
-                 Distinct from the subject radius, which measures distance
-                 to the SUBJECT. No default: Manitoba's calibrated 30 km came
-                 off rural portfolio sales and would never fire inside a city
-                 roughly that wide, so it starts blank (off).
-
-                 N1 is the crosswalk status. Matched = the row carries an N1
-                 ID (already in the comp database); Unmatched = blank, the
-                 data-entry queue. Row-level on purpose: a multi-parcel sale
-                 matched on some rolls only shows exactly its unmatched
-                 rows. -->
-            <div class="sales-filter-pair sales-tune-pair">
-              <div class="far-flung-controls-row">
-                <span class="far-flung-field">
-                  <label for="far-flung-km">Far-Flung &gt;</label>
-                  <input id="far-flung-km" type="number" min="0" step="1" placeholder="km" aria-label="Far-flung threshold in kilometres" />
-                  <span class="far-flung-unit">km</span>
-                </span>
-                <input type="checkbox" id="far-flung-exclude" class="pill-backing" hidden />
-                <div class="mode-pill-row far-flung-exclude" title="Marking alone removes nothing — a flagged sale just gets a ⚠ on its $/Lot SF, the figure the spread invalidates. Exclude drops flagged sales from the table, the map and the CSV export. A sale whose spread can't be measured (a parcel with no geometry) is never excluded. Blank or 0 km turns the marking off entirely.">
-                  <span class="mode-pill-prefix">Flagged:</span>
-                  <div class="mode-pill compact" role="radiogroup" aria-label="Far-flung sales" data-pill="farflung">
-                    <button type="button" class="mode-btn active mode-btn-off" data-mode="keep" aria-pressed="true">Keep</button>
-                    <button type="button" class="mode-btn" data-mode="exclude" aria-pressed="false">Exclude</button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="sales-n1-row">
-                <span class="sales-range-label">N1:</span>
-                <select
-                  id="sales-n1-filter"
-                  aria-label="N1 match filter"
-                  title="Filter by N1 crosswalk status. Matched = sale carries an N1 ID; Unmatched = no N1 record linked yet — the data-entry queue. CSVs without an N1 ID column read as entirely unmatched."
-                >
-                  <option value="any" selected>Any</option>
-                  <option value="matched">Matched</option>
-                  <option value="unmatched">Unmatched</option>
-                </select>
-              </div>
-            </div>
-          </details>
 
           <span id="sales-count" class="count"></span>
         </section><!-- /tab-panel-sales -->
