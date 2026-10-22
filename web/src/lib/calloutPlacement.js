@@ -103,6 +103,44 @@ export function calloutCandidates() {
   return CANDIDATES;
 }
 
+/**
+ * Slot for a badge drawn INSIDE its own parcel, with no leader or anchor
+ * dot (Jason, 2026-10-22: the callouts sat on the roll numbers in the
+ * report maps). Offered only where the caller found the disc fits inside
+ * the parcel (inlineBadgeFits) — a parcel big on screen — so there is no
+ * doubt which parcel the number belongs to. Small parcels keep callouts.
+ * The offset itself is the caller's (`item.inline`), since it depends on
+ * the roll label above which the badge sits.
+ */
+export const INLINE_SLOT = -1;
+
+/**
+ * True when a badge disc of radius `r` centred at (x, y) lies inside the
+ * polygon `rings` (screen px, [[x, y], ...] per ring, holes included,
+ * even-odd) with at least `margin` px between the disc and every edge.
+ */
+export function inlineBadgeFits(rings, x, y, r, margin) {
+  const need = r + margin;
+  let inside = false;
+  for (const ring of rings || []) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [ax, ay] = ring[i];
+      const [bx, by] = ring[j];
+      if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
+      if (segmentDistance(x, y, ax, ay, bx, by) < need) return false;
+    }
+  }
+  return inside;
+}
+
+function segmentDistance(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
 /** Pixel offset for a slot index, falling back to the canonical position
  *  for anything out of range. */
 export function calloutOffset(slot) {
@@ -155,7 +193,11 @@ function makeGrid() {
  *
  * `items` are the projected callouts — `{ key, x, y, r }` in screen px —
  * in draw order; lower numbers are placed first, so they keep the
- * canonical position and later ones give way. `prevSlots` is the map
+ * canonical position and later ones give way. An item may carry
+ * `inline: [dx, dy]`, an offset at which its badge fits inside its own
+ * parcel: those are placed before every callout and take INLINE_SLOT
+ * whenever the spot is clear, since that position cannot move and a
+ * callout can. `prevSlots` is the map
  * returned by the previous solve: a badge that can't have its first
  * choice will hold the slot it already occupies as long as that slot is
  * still workable, which is what stops the badges dancing during a pan.
@@ -189,7 +231,22 @@ export function solveCalloutSlots(items, prevSlots, viewport) {
   // refused while any uncrossed slot is left; only a cluster with none
   // falls back to the plain overlap test.
   const leaders = [];
+  const rest = [];
   for (const it of live) {
+    const held = prev ? prev.get(it.key) : undefined;
+    // The caller only offers a spot whose disc is already inside the
+    // parcel with room to spare, so all it needs here is not to touch
+    // what is placed: a neighbour's dot just over the lot line must not
+    // send a big parcel's number back out to a callout.
+    if (Array.isArray(it.inline) &&
+        fits(grid, it, it.inline, held === INLINE_SLOT ? 0 : PAD_KEEP)) {
+      slots.set(it.key, INLINE_SLOT);
+      grid.add(it.x + it.inline[0], it.y + it.inline[1], it.r, null);
+    } else {
+      rest.push(it);
+    }
+  }
+  for (const it of rest) {
     const held = prev ? prev.get(it.key) : undefined;
     let chosen = -1;
     for (const avoidCross of [true, false]) {
@@ -215,7 +272,7 @@ export function solveCalloutSlots(items, prevSlots, viewport) {
     // Nothing clear anywhere on the ladder (a very dense cluster): keep
     // whatever it had rather than snapping it home, and accept the
     // overlap — every parcel keeps a visible number either way.
-    if (chosen < 0) chosen = Number.isInteger(held) && held < candidates.length ? held : 0;
+    if (chosen < 0) chosen = Number.isInteger(held) && held >= 0 && held < candidates.length ? held : 0;
     slots.set(it.key, chosen);
     const [dx, dy] = candidates[chosen];
     // Placed badges block everyone INCLUDING their own parcel's later

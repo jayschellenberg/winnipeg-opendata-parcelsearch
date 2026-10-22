@@ -190,7 +190,9 @@ import { pucOverrideUrl } from './lib/links.js';
 import { buildingLines, saleLines } from './lib/salePopupLines.js';
 import { assessFillOpacity } from './lib/assessFillOpacity.js';
 import { properCaseAddress } from './lib/addressFormat.js';
-import { badgeRadius, calloutOffset, solveCalloutSlots } from './lib/calloutPlacement.js';
+import {
+  INLINE_SLOT, badgeRadius, calloutOffset, inlineBadgeFits, solveCalloutSlots,
+} from './lib/calloutPlacement.js';
 
 // mapbox-gl-draw was written against the Mapbox GL `mapboxgl-*` DOM
 // class names; MapLibre uses `maplibregl-*`. Patch the lookup table
@@ -3213,34 +3215,141 @@ export function setParcelNumberData(map, features) {
     const key = `${c[0].toFixed(6)},${c[1].toFixed(6)}`;
     const existing = byPosition.get(key);
     if (existing && existing.seq <= seq) continue;
-    byPosition.set(key, { seq, coords: c });
+    byPosition.set(key, { seq, coords: c, f });
   }
   // Placement order low→high: the de-confliction pass hands out slots
   // first-come, so the lowest numbers keep the canonical up-right
   // position and later ones give way.
   const anchors = [...byPosition.values()]
     .sort((a, b) => a.seq - b.seq)
-    .map(({ seq, coords }, i) => {
+    .map(({ seq, coords, f }, i) => {
       const seqStr = String(seq);
+      // The parcel's rings and bbox, for the inline test (does the badge
+      // fit inside the parcel on screen?), and how many lines its address
+      // wraps to, which sets the height of the label the badge sits above.
+      const rings = f.geometry.type === 'Polygon' ? f.geometry.coordinates : f.geometry.coordinates.flat();
       // Keyed by position in that order — stable for the life of a
       // result set, which is what lets a slot survive between frames.
-      return { key: String(i), lng: coords[0], lat: coords[1], seq, seqStr, radius: badgeRadius(seqStr) };
+      return {
+        key: String(i), lng: coords[0], lat: coords[1], seq, seqStr, radius: badgeRadius(seqStr),
+        rings, bbox: ringsBbox(rings), addressLines: addressLineCount(f.properties?.full_address),
+      };
     });
   st.anchors = anchors;
   // A new result set is a new placement problem; don't carry slots over.
   st.slots = new Map();
-  const anchorSrc = map.getSource('parcel-num-anchors');
-  if (anchorSrc) {
-    anchorSrc.setData({
-      type: 'FeatureCollection',
-      features: anchors.map((a) => ({
-        type: 'Feature',
-        properties: { _seq: a.seq },
-        geometry: { type: 'Point', coordinates: [a.lng, a.lat] },
-      })),
-    });
-  }
   repositionParcelNumbers(map);
+}
+
+function ringsBbox(rings) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const ring of rings) {
+    for (const [x, y] of ring) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  return [minX, minY, maxX, maxY];
+}
+
+// The parcel label (citywide-parcels-label): 10 px text, MapLibre's 1.2
+// line height, wrapped at text-max-width 8 em (80 px). An address line
+// holds about 13 characters of Open Sans Semibold at that size.
+const PARCEL_LABEL_LINE_PX = 12;
+const PARCEL_LABEL_CHARS_PER_LINE = 13;
+
+function addressLineCount(address) {
+  const n = String(address ?? '').trim().length;
+  return Math.max(1, Math.min(3, Math.ceil(n / PARCEL_LABEL_CHARS_PER_LINE)));
+}
+
+// Inline badges (inside their own parcel, no leader): clearance in px
+// between the disc and the parcel's edge, to take the inline spot and to
+// keep it — the gap stops a badge flicking between inline and callout as
+// the zoom crosses the threshold. LABEL_BADGE_GAP is the space between the
+// badge and the top of the parcel label below it.
+const INLINE_TAKE_MARGIN = 4;
+const INLINE_KEEP_MARGIN = 1;
+const LABEL_BADGE_GAP = 3;
+// The callout's anchor dot: circle-radius 3 + 1.25 stroke on
+// parcel-num-anchor-dot.
+const ANCHOR_DOT_PX = 4.25;
+
+/** True while the All Assessment Parcels labels are drawing — the layer
+ *  is on and the camera is past its minzoom. */
+function parcelLabelsShown(map) {
+  const layer = map.getLayer('citywide-parcels-label');
+  return !!layer && map.getLayoutProperty('citywide-parcels-label', 'visibility') === 'visible' &&
+    map.getZoom() >= (layer.minzoom ?? 0);
+}
+
+/**
+ * One parcel on screen, projected lazily: the bbox's four corners give
+ * its screen size, a cheap reject for the many parcels too small to hold
+ * a mark, so the rings are only projected for parcels big on screen.
+ */
+function parcelOnScreen(map, a) {
+  let size = null;
+  let ringsPx = null;
+  return {
+    size() {
+      if (!size) {
+        const [minX, minY, maxX, maxY] = a.bbox;
+        const pts = [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]].map((c) => map.project(c));
+        const xs = pts.map((c) => c.x);
+        const ys = pts.map((c) => c.y);
+        size = [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
+      }
+      return size;
+    },
+    rings() {
+      ringsPx ??= a.rings.map((ring) => ring.map((c) => {
+        const q = map.project(c);
+        return [q.x, q.y];
+      }));
+      return ringsPx;
+    },
+  };
+}
+
+/** True when a disc of radius r at (p.x, p.y + dy) sits inside the parcel. */
+function discFitsParcel(view, p, dy, r, margin) {
+  const [w, h] = view.size();
+  if (w < 2 * (r + margin) || h < 2 * (r + margin)) return false;
+  return inlineBadgeFits(view.rings(), p.x, p.y + dy, r, margin);
+}
+
+/** How far (px, negative = up) to lift something of radius r so it sits
+ *  just above the parcel label — the address, with the roll number under
+ *  it from zoom 17 — which is centred on the parcel. */
+function aboveParcelLabel(a, zoom, r) {
+  const lines = a.addressLines + (zoom >= 17 ? 1 : 0);
+  return -((lines * PARCEL_LABEL_LINE_PX) / 2 + LABEL_BADGE_GAP + r);
+}
+
+/**
+ * The inline offset for one anchor, or null when its badge does not fit
+ * inside the parcel on screen. Centred just above the parcel label while
+ * the labels draw, else centred on the parcel.
+ */
+function inlineOffset(a, p, view, { labelShown, zoom, margin, width, height }) {
+  if (p.x < 0 || p.y < 0 || p.x > width || p.y > height) return null;
+  const dy = labelShown ? aboveParcelLabel(a, zoom, a.radius) : 0;
+  return discFitsParcel(view, p, dy, a.radius, margin) ? [0, dy] : null;
+}
+
+/**
+ * A callout's anchor dot sits on the parcel label unless moved: lift it
+ * just above the label when that spot is still inside the parcel, so the
+ * address and roll read under the leader. Where it is not, the dot stays
+ * centred, since a dot off its parcel would point at the neighbour.
+ */
+function calloutDotLift(a, p, view, { labelShown, zoom, width, height }) {
+  if (!labelShown || p.x < 0 || p.y < 0 || p.x > width || p.y > height) return 0;
+  const dy = aboveParcelLabel(a, zoom, ANCHOR_DOT_PX);
+  return discFitsParcel(view, p, dy, ANCHOR_DOT_PX, 1) ? dy : 0;
 }
 
 /** Show or hide the numbered callouts (all five layers). Re-projects the
@@ -3274,38 +3383,68 @@ export function setParcelNumbersVisible(map, on) {
  * pass's slots back in gives the solve hysteresis, so a bumped badge
  * holds position through a pan rather than hopping every frame. No-op
  * (and clears the sources) when hidden or empty.
+ *
+ * A parcel big enough on screen to hold its badge gets it INSIDE, just
+ * above its label, with no leader or dot (Jason, 2026-10-22: the
+ * callouts sat on the roll numbers in printed maps); the solver places
+ * those first. Small parcels keep callouts, since there the leader is
+ * what says which parcel is which; a callout's dot moves above the label
+ * too wherever that is still inside the parcel (calloutDotLift).
  */
 function repositionParcelNumbers(map) {
   const st = map._parcelNumbers;
   if (!st) return;
   const leaderSrc = map.getSource('parcel-num-leaders');
   const labelSrc = map.getSource('parcel-num-labels');
-  if (!leaderSrc || !labelSrc) return;
+  const anchorSrc = map.getSource('parcel-num-anchors');
+  if (!leaderSrc || !labelSrc || !anchorSrc) return;
   if (!st.visible || st.anchors.length === 0) {
     leaderSrc.setData(emptyFc());
     labelSrc.setData(emptyFc());
+    anchorSrc.setData(emptyFc());
     return;
   }
-  const projected = st.anchors.map((a) => {
-    const pt = map.project([a.lng, a.lat]);
-    return { key: a.key, x: pt.x, y: pt.y, r: a.radius };
-  });
   const canvas = map.getCanvas();
-  st.slots = solveCalloutSlots(projected, st.slots, {
+  const viewport = {
     width: canvas.clientWidth || canvas.width,
     height: canvas.clientHeight || canvas.height,
+  };
+  const labelShown = parcelLabelsShown(map);
+  const zoom = map.getZoom();
+  const projected = st.anchors.map((a) => {
+    const pt = map.project([a.lng, a.lat]);
+    const item = { key: a.key, x: pt.x, y: pt.y, r: a.radius };
+    const view = parcelOnScreen(map, a);
+    const margin = st.slots.get(a.key) === INLINE_SLOT ? INLINE_KEEP_MARGIN : INLINE_TAKE_MARGIN;
+    const inline = inlineOffset(a, pt, view, { labelShown, zoom, margin, ...viewport });
+    if (inline) item.inline = inline;
+    // A callout's dot (and so its leader) starts above the parcel label.
+    else item.y += calloutDotLift(a, pt, view, { labelShown, zoom, ...viewport });
+    return item;
   });
+  st.slots = solveCalloutSlots(projected, st.slots, viewport);
   const leaders = [];
   const labels = [];
+  const dots = [];
   st.anchors.forEach((a, i) => {
-    const [dx, dy] = calloutOffset(st.slots.get(a.key));
     const p = projected[i];
+    const isInline = st.slots.get(a.key) === INLINE_SLOT;
+    const [dx, dy] = isInline ? p.inline : calloutOffset(st.slots.get(a.key));
     const lp = map.unproject([p.x + dx, p.y + dy]);
-    leaders.push({
-      type: 'Feature',
-      properties: { _seq: a.seq },
-      geometry: { type: 'LineString', coordinates: [[a.lng, a.lat], [lp.lng, lp.lat]] },
-    });
+    // An inline badge sits inside its parcel: no leader, no dot.
+    if (!isInline) {
+      const dp = map.unproject([p.x, p.y]);
+      leaders.push({
+        type: 'Feature',
+        properties: { _seq: a.seq },
+        geometry: { type: 'LineString', coordinates: [[dp.lng, dp.lat], [lp.lng, lp.lat]] },
+      });
+      dots.push({
+        type: 'Feature',
+        properties: { _seq: a.seq },
+        geometry: { type: 'Point', coordinates: [dp.lng, dp.lat] },
+      });
+    }
     labels.push({
       type: 'Feature',
       properties: { _seq: a.seq, _seqStr: a.seqStr },
@@ -3313,6 +3452,7 @@ function repositionParcelNumbers(map) {
     });
   });
   leaderSrc.setData({ type: 'FeatureCollection', features: leaders });
+  anchorSrc.setData({ type: 'FeatureCollection', features: dots });
   labelSrc.setData({ type: 'FeatureCollection', features: labels });
 }
 
@@ -3384,6 +3524,8 @@ export function setCitywideParcelsVisible(map, visible) {
   if (map.getLayer('citywide-parcels-fill')) map.setLayoutProperty('citywide-parcels-fill', 'visibility', v);
   if (map.getLayer('citywide-parcels-line')) map.setLayoutProperty('citywide-parcels-line', 'visibility', v);
   if (map.getLayer('citywide-parcels-label')) map.setLayoutProperty('citywide-parcels-label', 'visibility', v);
+  // The badges sit above the parcel labels only while those draw.
+  repositionParcelNumbers(map);
 }
 
 // ---- All Survey Parcels ----------------------------------------------------

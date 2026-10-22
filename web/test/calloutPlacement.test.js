@@ -14,6 +14,8 @@ import {
   badgeRadius,
   calloutCandidates,
   calloutOffset,
+  INLINE_SLOT,
+  inlineBadgeFits,
   solveCalloutSlots,
 } from '../src/lib/calloutPlacement.js';
 
@@ -237,6 +239,44 @@ assert.equal(badgeRadius(null), 13.2);
   assert.equal(solveCalloutSlots([], new Map()).size, 0);
   // A junk `prevSlots` value must not throw.
   assert.equal(solveCalloutSlots([item(1, 10, 10)], { get: null }).get('1'), 0);
+}
+
+// ---- inline badges: inside their own parcel, no leader -------------
+// (Jason, 2026-10-22: the callouts sat on the roll numbers.)
+{
+  const box = (x0, y0, x1, y1) => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]];
+  // A 200 x 300 px lot holds a 13.2 px badge anywhere near its middle.
+  assert.ok(inlineBadgeFits(box(0, 0, 200, 300), 100, 120, 13.2, 4));
+  // Too close to an edge, or outside the parcel altogether.
+  assert.ok(!inlineBadgeFits(box(0, 0, 200, 300), 10, 120, 13.2, 4), 'disc crosses the west edge');
+  assert.ok(!inlineBadgeFits(box(0, 0, 200, 300), 260, 120, 13.2, 4), 'disc outside the parcel');
+  // A lot narrower than the badge never takes it inline.
+  assert.ok(!inlineBadgeFits(box(0, 0, 30, 300), 15, 150, 13.2, 4), 'a 30 px lot holds a 26 px disc + margin');
+  // A hole (an inner ring) counts as outside.
+  const donut = [...box(0, 0, 300, 300), [[100, 100], [200, 100], [200, 200], [100, 200], [100, 100]]];
+  assert.ok(!inlineBadgeFits(donut, 150, 150, 13.2, 4), 'disc inside the hole');
+  assert.ok(inlineBadgeFits(donut, 50, 150, 13.2, 4), 'disc in the ring part');
+  assert.ok(!inlineBadgeFits([], 0, 0, 13.2, 4));
+
+  // Items offered an inline spot take INLINE_SLOT and are placed before
+  // the callouts, which then avoid them.
+  const a = { ...item(1, 300, 300), inline: [0, -30] };
+  const b = item(2, 310, 290);
+  const slots = solveCalloutSlots([b, a], null);
+  assert.equal(slots.get('1'), INLINE_SLOT);
+  assert.ok(slots.get('2') >= 0, 'an item with no inline spot stays a callout');
+  const badgeB = badgeAt(b, slots);
+  assert.ok(Math.hypot(badgeB.x - 300, badgeB.y - 270) >= a.r + b.r,
+    'the callout lands on the inline badge');
+  // Two inline spots that collide: the second falls back to a callout.
+  const c = { ...item(3, 500, 500), inline: [0, 0] };
+  const d = { ...item(4, 520, 500), inline: [0, 0] };
+  const both = solveCalloutSlots([c, d], null);
+  assert.equal(both.get('3'), INLINE_SLOT);
+  assert.ok(both.get('4') >= 0, 'an overlapping inline badge is not refused a slot');
+  // A held inline slot never leaks into the ladder as a slot index.
+  const held = solveCalloutSlots([item(5, 10, 10)], new Map([['5', INLINE_SLOT]]));
+  assert.equal(held.get('5'), 0);
 }
 
 console.log('calloutPlacement.test.js: all assertions passed');
