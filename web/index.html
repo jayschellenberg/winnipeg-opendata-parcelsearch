@@ -1252,6 +1252,14 @@
           <button id="contam-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Manitoba Contaminated Sites Registry — designated and impacted sites in Winnipeg. Click any circle for details + a link to the official registry record.">Environmentally Tracked Sites</button>
           <button id="transit-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg Transit bus route lines and stops. Routes use colours from the agency GTFS feed; stops appear from zoom 12+. Click a route or stop for details.">Transit</button>
           <button id="dwelling-units-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Show dwelling-unit totals for qualifying residential assessment parcels. Condominium units are grouped by civic address and shown once at the group centroid. Multi-unit totals appear from zoom 13; ordinary parcels show 1 from zoom 16.">Dwelling Units</button>
+          <!-- Multi-Family, ported from mb-parcelsearch (lib/multiFamily.js).
+               The DU threshold sits right under the button it qualifies,
+               the same way Historical's "As of" sits with its toggle. -->
+          <button id="mf-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Multi-Family — lights up every assessment parcel with at least the DU threshold of dwelling units (3+ by default), shaded blue by unit count (3-5 up to 100+), citywide. Raise the threshold below for bigger buildings (e.g. 20 for apartment-block comparables). Condominium buildings are included at their whole-building count. Unit counts print on each parcel from zoom 13. Click a parcel for its assessment details; to list them in the grid, search a street with Additional Searches → Min DU.">Multi-Family</button>
+          <label class="overlay-select-field" data-layer-set="reference">
+            <span title="Show only parcels with at least this many dwelling units. 3 is the floor: 1- and 2-unit parcels are not multi-family.">DU &ge;</span>
+            <input type="number" id="mf-min-du" min="3" max="9999" step="1" value="3" aria-label="Minimum dwelling units for Multi-Family" />
+          </label>
           <button id="streets-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Current City of Winnipeg street centrelines and names (Open Data Road Network). Automatically shown over City aerial imagery; turn off for a clean historical image. Street names appear from zoom 13.">Current Winnipeg Streets</button>
           <button id="mls-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="MLS Areas — the real-estate boards' MLS area boundaries: Winnipeg Regional Real Estate Board city (1A … 9A) and rural (R02 … R44) areas, plus Brandon's and Portage's. Click an area for its code and board.">MLS Areas</button>
           <button id="water-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Paint the result parcels by water influence — dark blue = adjacent to a river, creek or retention pond (frontage), pale blue = near water without frontage. From the City assessment record's property influences; a screening aid, not a measured distance.">Water Influence</button>
@@ -1405,6 +1413,9 @@
                 <span class="legend-caveat">Split traced from the City map
                 (&asymp;1&nbsp;m); verify at the lot line.</span></p>
             </div>
+            <!-- Multi-Family. Rows built by main.js from UNITS_RAMP in
+                 lib/multiFamily.js, so they follow the DU threshold. -->
+            <div id="mf-legend" class="map-legend mf-legend" hidden></div>
           </div>
         </div>
 

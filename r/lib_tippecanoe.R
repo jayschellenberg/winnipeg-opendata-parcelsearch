@@ -49,6 +49,19 @@ to_wsl_path <- function(p) {
 #                          Do NOT re-add --no-tile-size-limit: with no cap,
 #                          --drop-densest-as-needed can never fire and every
 #                          one of z8-z12 would carry the entire city.
+#   --base-zoom=13       : keep EVERY point at z13 and above. Without it the
+#                          base zoom defaults to --maximum-zoom (18) and
+#                          tippecanoe's point drop rate (2.5x per zoom) thins
+#                          parcels-labels and dwelling-condo-labels at every
+#                          zoom below 18 -- independently of the tile-size cap
+#                          above. Measured 2026-10-23 on the 2026-10-02 archive
+#                          around Beliveau Road: 9 of 48 label points at z16,
+#                          19 at z17, so 266 Beliveau (4 DU), 270 (35 DU) and
+#                          200/290 (150 DU each) had no dwelling-unit number
+#                          until z18. 13 is the minzoom of the dwelling-unit
+#                          layers in map.js (r/test_tippecanoe.R asserts the
+#                          two agree); below it points still thin, which
+#                          nothing reads. Polygons are unaffected.
 #   --force              : overwrite any existing output
 #
 # THE ZOOM FLOOR IS MEASURED, NOT ASSUMED
@@ -80,7 +93,7 @@ TIPPECANOE_FLAGS <- c(
   "--maximum-zoom=18", "--minimum-zoom=8",
   "--simplification=2", "--full-detail=14",
   "--no-feature-limit", "--drop-densest-as-needed",
-  "--maximum-tile-bytes=2000000", "--force"
+  "--maximum-tile-bytes=2000000", "--base-zoom=13", "--force"
 )
 
 # The zoom the app's map opens at, and flies back to on "reset view"

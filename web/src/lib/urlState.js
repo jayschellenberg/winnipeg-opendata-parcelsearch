@@ -105,7 +105,7 @@ export const SCHEMA = {
   duMode:        { param: 'du', validate: oneOf(['zero', 'min']), format: (v) => v },
   duMin:         { param: 'dn', validate: cleanInt(1, 9999),      format: (v) => String(v) },
 
-  // --- Overlay toggles (17) ---
+  // --- Overlay toggles (18) + Multi-Family threshold ---
   // Each is a boolean; the caller-side captureState() only emits a
   // toggle when its current value differs from the page default
   // (assess starts ON; everything else starts OFF). That keeps
@@ -130,6 +130,9 @@ export const SCHEMA = {
   contamToggle:         { param: 'cn', validate: cleanBool, format: formatBool },
   dimensionsToggle:     { param: 'dm', validate: cleanBool, format: formatBool },
   streetsToggle:        { param: 'st', validate: cleanBool, format: formatBool },
+  mfToggle:             { param: 'mf', validate: cleanBool, format: formatBool },
+  // Multi-Family threshold (floor 3, lib/multiFamily.js); emitted only off the default.
+  mfMinDu:              { param: 'mn', validate: cleanInt(3, 9999), format: (v) => String(v) },
 
   // --- Neighbourhoods mode (1) ---
   neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },

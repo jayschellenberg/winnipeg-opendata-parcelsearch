@@ -30,6 +30,9 @@
 // be combined in one SoQL where-clause.
 
 import { fetchMlsAreas, setMlsAreasData, setMlsAreasVisible } from './lib/mlsAreas.js';
+import {
+  MF_MIN_DU, clampMinDu as clampMfMinDu, mfLegendSteps, setMultiFamilyVisible, setMultiFamilyMinDu,
+} from './lib/multiFamily.js';
 import './lib/tailwind.css';
 import { initChipInput } from './lib/chipInput.js';
 import { initInfoIcons } from './lib/infoIcon.js';
@@ -230,6 +233,9 @@ const $dimensionsToggle     = document.getElementById('dimensions-toggle');
 const $allParcelsToggle     = document.getElementById('all-parcels-toggle');
 const $allSurveyToggle      = document.getElementById('all-survey-toggle');
 const $dwellingUnitsToggle  = document.getElementById('dwelling-units-toggle');
+const $mfToggle             = document.getElementById('mf-toggle');
+const $mfMinDu              = document.getElementById('mf-min-du');
+const $mfLegend             = document.getElementById('mf-legend');
 const $contamToggle         = document.getElementById('contam-toggle');
 const $mlsToggle            = document.getElementById('mls-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
@@ -577,6 +583,7 @@ let dimensionsEnabled = false;
 let citywideParcelsEnabled = false;
 let citywideSurveyEnabled = false;
 let dwellingUnitsEnabled = false;
+let mfEnabled = false;
 
 // ---------- Column sort ----------
 
@@ -787,6 +794,8 @@ $dimensionsToggle.addEventListener('click', toggleDimensions);
 $allParcelsToggle.addEventListener('click', toggleCitywideParcels);
 if ($allSurveyToggle) $allSurveyToggle.addEventListener('click', toggleCitywideSurvey);
 if ($dwellingUnitsToggle) $dwellingUnitsToggle.addEventListener('click', toggleDwellingUnits);
+if ($mfToggle) $mfToggle.addEventListener('click', toggleMultiFamily);
+if ($mfMinDu) $mfMinDu.addEventListener('change', onMfMinDuChange);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
@@ -1471,10 +1480,12 @@ function captureUrlState() {
   if (v($duMode))        s.duMode        = v($duMode);
   const duMinNum = Number.parseInt(v($duMin), 10);
   if (Number.isFinite(duMinNum) && duMinNum >= 1) s.duMin = duMinNum;
+  const mfMin = clampMfMinDu(v($mfMinDu));
+  if (mfMin !== MF_MIN_DU) s.mfMinDu = mfMin;
 
   // Toggle defaults: assess is the only one that ships ON.
   const defaults = {
-    surveyToggle: false, assessToggle: true, allParcelsToggle: false, allSurveyToggle: false, dwellingUnitsToggle: false,
+    surveyToggle: false, assessToggle: true, allParcelsToggle: false, allSurveyToggle: false, dwellingUnitsToggle: false, mfToggle: false,
     zoningToggle: false, trafficToggle: false,
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     airportToggle: false, transitWalkshedToggle: false, districtPlannersToggle: false,
@@ -1483,7 +1494,7 @@ function captureUrlState() {
   };
   const buttons = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
-    allParcelsToggle: $allParcelsToggle, allSurveyToggle: $allSurveyToggle, dwellingUnitsToggle: $dwellingUnitsToggle, zoningToggle: $zoningToggle,
+    allParcelsToggle: $allParcelsToggle, allSurveyToggle: $allSurveyToggle, dwellingUnitsToggle: $dwellingUnitsToggle, mfToggle: $mfToggle, zoningToggle: $zoningToggle,
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
@@ -1571,10 +1582,14 @@ function applyUrlState(state) {
     $duMode.dispatchEvent(new Event('change'));
   }
   if ('duMin' in state) $duMin.value = String(state.duMin);
+  if ('mfMinDu' in state && $mfMinDu) {
+    $mfMinDu.value = String(state.mfMinDu);
+    $mfMinDu.dispatchEvent(new Event('change'));
+  }
 
   const toggles = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
-    allParcelsToggle: $allParcelsToggle, allSurveyToggle: $allSurveyToggle, dwellingUnitsToggle: $dwellingUnitsToggle, zoningToggle: $zoningToggle,
+    allParcelsToggle: $allParcelsToggle, allSurveyToggle: $allSurveyToggle, dwellingUnitsToggle: $dwellingUnitsToggle, mfToggle: $mfToggle, zoningToggle: $zoningToggle,
     trafficToggle: $trafficToggle,
     secondaryPlansToggle: $secondaryPlansToggle,
     infillToggle: $infillToggle, mallsCorridorsToggle: $mallsCorridorsToggle,
@@ -1685,7 +1700,7 @@ if ($roll) $roll.addEventListener('input', queueUrlWrite);
 // Every overlay toggle button — extra listener runs after the
 // toggle handler so it sees the post-flip aria-pressed value.
 for (const btn of [
-  $surveyToggle, $assessToggle, $allParcelsToggle, $allSurveyToggle, $dwellingUnitsToggle,
+  $surveyToggle, $assessToggle, $allParcelsToggle, $allSurveyToggle, $dwellingUnitsToggle, $mfToggle,
   $zoningToggle, $trafficToggle,
   $secondaryPlansToggle, $infillToggle, $mallsCorridorsToggle, $airportToggle,
   $transitWalkshedToggle, $districtPlannersToggle,
@@ -3007,6 +3022,50 @@ async function toggleDwellingUnits() {
   $dwellingUnitsToggle.setAttribute('aria-pressed', String(dwellingUnitsEnabled));
   $dwellingUnitsToggle.classList.toggle('active', dwellingUnitsEnabled);
   setDwellingUnitsVisible(map, dwellingUnitsEnabled);
+}
+
+/**
+ * Toggle the Multi-Family overlay: parcels with at least the DU threshold of
+ * dwelling units, shaded by unit count. A filter over the same citywide
+ * archive as Dwelling Units, so it has the same reachability check.
+ */
+async function toggleMultiFamily() {
+  await mapReady;
+  if (!mfEnabled && !(await probeCitywideParcels())) {
+    setCount(
+      `Multi-Family: tile archive unreachable at ${parcelTilesUrl()}. `
+      + 'Rebuild and republish with r/rebuild_tiles.ps1 -Publish.'
+    );
+    return;
+  }
+  mfEnabled = !mfEnabled;
+  $mfToggle.textContent = mfEnabled ? 'Hide Multi-Family' : 'Multi-Family';
+  $mfToggle.setAttribute('aria-pressed', String(mfEnabled));
+  $mfToggle.classList.toggle('active', mfEnabled);
+  setMultiFamilyMinDu(map, clampMfMinDu($mfMinDu?.value));
+  setMultiFamilyVisible(map, mfEnabled);
+  renderMfLegend();
+}
+
+/** DU ≥ box: clamp to the floor, refilter the layers and the legend. */
+async function onMfMinDuChange() {
+  const min = clampMfMinDu($mfMinDu.value);
+  if (String(min) !== $mfMinDu.value) $mfMinDu.value = String(min);
+  await mapReady;
+  setMultiFamilyMinDu(map, min);
+  renderMfLegend();
+  queueUrlWrite();
+}
+
+function renderMfLegend() {
+  if (!$mfLegend) return;
+  $mfLegend.hidden = !mfEnabled;
+  if (!mfEnabled) return;
+  const min = clampMfMinDu($mfMinDu?.value);
+  const rows = mfLegendSteps(min)
+    .map((b) => `<li><span class="swatch" style="background:${b.color}"></span>${b.label} DU</li>`)
+    .join('');
+  $mfLegend.innerHTML = `<strong>Multi-family, ${min}+ dwelling units</strong><ul>${rows}</ul>`;
 }
 
 // ---------- Legal-description flow ----------

@@ -11,6 +11,7 @@
 // The hover popup figures out which schema the feature is carrying.
 
 import { addMlsAreaLayers, mlsAreaHtml } from './lib/mlsAreas.js';
+import { addMultiFamilyLayers, MF_MIN_DU } from './lib/multiFamily.js';
 import maplibregl from 'maplibre-gl';
 import { addLocateControl } from './lib/locateControl.js';
 import { isPhone } from './lib/phoneMode.js';
@@ -1991,6 +1992,10 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(0,0,0,0.25)', 'text-halo-width': 0.5 },
       });
 
+      // Multi-Family overlay (lib/multiFamily.js): parcels with N+ dwelling
+      // units, under the Dwelling Units circles so both can be on at once.
+      addMultiFamilyLayers(map, MF_MIN_DU, 'dwelling-units-multi-circle');
+
       // Manitoba Contaminated Sites Registry overlay. Filtered to
       // Winnipeg sites only client-side. Circles colour-coded by
       // CSGroup status — red for Designated Contaminated, orange
@@ -2257,6 +2262,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         wireRollCopy(citywideClickPopup);
       };
       onLayerClick(map, 'citywide-parcels-fill', citywideClick('citywide-parcels-fill'));
+      onLayerClick(map, 'mf-fill', citywideClick('mf-fill'));
       // A survey lot clicked with All Assessment Parcels off (or with no
       // assessment parcel over it) never reaches citywideClick; give it the
       // lot alone, with its stamped roll(s) + address(es). Registered on the

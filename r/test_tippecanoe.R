@@ -32,7 +32,10 @@ stopifnot(
   # low zooms would each carry all ~217k parcels. See lib_tippecanoe.R.
   !("--no-tile-size-limit" %in% args),
   "--drop-densest-as-needed" %in% args,
-  "--maximum-tile-bytes=2000000" %in% args
+  "--maximum-tile-bytes=2000000" %in% args,
+  # Without a base zoom, label points thin below z18 and dwelling-unit
+  # numbers silently vanish at z13-z17. See lib_tippecanoe.R.
+  "--base-zoom=13" %in% args
 )
 
 # --- The zoom floor must reach the camera ----------------------------
@@ -70,6 +73,21 @@ if (file.exists(map_js)) {
   cat(sprintf("map.js opening zoom (%s) agrees with APP_OPENING_ZOOM
 ",
               paste(zooms, collapse = "/")))
+
+  # Every point is only guaranteed in the archive at --base-zoom and above,
+  # so no layer reading a label source-layer may start below it.
+  base_zoom <- as.integer(sub("^--base-zoom=", "", grep("^--base-zoom=", args, value = TRUE)))
+  joined <- paste(src, collapse = "\n")
+  label_layers <- regmatches(joined, gregexpr(
+    "'source-layer': '(parcels-labels|dwelling-condo-labels)', minzoom: [0-9]+", joined))[[1]]
+  label_minzooms <- as.integer(sub(".*minzoom: ", "", label_layers))
+  stopifnot(length(label_minzooms) >= 1L)
+  if (any(label_minzooms < base_zoom)) {
+    stop("map.js reads a label source-layer from z", min(label_minzooms),
+         " but --base-zoom is ", base_zoom, "; points below it are thinned.")
+  }
+  cat(sprintf("label layers start at z%d+, at or above --base-zoom=%d\n",
+              min(label_minzooms), base_zoom))
 } else {
   cat("SKIP map.js opening-zoom cross-check: ", map_js, " not found
 ", sep = "")
