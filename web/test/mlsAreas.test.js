@@ -18,6 +18,19 @@ import {
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const FC = JSON.parse(readFileSync(path.join(dir, '..', 'public', 'mls-areas.geojson'), 'utf8'));
 let passed = 0;
+
+const polysOf = (g) => (g.type === 'Polygon' ? [g.coordinates] : g.coordinates);
+const ringArea = (r) => r.reduce((s, [x, y], k) => s + (k ? r[k - 1][0] * y - x * r[k - 1][1] : 0), 0) / 2;
+const planarArea = (g) => polysOf(g).reduce((s, p) => s + Math.abs(ringArea(p[0]))
+  - p.slice(1).reduce((h, r) => h + Math.abs(ringArea(r)), 0), 0);
+const inRing = (r, x, y) => {
+  let c = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    if ((r[i][1] > y) !== (r[j][1] > y) && x < ((r[j][0] - r[i][0]) * (y - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) c = !c;
+  }
+  return c;
+};
+const contains = (g, x, y) => polysOf(g).some((p) => inRing(p[0], x, y) && !p.slice(1).some((r) => inRing(r, x, y)));
 const test = async (name, fn) => { await fn(); passed++; console.log(`  ok  ${name}`); };
 
 // A recording stand-in for a MapLibre map.
@@ -33,9 +46,9 @@ function fakeMap() {
   };
 }
 
-await test('the data file: 141 areas, unique codes, each with a board and a label point', () => {
+await test('the data file: 142 areas, unique codes, each with a board and a label point', () => {
   assert.equal(FC.type, 'FeatureCollection');
-  assert.equal(FC.features.length, 141);
+  assert.equal(FC.features.length, 142);
   const codes = FC.features.map((f) => f.properties.area);
   assert.equal(new Set(codes).size, codes.length);
   for (const f of FC.features) {
@@ -49,17 +62,40 @@ await test('the data file: 141 areas, unique codes, each with a board and a labe
   assert.equal(board('R26'), 'Winnipeg Regional Real Estate Board');
   assert.equal(board('B07'), 'Brandon Area REALTORS');
   assert.equal(board('P03'), 'Portage la Prairie Real Estate Board');
+  assert.equal(board('C15A'), 'Brandon Area REALTORS');
 });
 
 await test('largest areas come first, so nested ones draw on top', () => {
-  // B07 sits inside B06 in the source; B06 must precede it.
-  const i = (c) => FC.features.findIndex((f) => f.properties.area === c);
-  assert.ok(i('B06') < i('B07'));
+  const areas = FC.features.map((f) => planarArea(f.geometry));
+  for (let k = 1; k < areas.length; k++) assert.ok(areas[k] <= areas[k - 1], FC.features[k].properties.area);
+});
+
+await test('known spots land in the right Brandon and Portage areas', () => {
+  // Spots inside each area, from the BAR city map and the Portage board's
+  // definitions; the area that draws on top (last) is the one a click reports.
+  const spots = [
+    ['A05', -99.9675, 49.8460], // 22nd St & Princess Ave, Brandon University
+    ['B07', -99.9790, 49.8380], // Lark Hill, 30th St
+    ['B11', -99.9790, 49.8300], // Linden Lanes
+    ['B13', -99.9790, 49.8235], // Parkdale
+    ['C17', -99.9500, 49.8310], // South End
+    ['C19', -99.9300, 49.8400], // Upper East End
+    ['C15A', -99.9300, 49.8180], // Prairie Crossing
+    ['D24', -99.9500, 49.8680], // Kirkcaldy Heights
+    ['P01', -98.3000, 49.9620], // Island Park
+    ['P04', -98.3050, 49.9750], // Lorne Ave W
+    ['P06', -98.2800, 49.9745], // east of Tupper, north of Sask Ave
+    ['P07', -98.2800, 49.9850], // north of the tracks, east of PR 240
+  ];
+  for (const [want, x, y] of spots) {
+    const hit = FC.features.filter((f) => contains(f.geometry, x, y)).at(-1);
+    assert.equal(hit?.properties.area, want, `${x},${y}`);
+  }
 });
 
 await test('mlsLabelPoints: one point per area at its label spot', () => {
   const pts = mlsLabelPoints(FC);
-  assert.equal(pts.features.length, 141);
+  assert.equal(pts.features.length, 142);
   const p = pts.features.find((f) => f.properties.area === '1A');
   assert.deepEqual(p.geometry.coordinates, [-97.123884, 49.865499]);
   assert.deepEqual(mlsLabelPoints(null).features, []);
@@ -77,7 +113,7 @@ await test('layers start hidden, labels go on top, and visibility/data setters r
   for (const id of MLS_LAYERS) assert.equal(m.layers.get(id).layout.visibility, 'visible');
   setMlsAreasData(m, FC);
   assert.equal(m.sources.get(MLS_SOURCE).data, FC);
-  assert.equal(m.sources.get(MLS_LABEL_SOURCE).data.features.length, 141);
+  assert.equal(m.sources.get(MLS_LABEL_SOURCE).data.features.length, 142);
 });
 
 await test('fetchMlsAreas caches a success and retries after a failure', async () => {

@@ -2,12 +2,14 @@
 // group, both apps; Jason, 2026-10-21).
 //
 // Data: public/mls-areas.geojson, built by tools/mls-areas/build_mls_areas.py
-// (mb-parcelsearch) from Jason's appraisal-templates MLSAreas.geojson: 141
+// (mb-parcelsearch) from Jason's appraisal-templates MLSAreas.geojson: 142
 // areas — the Winnipeg Regional Real Estate Board's city (1A … 9A) and rural
 // (R02 … R44) areas, Brandon Area REALTORS' A–D areas and Portage's P01–P07.
 // The WRREB areas match the board's own digital map (map.keystonerealtors.ca)
-// exactly as of 2026-10-21. Polygons come largest first, so the nested
-// Brandon areas draw and hit-test on top of the area they sit in.
+// exactly as of 2026-10-21. Brandon and Portage are rebuilt on street
+// centrelines (tools/mls-areas/rebuild_brandon_portage.py, 2026-10-23): the
+// BAR city map for Brandon, the board's definitions for Portage. Polygons
+// come largest first, so anything nested draws and hit-tests on top.
 //
 // SHARED FILE: kept byte-identical between mb-parcelsearch and the Winnipeg
 // ParcelSearch app (like phoneMode.js); each app wires the toggle and the
