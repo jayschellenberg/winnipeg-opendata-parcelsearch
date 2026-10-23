@@ -2,74 +2,74 @@
   "snapshots": {
     "2026-07-01": {
       "file": "wpg-hist-2026-07-01.pmtiles",
-      "bytes": 197324464,
-      "sha256": "ae072f9fdeb957b4b5a119c66d6f72b813998e9f2f9fc0e0cd3c1ade695a14dd",
-      "built": "2026-10-02",
+      "bytes": 197326113,
+      "sha256": "fac8b0d99e8d2292b85b83a0688824525db4736457c15bb96c0ec2971bccd77a",
+      "built": "2026-10-23",
       "layers": {
         "parcels": 245080,
         "survey": 262752,
         "zoning": 18425
       },
       "size_change": {
-        "same": 216626,
+        "same": 216587,
         "minor": 2,
         "major": 1,
-        "gone": 124,
+        "gone": 163,
         "unknown": 28327
       },
-      "size_change_vs": "2026-10-02",
-      "size_change_vs_rolls": 245460
+      "size_change_vs": "2026-10-23",
+      "size_change_vs_rolls": 245470
     },
     "2023-11-13": {
       "file": "wpg-hist-2023-11-13.pmtiles",
-      "bytes": 114332636,
-      "sha256": "4df828407c4a12e50e6f37f3b920eecca83ac5b10bdb168e4a91519ad3c74469",
-      "built": "2026-10-02",
+      "bytes": 114333184,
+      "sha256": "0869a3f35afc85c64f8e0ccd19d616cc40ed7540028f5c6f7a46e18816dc1998",
+      "built": "2026-10-23",
       "layers": {
         "parcels": 241305
       },
       "size_change": {
-        "same": 212892,
+        "same": 212856,
         "minor": 75,
-        "major": 152,
-        "gone": 635,
+        "major": 151,
+        "gone": 672,
         "unknown": 27551
       },
-      "size_change_vs": "2026-10-02",
-      "size_change_vs_rolls": 245460
+      "size_change_vs": "2026-10-23",
+      "size_change_vs_rolls": 245470
     },
     "2025-02-26": {
       "file": "wpg-hist-2025-02-26.pmtiles",
-      "bytes": 115262342,
-      "sha256": "efb59395b6258277fa32c042ead82965776fd714de6f98b998c45de85827f334",
-      "built": "2026-10-02",
+      "bytes": 115263560,
+      "sha256": "98ebac73124f741c189163eee3eeaaba6889a867ee3efc489fe994d22851b5f2",
+      "built": "2026-10-23",
       "layers": {
         "parcels": 244006
       },
       "size_change": {
-        "same": 215828,
+        "same": 215791,
         "minor": 8,
         "major": 18,
-        "gone": 347,
+        "gone": 384,
         "unknown": 27805
       },
-      "size_change_vs": "2026-10-02",
-      "size_change_vs_rolls": 245460
+      "size_change_vs": "2026-10-23",
+      "size_change_vs_rolls": 245470
     },
     "2025-03-14": {
       "file": "wpg-hist-2025-03-14.pmtiles",
       "bytes": 74455082,
       "sha256": "986081eeb1231cbf8588ff5d891b3723005a1925f2fe35bfec2942e23d9e05b2",
-      "built": "2026-10-02",
+      "built": "2026-10-23",
       "layers": {
         "survey": 262005
       },
       "size_change": null,
-      "size_change_vs": "2026-10-02",
-      "size_change_vs_rolls": 245460
+      "size_change_vs": "2026-10-23",
+      "size_change_vs_rolls": 245470
     }
   },
-  "built": "2026-10-02",
+  "built": "2026-10-23",
   "archive_generated": "2026-07-10T10:45:26-0500",
   "tippecanoe_flags": ["--maximum-zoom=18", "--minimum-zoom=11", "--simplification=2", "--full-detail=14", "--no-feature-limit", "--drop-densest-as-needed", "--maximum-tile-bytes=2000000", "--force", "--drop-rate=1", "--quiet"]
 }
