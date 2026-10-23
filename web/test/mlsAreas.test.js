@@ -70,6 +70,17 @@ await test('largest areas come first, so nested ones draw on top', () => {
   for (let k = 1; k < areas.length; k++) assert.ok(areas[k] <= areas[k - 1], FC.features[k].properties.area);
 });
 
+await test('Brandon and Portage areas stay in south-west Manitoba', () => {
+  // A clipping slip once gave B10-B12 a sliver running to the North Pole.
+  for (const f of FC.features) {
+    if (f.properties.board === 'Winnipeg Regional Real Estate Board') continue;
+    const xy = polysOf(f.geometry).flat(2);
+    const lat = xy.map((c) => c[1]); const lon = xy.map((c) => c[0]);
+    assert.ok(Math.min(...lat) > 49.5 && Math.max(...lat) < 50.3, f.properties.area);
+    assert.ok(Math.min(...lon) > -100.6 && Math.max(...lon) < -98.0, f.properties.area);
+  }
+});
+
 await test('known spots land in the right Brandon and Portage areas', () => {
   // Spots inside each area, from the BAR city map and the Portage board's
   // definitions; the area that draws on top (last) is the one a click reports.
@@ -86,6 +97,10 @@ await test('known spots land in the right Brandon and Portage areas', () => {
     ['P04', -98.3050, 49.9750], // Lorne Ave W
     ['P06', -98.2800, 49.9745], // east of Tupper, north of Sask Ave
     ['P07', -98.2800, 49.9850], // north of the tracks, east of PR 240
+    ['DNE', -99.9550, 49.9080], // Brandon airport: DNE although west of Hwy 10
+    ['DNE', -99.9050, 49.8445], // north of Victoria Ave E, east of 17th St E
+    ['CSE', -99.9050, 49.8390], // south of Victoria Ave E
+    ['ANW', -99.9850, 49.8750], // between Braecrest Dr and the river at 34th St
   ];
   for (const [want, x, y] of spots) {
     const hit = FC.features.filter((f) => contains(f.geometry, x, y)).at(-1);
