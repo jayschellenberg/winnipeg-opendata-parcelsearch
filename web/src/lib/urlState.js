@@ -97,6 +97,9 @@ export const SCHEMA = {
   addressFrom:   { param: 'af', validate: cleanString,            format: (v) => v },
   addressTo:     { param: 'at', validate: cleanString,            format: (v) => v },
   addressStreet: { param: 'as', validate: cleanString,            format: (v) => v },
+  // Street was picked from the typeahead: match it exactly, not as a
+  // substring (CHARLES without ST CHARLES).
+  addressStreetExact: { param: 'ax', validate: cleanBool,         format: formatBool },
   zoning:        { param: 'z',  validate: cleanString,            format: (v) => v },
   pucs:          { param: 'pu', validate: cleanString,            format: (v) => v },
   suite:         { param: 'su', validate: cleanString,            format: (v) => v },

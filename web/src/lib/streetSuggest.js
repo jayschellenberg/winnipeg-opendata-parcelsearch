@@ -243,6 +243,13 @@ export function createStreetSuggest({ inputId, listId, loadIndex, onSearch }) {
     if (!entry) return;
     accepting = true;
     $input.value = entry.name;
+    // A pick names ONE street, so it searches as an exact match — CHARLES
+    // must not also return ST CHARLES. Stored as the picked name rather
+    // than a flag so any script write to the field (URL restore, map
+    // address pick, clear) can only ever turn it off, never mislabel a
+    // different value. Set before the 'input' below so the URL writer
+    // sees it.
+    $input.dataset.exactStreet = entry.name;
     // main.js hangs the URL-state writer off 'input', and setting .value
     // in script fires nothing.
     $input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -299,7 +306,12 @@ export function createStreetSuggest({ inputId, listId, loadIndex, onSearch }) {
     });
   }
 
-  $input.addEventListener('input', () => { if (!accepting) refresh(); });
+  $input.addEventListener('input', () => {
+    if (accepting) return;
+    // Typing after a pick puts the field back to a substring search.
+    delete $input.dataset.exactStreet;
+    refresh();
+  });
   $input.addEventListener('focus', () => refresh());
   $input.addEventListener('blur', () => close());
 
@@ -344,4 +356,11 @@ export function createStreetSuggest({ inputId, listId, loadIndex, onSearch }) {
   });
 
   return { close, isOpen: () => !$list.hidden };
+}
+
+/** True when the field still holds the street picked from the list, i.e.
+ *  the search should match that name exactly rather than as a substring. */
+export function isExactStreetPick($input) {
+  const picked = $input?.dataset?.exactStreet;
+  return !!picked && picked === String($input.value ?? '').trim();
 }

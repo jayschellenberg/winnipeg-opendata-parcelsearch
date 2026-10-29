@@ -22,7 +22,7 @@
 // touches — not a DOM. If the controller starts using more of one, this
 // will throw rather than quietly pass.
 import assert from 'node:assert/strict';
-import { createStreetSuggest, buildStreetIndex } from '../src/lib/streetSuggest.js';
+import { createStreetSuggest, buildStreetIndex, isExactStreetPick } from '../src/lib/streetSuggest.js';
 
 function test(name, fn) {
   try {
@@ -43,6 +43,7 @@ class El {
     this.attrs = new Map();
     this.classes = new Set();
     this.listeners = new Map();
+    this.dataset = {};
     this.hidden = false;
     this.value = '';
     this.id = '';
@@ -272,6 +273,30 @@ const run = async () => {
       // re-enters refresh() and the field looks stuck open.
       assert.equal(input.value, 'PARK');
       assert.equal(list.hidden, true);
+    });
+  }
+
+  {
+    const { input } = await mount();
+    await type(input, 'PARK');
+    test('typed text is a substring search, not an exact one', () => {
+      assert.equal(isExactStreetPick(input), false);
+    });
+    key(input, 'ArrowDown');
+    key(input, 'ArrowDown');
+    key(input, 'Enter');
+    test('a pick makes the field an exact-street search', () => {
+      assert.equal(input.value, 'PARK EAST');
+      assert.equal(isExactStreetPick(input), true);
+    });
+    await type(input, 'PARK EAS');
+    test('typing after a pick drops back to a substring search', () => {
+      assert.equal(isExactStreetPick(input), false);
+    });
+    test('a script write of a different value is never read as exact', () => {
+      input.dataset.exactStreet = 'PARK EAST';
+      input.value = 'PARK';
+      assert.equal(isExactStreetPick(input), false);
     });
   }
 

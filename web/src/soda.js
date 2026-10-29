@@ -300,7 +300,7 @@ export function joinSurveyWithAssessment(surveyFc, assessFc) {
  * geometry suitable for rendering directly on the map.
  */
 export async function searchAssessmentParcels({
-  roll, addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
+  roll, addressFrom, addressTo, addressStreet, addressStreetExact, zoning, suite, duMode, duMin,
   waterfront, nearWater, pucs,
 }) {
   // A roll list longer than rollClause's IN cap is split here rather than
@@ -313,7 +313,7 @@ export async function searchAssessmentParcels({
   const rollTokens = splitRollTokens(roll);
   if (rollTokens.length > ROLL_IN_CAP) {
     const rest = {
-      addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
+      addressFrom, addressTo, addressStreet, addressStreetExact, zoning, suite, duMode, duMin,
       waterfront, nearWater, pucs,
     };
     const chunks = [];
@@ -328,7 +328,7 @@ export async function searchAssessmentParcels({
   const clauses = [];
   const rc = rollClause(roll);
   if (rc)      clauses.push(rc);
-  for (const ac of buildAddressClauses({ addressFrom, addressTo, addressStreet })) {
+  for (const ac of buildAddressClauses({ addressFrom, addressTo, addressStreet, addressStreetExact })) {
     clauses.push(ac);
   }
   const zc = zoningClause(zoning);
@@ -460,16 +460,16 @@ export async function searchAssessmentParcelsByRolls(rolls) {
  * stays consistent regardless of which path surfaced it.
  */
 export async function searchAssessmentParcelsExpanded({
-  roll, addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
+  roll, addressFrom, addressTo, addressStreet, addressStreetExact, zoning, suite, duMode, duMin,
   waterfront, nearWater, pucs,
 }) {
   const directPromise = searchAssessmentParcels({
-    roll, addressFrom, addressTo, addressStreet, zoning, suite, duMode, duMin,
+    roll, addressFrom, addressTo, addressStreet, addressStreetExact, zoning, suite, duMode, duMin,
     waterfront, nearWater, pucs,
   });
   const xrefPromise = (addressFrom || addressTo || addressStreet)
     ? searchAddressesAndFindParcels(
-        { addressFrom, addressTo, addressStreet },
+        { addressFrom, addressTo, addressStreet, addressStreetExact },
         { roll, zoning, suite, duMode, duMin, waterfront, nearWater, pucs }
       )
     : Promise.resolve({ type: 'FeatureCollection', features: [] });
@@ -504,9 +504,9 @@ export async function searchAssessmentParcelsExpanded({
  * geometry-typed columns and explicit conversion is more predictable than
  * letting Socrata pick one.
  */
-export async function searchAddresses({ addressFrom, addressTo, addressStreet }) {
+export async function searchAddresses({ addressFrom, addressTo, addressStreet, addressStreetExact }) {
   const clauses = [];
-  for (const ac of buildAddressClauses({ addressFrom, addressTo, addressStreet })) {
+  for (const ac of buildAddressClauses({ addressFrom, addressTo, addressStreet, addressStreetExact })) {
     clauses.push(ac);
   }
   if (clauses.length === 0) {
@@ -3338,7 +3338,7 @@ function likeClause(column, value) {
  *   - To only                              -> open lower bound
  *   - Both empty                           -> no number filter
  */
-export function buildAddressClauses({ addressFrom, addressTo, addressStreet }) {
+export function buildAddressClauses({ addressFrom, addressTo, addressStreet, addressStreetExact }) {
   const out = [];
   const from = parseStreetNumber(addressFrom);
   const to   = parseStreetNumber(addressTo);
@@ -3352,7 +3352,7 @@ export function buildAddressClauses({ addressFrom, addressTo, addressStreet }) {
     out.push(`street_number <= ${to}`);
   }
   if (addressStreet && String(addressStreet).trim()) {
-    const sc = streetNameClause(addressStreet);
+    const sc = streetNameClause(addressStreet, !!addressStreetExact);
     if (sc) out.push(sc);
   }
   return out;
@@ -3453,10 +3453,19 @@ export function normalizeStreetQuery(raw, known = KNOWN_STREET_NAMES) {
  * the input via normalizeStreetQuery. 143 street_name rows carry periods
  * and the two datasets disagree on apostrophes ("ST MARY'S" vs "ST MARYS").
  */
-function streetNameClause(value) {
+function streetNameClause(value, exact = false) {
+  const column = `upper(replace(replace(street_name,'''',''),'.',''))`;
+  // `exact` is set when the name was PICKED from the typeahead, so it is
+  // the roll's own spelling and means that one street: CHARLES must not
+  // also return ST CHARLES, which a substring LIKE always would. No
+  // normalizeStreetQuery here — a picked name is never a typed "Ave".
+  if (exact) {
+    const key = streetKey(value);
+    return key ? `${column} = '${escapeSoql(key)}'` : null;
+  }
   const normalized = normalizeStreetQuery(value);
   if (!normalized) return null;
-  return `upper(replace(replace(street_name,'''',''),'.','')) like '%${escapeSoql(normalized)}%'`;
+  return `${column} like '%${escapeSoql(normalized)}%'`;
 }
 
 // Row endpoint for the assessment dataset. ASSESS_URL is the .geojson

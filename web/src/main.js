@@ -143,7 +143,7 @@ import {
   buildClusterIndex, clusterForFeature, clusterForPoint, nearestCluster,
 } from './lib/clusters.js';
 import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
-import { createStreetSuggest, buildStreetIndex } from './lib/streetSuggest.js';
+import { createStreetSuggest, buildStreetIndex, isExactStreetPick } from './lib/streetSuggest.js';
 import { createMapAddressSearch } from './lib/mapAddressSearch.js';
 import {
   parseBound, passesSizeFilter, normalizeStreetQuery, passesStreetFilter,
@@ -1127,6 +1127,11 @@ createMapAddressSearch({
       // .value in script fires nothing.
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    // A picked address names one street, so match it exactly, the same as
+    // a Street Name pick. Set AFTER the 'input' events, which the typeahead
+    // reads as typing and clears it on; the URL write is rAF-deferred, so
+    // it still sees this.
+    $addressStreet.dataset.exactStreet = street;
     runSearch();
   },
 });
@@ -1472,6 +1477,7 @@ function captureUrlState() {
   if (v($addressFrom))   s.addressFrom   = v($addressFrom);
   if (v($addressTo))     s.addressTo     = v($addressTo);
   if (v($addressStreet)) s.addressStreet = v($addressStreet);
+  if (isExactStreetPick($addressStreet)) s.addressStreetExact = true;
   if (v($zoning))        s.zoning        = v($zoning);
   if (v($pucsFilter))    s.pucs          = v($pucsFilter);
   if (v($suite))         s.suite         = v($suite);
@@ -1570,6 +1576,7 @@ function applyUrlState(state) {
   if ('addressFrom' in state)   $addressFrom.value   = state.addressFrom;
   if ('addressTo' in state)     $addressTo.value     = state.addressTo;
   if ('addressStreet' in state) $addressStreet.value = state.addressStreet;
+  if (state.addressStreetExact && state.addressStreet) $addressStreet.dataset.exactStreet = state.addressStreet;
   if ('zoning' in state)        $zoning.value        = state.zoning;
   // Only a value the drop-down actually offers; a stale or hand-edited URL
   // leaves the filter off rather than selecting nothing visible.
@@ -1796,6 +1803,7 @@ async function runSearch() {
     addressFrom:   $addressFrom.value.trim(),
     addressTo:     $addressTo.value.trim(),
     addressStreet: $addressStreet.value.trim(),
+    addressStreetExact: isExactStreetPick($addressStreet),
     zoning: $zoning.value.trim(),
     suite: $suite.value.trim(),
     condoUnit: $condoUnit.value.trim(),

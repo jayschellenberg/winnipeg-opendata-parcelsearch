@@ -279,6 +279,24 @@ test('buildAddressClauses — street match is punctuation-insensitive on both si
   );
 });
 
+test('buildAddressClauses — a picked street matches exactly, not as a substring', () => {
+  // CHARLES picked from the typeahead must not also return ST CHARLES.
+  assert.deepEqual(
+    buildAddressClauses({ addressStreet: 'CHARLES', addressStreetExact: true }),
+    [`${STREET_COL} = 'CHARLES'`]
+  );
+  // Exact keeps the name whole (no trailing-type truncation) and folds
+  // punctuation the same way the column does.
+  assert.deepEqual(
+    buildAddressClauses({ addressStreet: "ST MARY'S", addressStreetExact: true }),
+    [`${STREET_COL} = 'ST MARYS'`]
+  );
+  assert.deepEqual(
+    buildAddressClauses({ addressStreet: 'ELM PARK', addressStreetExact: true }),
+    [`${STREET_COL} = 'ELM PARK'`]
+  );
+});
+
 test('buildAddressClauses — number + street compose; garbage numbers are ignored', () => {
   assert.deepEqual(
     buildAddressClauses({ addressFrom: '12', addressTo: '', addressStreet: 'Main' }),
