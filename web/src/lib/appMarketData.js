@@ -2,9 +2,9 @@
  * app-market-data.js — let a viewer pick the shared AppMarketData folder
  * instead of an app's own subfolder.
  *
- * The firm shares one Dropbox folder, AppMarketData, holding CapRates,
- * CommercialAvailability, JohnsonReport, RentalDashboard and SalesData. Each
- * explorer reads one subfolder. (Copied from housing-economic-data
+ * The firm's AppMarketData folder holds three permission tiers, each its own
+ * Dropbox share (AppMarketData-External, -Internal, -Limited; SalesData is in
+ * -Limited) of app folders. Each explorer reads one subfolder. (Copied from housing-economic-data
  * web/src/app-market-data.js; keep the two in step.) A viewer who picks AppMarketData itself (or
  * any folder along the path) is stepped down to the app's subfolder, and that
  * subfolder's handle is what gets saved, so everything downstream sees the
@@ -25,20 +25,52 @@ async function childDirectory(dir, name) {
 }
 
 /**
+ * True for AppMarketData itself and its permission-tier folders
+ * (AppMarketData-External, AppMarketData-Internal, AppMarketData-Limited).
+ * Each tier is its own Dropbox share, so a viewer holds one to three of them,
+ * often gathered into a folder of their own named AppMarketData.
+ */
+export const isAppMarketData = (name) => /^AppMarketData(-|$)/i.test(String(name));
+
+/** The AppMarketData / tier folders directly inside `dir`. */
+export async function appMarketDataChildren(dir) {
+  const out = [];
+  for await (const [n, h] of dir.entries()) {
+    if (h.kind === 'directory' && isAppMarketData(n)) out.push(h);
+  }
+  return out;
+}
+
+async function walk(dir, names) {
+  for (const name of names) {
+    dir = await childDirectory(dir, name);
+    if (!dir) return null;
+  }
+  return dir;
+}
+
+// The path below `dir`, or below an AppMarketData / tier folder inside it
+// (up to `depth` such folders deep: AppMarketData > AppMarketData-Internal).
+async function findBelow(dir, path, depth) {
+  const hit = await walk(dir, path);
+  if (hit || depth <= 0) return hit;
+  for (const amd of await appMarketDataChildren(dir)) {
+    const found = await findBelow(amd, path, depth - 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
  * @param {FileSystemDirectoryHandle} handle  the folder the viewer picked
- * @param {string[]} path  the app's folder below AppMarketData, e.g.
- *   ['RentalDashboard'] or ['SalesData', 'Manitoba']
+ * @param {string[]} path  the app's folder below AppMarketData (or below its
+ *   tier folder), e.g. ['RentalDashboard'] or ['SalesData', 'Manitoba']
  * @returns {Promise<FileSystemDirectoryHandle>}
  */
 export async function resolveAppFolder(handle, path) {
   const at = path.findIndex((p) => same(p, handle.name));
-  let dir = handle;
-  for (const name of at >= 0 ? path.slice(at + 1) : path) {
-    const next = await childDirectory(dir, name);
-    if (!next) return handle;
-    dir = next;
-  }
-  return dir;
+  const dir = at >= 0 ? await walk(handle, path.slice(at + 1)) : await findBelow(handle, path, 2);
+  return dir || handle;
 }
 
 /**
