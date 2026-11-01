@@ -79,6 +79,15 @@ export function saleRecordsFromRows(rows, { parseDate } = {}) {
       zoning: p._saleZoning || p.zoning || '',
       lots: Number(p._saleGroupSize) || 1,
       dist: Number.isFinite(Number(p._dist)) ? Number(p._dist) : null,
+      // Ticked in the grid (2026-11-01). The charts' CMS page is the ticked
+      // sales, its ADF Overview page every one. A payload from an older tab
+      // carries no flag and was only ever the ticked rows.
+      selected: p._selected !== false,
+      lat: Number.isFinite(Number(p._lat)) && p._lat != null ? Number(p._lat) : null,
+      lng: Number.isFinite(Number(p._lng)) && p._lng != null ? Number(p._lng) : null,
+      // Sale price over the CURRENT roll's total assessment, as a ratio
+      // (lib/sales.js stamps it as a percentage).
+      saleToAsmt: Number(p._saleToAsmt) > 0 ? Number(p._saleToAsmt) / 100 : null,
       // Prefer the grid's permit-corrected category, so the charts and the
       // table cannot disagree about what "land" is. It carries two things
       // the raw code cannot: an already-built sale is no longer Land, and a

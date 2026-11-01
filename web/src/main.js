@@ -4207,13 +4207,22 @@ function chartsBus() {
 }
 
 function publishSalesToCharts(rows) {
-  // Culled rows are excluded from the plots, so the charts tab and the map
-  // always agree about which sales are in play.
-  lastChartRows = (rows || []).filter(rowIsSelected).map((r) => {
+  // EVERY row goes over, culled ones flagged (2026-11-01): the charts tab's
+  // ADF Overview page charts every sale the search returned, its CMS page
+  // only the ticked ones -- so the charts, the map and the export still agree
+  // about which sales are the comparables.
+  lastChartRows = (rows || []).map((r) => {
     const p = r.assess?.properties || {};
+    const c = featureCentroid(r.assess);
     return {
       assess: {
         properties: {
+          _selected: rowIsSelected(r),
+          // The parcel's centroid, for the ADF page's maps.
+          _lng: c ? c[0] : null,
+          _lat: c ? c[1] : null,
+          total_assessed_value: p.total_assessed_value,
+          _saleToAsmt: p._saleToAsmt,
           roll_number: p.roll_number,
           full_address: p.full_address,
           _saleInstrument: p._saleInstrument,

@@ -195,3 +195,71 @@ export function drawChart({
 
   return svg;
 }
+
+/**
+ * Vertical bars (2026-11-01): the ADF Overview / CMS pages' histograms and
+ * sales-by-year counts, the land dashboard's two bar exhibits.
+ *
+ * @param {object} spec
+ * @param {Array<{label:string, n:number, back?:number}>} spec.bars  in axis
+ *   order; `back` is a second count drawn BEHIND `n`, pale -- the template's
+ *   nominal-behind-adjusted histogram on one bin grid
+ * @param {string} [spec.xLabel]
+ * @param {string} [spec.yLabel]
+ * @param {boolean} [spec.counts]  print each bar's count above it
+ * @returns {SVGElement}
+ */
+export function drawBars({ bars, xLabel = '', yLabel = 'Sales', counts = false, width = 620, height = 320 }) {
+  const m = { top: 18, right: 16, bottom: 42, left: 56 };
+  const plotW = width - m.left - m.right;
+  const plotH = height - m.top - m.bottom;
+  const svg = el('svg', {
+    viewBox: `0 0 ${width} ${height}`, width: '100%', role: 'img', 'aria-label': `${yLabel} by ${xLabel}`,
+  });
+  const top = Math.max(1, ...bars.map((b) => Math.max(b.n || 0, b.back || 0)));
+  // A 1/2/5 x 10^k step giving about five gridlines; whole counts below 5.
+  const raw = top / 5;
+  const p10 = 10 ** Math.floor(Math.log10(raw));
+  const step = top <= 5 ? 1 : [1, 2, 5, 10].map((f) => f * p10).find((s) => s >= raw);
+  const ymax = Math.ceil(top / step) * step;
+  const sy = (v) => m.top + plotH - (v / ymax) * plotH;
+  for (let t = 0; t <= ymax; t += step) {
+    svg.appendChild(el('line', { x1: m.left, x2: m.left + plotW, y1: sy(t), y2: sy(t), stroke: INK.grid }));
+    const lab = el('text', { x: m.left - 8, y: sy(t), 'text-anchor': 'end', 'dominant-baseline': 'middle', fill: INK.text, 'font-size': 11 });
+    lab.textContent = String(t);
+    svg.appendChild(lab);
+  }
+  const slot = plotW / Math.max(1, bars.length);
+  const every = Math.max(1, Math.ceil(bars.length / Math.max(2, Math.floor(plotW / 70))));
+  bars.forEach((b, i) => {
+    const cx = m.left + slot * (i + 0.5);
+    const w = Math.max(2, slot * 0.82);
+    for (const [v, fill, op] of [[b.back, '#b9bfbb', 0.75], [b.n, INK.dot, 0.6]]) {
+      if (!(v > 0)) continue;
+      svg.appendChild(el('rect', {
+        x: cx - w / 2, y: sy(v), width: w, height: sy(0) - sy(v), fill, 'fill-opacity': op, stroke: fill, 'stroke-opacity': 0.9,
+      }));
+    }
+    if (counts && b.n > 0) {
+      const t = el('text', { x: cx, y: sy(b.n) - 4, 'text-anchor': 'middle', fill: INK.text, 'font-size': 11 });
+      t.textContent = String(b.n);
+      svg.appendChild(t);
+    }
+    if (i % every === 0) {
+      const t = el('text', { x: cx, y: m.top + plotH + 16, 'text-anchor': 'middle', fill: INK.text, 'font-size': 11 });
+      t.textContent = b.label;
+      svg.appendChild(t);
+    }
+  });
+  svg.appendChild(el('line', { x1: m.left, x2: m.left + plotW, y1: m.top + plotH, y2: m.top + plotH, stroke: INK.axis }));
+  for (const [txt, attrs] of [
+    [xLabel, { x: m.left + plotW / 2, y: height - 6, 'text-anchor': 'middle' }],
+    [yLabel, { x: 12, y: m.top + plotH / 2, 'text-anchor': 'middle', transform: `rotate(-90 12 ${m.top + plotH / 2})` }],
+  ]) {
+    if (!txt) continue;
+    const t = el('text', { ...attrs, fill: INK.muted, 'font-size': 11 });
+    t.textContent = txt;
+    svg.appendChild(t);
+  }
+  return svg;
+}

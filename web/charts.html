@@ -40,7 +40,16 @@
       <span class="charts-status" id="charts-status"></span>
     </div>
 
-    <main class="charts-grid" id="charts-grid"></main>
+    <!-- The land dashboard's first two pages (2026-11-01): the near market,
+         then the ticked comparables. -->
+    <nav class="page-tabs" id="page-tabs" role="tablist" aria-label="Page">
+      <button type="button" class="page-tab" role="tab" data-page="adf"
+              title="Every sale the search returned, ticked or not — with the isovalue and location-effect maps.">ADF Overview</button>
+      <button type="button" class="page-tab" role="tab" data-page="cms"
+              title="The sales ticked in the grid: the comparable set.">CMS Charts</button>
+    </nav>
+
+    <main class="charts-pages" id="charts-grid"></main>
 
     <p class="charts-foot">
       Each point is one SALE, not one parcel — a multi-parcel assembly is a
