@@ -85,8 +85,12 @@ test('exportCsv warns first, then writes only the ticked rows', () => {
   assert.ok(body.includes('for (const row of exportRows)'), 'the writer loops the filtered rows');
 });
 
-test('the charts read the ticked rows only, and the Charts button warns', () => {
-  assert.ok(fnBody('publishSalesToCharts').includes('.filter(rowIsSelected)'));
+test('the charts are told which rows are ticked, and the Charts button warns', () => {
+  // Every row goes over with its tick (2026-11-01): the ADF Overview page
+  // charts them all, the CMS page only the ticked ones.
+  assert.ok(fnBody('publishSalesToCharts').includes('_selected: rowIsSelected(r)'));
+  const charts = readFileSync(new URL('../src/charts/main.js', import.meta.url), 'utf8');
+  assert.ok(/const ticked = near\.filter\(\(r\) => r\.selected\)/.test(charts), 'the CMS page keeps the ticked sales only');
   const open = mainJs.slice(mainJs.indexOf("getElementById('charts-open')"));
   assert.ok(open.slice(0, 900).includes("confirmCulledExport(culled, currentRows.length, 'chart')"));
 });

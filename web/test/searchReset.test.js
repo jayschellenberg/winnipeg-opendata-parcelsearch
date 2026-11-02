@@ -118,6 +118,7 @@ const PERSISTENT = {
   currentSort: "the user's sort preference, not a property of the results",
   salesRollOrder: 'belongs to the sales import, which outlives a property search',
   lastChartRows: 'the charts tab mirrors the sales set; a property search does not publish to it',
+  lastChartSubject: 'set by every sales analysis from its own subject roll; a property search does not publish to the charts',
   riseLookup: 'session memo for the storey-band lookup; refetching it per search would be waste',
   _clusterIndex: 'session memo for the neighbourhood-cluster index, built once',
   allClusterNames: 'the 23 cluster names off the static geojson, built once; a property search neither changes nor consumes them',

@@ -4192,6 +4192,30 @@ function updateFarFlungCount(sales, thresholdKm, excluding) {
 const CHARTS_CHANNEL = 'wps-sales-charts';
 let chartsChannel = null;
 let lastChartRows = [];
+// The subject parcel's facts for the charts page (2026-11-01): its pin,
+// reference lines and readings. null when no subject roll is set.
+let lastChartSubject = null;
+
+/** The subject feature's chart facts, or null. */
+function chartSubjectOf(f) {
+  if (!f) return null;
+  const p = f.properties || {};
+  const c = featureCentroid(f);
+  const num = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+  const yb = Number(p.year_built);
+  return {
+    roll: p.roll_number || '',
+    address: p.full_address || '',
+    lng: c ? c[0] : null,
+    lat: c ? c[1] : null,
+    landSf: num(p.assessed_land_area),
+    bldgSf: num(p.total_living_area),
+    yearBuilt: Number.isFinite(yb) && yb >= 1700 && yb <= 2200 ? yb : null,
+    zoning: p.zoning || '',
+    useCode: p.property_use_code || '',
+    asmt: num(p.total_assessed_value),
+  };
+}
 
 function chartsBus() {
   if (chartsChannel || typeof BroadcastChannel === 'undefined') return chartsChannel;
@@ -4200,20 +4224,29 @@ function chartsBus() {
   // so it asks; answer with whatever we last rendered.
   chartsChannel.addEventListener('message', (e) => {
     if (e.data?.type === 'request') {
-      chartsChannel.postMessage({ type: 'sales', rows: lastChartRows });
+      chartsChannel.postMessage({ type: 'sales', rows: lastChartRows, subject: lastChartSubject });
     }
   });
   return chartsChannel;
 }
 
 function publishSalesToCharts(rows) {
-  // Culled rows are excluded from the plots, so the charts tab and the map
-  // always agree about which sales are in play.
-  lastChartRows = (rows || []).filter(rowIsSelected).map((r) => {
+  // EVERY row goes over, culled ones flagged (2026-11-01): the charts tab's
+  // ADF Overview page charts every sale the search returned, its CMS page
+  // only the ticked ones -- so the charts, the map and the export still agree
+  // about which sales are the comparables.
+  lastChartRows = (rows || []).map((r) => {
     const p = r.assess?.properties || {};
+    const c = featureCentroid(r.assess);
     return {
       assess: {
         properties: {
+          _selected: rowIsSelected(r),
+          // The parcel's centroid, for the ADF page's maps.
+          _lng: c ? c[0] : null,
+          _lat: c ? c[1] : null,
+          total_assessed_value: p.total_assessed_value,
+          _saleToAsmt: p._saleToAsmt,
           roll_number: p.roll_number,
           full_address: p.full_address,
           _saleInstrument: p._saleInstrument,
@@ -4250,7 +4283,7 @@ function publishSalesToCharts(rows) {
       },
     };
   });
-  try { chartsBus()?.postMessage({ type: 'sales', rows: lastChartRows }); } catch { /* no receiver */ }
+  try { chartsBus()?.postMessage({ type: 'sales', rows: lastChartRows, subject: lastChartSubject }); } catch { /* no receiver */ }
 }
 
 /** Whether any map legend is showing right now. */
@@ -6300,6 +6333,7 @@ async function runSalesAnalysis() {
     }
   }
   document.body.classList.toggle('subject-set', subjectCentroid != null);
+  lastChartSubject = chartSubjectOf(subjectFeature);
 
   // Paint the subject parcel as a blue highlight over the yellow
   // sale-results assess-context layer. Push the geometry-bearing
