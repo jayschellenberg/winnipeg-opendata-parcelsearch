@@ -57,8 +57,9 @@
  */
 
 import {
-  saleRecordsFromRows, fitLinear, niceScale, dotRadius, median, annualTrendPct,
+  saleRecordsFromRows, fitLinear, niceScale, dotRadius, median, logTrend, logTrendWords,
 } from '../lib/salesCharts.js';
+import { addPngButton } from '../lib/pngExport.js';
 import {
   drawChart, drawBars, fmtAxisMoney, fmtAxisDate, fmtMoney,
 } from '../lib/chartRender.js';
@@ -83,6 +84,9 @@ const $freeze = document.getElementById('freeze');
 const $pageTabs = document.getElementById('page-tabs');
 
 let records = [];
+// The subject parcel's facts, from the main window (2026-11-01): its pin,
+// its reference lines and the maps' readings at it. null when none is set.
+let subject = null;
 let received = false;
 let mode = 'land';   // 'land' | 'bldg'
 let page = 'adf';    // 'adf' | 'cms'
@@ -128,6 +132,7 @@ function card(title, note) {
   const h = document.createElement('h2');
   h.textContent = title;
   wrap.appendChild(h);
+  addPngButton(wrap);
   if (note) {
     const p = document.createElement('p');
     p.className = 'chart-note';
@@ -154,7 +159,7 @@ const noteEl = (text) => {
 };
 
 /** One scatter with an OLS fit, plus a one-line read-out under it. */
-function scatterCard({ title, rows, xOf, yOf, xFormat, yFormat, xLabel, yLabel, overTime, valueFmt = fmtMoney }) {
+function scatterCard({ title, rows, xOf, yOf, xFormat, yFormat, xLabel, yLabel, overTime, valueFmt = fmtMoney, subjectX = null, subjectLabel = 'Subject' }) {
   const points = rows
     .map((r) => ({ x: xOf(r), y: yOf(r), farFlung: r.farFlung, rec: r }))
     .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && p.y > 0);
@@ -170,26 +175,33 @@ function scatterCard({ title, rows, xOf, yOf, xFormat, yFormat, xLabel, yLabel, 
 
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
-  const xScale = niceScale(Math.min(...xs), Math.max(...xs), 6);
+  // The subject's line widens the axis to reach it, so it is never off-chart.
+  const sx = Number.isFinite(subjectX) && subjectX > 0 ? subjectX : null;
+  const xScale = niceScale(Math.min(...xs, ...(sx != null ? [sx] : [])), Math.max(...xs, ...(sx != null ? [sx] : [])), 6);
   const yScale = niceScale(Math.min(0, ...ys), Math.max(...ys), 5);
-  const fit = fitLinear(points);
+  // Over time the trend is a PERCENT per year fitted on log price, with its
+  // 95% range (2026-11-01): a straight dollar line over a skewed set, printed
+  // as "+7.2%/yr, R² 0.00", read as a measured trend when the sales could not
+  // tell it from zero. A trend the range cannot separate from zero is drawn
+  // dashed and called "no measurable trend".
+  const lt = overTime ? logTrend(points) : null;
+  const fit = overTime
+    ? (lt ? { curve: true, dashed: !lt.significant, predict: lt.predict } : null)
+    : fitLinear(points);
 
   const wrap = card(title);
   wrap.appendChild(drawChart({
     points, xScale, yScale, xFormat, yFormat, fit,
     xLabel, yLabel, radius: dotRadius(points.length),
+    refX: sx != null ? [{ x: sx, label: subjectLabel }] : [],
   }));
 
   const med = median(ys);
   const bits = [`${points.length} sale${points.length === 1 ? '' : 's'}`, `median ${valueFmt(med)}`];
-  if (fit) {
-    if (overTime) {
-      const pct = annualTrendPct(fit, med);
-      // A trendline off a handful of scattered points is arithmetic, not
-      // evidence, so the strength of the fit is stated beside the rate
-      // rather than left for the eye to guess.
-      if (pct != null) bits.push(`${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%/yr`);
-    }
+  if (overTime) bits.push(logTrendWords(lt));
+  else if (fit) {
+    // A trendline off a handful of scattered points is arithmetic, not
+    // evidence, so the strength of the fit is stated beside it.
     bits.push(`R² ${fit.r2.toFixed(2)}`);
   }
   wrap.appendChild(noteEl(bits.join(' · ')));
@@ -264,11 +276,13 @@ function landCharts(rows) {
     })],
     ['Over time & size', scatterCard({
       title: '$/Acre vs lot size', rows, xOf: (r) => r.acres, yOf: (r) => r.pricePerAcre,
+      subjectX: subject?.landSf ? subject.landSf / 43560 : null,
       xFormat: (v) => (v >= 1 ? v.toFixed(v >= 10 ? 0 : 1) : v.toFixed(2)), yFormat: fmtAxisMoney,
       xLabel: 'Lot size (acres, group total)', yLabel: '$ per acre',
     })],
     ['Per lot & distance', scatterCard({
       title: '$/Lot vs lot size', rows, xOf: (r) => r.landSf, yOf: (r) => r.pricePerLot,
+      subjectX: subject?.landSf,
       xFormat: (v) => `${Math.round(v).toLocaleString('en-CA')}`, yFormat: fmtAxisMoney,
       xLabel: 'Lot size (SF, group total)', yLabel: '$ per lot',
     })],
@@ -292,6 +306,7 @@ function bldgCharts(rows) {
     })],
     ['Over time & age', scatterCard({
       title: '$/Bldg SF by year built', rows, xOf: (r) => r.yearBuilt, yOf: (r) => r.pricePerBldgSf,
+      subjectX: subject?.yearBuilt,
       // A year is not a quantity: no thousands separator, or 1962 reads
       // as 1,962 on the axis.
       xFormat: (v) => String(Math.round(v)), yFormat: fmtAxisMoney,
@@ -299,6 +314,7 @@ function bldgCharts(rows) {
     })],
     ['Size', scatterCard({
       title: '$/Bldg SF by building size', rows, xOf: (r) => r.bldgSf, yOf: (r) => r.pricePerBldgSf,
+      subjectX: subject?.bldgSf,
       xFormat: (v) => Math.round(v).toLocaleString('en-CA'), yFormat: fmtAxisMoney,
       xLabel: 'Building size (SF, group total)', yLabel: '$ per building SF',
     })],
@@ -344,6 +360,8 @@ function pointsFc(rows, colorOf, small = false) {
 }
 const fitKeyOf = (rows) => rows.map((r) => r.instrument).join('|');
 
+const subjectPoint = () => (Number.isFinite(subject?.lat) && Number.isFinite(subject?.lng) ? { lng: subject.lng, lat: subject.lat } : null);
+
 function priceMap(key, rows, setName) {
   const r = RATE[mode];
   const recs = rows.filter(located).filter((x) => x[r.field] > 0);
@@ -351,6 +369,7 @@ function priceMap(key, rows, setName) {
   const q = [0.2, 0.4, 0.6, 0.8].map((p) => vals[Math.floor(p * (vals.length - 1))]);
   const band = (v) => q.filter((t) => v > t).length;
   const m = mapFor(key);
+  m.setSubject(subjectPoint());
   m.setHeader(`${setName} – ${r.title} heatmap`);
   m.setSurface(null);
   m.setData({ fc: pointsFc(recs, (x) => QUINTILE[band(x[r.field])]), fitKey: fitKeyOf(recs) });
@@ -367,6 +386,7 @@ function yearMap(key, rows, setName) {
   const years = [...new Set(recs.map((x) => new Date(x.date).getFullYear()))].sort();
   const colorOf = (y) => YEAR_RAMP[Math.round((years.indexOf(y) / Math.max(1, years.length - 1)) * (YEAR_RAMP.length - 1))];
   const m = mapFor(key);
+  m.setSubject(subjectPoint());
   m.setHeader(`${setName} – map by year of sale`);
   m.setSurface(null);
   m.setData({ fc: pointsFc(recs, (x) => colorOf(new Date(x.date).getFullYear())), fitKey: fitKeyOf(recs) });
@@ -416,6 +436,7 @@ function fitFor(kind, payload) {
 
 function surfaceMap(key, title, recs, result, waiting) {
   const m = mapFor(key);
+  m.setSubject(subjectPoint());
   m.setHeader(title);
   m.setData({ fc: pointsFc(recs, null, true), fitKey: fitKeyOf(recs) });
   m.setSurface(result?.ok ? { fills: result.fills, lines: result.lines } : null);
@@ -435,7 +456,7 @@ function isovalueMap(key, rows, setName) {
   const recs = rows.filter(located).filter((x) => x[r.field] > 0);
   const result = fitFor('iso', {
     sales: recs.map((x) => ({ lon: x.lng, lat: x.lat, value: x[r.field], dateMs: x.date })),
-    opts: { effMs: todayMs(), unit: r.unit, digits: r.digits },
+    opts: { effMs: todayMs(), unit: r.unit, digits: r.digits, subject: subjectPoint() },
   });
   return surfaceMap(key, `${setName} isovalue – ${r.title}`, recs, result,
     `Fitting the surface on ${plural(recs.length, 'sale')}… (needs at least ${ISO_MIN_N}).`);
@@ -470,7 +491,7 @@ function locationMaps(rows, setName) {
       date: x.date, zoning: String(x.zoning || '').trim(), useCode: String(x.useCode || '').split(/\s+-\s+/)[0].trim(),
     })),
     controls: LOCFX_CONTROLS[mode],
-    opts: { what: 'sale price', noun: 'sale' },
+    opts: { what: 'sale price', noun: 'sale', subject: subjectPoint() },
   });
   const waiting = `Fitting the location model on ${plural(recs.length, 'sale')}… (needs at least ${LOCFX_MIN_N}).`;
   const half = (part) => {
@@ -527,7 +548,56 @@ function pickSub(row, label) {
 }
 const subOf = (row) => subTabs[`${page}|${mode}|${row}`];
 
+/** Distance in km between two {lat, lng}. */
+function kmBetween(a, b) {
+  const R = 6371;
+  const rad = (d) => (d * Math.PI) / 180;
+  const h = Math.sin(rad(b.lat - a.lat) / 2) ** 2
+    + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/**
+ * The subject, in one panel above the maps (2026-11-01): what the roll says
+ * about it and where it sits among this page's sales. The maps' readings at
+ * the subject are in their own captions.
+ */
+function subjectPanel(rows) {
+  const sec = document.createElement('section');
+  sec.className = 'subject-panel';
+  if (!subject) {
+    sec.textContent = 'No subject set. Enter a subject roll in Sales Analysis to mark it on the maps and charts.';
+    return sec;
+  }
+  const n0 = (v) => Math.round(v).toLocaleString('en-CA');
+  const facts = [
+    subject.landSf ? `lot ${n0(subject.landSf)} sf` : null,
+    subject.bldgSf ? `building ${n0(subject.bldgSf)} sf` : null,
+    subject.yearBuilt ? `built ${subject.yearBuilt}` : null,
+    subject.zoning ? `zoned ${subject.zoning}` : null,
+    subject.asmt ? `assessed ${fmtMoney(subject.asmt)}` : null,
+  ].filter(Boolean);
+  const here = subjectPoint();
+  const near = here ? rows.filter(located).map((r) => kmBetween(here, r)) : [];
+  const within = (km) => near.filter((d) => d <= km).length;
+  const r = RATE[mode];
+  const vals = rows.map((x) => x[r.field]).filter((v) => v > 0).sort((a, b) => a - b);
+  const sizeOf = mode === 'bldg' ? subject.bldgSf : subject.landSf;
+  const sizes = rows.map((x) => x[r.sizeField]).filter((v) => v > 0).sort((a, b) => a - b);
+  const rank = sizeOf && sizes.length ? Math.round((100 * sizes.filter((v) => v <= sizeOf).length) / sizes.length) : null;
+  const b = document.createElement('strong');
+  b.textContent = `Subject: ${properCaseAddress(subject.address) || subject.roll}${subject.roll ? ` (roll ${subject.roll})` : ''}`;
+  sec.append(b, document.createTextNode(` — ${[
+    facts.join(', '),
+    here ? `${within(1)} of these sales within 1 km, ${within(3)} within 3 km` : 'no location on the roll',
+    rank != null ? `its ${mode === 'bldg' ? 'building' : 'lot'} is larger than ${rank}% of theirs` : null,
+    vals.length ? `${r.title} here runs ${fmtMoney(vals[Math.floor(0.25 * (vals.length - 1))])}–${fmtMoney(vals[Math.floor(0.75 * (vals.length - 1))])} (middle half)` : null,
+  ].filter(Boolean).join('; ')}.`));
+  return sec;
+}
+
 function renderPage(rows) {
+  $grid.appendChild(subjectPanel(rows));
   // Maps on top.
   const mt = mapTabs(rows);
   const mAct = mt.find(([l]) => l === subOf('map')) || mt[0];
@@ -642,6 +712,7 @@ channel.addEventListener('message', (e) => {
     return;
   }
   records = saleRecordsFromRows(msg.rows || [], { parseDate: (iso) => Date.parse(iso) });
+  subject = msg.subject || null;
   received = true;
   $status.textContent = '';
   render();

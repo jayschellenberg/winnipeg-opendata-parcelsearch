@@ -17,6 +17,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
 import { layers as protomapsLayers, namedFlavor } from '@protomaps/basemaps';
+import { addPngButton } from '../lib/pngExport.js';
 
 maplibregl.addProtocol('pmtiles', new Protocol().tile);
 
@@ -67,6 +68,34 @@ export function createChartMap() {
   const note = document.createElement('p');
   note.className = 'chart-note';
   figure.append(h, box, legend, note);
+  addPngButton(figure);
+  // For the PNG (lib/pngExport.js): redraw the map at the exhibit's own
+  // proportions (975 x 525 CSS px, the 1950 x 1050 image at 2x) on the same
+  // view, copy the canvas, and put the card back. Copying the on-screen map
+  // as it stands left a narrow card's map in the middle third of the image.
+  figure.exportCanvas = async () => {
+    const prev = { w: box.style.width, h: box.style.height, center: map.getCenter(), zoom: map.getZoom() };
+    const b = map.getBounds();
+    box.style.width = '975px';
+    box.style.height = '525px';
+    map.resize();
+    map.fitBounds(b, { duration: 0, padding: 0 });
+    await new Promise((resolve) => {
+      const t = setTimeout(resolve, 8000);
+      map.once('idle', () => { clearTimeout(t); resolve(); });
+      map.triggerRepaint();
+    });
+    const copy = document.createElement('canvas');
+    const src = map.getCanvas();
+    copy.width = src.width;
+    copy.height = src.height;
+    copy.getContext('2d').drawImage(src, 0, 0);
+    box.style.width = prev.w;
+    box.style.height = prev.h;
+    map.resize();
+    map.jumpTo({ center: prev.center, zoom: prev.zoom });
+    return copy;
+  };
 
   const map = new maplibregl.Map({
     container: box,
@@ -89,9 +118,10 @@ export function createChartMap() {
     map.addSource('surface', { type: 'geojson', data: EMPTY });
     map.addSource('surface-edges', { type: 'geojson', data: EMPTY });
     map.addSource('sales', { type: 'geojson', data: EMPTY });
+    map.addSource('subject', { type: 'geojson', data: EMPTY });
     map.addLayer({
       id: 'surface-fill', type: 'fill', source: 'surface',
-      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': SURFACE_OPACITY, 'fill-antialias': false },
+      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['case', ['==', ['get', 'weak'], true], 0.15, SURFACE_OPACITY], 'fill-antialias': false },
     });
     map.addLayer({
       id: 'surface-line', type: 'line', source: 'surface-edges',
@@ -107,6 +137,11 @@ export function createChartMap() {
         'circle-stroke-width': ['case', ['get', 'small'], 0, 0.6],
       },
     });
+    // The subject (2026-11-01): a red ring with a white core over the sales.
+    map.addLayer({
+      id: 'subject', type: 'circle', source: 'subject',
+      paint: { 'circle-radius': 7, 'circle-color': '#ffffff', 'circle-stroke-color': '#b3261e', 'circle-stroke-width': 3 },
+    });
     map.on('mousemove', 'sales', (e) => {
       const t = e.features?.[0]?.properties?.tip;
       if (!t) return;
@@ -116,7 +151,16 @@ export function createChartMap() {
     map.on('mouseleave', 'sales', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
     if (pending) { apply(pending); pending = null; }
     if (pendingSurface !== undefined) { applySurface(pendingSurface); pendingSurface = undefined; }
+    applySubject();
   });
+
+  let subjectPt = null;
+  function applySubject() {
+    map.getSource('subject')?.setData(subjectPt ? {
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [subjectPt.lng, subjectPt.lat] } }],
+    } : EMPTY);
+  }
 
   function applySurface(sf) {
     map.getSource('surface').setData(sf?.fills || EMPTY);
@@ -155,6 +199,8 @@ export function createChartMap() {
     },
     setData(d) { if (ready) apply(d); else pending = d; },
     setSurface(sf) { if (ready) applySurface(sf); else pendingSurface = sf || null; },
+    /** The subject point {lng, lat}, or null. */
+    setSubject(pt) { subjectPt = pt; if (ready) applySubject(); },
     resize() {
       map.resize();
       // A map first filled while its tab was hidden had no size to fit to.

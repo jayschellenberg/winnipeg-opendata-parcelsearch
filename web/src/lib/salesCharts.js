@@ -202,3 +202,57 @@ export function annualTrendPct(fit, medianValue) {
   const perYear = fit.slope * 365.25 * 24 * 60 * 60 * 1000;
   return (perYear / medianValue) * 100;
 }
+
+/** Two-sided 97.5% Student t quantile, for 95% ranges. */
+export function t975(df) {
+  const T = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+    2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086,
+    2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042];
+  if (!(df >= 1)) return NaN;
+  return df <= 30 ? T[Math.floor(df) - 1] : 1.96 + 2.4 / df;
+}
+
+/**
+ * The market trend as a PERCENT per year with its 95% range (2026-11-01),
+ * the Manitoba site's logTrend: the slope of log(price) on the sale date.
+ * A dollar slope over a skewed set misstates the cheap sales; and a rate
+ * printed without its range ("+7.2%/yr, R² 0.00") reads as measured when the
+ * sales cannot tell it from zero -- `significant` is false then.
+ *
+ * @param {Array<{x:number, y:number}>} points  x = sale date (ms), y > 0
+ * @returns {{pctPerYear, lo, hi, significant, n, predict}|null}
+ */
+export function logTrend(points) {
+  const pts = (points || []).filter((p) => Number.isFinite(p?.x) && Number(p?.y) > 0);
+  const n = pts.length;
+  if (n < 3) return null;
+  const xs = pts.map((p) => p.x / 86400000);
+  const ys = pts.map((p) => Math.log(p.y));
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxx = 0;
+  let sxy = 0;
+  for (let i = 0; i < n; i++) { sxx += (xs[i] - mx) ** 2; sxy += (xs[i] - mx) * (ys[i] - my); }
+  if (!(sxx > 1e-9 * n)) return null;
+  const slope = sxy / sxx;
+  const icpt = my - slope * mx;
+  let rss = 0;
+  for (let i = 0; i < n; i++) rss += (ys[i] - icpt - slope * xs[i]) ** 2;
+  const se = Math.sqrt(rss / (n - 2) / sxx);
+  const t = t975(n - 2);
+  const yr = (b) => Math.exp(b * 365) - 1;
+  const lo = yr(slope - t * se);
+  const hi = yr(slope + t * se);
+  return {
+    pctPerYear: yr(slope), lo, hi, significant: lo > 0 || hi < 0, n,
+    predict: (ms) => Math.exp(icpt + slope * (ms / 86400000)),
+  };
+}
+
+/** "+4.1%/yr (95%: +1.2% to +7.0%)", or the no-trend wording. */
+export function logTrendWords(lt) {
+  if (!lt) return 'too few dated sales for a trend';
+  const f = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)}%`;
+  const range = `(95%: ${f(lt.lo)} to ${f(lt.hi)})`;
+  return lt.significant ? `${f(lt.pctPerYear)}/yr ${range}` : `no measurable trend ${range}`;
+}

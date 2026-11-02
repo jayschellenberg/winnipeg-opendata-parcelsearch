@@ -174,11 +174,27 @@ export function valueBands(z, fmt, nBands = 12) {
   const s = sortNum(z);
   let lo = quantile(s, 0.02); let hi = quantile(s, 0.98);
   if (!(hi > lo)) { lo = s[0] - 1; hi = s[s.length - 1] + 1; }
-  const st = niceStep(lo, hi, nBands);
-  const b0 = Math.floor(lo / st) * st; const b1 = Math.ceil(hi / st) * st;
-  const breaks = [];
-  for (let v = b0; v <= b1 + st / 2; v += st) breaks.push(Number(v.toFixed(10)));
-  while (breaks.length < 3) breaks.push(breaks[breaks.length - 1] + st);
+  // Edges spaced evenly on a LOG scale (2026-11-01), rounded to two
+  // significant figures. The land template spaces them evenly in dollars;
+  // across a set running from $5,000 to $2,000,000 an acre that put most of
+  // the surface in the bottom band and spent every other colour on a few
+  // town lots. Equal ratios suit a quantity that varies by multiples.
+  // Falls back to the even dollar step when the range is too narrow for
+  // log spacing to differ (under 3x) or holds a value at or below zero.
+  let breaks = [];
+  if (lo > 0 && hi / lo >= 3) {
+    const r2 = (v) => { const p = 10 ** (Math.floor(Math.log10(v)) - 1); return Math.round(v / p) * p; };
+    const k = nBands - 1;
+    for (let i = 0; i <= k; i++) breaks.push(r2(lo * (hi / lo) ** (i / k)));
+    breaks = [...new Set(breaks.map((v) => Number(v.toPrecision(12))))].sort((a, b) => a - b);
+  }
+  if (breaks.length < 3) {
+    const st = niceStep(lo, hi, nBands);
+    const b0 = Math.floor(lo / st) * st; const b1 = Math.ceil(hi / st) * st;
+    breaks = [];
+    for (let v = b0; v <= b1 + st / 2; v += st) breaks.push(Number(v.toFixed(10)));
+    while (breaks.length < 3) breaks.push(breaks[breaks.length - 1] + st);
+  }
   const nb = breaks.length - 1;
   const labels = breaks.slice(0, -1).map((v, i) => `${fmt(v)}-${fmt(breaks[i + 1])}`);
   labels[0] = `under ${fmt(breaks[1])}`;
@@ -224,7 +240,7 @@ export function uncertaintyBands(unc) {
  * same band (so a 20,000-cell surface is a few thousand features), each with
  * its band colour, plus the band edges as lines along the cell edges.
  */
-export function bandFeatures(gr, z, bands) {
+export function bandFeatures(gr, z, bands, weak = null) {
   const { pr, cell, x0, y0, nx } = gr;
   const byRow = new Map();
   const band = new Map();
@@ -233,7 +249,7 @@ export function bandFeatures(gr, z, bands) {
     if (b < 0) return;
     band.set(c.j * nx + c.i, b);
     if (!byRow.has(c.j)) byRow.set(c.j, []);
-    byRow.get(c.j).push({ i: c.i, b });
+    byRow.get(c.j).push({ i: c.i, b, w: !!weak?.[n] });
   });
   const half = cell / 2;
   const corner = (x, y) => pr.inv(x, y).map((v) => Number(v.toFixed(6)));
@@ -247,13 +263,13 @@ export function bandFeatures(gr, z, bands) {
       const ya = y0 + j * cell - half; const yb = y0 + j * cell + half;
       fills.push({
         type: 'Feature',
-        properties: { color: bands.colors[run.band], band: run.band },
+        properties: { color: bands.colors[run.band], band: run.band, weak: run.w },
         geometry: { type: 'Polygon', coordinates: [[corner(xa, ya), corner(xb, ya), corner(xb, yb), corner(xa, yb), corner(xa, ya)]] },
       });
     };
     for (const c of cells) {
-      if (run && c.i === run.b + 1 && c.b === run.band) run.b = c.i;
-      else { flush(); run = { a: c.i, b: c.i, band: c.b }; }
+      if (run && c.i === run.b + 1 && c.b === run.band && c.w === run.w) run.b = c.i;
+      else { flush(); run = { a: c.i, b: c.i, band: c.b, w: c.w }; }
     }
     flush();
   }
@@ -269,7 +285,10 @@ export function bandFeatures(gr, z, bands) {
   return {
     fills: { type: 'FeatureCollection', features: fills },
     lines: { type: 'FeatureCollection', features: segs.length ? [{ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: segs } }] : [] },
-    legend: bands.labels.map((label, i) => ({ label, color: bands.colors[i] })).reverse(),
+    legend: [
+      ...bands.labels.map((label, i) => ({ label, color: bands.colors[i] })).reverse(),
+      ...(weak?.some(Boolean) ? [{ label: 'Faded: 95% band includes 0%', color: '#e6e6e6' }] : []),
+    ],
   };
 }
 
@@ -303,6 +322,31 @@ export function ownLogTrendPerDay(sales) {
 }
 
 /**
+ * Whether the log trend is MEASURABLE: its 95% range excludes zero
+ * (2026-11-01). The isovalue map applies only a measurable trend, the rule
+ * the charts' percent basis follows; a slope the sales cannot tell from zero
+ * would move every value by noise. {slope, lo, hi, significant} with lo / hi
+ * as yearly shares, or null with too few dated sales.
+ */
+export function ownLogTrendTest(sales) {
+  const pts = sales.filter((s) => Number.isFinite(s.dateMs) && s.value > 0);
+  const n = pts.length;
+  if (n < 3) return null;
+  const xs = pts.map((s) => s.dateMs / MS_PER_DAY); const ys = pts.map((s) => Math.log(s.value));
+  const mx = xs.reduce((a, b) => a + b, 0) / n; const my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0; let sxx = 0;
+  xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; });
+  if (!(sxx > 1e-9 * n)) return null;
+  const slope = sxy / sxx; const b0 = my - slope * mx;
+  let rss = 0; xs.forEach((x, i) => { rss += (ys[i] - b0 - slope * x) ** 2; });
+  const se = Math.sqrt(rss / (n - 2) / sxx);
+  const t = n - 2 > 30 ? 1.96 + 2.4 / (n - 2) : [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086, 2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042][n - 3];
+  const yr = (b) => Math.exp(b * 365) - 1;
+  const lo = yr(slope - t * se); const hi = yr(slope + t * se);
+  return { slope, lo, hi, significant: lo > 0 || hi < 0 };
+}
+
+/**
  * The isovalue map.
  * @param sales [{lon, lat, value, dateMs}] -- value is the unit price.
  * @param opts {effMs, subject: {lng, lat} | null, unit: '$/ac', digits (2 for $/SF)}
@@ -315,7 +359,8 @@ export function isovalueSurface(sales, { effMs = null, subject = null, unit = '$
   const fail = (reason) => ({ ok: false, n, reason, caption: reason, captionShort: reason });
   if (n < ISO_MIN_N) return fail(`${n} sale${n === 1 ? '' : 's'} with a location and a value; an isovalue surface needs at least ${ISO_MIN_N}.`);
   if (new Set(ok.map((s) => `${s.lon.toFixed(5)},${s.lat.toFixed(5)}`)).size < 4) return fail('Fewer than four distinct sale locations; no surface can be drawn.');
-  const rate = ownLogTrendPerDay(ok);
+  const test = ownLogTrendTest(ok);
+  const rate = test?.significant ? test.slope : 0;
   const adj = ok.map((s) => (Number.isFinite(effMs) && Number.isFinite(s.dateMs) && rate !== 0
     ? s.value * Math.exp(rate * ((effMs - s.dateMs) / MS_PER_DAY)) : s.value));
   const keepAdj = ok.map((s, i) => ({ ...s, adj: adj[i] }));
@@ -341,7 +386,9 @@ export function isovalueSurface(sales, { effMs = null, subject = null, unit = '$
   const effText = Number.isFinite(effMs) ? new Date(effMs).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : null;
   const how = rate !== 0 && effText
     ? `time-adjusted to ${effText} at ${pctYear >= 0 ? '+' : ''}${pctYear.toFixed(1)}% per year (the set's own trend, fitted on log value)`
-    : 'not time-adjusted (the set supports no market trend)';
+    : test
+      ? `not time-adjusted: the set shows no measurable trend (95%: ${(100 * test.lo).toFixed(1)}% to ${(100 * test.hi).toFixed(1)}% a year)`
+      : 'not time-adjusted (too few dated sales to measure a trend)';
   let caption = `Smoothed (thin-plate spline) ${unit} surface from ${keepAdj.length} ${noun}s; areas more than ${fmtM(gr.mask)} m from a ${noun} are left blank${gr.maskAuto ? ' (auto)' : ''}.`;
   if (subjectValue != null) caption += ` Subject reads about ${fmt(subjectValue)}${unitWord}${subjectInside ? '.' : ' (outside the mask: an extrapolation).'}`;
   caption += ` Values ${how}.`;
@@ -408,7 +455,12 @@ export function locationEffect(sales, controls, { subject = null, what = 'sale p
   const cellFits = gr.keep.map((c) => at(c.x, c.y));
   const eff = cellFits.map((t) => 100 * (Math.exp(t.fit) - 1));
   const unc = cellFits.map((t) => 100 * (Math.exp(1.96 * t.se) - 1));
-  const effLayers = bandFeatures(gr, eff, effectBands(eff));
+  // A cell whose pointwise 95% band includes zero is drawn faded
+  // (2026-11-01): the model cannot tell its location from the area average,
+  // and a "+40%" printed there would be read as measured.
+  const weak = cellFits.map((t) => Math.abs(t.fit) < 1.96 * t.se);
+  const effLayers = bandFeatures(gr, eff, effectBands(eff), weak);
+  const weakShare = weak.filter(Boolean).length / Math.max(1, weak.length);
   const uncLayers = bandFeatures(gr, unc, uncertaintyBands(unc));
   let sEff = null; let sUnc = null; let sIn = false;
   if (subject && Number.isFinite(subject.lng) && Number.isFinite(subject.lat)) {
@@ -416,7 +468,7 @@ export function locationEffect(sales, controls, { subject = null, what = 'sale p
     const t = at(x, y);
     sEff = 100 * (Math.exp(t.fit) - 1); sUnc = 100 * (Math.exp(1.96 * t.se) - 1); sIn = gr.inside(subject.lng, subject.lat);
   }
-  const caps = locationCaptions({ n, used, dropped, mask: gr.mask, maskAuto: gr.maskAuto, devExpl: model.devExpl, sEff, sUnc, sIn, what, noun });
+  const caps = locationCaptions({ n, used, dropped, mask: gr.mask, maskAuto: gr.maskAuto, devExpl: model.devExpl, sEff, sUnc, sIn, what, noun, weakShare });
   return {
     ok: true, n, used, dropped, mask: gr.mask, maskAuto: gr.maskAuto, devExpl: model.devExpl,
     subjectEffect: sEff, subjectUnc: sUnc, subjectInside: sIn,
@@ -426,13 +478,15 @@ export function locationEffect(sales, controls, { subject = null, what = 'sale p
 }
 
 /** helpers.R appraisal_location_effect_captions(). */
-export function locationCaptions({ n, used, dropped, mask, maskAuto, devExpl, sEff, sUnc, sIn, what = 'sale price', noun = 'sale' }) {
+export function locationCaptions({ n, used, dropped, mask, maskAuto, devExpl, sEff, sUnc, sIn, what = 'sale price', noun = 'sale', weakShare = 0 }) {
   const pw = what.replace(/^.* /, ''); const nn = `${noun}s`;
   const m = `${fmtM(mask)} m${maskAuto ? ' (auto)' : ''}`;
   const ctrl = used.length ? `Net of ${used.join(', ')}.` : 'No controls could be fitted.';
   const drp = dropped.length ? ` Left out: ${dropped.join('; ')}.` : '';
   const subj = sEff != null ? ` Subject: ${pct(sEff)} vs. the area average (${pm(sUnc)} at 95%)${sIn ? '' : ', outside the mask: an extrapolation'}.` : '';
-  const effect = `Location effect on ${what} from ${n} ${nn}: the share of ${pw} that comes from where a ${noun} is, vs. the ${nn}' average location. ${ctrl}${drp} Blank beyond ${m}.${subj} Model explains ${Math.round(100 * devExpl)}% of the variation in log ${pw}.`;
+  const weakTxt = weakShare > 0 ? ` Faded areas (${Math.round(100 * weakShare)}% of the map) cannot be told from the average at 95%.` : '';
+  const sWeak = sEff != null && sUnc != null && Math.abs(sEff) < sUnc ? ' The subject\'s own reading cannot be told from the average.' : '';
+  const effect = `Location effect on ${what} from ${n} ${nn}: the share of ${pw} that comes from where a ${noun} is, vs. the ${nn}' average location. ${ctrl}${drp} Blank beyond ${m}.${subj}${sWeak} Model explains ${Math.round(100 * devExpl)}% of the variation in log ${pw}.${weakTxt}`;
   const unc = `Width of the 95% band round the location effect (±%, pointwise and model-based). Dark = well supported by nearby ${nn}; yellow = few ${nn}, treat with caution. ${n} ${nn}; blank beyond ${m}.${subj}`;
   const ss = sEff != null ? `subject ${pct(sEff)} ${pm(sUnc)}` : null;
   return {

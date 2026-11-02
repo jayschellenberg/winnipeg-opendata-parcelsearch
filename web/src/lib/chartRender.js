@@ -81,6 +81,9 @@ export function fmtAxisDate(ms) {
 export function drawChart({
   points, xScale, yScale, xFormat, yFormat, fit,
   xLabel = '', yLabel = '', radius = 4, width = 620, height = 320,
+  // A vertical dashed line per entry, e.g. the subject's lot size
+  // (2026-11-01): [{x, label}]. One outside the axis is not drawn.
+  refX = [],
 }) {
   const m = { top: 14, right: 16, bottom: 42, left: 68 };
   const plotW = width - m.left - m.right;
@@ -178,7 +181,36 @@ export function drawChart({
   }
   svg.appendChild(dots);
 
-  if (fit) {
+  // A curved fit (the percent-per-year trend) as a sampled polyline, clipped
+  // to the plot box.
+  if (fit?.curve) {
+    const pts = [];
+    for (let i = 0; i <= 60; i++) {
+      const x = xScale.min + ((xScale.max - xScale.min) * i) / 60;
+      const y = fit.predict(x);
+      if (Number.isFinite(y)) pts.push(`${sx(x).toFixed(1)},${Math.max(m.top, Math.min(m.top + plotH, sy(y))).toFixed(1)}`);
+    }
+    if (pts.length > 1) {
+      svg.appendChild(el('polyline', {
+        points: pts.join(' '), fill: 'none', stroke: INK.trend, 'stroke-width': 2, 'stroke-opacity': 0.85,
+        'stroke-dasharray': fit.dashed ? '6 4' : null,
+      }));
+    }
+  }
+  for (const r of refX) {
+    if (!Number.isFinite(r?.x) || r.x < xScale.min || r.x > xScale.max) continue;
+    const x = sx(r.x);
+    svg.appendChild(el('line', {
+      x1: x, x2: x, y1: m.top, y2: m.top + plotH, stroke: '#b3261e', 'stroke-width': 1.5, 'stroke-dasharray': '5 4',
+    }));
+    if (r.label) {
+      const t = el('text', { x: x + 4, y: m.top + 11, fill: '#b3261e', 'font-size': 11, 'font-weight': 600 });
+      t.textContent = r.label;
+      svg.appendChild(t);
+    }
+  }
+
+  if (fit && !fit.curve) {
     const x1 = xScale.min;
     const x2 = xScale.max;
     const y1 = fit.predict(x1);

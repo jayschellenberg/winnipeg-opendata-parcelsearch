@@ -165,4 +165,30 @@ const med = (a) => { const s = [...a].sort((p, q) => p - q); return s[s.length >
   ok(fx2.dropped.some((d) => d.startsWith('cultivated %')), 'a control recorded for a fifth of the sales is left out and named');
 }
 
+{
+  // Log-spaced isovalue bands (2026-11-01): values spread over 400x put about
+  // as many cells in each band, where even dollar steps put most in the first.
+  const z = Array.from({ length: 1000 }, (_, i) => 5000 * 400 ** (i / 999));
+  const b = valueBands(z, (v) => `$${v}`);
+  const counts = new Array(b.breaks.length - 1).fill(0);
+  for (const v of z) { let k = b.breaks.findIndex((e, i) => i > 0 && v < e) - 1; if (k < 0) k = counts.length - 1; counts[Math.max(0, k)] += 1; }
+  ok(Math.max(...counts) < 0.25 * z.length, `no band holds a quarter of a log-spread surface (largest ${Math.max(...counts)})`);
+  ok(b.breaks.every((v) => Number(v.toPrecision(2)) === v), 'band edges are rounded to two significant figures');
+}
+{
+  // Faded cells: a location effect the sales cannot tell from zero is marked weak.
+  let seed = 23;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const flat = Array.from({ length: 220 }, () => ({ lon: -97.5 + rnd(), lat: 49.8 + rnd() * 0.4, price: Math.exp(12 + 0.3 * (rnd() - 0.5)) }));
+  const fx = locationEffect(flat, []);
+  const feats = fx.effect.fills.features;
+  const weakShare = feats.filter((f) => f.properties.weak).length / feats.length;
+  ok(weakShare > 0.5, `a market with no location effect is mostly faded (${(100 * weakShare).toFixed(0)}%)`);
+  ok(fx.effect.legend.some((l) => l.label.startsWith('Faded')), 'the legend explains the fading');
+  const strong = flat.map((r) => ({ ...r, price: r.price * Math.exp(1.5 * (r.lon + 97.5)) }));
+  const fx2 = locationEffect(strong, []);
+  const w2 = fx2.effect.fills.features.filter((f) => f.properties.weak).length / fx2.effect.fills.features.length;
+  ok(w2 < weakShare, `a strong east-west effect fades less (${(100 * w2).toFixed(0)}%)`);
+}
+
 console.log(`spatialSmooth: ${passed} assertions passed`);
