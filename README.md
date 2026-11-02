@@ -367,9 +367,40 @@ retired and nothing can answer at all, the column reads `not verified` rather
 than going blank — 73 sales, still counted as Land, but checked by nothing.
 
 The **Charts** button opens [charts.html](web/charts.html) in a second
-tab: `$/Lot SF` over time, `$/Acre` against lot size (the
-size-adjustment curve), and `$/Lot` against lot size. It holds no data of its own — the app broadcasts the filtered set
-over a `BroadcastChannel` and the page redraws, so the charts track the
+tab, laid out like the R land dashboard: two pages, map tabs on top and
+chart tabs below.
+
+- **ADF Overview** — every sale the search returned, ticked or not: the
+  near market. Map tabs: *Price & year*, *Isovalue* (price per unit smoothed
+  over location; 15 sales minimum, blank beyond the sales) and *Location
+  effect* (the effect of location on price net of size, sale date, zoning and
+  use, beside its 95% band; 150 sales minimum; cells whose band includes zero
+  are drawn faded).
+- **CMS Charts** — the sales ticked in the grid: the comparable set.
+  Map tab: *Price & year*.
+
+Both pages carry the land charts (`$/Lot SF` over time, `$/Acre` and `$/Lot`
+against lot size, `$/Lot SF` by distance from the subject) or the building
+charts, plus *Sales by year*, *Distributions* and *Sale/Assessment* (against
+the current roll, not the roll at the sale). Over-time charts state a percent
+per year with its 95% range, fitted on log price; a trend the sales cannot
+tell from zero is called "no measurable trend" and drawn dashed, and the
+isovalue map adjusts for time only when the trend is measurable.
+
+When a subject roll is set, the page shows a **subject panel** (its lot,
+building, year built and how it sits against the sales), a pin on every map,
+reference lines at its size and year on the scatters, and its reading on the
+isovalue and location-effect maps. Every chart and map has a **PNG** button
+that saves a 1950 × 1050 exhibit (maps are redrawn at that shape).
+
+The fits run in a worker (`src/workers/locationMaps.worker.js`) on
+`lib/spatialSmooth.js`, a penalised thin-plate spline held to an mgcv fit by
+`test/spatialSmooth.test.js`; `lib/locationMaps.js` is the same file the
+Manitoba app uses.
+
+The page holds no data of its own — the app broadcasts the filtered set
+(every row, with whether it is ticked, plus the subject) over a
+`BroadcastChannel` and the page redraws, so the charts track the
 sidebar filters live (hence Freeze). It defaults to land sales — which now
 means the grid's evidence-corrected **Category**, so the two can never disagree
 about what land is — and to EXCLUDING already-built sales, vacant-coded lots

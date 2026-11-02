@@ -141,16 +141,19 @@ repo-root/
     │                      parcels.pmtiles is NOT in git — fetched from the
     │                      `parcels-pmtiles` GitHub release on build.
     ├── scripts/           build/refresh scripts (fetch-pmtiles, build-transit-geojson, …)
-    ├── test/              plain-Node unit tests, 27 files, all run by `npm test`
+    ├── test/              plain-Node unit tests, 69 files, all run by `npm test`
     │                      (no framework: each is a script that exits non-zero)
     └── src/
         ├── main.js        entry: search flows, table, sales tab, historical overlay
         ├── map.js         MapLibre setup + all layer config
         ├── soda.js        SODA queries, paging, IndexedDB caching, joins
-        ├── charts/        the second-tab land charts (hand-rolled SVG; the CSP
-        │                  is script-src 'self', so no CDN chart library loads)
+        ├── charts/        the second-tab Sales Charts page: main.js (ADF / CMS
+        │                  pages, hand-rolled SVG — the CSP is script-src
+        │                  'self', so no CDN chart library loads) and
+        │                  chartMap.js (its MapLibre maps)
+        ├── workers/       locationMaps.worker.js (isovalue / location fits)
         ├── style.css
-        └── lib/           33 pure modules (+ tailwind.css). DOM coupling is
+        └── lib/           72 pure modules (+ tailwind.css). DOM coupling is
                            confined to cells.js, and only inside function
                            bodies, so the rest import straight into plain node
                            — which is how the sales pipeline is replayed
@@ -164,6 +167,8 @@ repo-root/
              ui          chipInput, infoIcon, tabs, urlState, streetSuggest,
                          datePresets, dataStatus, staleness, sizeChange,
                          addressFormat, links, delimitedRows, chartRender
+             charts      spatialSmooth, locationMaps, pngExport
+                         (salesCharts carries logTrend)
 ```
 
 `vercel.json`:
