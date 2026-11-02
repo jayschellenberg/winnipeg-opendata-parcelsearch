@@ -1,13 +1,13 @@
 {
-  "built": "2026-10-23",
+  "built": "2026-11-02",
   "file": "wpg-survey-parcels.pmtiles",
-  "bytes": 103710282,
-  "sha256": "5a1deccbfe6782dded2c36da77934d2434fd9d38c7767293f53aa46ad6e0e207",
+  "bytes": 103703835,
+  "sha256": "323daca81d33f092ae9e3aa73c859531c62d0d7e47564f81776cfcb02ce1abd9",
   "source_resource": "sjjm-nj47",
   "source_live_count": 263054,
   "features": 263054,
-  "features_with_roll": 257195,
+  "features_with_roll": 257147,
   "assessment_resource": "d4mq-wa44",
-  "assessment_live_count": 245470,
+  "assessment_live_count": 245476,
   "tippecanoe_flags": ["--maximum-zoom=18", "--minimum-zoom=13", "--simplification=2", "--full-detail=14", "--no-feature-limit", "--drop-densest-as-needed", "--maximum-tile-bytes=2000000", "--force", "--quiet"]
 }
