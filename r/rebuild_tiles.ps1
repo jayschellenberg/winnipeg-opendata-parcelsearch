@@ -12,16 +12,19 @@
 # SEMI-ANNUAL cadence (r/scheduled_download.ps1, Jun 1 + Dec 1).
 #
 # Registered as WpgParcelTilesMonthly by r/setup_schedule.ps1
-# (every month, the 2nd at 03:00).
+# (every month, the 2nd at 03:00). The task does not run this file from the
+# shared checkout: r/run_scheduled_job.ps1 runs it from the job's own clone
+# D:\wpg-jobs\ParcelSearch (on main, brought up to origin/main first), so a
+# session that leaves the shared checkout on a feature branch cannot block
+# it. Everything below works on whichever checkout this file sits in ($repo).
 #
 # *** This job AUTO-DEPLOYS to production. *** To disable entirely:
 #   schtasks /Delete /TN WpgParcelTilesMonthly /F
 #
-# Run manually any time. Use the FULL path: the script is working-directory
-# independent, but `-File r\rebuild_tiles.ps1` only resolves if the shell
-# happens to be sitting in the repo root, and a scheduled task starts in
-# C:\WINDOWS\system32.
-#   powershell -ExecutionPolicy Bypass -File D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch\r\rebuild_tiles.ps1
+# Run manually any time, the same way the task does. Use the FULL path: a
+# scheduled task starts in C:\WINDOWS\system32, where a relative path does
+# not resolve.
+#   powershell -ExecutionPolicy Bypass -File D:\wpg-jobs\ParcelSearch\r\run_scheduled_job.ps1 -Job rebuild_tiles
 #
 # ---------------------------------------------------------------------------
 # WHY THE PUBLISH STEP LOOKS LIKE THIS (the 2026-08-05 incident)
@@ -74,7 +77,9 @@ param(
 
 $ErrorActionPreference = 'Continue'
 
-$repo        = 'D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch'
+# The checkout this file sits in: the job clone when the task runs it, the
+# shared checkout when someone runs it by hand on main.
+$repo        = Split-Path -Parent $PSScriptRoot
 $archiveRoot = 'D:\Dropbox\Appraisal\Web\WpgSnapshots'
 $ghRepo      = 'jayschellenberg/winnipeg-opendata-parcelsearch'
 $releaseTag  = 'parcels-pmtiles'
@@ -105,8 +110,10 @@ function Log($m) { ('{0}  {1}' -f (Get-Date -Format 's'), $m) | Tee-Object -File
 # The re-run command, built from $repo so it can never drift from where this
 # script actually lives. Emails quote this: a relative path pasted out of an
 # alert at 03:00 fails with "the argument does not exist", which is a
-# needless obstacle in front of someone already dealing with an outage.
-$selfCmd = "powershell -ExecutionPolicy Bypass -File $(Join-Path $repo 'r\rebuild_tiles.ps1')"
+# needless obstacle in front of someone already dealing with an outage. It
+# goes through the launcher, which brings the job clone up to origin/main
+# first, exactly as the task does.
+$selfCmd = "powershell -ExecutionPolicy Bypass -File $(Join-Path $repo 'r\run_scheduled_job.ps1') -Job rebuild_tiles"
 
 . (Join-Path $PSScriptRoot 'lib_mail.ps1')
 
@@ -333,12 +340,14 @@ Log "  rclone: $rcloneExe"
 # commits the new checksum and pushes main; on any other branch the commit
 # would land on that branch while `push origin main` pushed a main without
 # it. The asset would then be live with no matching committed sha - the one
-# state fetch-pmtiles.mjs rejects.
+# state fetch-pmtiles.mjs rejects. The scheduled task runs from the job clone,
+# which is always on main; this trips only on a hand run from a checkout on a
+# feature branch.
 $branch = & git -C $repo rev-parse --abbrev-ref HEAD
 if ($LASTEXITCODE -ne 0) { Fail "git rev-parse failed in $repo - not a working repo?" }
 $branch = "$branch".Trim()
 if ($branch -ne 'main') {
-  Fail "repo is on branch '$branch', not main. Refusing to publish: the checksum commit would not reach the branch this job pushes."
+  Fail "repo is on branch '$branch', not main. Refusing to publish: the checksum commit would not reach the branch this job pushes. Re-run it the way the task does: $selfCmd"
 }
 Log "  branch: $branch"
 
@@ -665,7 +674,7 @@ if (-not $changed) {
   }
   Log "  no working-tree change, but origin/main pins '$originNow' and this archive is '$hash' - the commit still needs to reach origin."
   $script:pushFailed = $true
-  Fail 'the published archive is not pinned on origin/main and there is nothing left to commit - push the existing commit (git -C <repo> push origin main).'
+  Fail "the published archive is not pinned on origin/main and there is nothing left to commit - push the existing commit (git -C $repo push origin main)."
 }
 
 & git -C $repo add -- $metaRel $shaRel
@@ -783,7 +792,7 @@ if ($LASTEXITCODE -ne 0) {
         if ($LASTEXITCODE -eq 0) { $legacyPushed = $true; break }
       }
       if ($legacyPushed) { Log '  legacy-map layers changed - committed and pushed (Vercel auto-deploys).' }
-      else { Log '  legacy-map commit made but PUSH FAILED after 3 attempts - push manually (git push origin main) (non-fatal)' }
+      else { Log "  legacy-map commit made but PUSH FAILED after 3 attempts - push manually (git -C $repo push origin main) (non-fatal)" }
     }
   }
   Get-ChildItem $archiveRoot -File -Filter 'FAILED-legacy-map-*.txt' -ErrorAction SilentlyContinue |

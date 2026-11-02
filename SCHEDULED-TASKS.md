@@ -15,6 +15,7 @@ Master index: `D:\Dropbox\ClaudeCode\SCHEDULED-TASKS.md`. Broader setup is in `R
 - **gh CLI** authenticated with push and release rights on `jayschellenberg/winnipeg-opendata-parcelsearch` (release tag `parcels-pmtiles`).
 - **rclone** on PATH with remote `r2` configured (Cloudflare R2 bucket `wpg-ortho`).
 - **Folders:** staging `D:\wpg-tile-staging` (same volume, outside Dropbox) and archive `D:\Dropbox\Appraisal\Web\WpgSnapshots`.
+- **Job clone:** `D:\wpg-jobs\ParcelSearch`, a second clone that only WpgParcelTilesMonthly uses. `r\setup_schedule.ps1` creates it (via `r\run_scheduled_job.ps1 -SetupOnly`); don't do feature work in it.
 - **Email credential:** a Windows Credential Manager generic credential named `WpgScheduleMail` (username = Gmail address, password = Gmail app password) plus the `CredentialManager` PowerShell module installed under 5.1 (`Install-Module CredentialManager -Scope CurrentUser -Force`). Setup steps are in the header of `r\lib_mail.ps1`. This is a different alert path from the MBOpenData projects.
 - **ntfy topics:** `wpgps-parcel-tiles-jks`, `wpgps-asset-refresh-jks`, `wpgps-semiannual-download-jks`.
 - Optional env: `SODA_APP_TOKEN` (Socrata rate limits), `WPG_KEEP_MIN_MONTHS`, `WPG_ONLY`.
@@ -25,7 +26,12 @@ Master index: `D:\Dropbox\ClaudeCode\SCHEDULED-TASKS.md`. Broader setup is in `R
 |---|---|---|
 | WpgOpenDataSemiAnnualDownload | 1 Jun and 1 Dec 03:00 | `r\scheduled_download.ps1` |
 | WpgAssetRefreshQuarterly | 1 Jan, Apr, Jul, Oct 03:30 | `r\refresh_assets.ps1` |
-| WpgParcelTilesMonthly | 2nd of every month 03:00 | `r\rebuild_tiles.ps1` |
+| WpgParcelTilesMonthly | 2nd of every month 03:00 | `D:\wpg-jobs\ParcelSearch\r\run_scheduled_job.ps1 -Job rebuild_tiles` |
+
+WpgParcelTilesMonthly runs from its own clone, not this folder: since 2026-11-02, when a
+session left this checkout on a feature branch overnight and the 03:00 run refused. The
+launcher brings the clone up to `origin/main` and then runs `r\rebuild_tiles.ps1` there, so
+the branch this folder is on no longer matters to it.
 
 All three: `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File <script>`,
 no working directory, LogonType S4U, RunLevel Limited, 6 h limit, StartWhenAvailable,

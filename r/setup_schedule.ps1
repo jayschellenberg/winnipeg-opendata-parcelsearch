@@ -26,7 +26,11 @@
 #        intermediates. The historical per-snapshot archives (step 7) still
 #        rebuild on even months only. Was WpgParcelTilesBiMonthly (even
 #        months) until 2026-09-24; this registrar deletes that task.
-#        -> r/rebuild_tiles.ps1
+#        -> r/run_scheduled_job.ps1 -Job rebuild_tiles, from the job clone
+#           D:\wpg-jobs\ParcelSearch (see that launcher's header). Since
+#           2026-11-02: a session had left the shared checkout on a feature
+#           branch and the 03:00 run refused. This registrar creates the
+#           clone first if it is missing.
 #
 #        Why the 2nd and not the 1st: Jun/Dec overlap with the snapshot
 #        download, and running a day later keeps two heavy paged fetches of
@@ -78,8 +82,8 @@ $rdir = 'D:\Dropbox\ClaudeCode\WpgOpenData\ParcelSearch\r'
 # Collected so the verdict at the end can speak about all three at once.
 $script:principalReport = @()
 
-function Register-WpgTask($name, $script, $months, $time, $day = 1) {
-  $run = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`""
+function Register-WpgTask($name, $script, $months, $time, $day = 1, $scriptArgs = '') {
+  $run = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`" $scriptArgs".TrimEnd()
 
   # What the task's principal was BEFORE this run, so the verdict can tell
   # "never was S4U" apart from "this unelevated re-run just downgraded it".
@@ -132,7 +136,14 @@ if ($LASTEXITCODE -eq 0) {
   schtasks /Delete /TN 'WpgParcelTilesBiMonthly' /F | Out-Null
   Write-Output '  removed the old WpgParcelTilesBiMonthly task (replaced by WpgParcelTilesMonthly)'
 }
-Register-WpgTask 'WpgParcelTilesMonthly'         (Join-Path $rdir 'rebuild_tiles.ps1')       'JAN,FEB,MAR,APR,MAY,JUN,JUL,AUG,SEP,OCT,NOV,DEC'  '03:00' 2
+# The tiles job runs from its own clone, never this shared checkout: the
+# task points at the CLONE's copy of the launcher, so nothing on a feature
+# branch here can change what runs. Create the clone now if it is missing;
+# without it the task would have nothing to start.
+$jobTree = 'D:\wpg-jobs\ParcelSearch'
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $rdir 'run_scheduled_job.ps1') -SetupOnly -JobTree $jobTree
+if ($LASTEXITCODE -ne 0) { Write-Output "  WARNING: job clone setup failed (exit $LASTEXITCODE) - WpgParcelTilesMonthly will fail until it exists" }
+Register-WpgTask 'WpgParcelTilesMonthly'         (Join-Path $jobTree 'r\run_scheduled_job.ps1') 'JAN,FEB,MAR,APR,MAY,JUN,JUL,AUG,SEP,OCT,NOV,DEC'  '03:00' 2 '-Job rebuild_tiles'
 
 Write-Output ''
 Write-Output "Registered:"
