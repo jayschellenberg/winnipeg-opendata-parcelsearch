@@ -25,7 +25,7 @@ Master index: `D:\Dropbox\ClaudeCode\SCHEDULED-TASKS.md`. Broader setup is in `R
 |---|---|---|
 | WpgOpenDataSemiAnnualDownload | 1 Jun and 1 Dec 03:00 | `r\scheduled_download.ps1` |
 | WpgAssetRefreshQuarterly | 1 Jan, Apr, Jul, Oct 03:30 | `r\refresh_assets.ps1` |
-| WpgParcelTilesBiMonthly | 2 Feb, Apr, Jun, Aug, Oct, Dec 03:00 | `r\rebuild_tiles.ps1` |
+| WpgParcelTilesMonthly | 2nd of every month 03:00 | `r\rebuild_tiles.ps1` |
 
 All three: `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File <script>`,
 no working directory, LogonType S4U, RunLevel Limited, 6 h limit, StartWhenAvailable,
@@ -56,11 +56,11 @@ history. Ends by emailing a "shard rebuild pending" reminder for the manual
 2026-08-24 re-registration; next is 2026-12-01.
 
 **WpgAssetRefreshQuarterly.** Heartbeats (all three tasks still S4U, newest snapshot
-covers the last capture, tiles under 80 days old, release asset SHA matches `origin/main`,
+covers the last capture, tiles under 45 days old, release asset SHA matches `origin/main`,
 ortho years vs R2), then regenerates transit and neighbourhood GeoJSON and pushes if
 changed. Delete the `git push` line for commit-only.
 
-**WpgParcelTilesBiMonthly.** Fetches parcels live, tiles via WSL tippecanoe, publishes to
+**WpgParcelTilesMonthly.** Renamed from WpgParcelTilesBiMonthly on 2026-09-24, when it moved from even months to every month; `r\setup_schedule.ps1` deletes the old task if it finds it. Rebuilds the citywide parcel and All Survey Parcels archives every month; the historical per-snapshot archives (step 7) still rebuild on even months only. Fetches parcels live, tiles via WSL tippecanoe, publishes to
 the GitHub release with a staged swap, copies to R2 and verifies size, pushes the meta and
 sha files. Then (Step 9, non-fatal) reruns `npm run refresh:legacy-map` and commits
 `district-planners.geojson` / `frequent-transit-walkshed.geojson` if they changed, so
