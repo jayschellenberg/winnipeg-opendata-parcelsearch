@@ -150,6 +150,11 @@ $script:pushFailed       = $false
 
 $metaWasClean = $false
 $shaWasClean  = $false
+# False until preflight records the two flags above. A failure before that
+# point has touched neither file, and must not report them as "already
+# modified" - that sent the 2026-11-02 branch-check failure hunting for edits
+# that did not exist.
+$cleanStateMeasured = $false
 
 # Convenience wrapper: the library's Read-Release is parameterised by tag/repo
 # so the test harness can point it elsewhere; this job always means one release.
@@ -219,6 +224,10 @@ function Measure-PublishedState {
 }
 
 function Restore-TrackedFiles {
+  if (-not $cleanStateMeasured) {
+    Log 'restore: nothing to restore - the run failed before it touched meta/sha.'
+    return
+  }
   $restore = @()
   if ($metaWasClean) { $restore += $metaRel }
   if ($shaWasClean)  { $restore += $shaRel }
@@ -335,6 +344,7 @@ Log "  branch: $branch"
 
 $metaWasClean = -not (& git -C $repo status --porcelain -- $metaRel)
 $shaWasClean  = -not (& git -C $repo status --porcelain -- $shaRel)
+$cleanStateMeasured = $true
 Log "  pre-run clean: meta=$metaWasClean sha=$shaWasClean"
 
 # Read the release now: it discovers a deleted tag / draft / immutable release
