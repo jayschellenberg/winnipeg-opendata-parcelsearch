@@ -50,7 +50,12 @@ library(digest)
 source(file.path("r", "lib_dwelling_units.R"))
 source(file.path("r", "lib_tippecanoe.R"))
 
-data_dir          <- "D:/Dropbox/ClaudeCode/WpgOpenData/ParcelSearch"
+# The checkout we are run from - the source() calls above already require the
+# working directory to be the repo root. Not a fixed path: the monthly job
+# runs from its own clone (D:/wpg-jobs/ParcelSearch, see
+# r/run_scheduled_job.ps1), and a fixed path would write that run's archive
+# and sidecar into the shared checkout instead.
+data_dir          <- normalizePath(getwd(), winslash = "/")
 public_dir        <- file.path(data_dir, "web", "public")
 output_geojson    <- file.path(public_dir, "parcels.geojson")
 output_centroids  <- file.path(public_dir, "parcels-centroids.geojson")
