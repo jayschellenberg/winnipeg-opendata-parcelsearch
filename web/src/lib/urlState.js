@@ -136,6 +136,9 @@ export const SCHEMA = {
   mfToggle:             { param: 'mf', validate: cleanBool, format: formatBool },
   // Multi-Family threshold (floor 3, lib/multiFamily.js); emitted only off the default.
   mfMinDu:              { param: 'mn', validate: cleanInt(3, 9999), format: (v) => String(v) },
+  // Public Notices & Rezonings point layer + its years-back window (default 5, not emitted).
+  publicNoticesToggle:  { param: 'nz', validate: cleanBool, format: formatBool },
+  publicNoticesYears:   { param: 'py', validate: oneOf(['1', '2', '3', '10', 'all']), format: (v) => v },
 
   // --- Neighbourhoods mode (1) ---
   neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },

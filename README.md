@@ -86,6 +86,28 @@ To # fields share the row (their 80px desktop slots clipped "From #" at the
 16px phone font), and the results header and its pinned first column stack
 beneath the tab strip instead of painting over it as the table scrolls under.
 
+## Public Notices & Rezonings layer
+
+Planning → **Public Notices & Rezonings** draws one point per rezoning item,
+coloured by type, with a **Within** dropdown (1 / 2 / 3 / 5 / 10 years or
+all; default 5, counted back from today). Click a point for the by-law or
+notice and its DMIS link; clusters below zoom 13 zoom in on click.
+
+- **Adopted by-laws** come from `web/public/zoning-amendments.json` (the DMIS
+  scrape, `r/build_zoning_amendments.R`; 1997 on). A by-law becomes one
+  point at the mean of its parcels' Assessment Parcels centroids, fetched by
+  roll and cached 30 days per index build. Text and area amendments, and
+  by-laws not placed on a parcel, are not drawn. Corner-placed ones say so.
+- **Notices** are live Public Notices (`gnxp-9hpt`) of type REZONING,
+  SUBDIVISION AND REZONING and ZONING AGREEMENT AMENDMENT (2025 on), at the
+  City's own location, cached a day. Variances, conditional uses and appeals
+  are left out on purpose.
+
+The cut uses the by-law's passed date (else effective date, else the year
+in its number) and the notice's filing date. Separate from the Zoning
+Changes pill, which highlights parcels and fills the Rezoned column. URL
+params: `nz=1` (on), `py=<years>`. Code: `web/src/lib/publicNoticesLayer.js`.
+
 ## Address aliases
 
 A parcel carries many civic addresses; the assessment roll records one. Roll

@@ -129,6 +129,8 @@ const PERSISTENT = {
   chartsChannel: 'the BroadcastChannel to the charts tab, opened once',
   zoningAmendmentsIndex: 'session memo for the DMIS + Public Notices amendment index; keyed by roll, not by search',
   zoningAmendmentsLoad: 'the in-flight load of that index, shared by concurrent pill clicks',
+  publicNoticesAll: 'session memo of every Public Notices & Rezonings point (uncut by years); citywide, not tied to a search',
+  publicNoticesLoad: 'the in-flight load of those points, shared by concurrent toggle clicks',
   addressFromBefore: "the From # field's previous value, so To can follow it; input bookkeeping, not a result",
   searchGeneration: 'the monotonic counter a search bumps to supersede the one before it; resetting it would let a stale search land (searchSuperseded)',
 };
