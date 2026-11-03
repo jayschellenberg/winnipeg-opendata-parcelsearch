@@ -6,7 +6,7 @@
  * Two sources, merged by roll number:
  *   - web/public/zoning-amendments.json, built offline by
  *     r/build_zoning_amendments.R from the City's DMIS list of amending
- *     Land Development by-laws (adopted rezonings, 2001 on), each placed on
+ *     Land Development by-laws (adopted rezonings, 1997 on), each placed on
  *     its parcels by address, by street corner, or by inheriting the by-law
  *     it corrects (`confidence` says which).
  *   - Public Notices (gnxp-9hpt), live: rezoning applications from 2025 on,

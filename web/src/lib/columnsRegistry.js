@@ -633,7 +633,7 @@ export const COLUMNS = [
   // `_zoningChanges` (the cell text) and `_zoningChangesYear` (the newest
   // year, for sorting) on each row from the index; blank = none known.
   { key: 'zoningChanges', header: 'Rezoned',     mode: 'always', sortable: true,
-    theadTitle: 'Zoning by-law amendments affecting this parcel: adopted rezoning by-laws (from the City\'s DMIS, 2001 on, placed by address or street corner) and pending rezoning notices (Public Notices, 2025 on). Newest first. Turn on the Zoning Changes pill under Planning to highlight these parcels on the map or keep only them in the grid. Blank = none known; coverage is partial (see Data Status).',
+    theadTitle: 'Zoning by-law amendments affecting this parcel: adopted rezoning by-laws (from the City\'s DMIS, 1997 on, placed by address or street corner) and pending rezoning notices (Public Notices, 2025 on). Newest first. Turn on the Zoning Changes pill under Planning to highlight these parcels on the map or keep only them in the grid. Blank = none known; coverage is partial (see Data Status).',
     render: (a) => td(a._zoningChanges || null),
     csv: { header: 'Zoning amendments', extract: (a) => a._zoningChanges } },
 
