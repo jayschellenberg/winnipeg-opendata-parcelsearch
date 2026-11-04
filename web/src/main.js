@@ -108,6 +108,7 @@ import {
 import {
   NOTICE_CATEGORIES, DEFAULT_NOTICE_YEARS, cleanNoticeYears, noticeFeatures, bylawFeatures, bylawRolls,
   filterByYears, categoryCounts, DEFAULT_NOTICE_SOURCE, cleanNoticeSource, filterBySource,
+  filterByParcels, parcelRangeLabel,
 } from './lib/publicNoticesLayer.js';
 import { newPlanPoints, planWindowList, windowColors, LATE_PLAN_COLOR, cleanLotBound, filterByLots } from './lib/newPlans.js';
 import {
@@ -249,6 +250,8 @@ const $contamToggle         = document.getElementById('contam-toggle');
 const $publicNoticesToggle  = document.getElementById('public-notices-toggle');
 const $publicNoticesYears   = document.getElementById('public-notices-years');
 const $publicNoticesSource  = document.getElementById('public-notices-source');
+const $publicNoticesParcelsMin = document.getElementById('public-notices-parcels-min');
+const $publicNoticesParcelsMax = document.getElementById('public-notices-parcels-max');
 const $newPlansToggle       = document.getElementById('new-plans-toggle');
 const $newPlansLotsMin      = document.getElementById('new-plans-lots-min');
 const $newPlansLotsMax      = document.getElementById('new-plans-lots-max');
@@ -822,6 +825,7 @@ if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($publicNoticesToggle) $publicNoticesToggle.addEventListener('click', togglePublicNotices);
 if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', onPublicNoticesFilterChange);
 if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', onPublicNoticesFilterChange);
+for (const el of [$publicNoticesParcelsMin, $publicNoticesParcelsMax]) if (el) el.addEventListener('change', onPublicNoticesParcelsChange);
 if ($newPlansToggle) $newPlansToggle.addEventListener('click', toggleNewPlans);
 for (const el of [$newPlansLotsMin, $newPlansLotsMax]) if (el) el.addEventListener('change', onNewPlansLotsChange);
 if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
@@ -1522,6 +1526,10 @@ function captureUrlState() {
   const npMin = cleanLotBound($newPlansLotsMin?.value);
   const npMax = cleanLotBound($newPlansLotsMax?.value);
   if (npMin != null) s.newPlansLotsMin = npMin;
+  const ppMin = cleanLotBound($publicNoticesParcelsMin?.value);
+  const ppMax = cleanLotBound($publicNoticesParcelsMax?.value);
+  if (ppMin != null) s.publicNoticesParcelsMin = ppMin;
+  if (ppMax != null) s.publicNoticesParcelsMax = ppMax;
   if (npMax != null) s.newPlansLotsMax = npMax;
 
   // Toggle defaults: assess is the only one that ships ON.
@@ -1628,6 +1636,8 @@ function applyUrlState(state) {
   if ('publicNoticesYears' in state && $publicNoticesYears) {
     $publicNoticesYears.value = cleanNoticeYears(state.publicNoticesYears);
   }
+  if ('publicNoticesParcelsMin' in state && $publicNoticesParcelsMin) $publicNoticesParcelsMin.value = String(state.publicNoticesParcelsMin);
+  if ('publicNoticesParcelsMax' in state && $publicNoticesParcelsMax) $publicNoticesParcelsMax.value = String(state.publicNoticesParcelsMax);
   if ('newPlansLotsMin' in state && $newPlansLotsMin) $newPlansLotsMin.value = String(state.newPlansLotsMin);
   if ('newPlansLotsMax' in state && $newPlansLotsMax) $newPlansLotsMax.value = String(state.newPlansLotsMax);
   if ('publicNoticesSource' in state && $publicNoticesSource) {
@@ -2280,7 +2290,9 @@ function renderPublicNoticesLegend(shown, years, source = 'both') {
   }));
   if ($note) {
     const bits = [];
-    if (!shown.length) bits.push('Nothing in this period.');
+    const range = parcelRangeLabel($publicNoticesParcelsMin?.value, $publicNoticesParcelsMax?.value);
+    if (range && source !== 'notice') bits.push(`By-laws on ${range}; notices have no parcel count and are all shown.`);
+    if (!shown.length) bits.push(range ? 'Nothing in this period and parcel range.' : 'Nothing in this period.');
     if (source !== 'notice') bits.push('By-laws: City DMIS, 1997 on.');
     if (source !== 'bylaw') bits.push('Notices: Open Data, 2025 on.');
     const u = publicNoticesAll?.unplaced || {};
@@ -2295,13 +2307,24 @@ function applyPublicNoticesYears() {
   if (!publicNoticesAll) return;
   const years = cleanNoticeYears($publicNoticesYears?.value);
   const source = cleanNoticeSource($publicNoticesSource?.value);
-  const shown = filterBySource(filterByYears(publicNoticesAll.features, years), source);
+  const shown = filterByParcels(
+    filterBySource(filterByYears(publicNoticesAll.features, years), source),
+    $publicNoticesParcelsMin?.value, $publicNoticesParcelsMax?.value,
+  );
   setPublicNoticesData(map, shown);
   renderPublicNoticesLegend(shown, years, source);
 }
 
 function onPublicNoticesFilterChange() {
   if (publicNoticesEnabled) applyPublicNoticesYears();
+}
+
+function onPublicNoticesParcelsChange() {
+  for (const el of [$publicNoticesParcelsMin, $publicNoticesParcelsMax]) {
+    if (el && el.value !== '' && cleanLotBound(el.value) == null) el.value = '';   // junk → no limit
+  }
+  queueUrlWrite();
+  onPublicNoticesFilterChange();
 }
 
 async function togglePublicNotices() {

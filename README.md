@@ -107,7 +107,11 @@ notice and its DMIS link; clusters below zoom 13 zoom in on click.
 The cut uses the by-law's passed date (else effective date, else the year
 in its number) and the notice's filing date. Separate from the Zoning
 Changes pill, which highlights parcels and fills the Rezoned column. URL
-params: `nz=1` (on), `py=<years>`, `ps=notice|bylaw` (Show; both is the default). Code: `web/src/lib/publicNoticesLayer.js`.
+params: `nz=1` (on), `py=<years>`, `ps=notice|bylaw` (Show; both is the default),
+`pa` / `pb` (Parcels min / max). **Parcels** min / max filters adopted by-laws by
+the number of assessment parcels they were placed on; notices are always shown,
+because the City ties each notice to one roll even when it covers a whole
+subdivision phase. Code: `web/src/lib/publicNoticesLayer.js`.
 
 ## New Plans layer
 

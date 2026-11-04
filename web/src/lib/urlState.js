@@ -141,6 +141,9 @@ export const SCHEMA = {
   publicNoticesYears:   { param: 'py', validate: oneOf(['1', '2', '3', '10', 'all']), format: (v) => v },
   // Which sources it draws (default both, not emitted).
   publicNoticesSource:  { param: 'ps', validate: oneOf(['notice', 'bylaw']), format: (v) => v },
+  // By-law parcel-count range; blank (no limit) is not emitted.
+  publicNoticesParcelsMin: { param: 'pa', validate: cleanInt(1, 9999), format: (v) => String(v) },
+  publicNoticesParcelsMax: { param: 'pb', validate: cleanInt(1, 9999), format: (v) => String(v) },
   // New Plans overlay (survey plans registered since the oldest survey snapshot).
   newPlansToggle:       { param: 'np', validate: cleanBool, format: formatBool },
   // New Plans lot-count range; blank (no limit) is not emitted.

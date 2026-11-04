@@ -5,6 +5,7 @@ import {
   NOTICE_YEAR_OPTIONS, DEFAULT_NOTICE_YEARS, NOTICE_CATEGORIES, cleanNoticeYears, noticeCutoff,
   noticeFeatures, bylawFeatures, bylawRolls, filterByYears, categoryCounts, noticePopupParts,
   categoryColorExpression, NOTICE_SOURCE_OPTIONS, cleanNoticeSource, filterBySource,
+  filterByParcels, parcelRangeLabel,
 } from '../src/lib/publicNoticesLayer.js';
 
 let failed = 0;
@@ -117,6 +118,23 @@ test('source filter: both / notices only / by-laws only', () => {
   assert.equal(filterBySource(all, 'both').length, 4);
   assert.deepEqual(filterBySource(all, 'notice').map((f) => f.properties.source), ['notice', 'notice']);
   assert.deepEqual(filterBySource(all, 'bylaw').map((f) => f.properties.source), ['bylaw', 'bylaw']);
+});
+
+test('parcel filter: by-laws by parcel count, notices always kept', () => {
+  const bl = (n) => ({ properties: { source: 'bylaw', parcels: n } });
+  const nt = { properties: { source: 'notice' } };
+  const all = [bl(1), bl(2), bl(5), bl(40), nt];
+  const counts = (r) => r.map((f) => f.properties.parcels ?? 'notice');
+  assert.deepEqual(counts(filterByParcels(all, '', '')), [1, 2, 5, 40, 'notice']);
+  assert.deepEqual(counts(filterByParcels(all, '2', '5')), [2, 5, 'notice']);
+  assert.deepEqual(counts(filterByParcels(all, '10', '')), [40, 'notice']);
+  assert.deepEqual(counts(filterByParcels(all, '5', '2')), [2, 5, 'notice']);
+  assert.deepEqual(counts(filterByParcels(all, 'x', '0')), [1, 2, 5, 40, 'notice']);
+  assert.equal(parcelRangeLabel('', ''), null);
+  assert.equal(parcelRangeLabel('1', '1'), '1 parcel');
+  assert.equal(parcelRangeLabel('5', '2'), '2–5 parcels');
+  assert.equal(parcelRangeLabel('10', ''), '10+ parcels');
+  assert.equal(parcelRangeLabel('', '1'), 'up to 1 parcel');
 });
 
 test('popup parts for a by-law and a notice', () => {

@@ -323,8 +323,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 52 entries (16 inputs + 20 toggles + 1 Multi-Family threshold + 2 new-plans lot bounds + 1 public-notices years + 1 public-notices source + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 52);
+test('SCHEMA — has exactly 54 entries (16 inputs + 20 toggles + 1 Multi-Family threshold + 2 new-plans lot bounds + 2 public-notices parcel bounds + 1 public-notices years + 1 public-notices source + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 54);
 });
 
 test('encodeState / decodeState — Public Notices & Rezonings toggle and years round-trip (nz, py)', () => {
@@ -346,6 +346,10 @@ test('encodeState / decodeState — Public Notices & Rezonings toggle and years 
   assert.equal(lots.get('nx'), '9');
   assert.equal(decodeState('nl=10&nx=0').newPlansLotsMin, 10);
   assert.equal(decodeState('nl=10&nx=0').newPlansLotsMax, undefined);
+  const pp = new URLSearchParams(encodeState({ publicNoticesParcelsMin: 2, publicNoticesParcelsMax: 5 }));
+  assert.equal(pp.get('pa'), '2');
+  assert.equal(pp.get('pb'), '5');
+  assert.equal(decodeState('pa=3').publicNoticesParcelsMin, 3);
 });
 
 test('encodeState / decodeState — Airport Area, Transit Walkshed and District Planners toggles round-trip (aa, ws, dp)', () => {

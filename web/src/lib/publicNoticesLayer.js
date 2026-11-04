@@ -18,6 +18,7 @@
  */
 
 import { dmisRecordUrl } from './zoningAmendments.js';
+import { cleanLotBound } from './newPlans.js';
 
 /** Which sources to draw: both, notices only, or adopted by-laws only. */
 export const NOTICE_SOURCE_OPTIONS = ['both', 'notice', 'bylaw'];
@@ -34,6 +35,36 @@ export function filterBySource(features, source) {
   const s = cleanNoticeSource(source);
   if (s === 'both') return [...(features || [])];
   return (features || []).filter((f) => f?.properties?.source === s);
+}
+
+/**
+ * Keep by-laws whose parcel count is within [min, max] (a null / blank bound
+ * is open; a reversed range is read the other way round). Notices always
+ * pass: the City ties each notice to one roll even when it covers a whole
+ * subdivision phase, so there is no count to filter on.
+ */
+export function filterByParcels(features, min, max) {
+  let lo = cleanLotBound(min);
+  let hi = cleanLotBound(max);
+  if (lo == null && hi == null) return [...(features || [])];
+  if (lo != null && hi != null && lo > hi) [lo, hi] = [hi, lo];
+  return (features || []).filter((f) => {
+    const p = f?.properties;
+    if (p?.source !== 'bylaw') return true;
+    const n = Number(p.parcels) || 0;
+    return (lo == null || n >= lo) && (hi == null || n <= hi);
+  });
+}
+
+/** "2–5 parcels", "10+ parcels", "up to 3 parcels", or null for no range. */
+export function parcelRangeLabel(min, max) {
+  let lo = cleanLotBound(min);
+  let hi = cleanLotBound(max);
+  if (lo == null && hi == null) return null;
+  if (lo != null && hi != null && lo > hi) [lo, hi] = [hi, lo];
+  const unit = (n) => `parcel${n === 1 ? '' : 's'}`;
+  if (lo != null && hi != null) return lo === hi ? `${lo} ${unit(lo)}` : `${lo}–${hi} parcels`;
+  return lo != null ? `${lo}+ parcels` : `up to ${hi} ${unit(hi)}`;
 }
 
 /** Years-back choices for the dropdown; 'all' = no cut. */
