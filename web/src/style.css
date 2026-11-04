@@ -6237,3 +6237,28 @@ body.phone .maplibregl-ctrl-group button {
   width: auto;
   margin: 0 auto;
 }
+
+/* Button icons. An emoji in the label itself would be lost the first time a
+   toggle rewrites its own text ("Dimensions*" -> "Hide Dimensions*",
+   "Search" -> "Searching…"), so the icon lives in data-icon and is drawn
+   here. Only on buttons where it does not add a line in either state. */
+button[data-icon]::before {
+  content: attr(data-icon);
+  margin-right: 0.35em;
+}
+
+/* Filter fields under a Planning toggle (Public Notices Show / Within /
+   Parcels, New Plans Lots / Within) take the full row. In a single grid
+   cell the selects shrank to one character and the min / max inputs'
+   minimum width pushed the right-hand column past the sidebar edge. */
+.sidebar .overlay-grid .overlay-group-body > .overlay-field-wide {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.sidebar .overlay-grid .overlay-field-wide select {
+  flex: 0 1 160px;
+}
+/* minmax(0, 1fr): equal columns even when one item's minimum is wide. */
+.sidebar .overlay-grid .overlay-group-body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
