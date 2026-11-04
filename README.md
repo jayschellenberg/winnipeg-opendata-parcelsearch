@@ -137,8 +137,11 @@ by window (darker = newer). Grey plans are numbered below the baseline's
 highest plan: registered earlier and added to the City data late, not new
 registrations. A new plan can also be a consolidation or re-survey; the data
 does not say which. **Lots** min / max inputs under the button cut the layer
-by lot count (blank = no limit; 2 to 2 = lot splits). URL params `np=1`,
-`nl=<min>`, `nx=<max>`. Code: `web/src/lib/newPlans.js`.
+by lot count (blank = no limit; 2 to 2 = lot splits). **Within** (1 / 2 / 3 / 5 /
+10 years / all; default all) keeps plans whose window ends after the cutoff;
+a window that straddles the cutoff is kept whole and the legend says so.
+Until narrower windows accumulate, short cutoffs keep most plans. URL params
+`np=1`, `nl=<min>`, `nx=<max>`, `ny=<years>`. Code: `web/src/lib/newPlans.js`.
 
 ## Address aliases
 

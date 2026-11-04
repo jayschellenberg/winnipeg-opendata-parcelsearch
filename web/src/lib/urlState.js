@@ -149,6 +149,8 @@ export const SCHEMA = {
   // New Plans lot-count range; blank (no limit) is not emitted.
   newPlansLotsMin:      { param: 'nl', validate: cleanInt(1, 9999), format: (v) => String(v) },
   newPlansLotsMax:      { param: 'nx', validate: cleanInt(1, 9999), format: (v) => String(v) },
+  // New Plans years-back window (default all, not emitted).
+  newPlansYears:        { param: 'ny', validate: oneOf(['1', '2', '3', '5', '10']), format: (v) => v },
 
   // --- Neighbourhoods mode (1) ---
   neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },

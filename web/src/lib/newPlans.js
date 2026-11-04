@@ -174,6 +174,24 @@ export function filterByLots(fc, min, max) {
   return { ...fc, features };
 }
 
+/**
+ * Keep plans whose window reaches the cutoff (YYYY-MM-DD; null = no cut):
+ * a plan is kept unless it had certainly appeared by the cutoff (its
+ * window ended on or before it). Plans are dated to a window, not a day, so a
+ * window that straddles the cutoff is kept whole; `straddling` counts them.
+ */
+export function filterByCutoff(fc, cutoff) {
+  if (!cutoff) return { fc: { ...fc, features: [...(fc?.features || [])] }, straddling: 0 };
+  let straddling = 0;
+  const features = (fc?.features || []).filter((f) => {
+    const { after, by } = f?.properties || {};
+    if (!by || by <= cutoff) return false;   // window ended on or before the cutoff
+    if (after && after < cutoff) straddling++;
+    return true;
+  });
+  return { fc: { ...fc, features }, straddling };
+}
+
 /** Label points for the low-zoom circle layer. */
 export function newPlanPoints(fc) {
   return {
