@@ -95,6 +95,8 @@ import {
   purgeHistoricalZoningCache,
   fetchZoningAmendments,
   fetchRezoningNotices,
+  fetchRezoningNoticePoints,
+  fetchRollCentroids,
   searchAddresses,
   parcelsOverlap,
 } from './soda.js';
@@ -103,6 +105,10 @@ import { historicalTilesUrl, sizeChangeSummaryText } from './lib/historicalTiles
 import {
   ZONING_CHANGE_MODES, buildAmendmentIndex, amendmentCellText, latestAmendmentYear, dmisRecordUrl,
 } from './lib/zoningAmendments.js';
+import {
+  NOTICE_CATEGORIES, DEFAULT_NOTICE_YEARS, cleanNoticeYears, noticeFeatures, bylawFeatures, bylawRolls,
+  filterByYears, categoryCounts,
+} from './lib/publicNoticesLayer.js';
 import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
@@ -114,6 +120,7 @@ import {
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
   setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
+  setPublicNoticesData, setPublicNoticesVisible,
   setClusterSelection, wireClusterPicker,
 } from './map.js';
 import {
@@ -237,6 +244,8 @@ const $mfToggle             = document.getElementById('mf-toggle');
 const $mfMinDu              = document.getElementById('mf-min-du');
 const $mfLegend             = document.getElementById('mf-legend');
 const $contamToggle         = document.getElementById('contam-toggle');
+const $publicNoticesToggle  = document.getElementById('public-notices-toggle');
+const $publicNoticesYears   = document.getElementById('public-notices-years');
 const $mlsToggle            = document.getElementById('mls-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
@@ -475,6 +484,11 @@ let trafficEnabled = false;
 let trafficLoaded = false;
 let contamEnabled = false;
 let contamLoaded = false;
+// Public Notices & Rezonings: all features (uncut) once loaded, and the
+// in-flight load so quick clicks share one fetch.
+let publicNoticesEnabled = false;
+let publicNoticesAll = null;
+let publicNoticesLoad = null;
 let mlsEnabled = false;
 let mlsLoaded = false;
 let transitEnabled = false;
@@ -797,6 +811,8 @@ if ($dwellingUnitsToggle) $dwellingUnitsToggle.addEventListener('click', toggleD
 if ($mfToggle) $mfToggle.addEventListener('click', toggleMultiFamily);
 if ($mfMinDu) $mfMinDu.addEventListener('change', onMfMinDuChange);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
+if ($publicNoticesToggle) $publicNoticesToggle.addEventListener('click', togglePublicNotices);
+if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', onPublicNoticesYearsChange);
 if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
@@ -1488,6 +1504,8 @@ function captureUrlState() {
   if (Number.isFinite(duMinNum) && duMinNum >= 1) s.duMin = duMinNum;
   const mfMin = clampMfMinDu(v($mfMinDu));
   if (mfMin !== MF_MIN_DU) s.mfMinDu = mfMin;
+  const pnYears = cleanNoticeYears($publicNoticesYears?.value);
+  if (pnYears !== DEFAULT_NOTICE_YEARS) s.publicNoticesYears = pnYears;
 
   // Toggle defaults: assess is the only one that ships ON.
   const defaults = {
@@ -1496,7 +1514,7 @@ function captureUrlState() {
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     airportToggle: false, transitWalkshedToggle: false, districtPlannersToggle: false,
     transitToggle: false, contamToggle: false, mlsToggle: false, dimensionsToggle: false,
-    streetsToggle: false,
+    streetsToggle: false, publicNoticesToggle: false,
   };
   const buttons = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
@@ -1508,7 +1526,7 @@ function captureUrlState() {
     districtPlannersToggle: $districtPlannersToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
-    streetsToggle: $streetsToggle,
+    streetsToggle: $streetsToggle, publicNoticesToggle: $publicNoticesToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
     if (!btn) continue;
@@ -1589,6 +1607,9 @@ function applyUrlState(state) {
     $duMode.dispatchEvent(new Event('change'));
   }
   if ('duMin' in state) $duMin.value = String(state.duMin);
+  if ('publicNoticesYears' in state && $publicNoticesYears) {
+    $publicNoticesYears.value = cleanNoticeYears(state.publicNoticesYears);
+  }
   if ('mfMinDu' in state && $mfMinDu) {
     $mfMinDu.value = String(state.mfMinDu);
     $mfMinDu.dispatchEvent(new Event('change'));
@@ -1604,7 +1625,7 @@ function applyUrlState(state) {
     districtPlannersToggle: $districtPlannersToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
-    streetsToggle: $streetsToggle,
+    streetsToggle: $streetsToggle, publicNoticesToggle: $publicNoticesToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
     if (!btn || !(key in state)) continue;
@@ -1715,9 +1736,11 @@ for (const btn of [
   $neighbourhoodsToggle,
   $streetsToggle,
   $contamToggle, $mlsToggle, $dimensionsToggle,
+  $publicNoticesToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
 }
+if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', queueUrlWrite);
 
 // Wire sortable column headers.
 const SORTABLE_KEYS = new Set(COLUMNS.filter((c) => c.sortable).map((c) => c.key));
@@ -2173,6 +2196,109 @@ async function toggleMls() {
     $mlsToggle.disabled = false;
     $mlsToggle.textContent = 'MLS Areas';
   }
+}
+
+// Public Notices & Rezonings (lib/publicNoticesLayer.js): adopted DMIS
+// rezoning by-laws (zoning-amendments.json, one point per by-law at the
+// centre of its parcels' Assessment centroids) plus live rezoning-type
+// Public Notices at the City's own location. Everything loads once; the
+// years dropdown only re-cuts the loaded features.
+async function ensurePublicNotices() {
+  if (publicNoticesAll) return publicNoticesAll;
+  if (!publicNoticesLoad) {
+    publicNoticesLoad = (async () => {
+      const [json, rows] = await Promise.all([
+        fetchZoningAmendments(),
+        fetchRezoningNoticePoints().catch((e) => { console.warn('rezoning notice points failed (non-fatal)', e); return []; }),
+      ]);
+      let bylaws = { features: [], unplaced: 0 };
+      if (json) {
+        try {
+          const centroids = await fetchRollCentroids(bylawRolls(json), json.generated || '');
+          bylaws = bylawFeatures(json, centroids);
+        } catch (e) { console.warn('by-law centroids failed (non-fatal)', e); }
+      }
+      const notices = noticeFeatures(rows);
+      if (!json && !rows.length) throw new Error('no Public Notices or by-law data');
+      publicNoticesAll = {
+        features: [...bylaws.features, ...notices.features],
+        unplaced: bylaws.unplaced + notices.unplaced,
+        hasBylaws: !!json,
+      };
+      return publicNoticesAll;
+    })();
+    publicNoticesLoad.catch(() => { publicNoticesLoad = null; });
+  }
+  return publicNoticesLoad;
+}
+
+function renderPublicNoticesLegend(shown, years) {
+  const $legend = document.getElementById('public-notices-legend');
+  const $rows = document.getElementById('public-notices-legend-rows');
+  const $title = document.getElementById('public-notices-legend-title');
+  const $note = document.getElementById('public-notices-legend-note');
+  if (!$legend || !$rows) return;
+  $legend.hidden = !publicNoticesEnabled;
+  if (!publicNoticesEnabled) return;
+  const counts = categoryCounts(shown);
+  if ($title) {
+    $title.textContent = `Public Notices & Rezonings — ${years === 'all' ? 'all years' : `last ${years} yr${years === '1' ? '' : 's'}`}`;
+  }
+  $rows.replaceChildren(...NOTICE_CATEGORIES.filter((c) => counts[c.key] > 0).map((c) => {
+    const li = document.createElement('li');
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.backgroundColor = c.color;
+    li.append(sw, `${c.label} (${counts[c.key]})`);
+    return li;
+  }));
+  if ($note) {
+    const bits = [];
+    if (!shown.length) bits.push('Nothing in this period.');
+    bits.push('By-laws: City DMIS, 1997 on. Notices: Open Data, 2025 on.');
+    if (publicNoticesAll?.unplaced) bits.push(`${publicNoticesAll.unplaced} could not be placed.`);
+    if (publicNoticesAll && !publicNoticesAll.hasBylaws) bits.push('By-law index not built — notices only.');
+    $note.textContent = bits.join(' ');
+  }
+}
+
+function applyPublicNoticesYears() {
+  if (!publicNoticesAll) return;
+  const years = cleanNoticeYears($publicNoticesYears?.value);
+  const shown = filterByYears(publicNoticesAll.features, years);
+  setPublicNoticesData(map, shown);
+  renderPublicNoticesLegend(shown, years);
+}
+
+function onPublicNoticesYearsChange() {
+  if (publicNoticesEnabled) applyPublicNoticesYears();
+}
+
+async function togglePublicNotices() {
+  publicNoticesEnabled = !publicNoticesEnabled;
+  $publicNoticesToggle.setAttribute('aria-pressed', String(publicNoticesEnabled));
+  $publicNoticesToggle.classList.toggle('active', publicNoticesEnabled);
+  await mapReady;
+  setPublicNoticesVisible(map, publicNoticesEnabled);
+  if (!publicNoticesEnabled) { renderPublicNoticesLegend([], ''); return; }
+  if (!publicNoticesAll) {
+    $publicNoticesToggle.disabled = true;
+    $publicNoticesToggle.textContent = 'Loading...';
+    try {
+      await ensurePublicNotices();
+    } catch (err) {
+      console.warn('Public Notices & Rezonings overlay failed', err);
+      publicNoticesEnabled = false;
+      $publicNoticesToggle.classList.remove('active');
+      $publicNoticesToggle.setAttribute('aria-pressed', 'false');
+      setPublicNoticesVisible(map, false);
+    } finally {
+      $publicNoticesToggle.disabled = false;
+      $publicNoticesToggle.textContent = 'Public Notices & Rezonings';
+    }
+    if (!publicNoticesEnabled) { renderPublicNoticesLegend([], ''); return; }
+  }
+  applyPublicNoticesYears();
 }
 
 async function toggleContam() {

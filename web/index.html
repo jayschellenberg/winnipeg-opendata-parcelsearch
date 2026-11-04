@@ -1217,7 +1217,7 @@
                Filter additionally keeps only those rows in the grid. Data:
                web/public/zoning-amendments.json (DMIS scrape,
                r/build_zoning_amendments.R) + live Public Notices. -->
-          <div class="mode-pill-row zoning-changes-row" title="Zoning Changes — Off: nothing. Show: highlight (amber) every parcel with an adopted rezoning by-law (City DMIS, 2001 on) or a pending rezoning notice (Public Notices, 2025 on), citywide and in the results; the by-law and its DMIS record appear in the parcel popup and the Rezoned column. Filter: Show, plus keep only those parcels in the results grid. Coverage is partial — by-laws are placed by address or street corner and some cannot be placed; see Data Status.">
+          <div class="mode-pill-row zoning-changes-row" title="Zoning Changes — Off: nothing. Show: highlight (amber) every parcel with an adopted rezoning by-law (City DMIS, 1997 on) or a pending rezoning notice (Public Notices, 2025 on), citywide and in the results; the by-law and its DMIS record appear in the parcel popup and the Rezoned column. Filter: Show, plus keep only those parcels in the results grid. Coverage is partial — by-laws are placed by address or street corner and some cannot be placed; see Data Status.">
             <span class="mode-pill-prefix">Zoning Changes:</span>
             <div class="mode-pill zoning-changes-pill" role="radiogroup" aria-label="Zoning changes mode" data-pill="zoningChanges">
               <button type="button" class="mode-btn active mode-btn-off" data-mode="off" aria-pressed="true">Off</button>
@@ -1235,6 +1235,23 @@
               <ul id="zoning-changes-unresolved"></ul>
             </details>
           </div>
+          <!-- Public Notices & Rezonings: adopted DMIS rezoning by-laws
+               (zoning-amendments.json) and live rezoning-type Public
+               Notices as points, coloured by type, cut to the last N
+               years (lib/publicNoticesLayer.js). Separate from the
+               Zoning Changes pill, which highlights parcels. -->
+          <button id="public-notices-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="Public Notices &amp; Rezonings — one point per adopted rezoning by-law (City DMIS, 1997 on; placed at the centre of its parcels) and per rezoning, subdivision-and-rezoning or zoning-agreement-amendment Public Notice (Open Data, 2025 on; the City's own location). Coloured by type; notices have a dark ring. Limited to the years chosen below. Click a point for the by-law or notice and its DMIS link. By-laws that could not be placed on a parcel are not shown.">Public Notices &amp; Rezonings</button>
+          <label class="overlay-select-field" data-layer-set="planning">
+            <span title="Show only by-laws passed, and notices filed, within this many years of today.">Within</span>
+            <select id="public-notices-years" aria-label="Public Notices and Rezonings: years back">
+              <option value="1">1 year</option>
+              <option value="2">2 years</option>
+              <option value="3">3 years</option>
+              <option value="5" selected>5 years</option>
+              <option value="10">10 years</option>
+              <option value="all">All years</option>
+            </select>
+          </label>
             </div>
           </details>
 
@@ -1367,6 +1384,13 @@
             <!-- Airport Area. One unlabelled polygon, same as Infill —
                  the dataset has no name field, so the legend is where it
                  gets named. -->
+            <!-- Public Notices & Rezonings. Rows filled by main.js
+                 (renderPublicNoticesLegend) with per-type counts. -->
+            <div id="public-notices-legend" class="map-legend public-notices-legend" hidden>
+              <strong id="public-notices-legend-title">Public Notices &amp; Rezonings</strong>
+              <ul id="public-notices-legend-rows"></ul>
+              <p class="legend-note" id="public-notices-legend-note"></p>
+            </div>
             <div id="airport-legend" class="map-legend airport-legend" hidden>
               <strong>Airport Area</strong>
               <ul>

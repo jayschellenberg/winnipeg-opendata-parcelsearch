@@ -323,8 +323,19 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 46 entries (16 inputs + 18 toggles + 1 Multi-Family threshold + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 46);
+test('SCHEMA — has exactly 48 entries (16 inputs + 19 toggles + 1 Multi-Family threshold + 1 public-notices years + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 48);
+});
+
+test('encodeState / decodeState — Public Notices & Rezonings toggle and years round-trip (nz, py)', () => {
+  const out = encodeState({ publicNoticesToggle: true, publicNoticesYears: '10' });
+  const params = new URLSearchParams(out);
+  assert.equal(params.get('nz'), '1');
+  assert.equal(params.get('py'), '10');
+  const back = decodeState(out);
+  assert.equal(back.publicNoticesToggle, true);
+  assert.equal(back.publicNoticesYears, '10');
+  assert.equal(decodeState('py=7').publicNoticesYears, undefined);
 });
 
 test('encodeState / decodeState — Airport Area, Transit Walkshed and District Planners toggles round-trip (aa, ws, dp)', () => {
