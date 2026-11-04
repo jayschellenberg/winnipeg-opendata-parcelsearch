@@ -108,9 +108,11 @@ import {
 import {
   NOTICE_CATEGORIES, DEFAULT_NOTICE_YEARS, cleanNoticeYears, noticeFeatures, bylawFeatures, bylawRolls,
   filterByYears, categoryCounts, DEFAULT_NOTICE_SOURCE, cleanNoticeSource, filterBySource,
-  filterByParcels, parcelRangeLabel,
+  filterByParcels, parcelRangeLabel, noticeCutoff,
 } from './lib/publicNoticesLayer.js';
-import { newPlanPoints, planWindowList, windowColors, LATE_PLAN_COLOR, cleanLotBound, filterByLots } from './lib/newPlans.js';
+import {
+  newPlanPoints, planWindowList, windowColors, LATE_PLAN_COLOR, cleanLotBound, filterByLots, filterByCutoff,
+} from './lib/newPlans.js';
 import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
@@ -255,6 +257,7 @@ const $publicNoticesParcelsMax = document.getElementById('public-notices-parcels
 const $newPlansToggle       = document.getElementById('new-plans-toggle');
 const $newPlansLotsMin      = document.getElementById('new-plans-lots-min');
 const $newPlansLotsMax      = document.getElementById('new-plans-lots-max');
+const $newPlansYears        = document.getElementById('new-plans-years');
 const $mlsToggle            = document.getElementById('mls-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
@@ -828,6 +831,7 @@ if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', onPubl
 for (const el of [$publicNoticesParcelsMin, $publicNoticesParcelsMax]) if (el) el.addEventListener('change', onPublicNoticesParcelsChange);
 if ($newPlansToggle) $newPlansToggle.addEventListener('click', toggleNewPlans);
 for (const el of [$newPlansLotsMin, $newPlansLotsMax]) if (el) el.addEventListener('change', onNewPlansLotsChange);
+if ($newPlansYears) $newPlansYears.addEventListener('change', onNewPlansLotsChange);
 if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
@@ -1526,6 +1530,8 @@ function captureUrlState() {
   const npMin = cleanLotBound($newPlansLotsMin?.value);
   const npMax = cleanLotBound($newPlansLotsMax?.value);
   if (npMin != null) s.newPlansLotsMin = npMin;
+  const npYears = newPlansYearsValue();
+  if (npYears !== 'all') s.newPlansYears = npYears;
   const ppMin = cleanLotBound($publicNoticesParcelsMin?.value);
   const ppMax = cleanLotBound($publicNoticesParcelsMax?.value);
   if (ppMin != null) s.publicNoticesParcelsMin = ppMin;
@@ -1638,6 +1644,7 @@ function applyUrlState(state) {
   }
   if ('publicNoticesParcelsMin' in state && $publicNoticesParcelsMin) $publicNoticesParcelsMin.value = String(state.publicNoticesParcelsMin);
   if ('publicNoticesParcelsMax' in state && $publicNoticesParcelsMax) $publicNoticesParcelsMax.value = String(state.publicNoticesParcelsMax);
+  if ('newPlansYears' in state && $newPlansYears) $newPlansYears.value = state.newPlansYears;
   if ('newPlansLotsMin' in state && $newPlansLotsMin) $newPlansLotsMin.value = String(state.newPlansLotsMin);
   if ('newPlansLotsMax' in state && $newPlansLotsMax) $newPlansLotsMax.value = String(state.newPlansLotsMax);
   if ('publicNoticesSource' in state && $publicNoticesSource) {
@@ -2358,18 +2365,28 @@ async function togglePublicNotices() {
 // archived survey snapshot, from the static public/new-plans.geojson built
 // by scripts/build-new-plans.mjs. Fetched on first toggle, then a
 // visibility flip.
-// The loaded plans cut to the Lots min / max inputs.
+// The New Plans years dropdown: '1'…'10' or 'all' (the default here, unlike
+// Public Notices, because coverage only starts at the 2025-03-14 snapshot).
+function newPlansYearsValue() {
+  const v = String($newPlansYears?.value || 'all');
+  return ['1', '2', '3', '5', '10'].includes(v) ? v : 'all';
+}
+
+// The loaded plans cut to the Within dropdown and the Lots min / max inputs.
+// `straddling` = plans kept because their window straddles the cutoff.
 function newPlansShown() {
-  return filterByLots(newPlansFc, $newPlansLotsMin?.value, $newPlansLotsMax?.value);
+  const years = newPlansYearsValue();
+  const { fc, straddling } = filterByCutoff(newPlansFc, years === 'all' ? null : noticeCutoff(years));
+  return { shown: filterByLots(fc, $newPlansLotsMin?.value, $newPlansLotsMax?.value), straddling };
 }
 
 function applyNewPlansData() {
   if (!newPlansFc) return;
-  const shown = newPlansShown();
+  const { shown, straddling } = newPlansShown();
   // Colours come from every plan, so a window keeps its shade when the
   // lot filter empties another one.
   setNewPlansData(map, shown, newPlanPoints(shown), windowColors(planWindowList(newPlansFc)));
-  renderNewPlansLegend(shown);
+  renderNewPlansLegend(shown, straddling);
 }
 
 async function onNewPlansLotsChange() {
@@ -2384,7 +2401,7 @@ async function onNewPlansLotsChange() {
   applyNewPlansData();
 }
 
-function renderNewPlansLegend(fc) {
+function renderNewPlansLegend(fc, straddling = 0) {
   const $legend = document.getElementById('new-plans-legend');
   const $rows = document.getElementById('new-plans-legend-rows');
   if (!$legend || !$rows) return;
@@ -2406,13 +2423,21 @@ function renderNewPlansLegend(fc) {
   const range = lo == null && hi == null ? null
     : lo != null && hi != null ? (lo === hi ? `${lo} lot${lo === 1 ? '' : 's'}` : `${Math.min(lo, hi)}–${Math.max(lo, hi)} lots`)
       : lo != null ? `${lo}+ lots` : `up to ${hi} lots`;
+  const years = newPlansYearsValue();
+  const shownWhat = [years === 'all' ? null : `last ${years} yr${years === '1' ? '' : 's'}`, range].filter(Boolean).join(', ');
   const empty = document.createElement('li');
-  empty.textContent = 'No plans in this lot range.';
+  empty.textContent = 'No plans in this period and lot range.';
+  const straddle = years !== 'all' && straddling
+    ? [Object.assign(document.createElement('li'), {
+      textContent: `Includes plans whose window straddles the cutoff (dated to a window, not a day).`,
+    })]
+    : [];
   $rows.replaceChildren(
-    ...(range ? [Object.assign(document.createElement('li'), { textContent: `Showing ${range}` })] : []),
+    ...(shownWhat ? [Object.assign(document.createElement('li'), { textContent: `Showing ${shownWhat}` })] : []),
     ...list.slice().reverse().map((w) => row(colors.get(w.key), `${w.after} → ${w.by} (${w.count})`)),
     ...(late ? [row(LATE_PLAN_COLOR, `Older plan added late (${late})`)] : []),
     ...(fc.features?.length ? [] : [empty]),
+    ...straddle,
   );
 }
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   planWindows, newPlanFeature, newPlanPoints, planWindowList, windowColors,
   windowColorExpression, newPlanPopupParts, planHighWater, isLatePlan, LATE_PLAN_COLOR,
-  cleanLotBound, filterByLots,
+  cleanLotBound, filterByLots, filterByCutoff,
 } from '../src/lib/newPlans.js';
 
 let failed = 0;
@@ -124,6 +124,23 @@ test('lot-count filter: open bounds, inclusive, swapped range', () => {
   assert.equal(cleanLotBound('2.5'), null);
   assert.equal(cleanLotBound(' 12 '), 12);
   assert.equal(cleanLotBound('10000'), null);
+});
+
+test('year cutoff keeps windows that reach it, counts the straddlers', () => {
+  const f = (after, by) => ({ properties: { after, by, lots: 1 } });
+  const fc = { features: [f('2025-03-14', '2026-07-01'), f('2026-07-01', '2026-11-04'), f('2024-01-01', '2025-01-01')] };
+  const all = filterByCutoff(fc, null);
+  assert.equal(all.fc.features.length, 3);
+  assert.equal(all.straddling, 0);
+  const oneYr = filterByCutoff(fc, '2025-11-04');
+  assert.deepEqual(oneYr.fc.features.map((x) => x.properties.after), ['2025-03-14', '2026-07-01']);
+  assert.equal(oneYr.straddling, 1);
+  const recent = filterByCutoff(fc, '2026-08-01');
+  assert.equal(recent.fc.features.length, 1);
+  assert.equal(recent.straddling, 1);
+  const atBoundary = filterByCutoff(fc, '2026-07-01');
+  assert.deepEqual(atBoundary.fc.features.map((x) => x.properties.after), ['2026-07-01']);
+  assert.equal(atBoundary.straddling, 0);
 });
 
 test('popup parts', () => {

@@ -1277,6 +1277,17 @@
             <span>to</span>
             <input type="number" id="new-plans-lots-max" min="1" max="9999" step="1" placeholder="max" aria-label="New Plans: maximum lot count" />
           </label>
+          <label class="overlay-select-field" data-layer-set="planning">
+            <span title="Show only plans that first appeared in the City data within this many years of today. Coverage starts 2025-03-14 (the oldest survey snapshot). Plans are dated to a window, so a window that straddles the cutoff is kept whole.">Within</span>
+            <select id="new-plans-years" aria-label="New Plans: years back">
+              <option value="1">1 year</option>
+              <option value="2">2 years</option>
+              <option value="3">3 years</option>
+              <option value="5">5 years</option>
+              <option value="10">10 years</option>
+              <option value="all" selected>All years</option>
+            </select>
+          </label>
             </div>
           </details>
 
