@@ -72,3 +72,21 @@ by-legal-description picture. If the only need is "changed since date
 X", periodic snapshots of `dxrp-w6re` (id + zoning) diffed against a
 baseline are the most reliable signal, but the baseline has to start
 now.
+
+## Follow-ups (2026-11-04)
+
+- The same index now also draws as points: **Public Notices & Rezonings**
+  (one point per by-law at its parcels' centroid, plus live rezoning-type
+  notices), with Show / Within / Parcels filters. REPLICATION_GUIDE §8.7.3.
+- Coverage starts in **1997**, not 2001 as first written: the DMIS list
+  returns by-laws passed from 1997 on (11 that year). The pill tooltip, the
+  Rezoned column tooltip and §8.7.2 were corrected.
+- **Plain subdivisions are not in DMIS.** Of the ~850 amending by-laws only
+  2 are "Plan of Subdivision" without a rezoning, and Public Notices has no
+  plain-subdivision type. Completed subdivisions are instead dated by
+  diffing survey plan numbers between snapshots: the **New Plans** layer,
+  REPLICATION_GUIDE §8.7.4. It reaches back only to the oldest archived
+  survey snapshot (2025-03-14).
+- Public Notices ties each notice to **one roll** even when it covers many
+  lots ("136, 140 … 172 Pathfinder Trail", "Prairie Pointe Stage 11"), so a
+  notice has no usable parcel count.

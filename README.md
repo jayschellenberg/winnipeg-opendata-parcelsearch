@@ -1,6 +1,6 @@
 # Winnipeg Parcel Search
 
-Status: Active | Next: tbd | Blocked: none | Updated: 2026-11-01
+Status: Active | Next: tbd | Blocked: none | Updated: 2026-11-04
 
 A free, client-only parcel-research tool for City of Winnipeg properties, built
 for commercial-appraisal workflows.
@@ -9,9 +9,10 @@ for commercial-appraisal workflows.
 
 Search parcels by legal description (Lot / Block / Plan) or by roll number,
 civic address, zoning, and dwelling-unit count; see survey lots and assessment
-parcels together on a MapLibre map (street, satellite, or 7.5 cm City aerial basemaps); toggle ~15 reference overlays (citywide
+parcels together on a MapLibre map (street, satellite, or 7.5 cm City aerial basemaps); toggle ~25 overlays (citywide
 zoning, traffic volumes, transit, OurWinnipeg policy areas, contaminated
-sites, neighbourhoods, parcel dimensions); browse **historical as-of-date
+sites, neighbourhoods, parcel dimensions, MLS areas, rezoning by-laws and
+notices, newly registered survey plans); browse **historical as-of-date
 parcels** with inferred lineage and size-change highlighting; analyse
 comparable sales from SABRE exports (drop a file, paste a block, or connect a
 folder as a local sales database); export results to CSV.
@@ -43,7 +44,7 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 |---|---|
 | `web/src/` | The app — `main.js` (UI wiring), `soda.js` (all SODA queries/joins), `map.js` (MapLibre layers), `lib/` (reusable modules) |
 | `web/test/` | Unit tests, run by `npm test` |
-| `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods) |
+| `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods, legacy Property Map layers, infill areas, new survey plans) |
 | `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcel polygons z8–z18, address labels, and derived dwelling-unit totals; ~100 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Rebuilt and republished automatically every month (see [Data freshness](#data-freshness)). |
 | `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels, per-snapshot historical, and aerial-ortho PMTiles builds, the DMIS zoning-amendment scrape |
 | `tools/` | Standalone command-line tools, outside the web build. `address_aliases.py` — civic-address aliases for a property, Winnipeg or Manitoba (see [Address aliases](#address-aliases)). Python stdlib only, no dependencies. |
@@ -782,7 +783,7 @@ principal back and says loudly which one it got.
 |---|---|---|---|
 | `WpgParcelTilesMonthly` | 2nd of each month, 03:00 | `parcels.pmtiles` — the Show All Parcels / Dwelling Units overlays. Fetches d4mq-wa44 live, tiles via WSL tippecanoe, publishes the release asset, commits the checksum, auto-deploys. Then `wpg-survey-parcels.pmtiles` (All Survey Parcels), on even months the historical per-snapshot archives, and the District Planners / Transit Walkshed GeoJSON from the legacy Property Map (planner names change). | No |
 | `WpgOpenDataSemiAnnualDownload` | Jun 1 + Dec 1, 03:00 | Downloads the `r/wpg_datasets.R` layers into the WpgSnapshots archive. | **Yes** — the only job that does |
-| `WpgAssetRefreshQuarterly` | Jan/Apr/Jul/Oct 1, 03:30 | Transit + neighbourhood GeoJSON, and runs both staleness heartbeats. | No |
+| `WpgAssetRefreshQuarterly` | Jan/Apr/Jul/Oct 1, 03:30 | Transit + neighbourhood GeoJSON, the legacy-map layers, the infill-area trace, the DMIS zoning-amendment index (`zoning-amendments.json`) and New Plans (`new-plans.geojson`); runs the staleness heartbeats. | No; New Plans carries its own first-seen windows forward |
 
 Tiles refresh on their own faster cadence than the snapshot archive on
 purpose: the overlay should track the current roll, while history stays
@@ -943,10 +944,11 @@ start the dev server on `localhost`.
 
 ## Documentation
 
-- **[SESSION-HANDOFF-2026-09-18.md](SESSION-HANDOFF-2026-09-18.md)** — the
-  current resume point: the address importer, the decisions that will
-  silently regress if you change them, and what is still open. The previous
-  two ([09-16](SESSION-HANDOFF-2026-09-16.md),
+- **[SESSION-HANDOFF-2026-11-04.md](SESSION-HANDOFF-2026-11-04.md)** — the
+  current resume point: the Public Notices & Rezonings and New Plans layers,
+  their filters, the sidebar icon / layout changes, and what is still open.
+  The previous three ([09-18](SESSION-HANDOFF-2026-09-18.md),
+  [09-16](SESSION-HANDOFF-2026-09-16.md),
   [08-22](SESSION-HANDOFF-2026-08-22.md)) stay beside it; anything older sits
   in `.claude/`, which is gitignored, so those are local-only history rather
   than part of the repo.
@@ -973,6 +975,12 @@ monthly with the parcel tiles (the planner names change as staff move),
 and, rebuilt quarterly, the Infill Guideline Area 1 / 2 split (WMS-only there) traced from the
 raster by `web/scripts/build-infill-areas.py` under the OSGeo4W Python, so it
 is approximate to about one metre.
+Rezoning by-laws: the City's
+[DMIS](https://dmis.winnipeg.ca/) amending Land Development by-law list,
+scraped quarterly by `r/build_zoning_amendments.R`; rezoning notices: Open Data
+Public Notices (`gnxp-9hpt`). New Plans: survey plan numbers diffed between the
+archived [wpg-parcel-history](https://github.com/jayschellenberg/wpg-parcel-history)
+survey snapshots and live Survey Parcels (`sjjm-nj47`).
 Environmentally tracked sites: Manitoba Contaminated/Impacted Sites Registry.
 Streets basemap © OpenStreetMap contributors, via Protomaps; satellite imagery © Esri and partners; aerial ortho imagery © City of Winnipeg (Open Government Licence – Winnipeg).
 
