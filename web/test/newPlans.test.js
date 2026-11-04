@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   planWindows, newPlanFeature, newPlanPoints, planWindowList, windowColors,
   windowColorExpression, newPlanPopupParts, planHighWater, isLatePlan, LATE_PLAN_COLOR,
+  cleanLotBound, filterByLots,
 } from '../src/lib/newPlans.js';
 
 let failed = 0;
@@ -108,6 +109,21 @@ test('simplification drops collinear points but keeps rings closed', () => {
   const out = f.geometry.coordinates[0][0];
   assert.ok(out.length < 10, `kept ${out.length}`);
   assert.deepEqual(out[0], out[out.length - 1]);
+});
+
+test('lot-count filter: open bounds, inclusive, swapped range', () => {
+  const fc = { _meta: { x: 1 }, features: [1, 2, 5, 40, 207].map((n) => ({ properties: { plan: String(n), lots: n } })) };
+  const plans = (r) => r.features.map((f) => f.properties.lots);
+  assert.deepEqual(plans(filterByLots(fc, '', '')), [1, 2, 5, 40, 207]);
+  assert.deepEqual(plans(filterByLots(fc, '2', '')), [2, 5, 40, 207]);
+  assert.deepEqual(plans(filterByLots(fc, '', '5')), [1, 2, 5]);
+  assert.deepEqual(plans(filterByLots(fc, '2', '2')), [2]);
+  assert.deepEqual(plans(filterByLots(fc, '50', '3')), [5, 40]);
+  assert.equal(filterByLots(fc, '10', '')._meta.x, 1);
+  assert.equal(cleanLotBound('0'), null);
+  assert.equal(cleanLotBound('2.5'), null);
+  assert.equal(cleanLotBound(' 12 '), 12);
+  assert.equal(cleanLotBound('10000'), null);
 });
 
 test('popup parts', () => {
