@@ -136,7 +136,7 @@ export function initDataStatusDialog() {
   async function load() {
     loaded = true;
     renderServices($services);   // rows appear immediately, fill per-service
-    const [pmtilesMeta, histIndex, histTilesMeta, neighbourhoodsMeta, transitMeta, zoningAmend, surveyMeta] = await Promise.all([
+    const [pmtilesMeta, histIndex, histTilesMeta, neighbourhoodsMeta, transitMeta, zoningAmend, surveyMeta, newPlans] = await Promise.all([
       fetchJson(PMTILES_META_URL),
       fetchHistoricalIndex().catch(() => null),
       fetchJson('/historical-tiles-meta.json'),
@@ -144,6 +144,7 @@ export function initDataStatusDialog() {
       fetchTailMeta('/transit-routes.geojson'),
       fetchJson('/zoning-amendments.json'),
       fetchJson('/survey-pmtiles-meta.json'),
+      fetchJson('/new-plans.geojson'),
     ]);
     renderPublished($published, publishedRows({ pmtilesMeta, neighbourhoodsMeta, transitMeta }));
     // Zoning amendments (DMIS scrape): built date, how many by-laws were
@@ -159,6 +160,23 @@ export function initDataStatusDialog() {
           ? `${c.resolvedBylaws ?? '?'} of ${c.siteSpecific ?? '?'} site-specific by-laws placed on ${c.rolls ?? '?'} parcels`
             + `${conf ? ` (${conf})` : ''}; ${c.unresolved ?? '?'} not placed; ${c.nonParcel ?? '?'} text / area amendments listed`
           : 'not built — run r/build_zoning_amendments.R',
+        'quarterly, with the asset refresh',
+      ]));
+    }
+    // New Plans (web/scripts/build-new-plans.mjs): when the data last
+    // changed, how many plans are new since the baseline survey snapshot,
+    // and how many were older plans the City added late.
+    {
+      const feats = Array.isArray(newPlans?.features) ? newPlans.features : null;
+      const late = feats ? feats.filter((f) => Number(f?.properties?.late) === 1).length : 0;
+      const m = newPlans?._meta || {};
+      $published.appendChild(rowOf([
+        'New Plans (survey plan diff)',
+        m.generated_at ? dateLabel(datePart(m.generated_at)) : null,
+        feats
+          ? `${feats.length - late} plans new since the ${m.baseline || '?'} survey snapshot`
+            + `${late ? `; ${late} older plans added late` : ''}`
+          : 'not built — run npm run refresh:new-plans',
         'quarterly, with the asset refresh',
       ]));
     }

@@ -474,6 +474,10 @@ Tailor the wording to the new jurisdiction's parcel types. The legend pills insi
 
 Drop the zoning or traffic button if the new jurisdiction doesn't have that dataset. The `active` class and `aria-pressed` value should match the MapLibre layer visibility you initialize in `map.js`.
 
+**Icons.** A button's icon goes in a `data-icon` attribute (`<button id="dimensions-toggle" data-icon="📏">Dimensions*</button>`), drawn by `button[data-icon]::before` in `style.css`, never in the label text. Most toggles rewrite their own label (`Hide Dimensions*`, `Searching…`, `Loading...`), and an emoji typed into the label is lost the first time that happens; this is how Search used to lose its 🔍. Add an icon only where it adds no line to the label in either state at 1024 px and up; the long labels (All Assessment Parcels, Environmentally Tracked Sites, Current Winnipeg Streets …) have none for that reason.
+
+**Grid.** The Map Layers groups are two-column grids (`minmax(0, 1fr)` columns). A filter field under a toggle (`<label class="overlay-select-field overlay-field-wide">`) spans the full row; in a single cell its select shrinks to one character and a min / max pair forces the other column past the sidebar edge. The short DU ≥ and As of fields are the exception: they sit in the cell beside their button.
+
 ### 6.5 Map legend
 
 ```html
@@ -865,7 +869,7 @@ polygon dataset carries no by-law field; Public Notices lists rezonings
 only from 2025 on). The **Zoning Changes** pill under Planning therefore
 reads a committed index, `web/public/zoning-amendments.json`, built by
 `r/build_zoning_amendments.R` from the City's Decision Making Information
-System: every amending Land Development by-law since 2001 (~850, one HTML
+System: every amending Land Development by-law since 1997 (~850, one HTML
 page each — subject, DAZ file number, date passed, effective date, parent
 by-law), cached under `WpgSnapshots/dmis/` so re-runs never re-hit DMIS.
 Site-specific by-laws ("Rezoning: 923 Dorchester Avenue", "Zoning Change:
@@ -896,6 +900,64 @@ The quarterly `WpgAssetRefreshQuarterly` job runs it with `--refresh`
 (non-fatal) and commits the JSON with the other static assets. Coverage is
 partial by nature — the Data Status dialog reports how many by-laws were
 placed and how many were not.
+
+### 8.7.3 Public Notices & Rezonings — the point layer
+
+The same by-law index, drawn as points instead of parcel highlights
+(`lib/publicNoticesLayer.js`, Planning → Public Notices & Rezonings):
+
+- **By-laws** become one point each, at the mean of their parcels'
+  Assessment Parcels centroids (`fetchRollCentroids` in `soda.js`, batched
+  `roll_number in (…)`, cached 30 days under the index's `generated`
+  stamp). A 40-lot subdivision is one dot, and its popup says how many
+  parcels it covers. Text / area amendments and unplaced by-laws are not
+  drawn.
+- **Notices** are live Public Notices of type REZONING, SUBDIVISION AND
+  REZONING and ZONING AGREEMENT AMENDMENT, at the City's own `point`
+  (`fetchRezoningNoticePoints`, cached a day). Variances, conditional uses
+  and appeals are left out on purpose.
+- **Filters**, all client-side over the loaded features: Show (both /
+  notices / by-laws), Within (1–10 years or all; by-law passed date, else
+  effective date, else the year in its number; notice filing date), and
+  Parcels min / max. The parcel range applies to by-laws only: the City ties
+  every notice to one roll even when it covers a whole subdivision phase, so
+  a notice has no count, and it always passes.
+
+URL params `nz`, `py`, `ps`, `pa`, `pb`. Kept separate from the Zoning
+Changes pill, which highlights parcels and drives the Rezoned column.
+
+### 8.7.4 New Plans — dating subdivisions by survey-plan diff
+
+Nothing the City publishes dates a plain subdivision: DMIS lists one only
+when it carries a rezoning by-law, Public Notices has no plain-subdivision
+type, and Survey Parcels has lot / block / plan but no date. A newly
+registered plan does show up in Survey Parcels as a plan number that was not
+there before, so `web/scripts/build-new-plans.mjs` diffs plan numbers:
+
+1. Every plan in each archived **survey** snapshot of wpg-parcel-history
+   (`<snap>/survey/<NEIGHBOURHOOD>.json`; today 2025-03-14 and 2026-07-01;
+   the older snapshots hold assessment parcels only). The oldest is the
+   baseline. Read from **raw.githubusercontent.com** at the commit
+   `HISTORICAL_CDN` pins: jsDelivr answers 403 "Package size exceeded the
+   configured limit of 50 MB" for any uncached file from that repo.
+2. Today's plans from Survey Parcels (`$group=plan`).
+3. A plan absent from the baseline is new, dated to the first window it
+   appears in: between two snapshots, else (previous build, today). Plans
+   already in the previous `new-plans.geojson` keep their window, so each
+   quarterly run narrows only the newest plans.
+4. Plans numbered below the baseline's highest ordinary plan (under 100000)
+   are flagged `late`: registered earlier, added to the City data later.
+5. Lots of each new plan, fetched live, merged into one MultiPolygon per
+   plan, Douglas-Peucker simplified to about 0.5 m (the first build was
+   9.7 MB unsimplified; 275 KB after).
+
+`lib/newPlans.js` holds the window, late-flag, simplification and filter
+rules (unit-tested). The overlay draws lot outlines from z13 and a dot per
+plan below that, coloured by window, late plans grey; Lots min / max and a
+Within dropdown filter it (`nl`, `nx`, `ny`). A window that straddles the
+Within cutoff is kept whole, so short cutoffs keep most plans until narrower
+windows build up. A new plan can be a subdivision, a consolidation or a
+re-survey; the data does not say which.
 
 ---
 
