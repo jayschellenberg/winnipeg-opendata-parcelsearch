@@ -89,7 +89,8 @@ beneath the tab strip instead of painting over it as the table scrolls under.
 ## Public Notices & Rezonings layer
 
 Planning → **Public Notices & Rezonings** draws one point per rezoning item,
-coloured by type, with a **Within** dropdown (1 / 2 / 3 / 5 / 10 years or
+coloured by type, with a **Show** dropdown (Both / Notices only / Rezonings
+only) and a **Within** dropdown (1 / 2 / 3 / 5 / 10 years or
 all; default 5, counted back from today). Click a point for the by-law or
 notice and its DMIS link; clusters below zoom 13 zoom in on click.
 
@@ -106,7 +107,7 @@ notice and its DMIS link; clusters below zoom 13 zoom in on click.
 The cut uses the by-law's passed date (else effective date, else the year
 in its number) and the notice's filing date. Separate from the Zoning
 Changes pill, which highlights parcels and fills the Rezoned column. URL
-params: `nz=1` (on), `py=<years>`. Code: `web/src/lib/publicNoticesLayer.js`.
+params: `nz=1` (on), `py=<years>`, `ps=notice|bylaw` (Show; both is the default). Code: `web/src/lib/publicNoticesLayer.js`.
 
 ## Address aliases
 

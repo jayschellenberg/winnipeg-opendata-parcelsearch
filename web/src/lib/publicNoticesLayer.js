@@ -19,6 +19,23 @@
 
 import { dmisRecordUrl } from './zoningAmendments.js';
 
+/** Which sources to draw: both, notices only, or adopted by-laws only. */
+export const NOTICE_SOURCE_OPTIONS = ['both', 'notice', 'bylaw'];
+export const DEFAULT_NOTICE_SOURCE = 'both';
+
+/** Normalise the source dropdown; anything unknown means both. */
+export function cleanNoticeSource(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  return NOTICE_SOURCE_OPTIONS.includes(s) ? s : DEFAULT_NOTICE_SOURCE;
+}
+
+/** Keep features from the chosen source ('both' keeps everything). */
+export function filterBySource(features, source) {
+  const s = cleanNoticeSource(source);
+  if (s === 'both') return [...(features || [])];
+  return (features || []).filter((f) => f?.properties?.source === s);
+}
+
 /** Years-back choices for the dropdown; 'all' = no cut. */
 export const NOTICE_YEAR_OPTIONS = ['1', '2', '3', '5', '10', 'all'];
 export const DEFAULT_NOTICE_YEARS = '5';

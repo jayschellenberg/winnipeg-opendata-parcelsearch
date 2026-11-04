@@ -1242,6 +1242,14 @@
                Zoning Changes pill, which highlights parcels. -->
           <button id="public-notices-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="Public Notices &amp; Rezonings — one point per adopted rezoning by-law (City DMIS, 1997 on; placed at the centre of its parcels) and per rezoning, subdivision-and-rezoning or zoning-agreement-amendment Public Notice (Open Data, 2025 on; the City's own location). Coloured by type; notices have a dark ring. Limited to the years chosen below. Click a point for the by-law or notice and its DMIS link. By-laws that could not be placed on a parcel are not shown.">Public Notices &amp; Rezonings</button>
           <label class="overlay-select-field" data-layer-set="planning">
+            <span title="Notices: rezoning applications from Public Notices (2025 on, mostly pending). Rezonings: adopted rezoning by-laws from DMIS (1997 on).">Show</span>
+            <select id="public-notices-source" aria-label="Public Notices and Rezonings: which sources">
+              <option value="both" selected>Both</option>
+              <option value="notice">Notices only</option>
+              <option value="bylaw">Rezonings only</option>
+            </select>
+          </label>
+          <label class="overlay-select-field" data-layer-set="planning">
             <span title="Show only by-laws passed, and notices filed, within this many years of today.">Within</span>
             <select id="public-notices-years" aria-label="Public Notices and Rezonings: years back">
               <option value="1">1 year</option>

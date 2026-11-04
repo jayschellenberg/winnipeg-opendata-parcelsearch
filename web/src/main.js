@@ -107,7 +107,7 @@ import {
 } from './lib/zoningAmendments.js';
 import {
   NOTICE_CATEGORIES, DEFAULT_NOTICE_YEARS, cleanNoticeYears, noticeFeatures, bylawFeatures, bylawRolls,
-  filterByYears, categoryCounts,
+  filterByYears, categoryCounts, DEFAULT_NOTICE_SOURCE, cleanNoticeSource, filterBySource,
 } from './lib/publicNoticesLayer.js';
 import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
@@ -246,6 +246,7 @@ const $mfLegend             = document.getElementById('mf-legend');
 const $contamToggle         = document.getElementById('contam-toggle');
 const $publicNoticesToggle  = document.getElementById('public-notices-toggle');
 const $publicNoticesYears   = document.getElementById('public-notices-years');
+const $publicNoticesSource  = document.getElementById('public-notices-source');
 const $mlsToggle            = document.getElementById('mls-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
@@ -812,7 +813,8 @@ if ($mfToggle) $mfToggle.addEventListener('click', toggleMultiFamily);
 if ($mfMinDu) $mfMinDu.addEventListener('change', onMfMinDuChange);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($publicNoticesToggle) $publicNoticesToggle.addEventListener('click', togglePublicNotices);
-if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', onPublicNoticesYearsChange);
+if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', onPublicNoticesFilterChange);
+if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', onPublicNoticesFilterChange);
 if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
@@ -1506,6 +1508,8 @@ function captureUrlState() {
   if (mfMin !== MF_MIN_DU) s.mfMinDu = mfMin;
   const pnYears = cleanNoticeYears($publicNoticesYears?.value);
   if (pnYears !== DEFAULT_NOTICE_YEARS) s.publicNoticesYears = pnYears;
+  const pnSource = cleanNoticeSource($publicNoticesSource?.value);
+  if (pnSource !== DEFAULT_NOTICE_SOURCE) s.publicNoticesSource = pnSource;
 
   // Toggle defaults: assess is the only one that ships ON.
   const defaults = {
@@ -1609,6 +1613,9 @@ function applyUrlState(state) {
   if ('duMin' in state) $duMin.value = String(state.duMin);
   if ('publicNoticesYears' in state && $publicNoticesYears) {
     $publicNoticesYears.value = cleanNoticeYears(state.publicNoticesYears);
+  }
+  if ('publicNoticesSource' in state && $publicNoticesSource) {
+    $publicNoticesSource.value = cleanNoticeSource(state.publicNoticesSource);
   }
   if ('mfMinDu' in state && $mfMinDu) {
     $mfMinDu.value = String(state.mfMinDu);
@@ -1741,6 +1748,7 @@ for (const btn of [
   if (btn) btn.addEventListener('click', queueUrlWrite);
 }
 if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', queueUrlWrite);
+if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', queueUrlWrite);
 
 // Wire sortable column headers.
 const SORTABLE_KEYS = new Set(COLUMNS.filter((c) => c.sortable).map((c) => c.key));
@@ -2222,7 +2230,7 @@ async function ensurePublicNotices() {
       if (!json && !rows.length) throw new Error('no Public Notices or by-law data');
       publicNoticesAll = {
         features: [...bylaws.features, ...notices.features],
-        unplaced: bylaws.unplaced + notices.unplaced,
+        unplaced: { bylaw: bylaws.unplaced, notice: notices.unplaced },
         hasBylaws: !!json,
       };
       return publicNoticesAll;
@@ -2232,7 +2240,7 @@ async function ensurePublicNotices() {
   return publicNoticesLoad;
 }
 
-function renderPublicNoticesLegend(shown, years) {
+function renderPublicNoticesLegend(shown, years, source = 'both') {
   const $legend = document.getElementById('public-notices-legend');
   const $rows = document.getElementById('public-notices-legend-rows');
   const $title = document.getElementById('public-notices-legend-title');
@@ -2242,7 +2250,8 @@ function renderPublicNoticesLegend(shown, years) {
   if (!publicNoticesEnabled) return;
   const counts = categoryCounts(shown);
   if ($title) {
-    $title.textContent = `Public Notices & Rezonings — ${years === 'all' ? 'all years' : `last ${years} yr${years === '1' ? '' : 's'}`}`;
+    const what = source === 'notice' ? 'Rezoning notices' : source === 'bylaw' ? 'Adopted rezonings' : 'Public Notices & Rezonings';
+    $title.textContent = `${what} — ${years === 'all' ? 'all years' : `last ${years} yr${years === '1' ? '' : 's'}`}`;
   }
   $rows.replaceChildren(...NOTICE_CATEGORIES.filter((c) => counts[c.key] > 0).map((c) => {
     const li = document.createElement('li');
@@ -2255,9 +2264,12 @@ function renderPublicNoticesLegend(shown, years) {
   if ($note) {
     const bits = [];
     if (!shown.length) bits.push('Nothing in this period.');
-    bits.push('By-laws: City DMIS, 1997 on. Notices: Open Data, 2025 on.');
-    if (publicNoticesAll?.unplaced) bits.push(`${publicNoticesAll.unplaced} could not be placed.`);
-    if (publicNoticesAll && !publicNoticesAll.hasBylaws) bits.push('By-law index not built — notices only.');
+    if (source !== 'notice') bits.push('By-laws: City DMIS, 1997 on.');
+    if (source !== 'bylaw') bits.push('Notices: Open Data, 2025 on.');
+    const u = publicNoticesAll?.unplaced || {};
+    const unplaced = (source !== 'notice' ? u.bylaw || 0 : 0) + (source !== 'bylaw' ? u.notice || 0 : 0);
+    if (unplaced) bits.push(`${unplaced} could not be placed.`);
+    if (publicNoticesAll && !publicNoticesAll.hasBylaws && source !== 'notice') bits.push('By-law index not built — notices only.');
     $note.textContent = bits.join(' ');
   }
 }
@@ -2265,12 +2277,13 @@ function renderPublicNoticesLegend(shown, years) {
 function applyPublicNoticesYears() {
   if (!publicNoticesAll) return;
   const years = cleanNoticeYears($publicNoticesYears?.value);
-  const shown = filterByYears(publicNoticesAll.features, years);
+  const source = cleanNoticeSource($publicNoticesSource?.value);
+  const shown = filterBySource(filterByYears(publicNoticesAll.features, years), source);
   setPublicNoticesData(map, shown);
-  renderPublicNoticesLegend(shown, years);
+  renderPublicNoticesLegend(shown, years, source);
 }
 
-function onPublicNoticesYearsChange() {
+function onPublicNoticesFilterChange() {
   if (publicNoticesEnabled) applyPublicNoticesYears();
 }
 
