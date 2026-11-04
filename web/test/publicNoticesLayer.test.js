@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   NOTICE_YEAR_OPTIONS, DEFAULT_NOTICE_YEARS, NOTICE_CATEGORIES, cleanNoticeYears, noticeCutoff,
   noticeFeatures, bylawFeatures, bylawRolls, filterByYears, categoryCounts, noticePopupParts,
-  categoryColorExpression,
+  categoryColorExpression, NOTICE_SOURCE_OPTIONS, cleanNoticeSource, filterBySource,
 } from '../src/lib/publicNoticesLayer.js';
 
 let failed = 0;
@@ -104,6 +104,19 @@ test('category counts and colour expression cover every category', () => {
   assert.equal(counts['bylaw-rezoning'], 0);
   const expr = categoryColorExpression();
   for (const c of NOTICE_CATEGORIES) assert.ok(expr.includes(c.key) && expr.includes(c.color));
+});
+
+test('source filter: both / notices only / by-laws only', () => {
+  assert.deepEqual(NOTICE_SOURCE_OPTIONS, ['both', 'notice', 'bylaw']);
+  assert.equal(cleanNoticeSource('BYLAW'), 'bylaw');
+  assert.equal(cleanNoticeSource('x'), 'both');
+  const all = [
+    ...bylawFeatures(JSON_FIXTURE, CENTROIDS).features,
+    ...noticeFeatures(NOTICES).features,
+  ];
+  assert.equal(filterBySource(all, 'both').length, 4);
+  assert.deepEqual(filterBySource(all, 'notice').map((f) => f.properties.source), ['notice', 'notice']);
+  assert.deepEqual(filterBySource(all, 'bylaw').map((f) => f.properties.source), ['bylaw', 'bylaw']);
 });
 
 test('popup parts for a by-law and a notice', () => {

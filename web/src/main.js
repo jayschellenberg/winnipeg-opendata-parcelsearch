@@ -107,8 +107,9 @@ import {
 } from './lib/zoningAmendments.js';
 import {
   NOTICE_CATEGORIES, DEFAULT_NOTICE_YEARS, cleanNoticeYears, noticeFeatures, bylawFeatures, bylawRolls,
-  filterByYears, categoryCounts,
+  filterByYears, categoryCounts, DEFAULT_NOTICE_SOURCE, cleanNoticeSource, filterBySource,
 } from './lib/publicNoticesLayer.js';
+import { newPlanPoints, planWindowList, windowColors, LATE_PLAN_COLOR } from './lib/newPlans.js';
 import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
@@ -121,6 +122,7 @@ import {
   setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
   setPublicNoticesData, setPublicNoticesVisible,
+  setNewPlansData, setNewPlansVisible,
   setClusterSelection, wireClusterPicker,
 } from './map.js';
 import {
@@ -246,6 +248,8 @@ const $mfLegend             = document.getElementById('mf-legend');
 const $contamToggle         = document.getElementById('contam-toggle');
 const $publicNoticesToggle  = document.getElementById('public-notices-toggle');
 const $publicNoticesYears   = document.getElementById('public-notices-years');
+const $publicNoticesSource  = document.getElementById('public-notices-source');
+const $newPlansToggle       = document.getElementById('new-plans-toggle');
 const $mlsToggle            = document.getElementById('mls-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
@@ -486,6 +490,8 @@ let contamEnabled = false;
 let contamLoaded = false;
 // Public Notices & Rezonings: all features (uncut) once loaded, and the
 // in-flight load so quick clicks share one fetch.
+let newPlansEnabled = false;
+let newPlansLoaded = false;
 let publicNoticesEnabled = false;
 let publicNoticesAll = null;
 let publicNoticesLoad = null;
@@ -812,7 +818,9 @@ if ($mfToggle) $mfToggle.addEventListener('click', toggleMultiFamily);
 if ($mfMinDu) $mfMinDu.addEventListener('change', onMfMinDuChange);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
 if ($publicNoticesToggle) $publicNoticesToggle.addEventListener('click', togglePublicNotices);
-if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', onPublicNoticesYearsChange);
+if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', onPublicNoticesFilterChange);
+if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', onPublicNoticesFilterChange);
+if ($newPlansToggle) $newPlansToggle.addEventListener('click', toggleNewPlans);
 if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
@@ -1506,6 +1514,8 @@ function captureUrlState() {
   if (mfMin !== MF_MIN_DU) s.mfMinDu = mfMin;
   const pnYears = cleanNoticeYears($publicNoticesYears?.value);
   if (pnYears !== DEFAULT_NOTICE_YEARS) s.publicNoticesYears = pnYears;
+  const pnSource = cleanNoticeSource($publicNoticesSource?.value);
+  if (pnSource !== DEFAULT_NOTICE_SOURCE) s.publicNoticesSource = pnSource;
 
   // Toggle defaults: assess is the only one that ships ON.
   const defaults = {
@@ -1514,7 +1524,7 @@ function captureUrlState() {
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     airportToggle: false, transitWalkshedToggle: false, districtPlannersToggle: false,
     transitToggle: false, contamToggle: false, mlsToggle: false, dimensionsToggle: false,
-    streetsToggle: false, publicNoticesToggle: false,
+    streetsToggle: false, publicNoticesToggle: false, newPlansToggle: false,
   };
   const buttons = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
@@ -1527,6 +1537,7 @@ function captureUrlState() {
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle, publicNoticesToggle: $publicNoticesToggle,
+    newPlansToggle: $newPlansToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
     if (!btn) continue;
@@ -1610,6 +1621,9 @@ function applyUrlState(state) {
   if ('publicNoticesYears' in state && $publicNoticesYears) {
     $publicNoticesYears.value = cleanNoticeYears(state.publicNoticesYears);
   }
+  if ('publicNoticesSource' in state && $publicNoticesSource) {
+    $publicNoticesSource.value = cleanNoticeSource(state.publicNoticesSource);
+  }
   if ('mfMinDu' in state && $mfMinDu) {
     $mfMinDu.value = String(state.mfMinDu);
     $mfMinDu.dispatchEvent(new Event('change'));
@@ -1626,6 +1640,7 @@ function applyUrlState(state) {
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle, publicNoticesToggle: $publicNoticesToggle,
+    newPlansToggle: $newPlansToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
     if (!btn || !(key in state)) continue;
@@ -1736,11 +1751,12 @@ for (const btn of [
   $neighbourhoodsToggle,
   $streetsToggle,
   $contamToggle, $mlsToggle, $dimensionsToggle,
-  $publicNoticesToggle,
+  $publicNoticesToggle, $newPlansToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
 }
 if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', queueUrlWrite);
+if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', queueUrlWrite);
 
 // Wire sortable column headers.
 const SORTABLE_KEYS = new Set(COLUMNS.filter((c) => c.sortable).map((c) => c.key));
@@ -2222,7 +2238,7 @@ async function ensurePublicNotices() {
       if (!json && !rows.length) throw new Error('no Public Notices or by-law data');
       publicNoticesAll = {
         features: [...bylaws.features, ...notices.features],
-        unplaced: bylaws.unplaced + notices.unplaced,
+        unplaced: { bylaw: bylaws.unplaced, notice: notices.unplaced },
         hasBylaws: !!json,
       };
       return publicNoticesAll;
@@ -2232,7 +2248,7 @@ async function ensurePublicNotices() {
   return publicNoticesLoad;
 }
 
-function renderPublicNoticesLegend(shown, years) {
+function renderPublicNoticesLegend(shown, years, source = 'both') {
   const $legend = document.getElementById('public-notices-legend');
   const $rows = document.getElementById('public-notices-legend-rows');
   const $title = document.getElementById('public-notices-legend-title');
@@ -2242,7 +2258,8 @@ function renderPublicNoticesLegend(shown, years) {
   if (!publicNoticesEnabled) return;
   const counts = categoryCounts(shown);
   if ($title) {
-    $title.textContent = `Public Notices & Rezonings — ${years === 'all' ? 'all years' : `last ${years} yr${years === '1' ? '' : 's'}`}`;
+    const what = source === 'notice' ? 'Rezoning notices' : source === 'bylaw' ? 'Adopted rezonings' : 'Public Notices & Rezonings';
+    $title.textContent = `${what} — ${years === 'all' ? 'all years' : `last ${years} yr${years === '1' ? '' : 's'}`}`;
   }
   $rows.replaceChildren(...NOTICE_CATEGORIES.filter((c) => counts[c.key] > 0).map((c) => {
     const li = document.createElement('li');
@@ -2255,9 +2272,12 @@ function renderPublicNoticesLegend(shown, years) {
   if ($note) {
     const bits = [];
     if (!shown.length) bits.push('Nothing in this period.');
-    bits.push('By-laws: City DMIS, 1997 on. Notices: Open Data, 2025 on.');
-    if (publicNoticesAll?.unplaced) bits.push(`${publicNoticesAll.unplaced} could not be placed.`);
-    if (publicNoticesAll && !publicNoticesAll.hasBylaws) bits.push('By-law index not built — notices only.');
+    if (source !== 'notice') bits.push('By-laws: City DMIS, 1997 on.');
+    if (source !== 'bylaw') bits.push('Notices: Open Data, 2025 on.');
+    const u = publicNoticesAll?.unplaced || {};
+    const unplaced = (source !== 'notice' ? u.bylaw || 0 : 0) + (source !== 'bylaw' ? u.notice || 0 : 0);
+    if (unplaced) bits.push(`${unplaced} could not be placed.`);
+    if (publicNoticesAll && !publicNoticesAll.hasBylaws && source !== 'notice') bits.push('By-law index not built — notices only.');
     $note.textContent = bits.join(' ');
   }
 }
@@ -2265,12 +2285,13 @@ function renderPublicNoticesLegend(shown, years) {
 function applyPublicNoticesYears() {
   if (!publicNoticesAll) return;
   const years = cleanNoticeYears($publicNoticesYears?.value);
-  const shown = filterByYears(publicNoticesAll.features, years);
+  const source = cleanNoticeSource($publicNoticesSource?.value);
+  const shown = filterBySource(filterByYears(publicNoticesAll.features, years), source);
   setPublicNoticesData(map, shown);
-  renderPublicNoticesLegend(shown, years);
+  renderPublicNoticesLegend(shown, years, source);
 }
 
-function onPublicNoticesYearsChange() {
+function onPublicNoticesFilterChange() {
   if (publicNoticesEnabled) applyPublicNoticesYears();
 }
 
@@ -2299,6 +2320,63 @@ async function togglePublicNotices() {
     if (!publicNoticesEnabled) { renderPublicNoticesLegend([], ''); return; }
   }
   applyPublicNoticesYears();
+}
+
+// New Plans (lib/newPlans.js): survey plans that were not in the oldest
+// archived survey snapshot, from the static public/new-plans.geojson built
+// by scripts/build-new-plans.mjs. Fetched on first toggle, then a
+// visibility flip.
+function renderNewPlansLegend(fc) {
+  const $legend = document.getElementById('new-plans-legend');
+  const $rows = document.getElementById('new-plans-legend-rows');
+  if (!$legend || !$rows) return;
+  $legend.hidden = !newPlansEnabled;
+  if (!newPlansEnabled || !fc) return;
+  const list = planWindowList(fc);
+  const colors = windowColors(list);
+  const late = (fc.features || []).filter((f) => Number(f?.properties?.late) === 1).length;
+  const row = (color, text) => {
+    const li = document.createElement('li');
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.backgroundColor = color;
+    li.append(sw, text);
+    return li;
+  };
+  $rows.replaceChildren(
+    ...list.slice().reverse().map((w) => row(colors.get(w.key), `${w.after} → ${w.by} (${w.count})`)),
+    ...(late ? [row(LATE_PLAN_COLOR, `Older plan added late (${late})`)] : []),
+  );
+}
+
+let newPlansFc = null;
+async function toggleNewPlans() {
+  newPlansEnabled = !newPlansEnabled;
+  $newPlansToggle.setAttribute('aria-pressed', String(newPlansEnabled));
+  $newPlansToggle.classList.toggle('active', newPlansEnabled);
+  await mapReady;
+  setNewPlansVisible(map, newPlansEnabled);
+  if (newPlansEnabled && !newPlansLoaded) {
+    $newPlansToggle.disabled = true;
+    $newPlansToggle.textContent = 'Loading...';
+    try {
+      const res = await fetch('/new-plans.geojson', { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`new-plans.geojson: ${res.status}`);
+      newPlansFc = await res.json();
+      setNewPlansData(map, newPlansFc, newPlanPoints(newPlansFc), windowColors(planWindowList(newPlansFc)));
+      newPlansLoaded = true;
+    } catch (err) {
+      console.warn('New Plans overlay failed', err);
+      newPlansEnabled = false;
+      $newPlansToggle.classList.remove('active');
+      $newPlansToggle.setAttribute('aria-pressed', 'false');
+      setNewPlansVisible(map, false);
+    } finally {
+      $newPlansToggle.disabled = false;
+      $newPlansToggle.textContent = 'New Plans';
+    }
+  }
+  renderNewPlansLegend(newPlansFc);
 }
 
 async function toggleContam() {

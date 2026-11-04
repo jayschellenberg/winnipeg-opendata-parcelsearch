@@ -363,6 +363,15 @@ Log 'Rscript r/build_zoning_amendments.R --refresh'
 $z = $LASTEXITCODE
 if ($z -ne 0) { Log "zoning amendments rebuild failed (exit $z) - keeping the previous index (non-fatal)" }
 
+# New Plans: survey plans not in the oldest archived survey snapshot, dated
+# to the window they first appeared in. Plans already in the file keep their
+# window; new ones get (last build, today), so each quarter dates them to
+# about a quarter. Non-fatal: a raw.githubusercontent / Open Data outage
+# keeps the previous file.
+Log 'npm run refresh:new-plans'
+& npm --prefix (Join-Path $repo 'web') run refresh:new-plans *>> $log 2>&1
+if ($LASTEXITCODE -ne 0) { Log "new plans rebuild failed (exit $LASTEXITCODE) - keeping the previous file (non-fatal)" }
+
 $assets = @(
   'web/public/transit-routes.geojson',
   'web/public/transit-stops.geojson',
@@ -371,14 +380,15 @@ $assets = @(
   'web/public/frequent-transit-walkshed.geojson',
   'web/public/district-planners.geojson',
   'web/public/infill-guideline-areas.geojson',
-  'web/public/zoning-amendments.json'
+  'web/public/zoning-amendments.json',
+  'web/public/new-plans.geojson'
 )
 $changed = & git -C $repo status --porcelain -- $assets
 if (-not $changed) { Log 'no asset changes - nothing to deploy.'; Log '=== done ==='; exit 0 }
 
 Log 'asset(s) changed - committing + pushing (Vercel will auto-deploy)'
 & git -C $repo add -- $assets
-$msg = "Refresh transit + neighbourhood + legacy-map + zoning-amendment static assets (scheduled)`n`nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+$msg = "Refresh transit + neighbourhood + legacy-map + zoning-amendment + new-plans static assets (scheduled)`n`nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 & git -C $repo commit -m $msg *>> $log 2>&1
 if ($LASTEXITCODE -ne 0) {
   $why = "git commit failed (exit $LASTEXITCODE) - nothing deployed."

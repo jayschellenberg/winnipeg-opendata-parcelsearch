@@ -139,6 +139,10 @@ export const SCHEMA = {
   // Public Notices & Rezonings point layer + its years-back window (default 5, not emitted).
   publicNoticesToggle:  { param: 'nz', validate: cleanBool, format: formatBool },
   publicNoticesYears:   { param: 'py', validate: oneOf(['1', '2', '3', '10', 'all']), format: (v) => v },
+  // Which sources it draws (default both, not emitted).
+  publicNoticesSource:  { param: 'ps', validate: oneOf(['notice', 'bylaw']), format: (v) => v },
+  // New Plans overlay (survey plans registered since the oldest survey snapshot).
+  newPlansToggle:       { param: 'np', validate: cleanBool, format: formatBool },
 
   // --- Neighbourhoods mode (1) ---
   neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },

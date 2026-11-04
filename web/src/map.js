@@ -36,6 +36,7 @@ import { isMeasuring, setMeasuring } from './lib/measuring.js';
 import { parseSeries, annualizedGrowth, formatGrowth, FULL_YEAR_MIN_DAYS } from './lib/trafficSeries.js';
 import { amendmentLines } from './lib/zoningAmendments.js';
 import { categoryColorExpression, noticePopupParts } from './lib/publicNoticesLayer.js';
+import { newPlanPopupParts, windowColorExpression } from './lib/newPlans.js';
 
 /**
  * True when a map TOOL already owns this click, so the layer handlers —
@@ -2081,6 +2082,34 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         },
       });
 
+      // New Plans (lib/newPlans.js, public/new-plans.geojson): survey plans
+      // registered since the oldest archived survey snapshot. Lot outlines
+      // from zoom 13; a dot per plan below that so they can be found
+      // citywide. Colour = the window the plan first appeared in.
+      map.addSource('new-plans', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('new-plans-points', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'new-plans-fill', type: 'fill', source: 'new-plans', minzoom: 13,
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#059669', 'fill-opacity': 0.35 },
+      });
+      map.addLayer({
+        id: 'new-plans-line', type: 'line', source: 'new-plans', minzoom: 13,
+        layout: { visibility: 'none' },
+        paint: { 'line-color': '#064e3b', 'line-width': 1.25 },
+      });
+      map.addLayer({
+        id: 'new-plans-point', type: 'circle', source: 'new-plans-points', maxzoom: 13,
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['get', 'lots'], 1, 4, 20, 7, 100, 11],
+          'circle-color': '#059669',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1,
+          'circle-opacity': 0.9,
+        },
+      });
+
       // MLS area boundaries (lib/mlsAreas.js, shared with the Manitoba app).
       addMlsAreaLayers(map);
 
@@ -2385,6 +2414,21 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         } catch { /* source replaced mid-click */ }
       });
       for (const id of ['public-notices-point', 'public-notices-cluster']) {
+        map.on('mouseenter', id, () => {
+          if (map.getLayoutProperty(id, 'visibility') === 'visible') map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+      }
+
+      // New Plans: click a plan (outline or dot) for its number and window.
+      const newPlanPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
+      for (const id of ['new-plans-fill', 'new-plans-point']) {
+        onLayerClick(map, id, (e) => {
+          if (map.getLayoutProperty(id, 'visibility') !== 'visible') return;
+          const p = e.features?.[0]?.properties;
+          if (!p) return;
+          newPlanPopup.setLngLat(e.lngLat).setHTML(newPlanHtml(p)).addTo(map);
+        });
         map.on('mouseenter', id, () => {
           if (map.getLayoutProperty(id, 'visibility') === 'visible') map.getCanvas().style.cursor = 'pointer';
         });
@@ -3855,6 +3899,28 @@ const PUBLIC_NOTICE_LAYERS = ['public-notices-cluster', 'public-notices-cluster-
 export function setPublicNoticesVisible(map, visible) {
   const v = visible ? 'visible' : 'none';
   for (const id of PUBLIC_NOTICE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+}
+
+const NEW_PLAN_LAYERS = ['new-plans-fill', 'new-plans-line', 'new-plans-point'];
+
+/** Push the New Plans outlines + label points and their window colours. */
+export function setNewPlansData(map, fc, points, colors) {
+  map.getSource('new-plans')?.setData(fc);
+  map.getSource('new-plans-points')?.setData(points);
+  const expr = windowColorExpression(colors);
+  if (map.getLayer('new-plans-fill')) map.setPaintProperty('new-plans-fill', 'fill-color', expr);
+  if (map.getLayer('new-plans-point')) map.setPaintProperty('new-plans-point', 'circle-color', expr);
+}
+
+/** Toggle the New Plans layers. */
+export function setNewPlansVisible(map, visible) {
+  const v = visible ? 'visible' : 'none';
+  for (const id of NEW_PLAN_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+}
+
+function newPlanHtml(p) {
+  const { heading, lines } = newPlanPopupParts(p);
+  return `<div style="max-width:300px;line-height:1.4"><strong>${escapeHtml(heading)}</strong><br>${lines.map(escapeHtml).join('<br>')}</div>`;
 }
 
 // Click-popup body for a Public Notices & Rezonings point.
