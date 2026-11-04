@@ -443,8 +443,8 @@
         </details>
 
         <div class="action-row">
-          <button id="search" type="button">🔍 Search</button>
-          <button id="clear"  type="button" class="danger">Clear</button>
+          <button id="search" type="button" data-icon="🔍">Search</button>
+          <button id="clear"  type="button" class="danger" data-icon="🗑️">Clear</button>
         </div>
         <!-- Numbering / Locator pills sit on their own line under Search /
              Clear (the Manitoba layout). #numbering-row is MOVED here by
@@ -926,8 +926,8 @@
                and the map all go back to first-load rather than leaving a
                stale corner of state behind. -->
           <div class="action-row sales-search-row">
-            <button type="button" id="sales-db-load" disabled title="Connect the SABRE export folder above first.">🔍 Search</button>
-            <button id="sales-clear" type="button" class="danger">Clear</button>
+            <button type="button" id="sales-db-load" disabled title="Connect the SABRE export folder above first." data-icon="🔍">Search</button>
+            <button id="sales-clear" type="button" class="danger" data-icon="🗑️">Clear</button>
           </div>
           <!-- Landing spot for #numbering-row on this tab. The Property
                tab pairs it with Import list at half width; here the
@@ -1187,9 +1187,10 @@
           <button id="assess-toggle" type="button" class="secondary active" data-layer-set="parcel" aria-pressed="true" title="Show / hide the red assessment-parcel polygons of the current search results. Dark = shown. Not the citywide grey wash — that is All Assessment Parcels, which highlights the same results in yellow.">Assessment Results</button>
           <button id="all-survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show every survey lot (legal lot) in the city as thin blue lines, from zoom 15 in. Hover for Lot / Block / Plan plus the assessment roll and address under it. Rebuilt monthly with the citywide parcel tiles; not live data.">All Survey Parcels</button>
           <button id="survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show / hide the blue survey-lot (legal lot) polygons of the current search results. Dark = shown.">Survey Parcel Results</button>
-          <button id="zoning-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="City-wide zoning by-law districts (cached 7 days). Click to cycle three states: 1st click = coloured shading (fill + outlines + zone-code labels); 2nd click = labels only (zone codes + district outlines, no colour fill, so it doesn't obscure the map); 3rd click = off. The colour legend shows in the shaded state.">Zoning</button>
-          <button id="neighbourhoods-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg neighbourhood boundaries. Click cycles: Off to Clusters to Neighbourhoods to Off. Click a polygon for the name and cluster.">Neighbourhoods</button>
-          <button id="dimensions-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
+          <button id="zoning-toggle" type="button" data-icon="🗺️" class="secondary" data-layer-set="planning" aria-pressed="false" title="City-wide zoning by-law districts (cached 7 days). Click to cycle three states: 1st click = coloured shading (fill + outlines + zone-code labels); 2nd click = labels only (zone codes + district outlines, no colour fill, so it doesn't obscure the map); 3rd click = off. The colour legend shows in the shaded state.">Zoning</button>
+          <button id="neighbourhoods-toggle" type="button" data-icon="🏘️" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg neighbourhood boundaries. Click cycles: Off to Clusters to Neighbourhoods to Off. Click a polygon for the name and cluster.">Neighbourhoods</button>
+          <button id="dimensions-toggle" type="button" data-icon="📏" class="secondary" data-layer-set="reference" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
+          <button id="mls-toggle" type="button" data-icon="🏷️" class="secondary" data-layer-set="reference" aria-pressed="false" title="MLS Areas — the real-estate boards' MLS area boundaries: Winnipeg Regional Real Estate Board city (1A … 9A) and rural (R02 … R44) areas, plus Brandon's and Portage's. Click an area for its code and board.">MLS Areas</button>
 
           <!-- Planning is collapsed by default like Reference and Historical
                below. Closed <details> content stays in the DOM, so main.js
@@ -1198,19 +1199,19 @@
           <details class="overlay-group-collapse" id="planning-group">
             <summary class="overlay-group-title overlay-group-summary">Planning</summary>
             <div class="overlay-group-body">
-          <button id="secondary-plans-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Secondary Plans</button>
-          <button id="infill-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="Where the City's Residential Infill Guidelines apply, split the way the City's Property Map splits it: Infill Guideline Area 1 (predominantly R1) and Area 2 (predominantly R2), each with Airport PDO and Secondary Plan variants, inside the OurWinnipeg Mature Community boundary. The split is traced from the City map at about 1 m; verify at the lot line.">Infill Area</button>
-          <button id="malls-corridors-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
-          <button id="airport-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Airport Area — the Complete Communities policy area around Richardson International. Not the Airport PDO (zoning) and not the provincial Airport Vicinity Protection Area.">Airport Area</button>
+          <button id="secondary-plans-toggle" type="button" data-icon="📋" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Precincts + Major Redevelopment Sites (Secondary Plan areas)">Secondary Plans</button>
+          <button id="infill-toggle" type="button" data-icon="🧱" class="secondary" data-layer-set="planning" aria-pressed="false" title="Where the City's Residential Infill Guidelines apply, split the way the City's Property Map splits it: Infill Guideline Area 1 (predominantly R1) and Area 2 (predominantly R2), each with Airport PDO and Secondary Plan variants, inside the OurWinnipeg Mature Community boundary. The split is traced from the City map at about 1 m; verify at the lot line.">Infill Area</button>
+          <button id="malls-corridors-toggle" type="button" data-icon="🛍️" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Malls and Corridors PDO — Regional Mixed Use Centres + Urban + Regional Corridors">Malls/Corridors</button>
+          <button id="airport-toggle" type="button" data-icon="✈️" class="secondary" data-layer-set="planning" aria-pressed="false" title="OurWinnipeg Airport Area — the Complete Communities policy area around Richardson International. Not the Airport PDO (zoning) and not the provincial Airport Vicinity Protection Area.">Airport Area</button>
           <!-- Schedule AC Map 2 of the Zoning By-law: the 800 m
                frequent-transit walkshed. Not on Open Data; a static
                GeoJSON built from the City map API behind the legacy
                PP&D Property Map (web/scripts/build-walkshed-geojson.mjs). -->
-          <button id="transit-walkshed-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="Winnipeg Zoning Schedule AC Map 2 — land within 800 m walking distance of frequent transit. A lot entirely inside it may have a 4-storey, 39 ft 4-unit dwelling as-of-right in R1 / R2 / RMF-S (By-law 59/2025); 35 ft elsewhere. Lots only partly inside are excluded. Same boundary as the City's PP&D Property Map layer of that name.">Transit Walkshed</button>
+          <button id="transit-walkshed-toggle" type="button" data-icon="🚶" class="secondary" data-layer-set="planning" aria-pressed="false" title="Winnipeg Zoning Schedule AC Map 2 — land within 800 m walking distance of frequent transit. A lot entirely inside it may have a 4-storey, 39 ft 4-unit dwelling as-of-right in R1 / R2 / RMF-S (By-law 59/2025); 35 ft elsewhere. Lots only partly inside are excluded. Same boundary as the City's PP&D Property Map layer of that name.">Transit Walkshed</button>
           <!-- District Planners: the six City planning districts with the
                planner's name, email and phone. From the legacy PP&D
                Property Map (web/scripts/build-legacy-map-geojson.mjs). -->
-          <button id="district-planners-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="The City's six planning districts, each with its district planner (name, email, phone). Click a district for the contact. Same boundaries as the PP&D Property Map's District Planners layer; planner contacts refreshed monthly.">District Planners</button>
+          <button id="district-planners-toggle" type="button" data-icon="👤" class="secondary" data-layer-set="planning" aria-pressed="false" title="The City's six planning districts, each with its district planner (name, email, phone). Click a district for the contact. Same boundaries as the PP&D Property Map's District Planners layer; planner contacts refreshed monthly.">District Planners</button>
           <!-- Zoning Changes — Off / Show / Filter (the Manitoba pattern).
                Show paints every parcel with a known rezoning by-law or a
                pending rezoning notice amber (citywide, and on the results);
@@ -1241,7 +1242,7 @@
                years (lib/publicNoticesLayer.js). Separate from the
                Zoning Changes pill, which highlights parcels. -->
           <button id="public-notices-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="Public Notices &amp; Rezonings — one point per adopted rezoning by-law (City DMIS, 1997 on; placed at the centre of its parcels) and per rezoning, subdivision-and-rezoning or zoning-agreement-amendment Public Notice (Open Data, 2025 on; the City's own location). Coloured by type; notices have a dark ring. Limited to the years chosen below. Click a point for the by-law or notice and its DMIS link. By-laws that could not be placed on a parcel are not shown.">Public Notices &amp; Rezonings</button>
-          <label class="overlay-select-field" data-layer-set="planning">
+          <label class="overlay-select-field overlay-field-wide" data-layer-set="planning">
             <span title="Notices: rezoning applications from Public Notices (2025 on, mostly pending). Rezonings: adopted rezoning by-laws from DMIS (1997 on).">Show</span>
             <select id="public-notices-source" aria-label="Public Notices and Rezonings: which sources">
               <option value="both" selected>Both</option>
@@ -1249,7 +1250,7 @@
               <option value="bylaw">Rezonings only</option>
             </select>
           </label>
-          <label class="overlay-select-field" data-layer-set="planning">
+          <label class="overlay-select-field overlay-field-wide" data-layer-set="planning">
             <span title="Show only by-laws passed, and notices filed, within this many years of today.">Within</span>
             <select id="public-notices-years" aria-label="Public Notices and Rezonings: years back">
               <option value="1">1 year</option>
@@ -1260,7 +1261,7 @@
               <option value="all">All years</option>
             </select>
           </label>
-          <label class="overlay-select-field range-field" data-layer-set="planning">
+          <label class="overlay-select-field overlay-field-wide range-field" data-layer-set="planning">
             <span title="Show only adopted by-laws placed on this many assessment parcels. Blank = no limit. Notices are always shown: the City ties each one to a single roll even when it covers a whole subdivision phase, so they have no count.">Parcels</span>
             <input type="number" id="public-notices-parcels-min" min="1" max="9999" step="1" placeholder="min" aria-label="Public Notices and Rezonings: minimum by-law parcel count" />
             <span>to</span>
@@ -1270,14 +1271,14 @@
                survey snapshot (2025-03-14), dated to the window they first
                appeared in. Built offline by web/scripts/build-new-plans.mjs
                into public/new-plans.geojson (lib/newPlans.js). -->
-          <button id="new-plans-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="New Plans — survey plans registered since 14 March 2025, the oldest archived survey snapshot: completed subdivisions (and consolidations / re-surveys; the City data does not say which). Each is dated to the window it first appeared in the City's Survey Parcels; darker green = more recent. Grey = an older plan the City added late. Lot outlines from zoom 13, a dot per plan below that. Click for the plan number and lot count.">New Plans</button>
-          <label class="overlay-select-field range-field" data-layer-set="planning">
+          <button id="new-plans-toggle" type="button" data-icon="🆕" class="secondary" data-layer-set="planning" aria-pressed="false" title="New Plans — survey plans registered since 14 March 2025, the oldest archived survey snapshot: completed subdivisions (and consolidations / re-surveys; the City data does not say which). Each is dated to the window it first appeared in the City's Survey Parcels; darker green = more recent. Grey = an older plan the City added late. Lot outlines from zoom 13, a dot per plan below that. Click for the plan number and lot count.">New Plans</button>
+          <label class="overlay-select-field overlay-field-wide range-field" data-layer-set="planning">
             <span title="Show only new plans with this many lots. Blank = no limit. 2 to 2 picks out lot splits; 10 and up, larger subdivisions.">Lots</span>
             <input type="number" id="new-plans-lots-min" min="1" max="9999" step="1" placeholder="min" aria-label="New Plans: minimum lot count" />
             <span>to</span>
             <input type="number" id="new-plans-lots-max" min="1" max="9999" step="1" placeholder="max" aria-label="New Plans: maximum lot count" />
           </label>
-          <label class="overlay-select-field" data-layer-set="planning">
+          <label class="overlay-select-field overlay-field-wide" data-layer-set="planning">
             <span title="Show only plans that first appeared in the City data within this many years of today. Coverage starts 2025-03-14 (the oldest survey snapshot). Plans are dated to a window, so a window that straddles the cutoff is kept whole.">Within</span>
             <select id="new-plans-years" aria-label="New Plans: years back">
               <option value="1">1 year</option>
@@ -1301,10 +1302,10 @@
           <details class="overlay-group-collapse" id="reference-group">
             <summary class="overlay-group-title overlay-group-summary">Reference</summary>
             <div class="overlay-group-body">
-          <button id="traffic-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Latest available 24-hour average traffic volumes from City midblock and permanent count stations">Traffic</button>
+          <button id="traffic-toggle" type="button" data-icon="🚗" class="secondary" data-layer-set="reference" aria-pressed="false" title="Latest available 24-hour average traffic volumes from City midblock and permanent count stations">Traffic</button>
           <button id="contam-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Manitoba Contaminated Sites Registry — designated and impacted sites in Winnipeg. Click any circle for details + a link to the official registry record.">Environmentally Tracked Sites</button>
-          <button id="transit-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg Transit bus route lines and stops. Routes use colours from the agency GTFS feed; stops appear from zoom 12+. Click a route or stop for details.">Transit</button>
-          <button id="dwelling-units-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Show dwelling-unit totals for qualifying residential assessment parcels. Condominium units are grouped by civic address and shown once at the group centroid. Multi-unit totals appear from zoom 13; ordinary parcels show 1 from zoom 16.">Dwelling Units</button>
+          <button id="transit-toggle" type="button" data-icon="🚌" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg Transit bus route lines and stops. Routes use colours from the agency GTFS feed; stops appear from zoom 12+. Click a route or stop for details.">Transit</button>
+          <button id="dwelling-units-toggle" type="button" data-icon="🏠" class="secondary" data-layer-set="reference" aria-pressed="false" title="Show dwelling-unit totals for qualifying residential assessment parcels. Condominium units are grouped by civic address and shown once at the group centroid. Multi-unit totals appear from zoom 13; ordinary parcels show 1 from zoom 16.">Dwelling Units</button>
           <!-- Multi-Family, ported from mb-parcelsearch (lib/multiFamily.js).
                The DU threshold sits right under the button it qualifies,
                the same way Historical's "As of" sits with its toggle. -->
@@ -1314,7 +1315,6 @@
             <input type="number" id="mf-min-du" min="3" max="9999" step="1" value="3" aria-label="Minimum dwelling units for Multi-Family" />
           </label>
           <button id="streets-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Current City of Winnipeg street centrelines and names (Open Data Road Network). Automatically shown over City aerial imagery; turn off for a clean historical image. Street names appear from zoom 13.">Current Winnipeg Streets</button>
-          <button id="mls-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="MLS Areas — the real-estate boards' MLS area boundaries: Winnipeg Regional Real Estate Board city (1A … 9A) and rural (R02 … R44) areas, plus Brandon's and Portage's. Click an area for its code and board.">MLS Areas</button>
           <button id="water-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Paint the result parcels by water influence — dark blue = adjacent to a river, creek or retention pond (frontage), pale blue = near water without frontage. From the City assessment record's property influences; a screening aid, not a measured distance.">Water Influence</button>
             </div>
           </details>
@@ -1336,7 +1336,7 @@
                 <span>As of</span>
                 <select id="historical-date" aria-label="Historical snapshot date"></select>
               </label>
-              <button id="historical-toggle" type="button" class="secondary" data-layer-set="historical" aria-pressed="false" disabled title="Overlay an earlier snapshot's assessment parcels (dashed amber, tinted by size change vs today's roll), survey lots (dashed violet), and — where captured — the whole-city zoning as of that date, to compare against today (e.g. a lot's size/shape before a subdivision). The whole city loads at once; zoom to 12 or closer to see the parcels. Pick a date and toggle. Click a parcel for its as-of roll / area / value, inferred lineage, and a link to the current assessment page.">Historical</button>
+              <button id="historical-toggle" type="button" data-icon="🕰️" class="secondary" data-layer-set="historical" aria-pressed="false" disabled title="Overlay an earlier snapshot's assessment parcels (dashed amber, tinted by size change vs today's roll), survey lots (dashed violet), and — where captured — the whole-city zoning as of that date, to compare against today (e.g. a lot's size/shape before a subdivision). The whole city loads at once; zoom to 12 or closer to see the parcels. Pick a date and toggle. Click a parcel for its as-of roll / area / value, inferred lineage, and a link to the current assessment page.">Historical</button>
             </div>
           </details>
 
