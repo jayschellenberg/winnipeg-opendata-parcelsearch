@@ -1260,12 +1260,18 @@
               <option value="all">All years</option>
             </select>
           </label>
+          <label class="overlay-select-field range-field" data-layer-set="planning">
+            <span title="Show only adopted by-laws placed on this many assessment parcels. Blank = no limit. Notices are always shown: the City ties each one to a single roll even when it covers a whole subdivision phase, so they have no count.">Parcels</span>
+            <input type="number" id="public-notices-parcels-min" min="1" max="9999" step="1" placeholder="min" aria-label="Public Notices and Rezonings: minimum by-law parcel count" />
+            <span>to</span>
+            <input type="number" id="public-notices-parcels-max" min="1" max="9999" step="1" placeholder="max" aria-label="Public Notices and Rezonings: maximum by-law parcel count" />
+          </label>
           <!-- New Plans: survey plans that were not in the oldest archived
                survey snapshot (2025-03-14), dated to the window they first
                appeared in. Built offline by web/scripts/build-new-plans.mjs
                into public/new-plans.geojson (lib/newPlans.js). -->
           <button id="new-plans-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="New Plans — survey plans registered since 14 March 2025, the oldest archived survey snapshot: completed subdivisions (and consolidations / re-surveys; the City data does not say which). Each is dated to the window it first appeared in the City's Survey Parcels; darker green = more recent. Grey = an older plan the City added late. Lot outlines from zoom 13, a dot per plan below that. Click for the plan number and lot count.">New Plans</button>
-          <label class="overlay-select-field new-plans-lots-field" data-layer-set="planning">
+          <label class="overlay-select-field range-field" data-layer-set="planning">
             <span title="Show only new plans with this many lots. Blank = no limit. 2 to 2 picks out lot splits; 10 and up, larger subdivisions.">Lots</span>
             <input type="number" id="new-plans-lots-min" min="1" max="9999" step="1" placeholder="min" aria-label="New Plans: minimum lot count" />
             <span>to</span>

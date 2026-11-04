@@ -3757,12 +3757,12 @@ body {
   background: #fff;
   font-size: 12.5px;
 }
-/* New Plans lot range: "Lots [min] to [max]" — only the first span is the label column. */
-.new-plans-lots-field > span:not(:first-child) {
+/* Min / max range fields ("Lots [min] to [max]"): only the first span is the label column. */
+.range-field > span:not(:first-child) {
   flex: 0 0 auto;
   font-weight: 400;
 }
-.new-plans-lots-field input[type="number"] {
+.range-field input[type="number"] {
   width: 64px;
 }
 .overlay-select-field select {
