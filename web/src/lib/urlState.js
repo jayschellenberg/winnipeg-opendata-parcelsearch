@@ -143,6 +143,9 @@ export const SCHEMA = {
   publicNoticesSource:  { param: 'ps', validate: oneOf(['notice', 'bylaw']), format: (v) => v },
   // New Plans overlay (survey plans registered since the oldest survey snapshot).
   newPlansToggle:       { param: 'np', validate: cleanBool, format: formatBool },
+  // New Plans lot-count range; blank (no limit) is not emitted.
+  newPlansLotsMin:      { param: 'nl', validate: cleanInt(1, 9999), format: (v) => String(v) },
+  newPlansLotsMax:      { param: 'nx', validate: cleanInt(1, 9999), format: (v) => String(v) },
 
   // --- Neighbourhoods mode (1) ---
   neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },

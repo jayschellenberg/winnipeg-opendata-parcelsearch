@@ -148,6 +148,32 @@ export function newPlanFeature(plan, lots, win, { late = false } = {}) {
   };
 }
 
+/** Largest lot count the inputs accept. */
+export const MAX_LOT_FILTER = 9999;
+
+/** A lot-count bound from an input: a whole number 1..MAX_LOT_FILTER, else null (no limit). */
+export function cleanLotBound(v) {
+  const s = String(v ?? '').trim();
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return n >= 1 && n <= MAX_LOT_FILTER ? n : null;
+}
+
+/**
+ * Keep plans whose lot count is within [min, max]; a null bound is open.
+ * A min above the max is read as the range the other way round.
+ */
+export function filterByLots(fc, min, max) {
+  let lo = cleanLotBound(min);
+  let hi = cleanLotBound(max);
+  if (lo != null && hi != null && lo > hi) [lo, hi] = [hi, lo];
+  const features = (fc?.features || []).filter((f) => {
+    const n = Number(f?.properties?.lots) || 0;
+    return (lo == null || n >= lo) && (hi == null || n <= hi);
+  });
+  return { ...fc, features };
+}
+
 /** Label points for the low-zoom circle layer. */
 export function newPlanPoints(fc) {
   return {

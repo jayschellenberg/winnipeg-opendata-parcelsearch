@@ -109,7 +109,7 @@ import {
   NOTICE_CATEGORIES, DEFAULT_NOTICE_YEARS, cleanNoticeYears, noticeFeatures, bylawFeatures, bylawRolls,
   filterByYears, categoryCounts, DEFAULT_NOTICE_SOURCE, cleanNoticeSource, filterBySource,
 } from './lib/publicNoticesLayer.js';
-import { newPlanPoints, planWindowList, windowColors, LATE_PLAN_COLOR } from './lib/newPlans.js';
+import { newPlanPoints, planWindowList, windowColors, LATE_PLAN_COLOR, cleanLotBound, filterByLots } from './lib/newPlans.js';
 import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
@@ -250,6 +250,8 @@ const $publicNoticesToggle  = document.getElementById('public-notices-toggle');
 const $publicNoticesYears   = document.getElementById('public-notices-years');
 const $publicNoticesSource  = document.getElementById('public-notices-source');
 const $newPlansToggle       = document.getElementById('new-plans-toggle');
+const $newPlansLotsMin      = document.getElementById('new-plans-lots-min');
+const $newPlansLotsMax      = document.getElementById('new-plans-lots-max');
 const $mlsToggle            = document.getElementById('mls-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
@@ -821,6 +823,7 @@ if ($publicNoticesToggle) $publicNoticesToggle.addEventListener('click', toggleP
 if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', onPublicNoticesFilterChange);
 if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', onPublicNoticesFilterChange);
 if ($newPlansToggle) $newPlansToggle.addEventListener('click', toggleNewPlans);
+for (const el of [$newPlansLotsMin, $newPlansLotsMax]) if (el) el.addEventListener('change', onNewPlansLotsChange);
 if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
@@ -1516,6 +1519,10 @@ function captureUrlState() {
   if (pnYears !== DEFAULT_NOTICE_YEARS) s.publicNoticesYears = pnYears;
   const pnSource = cleanNoticeSource($publicNoticesSource?.value);
   if (pnSource !== DEFAULT_NOTICE_SOURCE) s.publicNoticesSource = pnSource;
+  const npMin = cleanLotBound($newPlansLotsMin?.value);
+  const npMax = cleanLotBound($newPlansLotsMax?.value);
+  if (npMin != null) s.newPlansLotsMin = npMin;
+  if (npMax != null) s.newPlansLotsMax = npMax;
 
   // Toggle defaults: assess is the only one that ships ON.
   const defaults = {
@@ -1621,6 +1628,8 @@ function applyUrlState(state) {
   if ('publicNoticesYears' in state && $publicNoticesYears) {
     $publicNoticesYears.value = cleanNoticeYears(state.publicNoticesYears);
   }
+  if ('newPlansLotsMin' in state && $newPlansLotsMin) $newPlansLotsMin.value = String(state.newPlansLotsMin);
+  if ('newPlansLotsMax' in state && $newPlansLotsMax) $newPlansLotsMax.value = String(state.newPlansLotsMax);
   if ('publicNoticesSource' in state && $publicNoticesSource) {
     $publicNoticesSource.value = cleanNoticeSource(state.publicNoticesSource);
   }
@@ -2326,6 +2335,32 @@ async function togglePublicNotices() {
 // archived survey snapshot, from the static public/new-plans.geojson built
 // by scripts/build-new-plans.mjs. Fetched on first toggle, then a
 // visibility flip.
+// The loaded plans cut to the Lots min / max inputs.
+function newPlansShown() {
+  return filterByLots(newPlansFc, $newPlansLotsMin?.value, $newPlansLotsMax?.value);
+}
+
+function applyNewPlansData() {
+  if (!newPlansFc) return;
+  const shown = newPlansShown();
+  // Colours come from every plan, so a window keeps its shade when the
+  // lot filter empties another one.
+  setNewPlansData(map, shown, newPlanPoints(shown), windowColors(planWindowList(newPlansFc)));
+  renderNewPlansLegend(shown);
+}
+
+async function onNewPlansLotsChange() {
+  for (const el of [$newPlansLotsMin, $newPlansLotsMax]) {
+    if (!el) continue;
+    const v = cleanLotBound(el.value);
+    if (el.value !== '' && v == null) el.value = '';   // junk / out of range → no limit
+  }
+  queueUrlWrite();
+  if (!newPlansLoaded) return;
+  await mapReady;
+  applyNewPlansData();
+}
+
 function renderNewPlansLegend(fc) {
   const $legend = document.getElementById('new-plans-legend');
   const $rows = document.getElementById('new-plans-legend-rows');
@@ -2333,7 +2368,7 @@ function renderNewPlansLegend(fc) {
   $legend.hidden = !newPlansEnabled;
   if (!newPlansEnabled || !fc) return;
   const list = planWindowList(fc);
-  const colors = windowColors(list);
+  const colors = windowColors(planWindowList(newPlansFc || fc));
   const late = (fc.features || []).filter((f) => Number(f?.properties?.late) === 1).length;
   const row = (color, text) => {
     const li = document.createElement('li');
@@ -2343,9 +2378,18 @@ function renderNewPlansLegend(fc) {
     li.append(sw, text);
     return li;
   };
+  const lo = cleanLotBound($newPlansLotsMin?.value);
+  const hi = cleanLotBound($newPlansLotsMax?.value);
+  const range = lo == null && hi == null ? null
+    : lo != null && hi != null ? (lo === hi ? `${lo} lot${lo === 1 ? '' : 's'}` : `${Math.min(lo, hi)}–${Math.max(lo, hi)} lots`)
+      : lo != null ? `${lo}+ lots` : `up to ${hi} lots`;
+  const empty = document.createElement('li');
+  empty.textContent = 'No plans in this lot range.';
   $rows.replaceChildren(
+    ...(range ? [Object.assign(document.createElement('li'), { textContent: `Showing ${range}` })] : []),
     ...list.slice().reverse().map((w) => row(colors.get(w.key), `${w.after} → ${w.by} (${w.count})`)),
     ...(late ? [row(LATE_PLAN_COLOR, `Older plan added late (${late})`)] : []),
+    ...(fc.features?.length ? [] : [empty]),
   );
 }
 
@@ -2363,7 +2407,6 @@ async function toggleNewPlans() {
       const res = await fetch('/new-plans.geojson', { cache: 'no-cache' });
       if (!res.ok) throw new Error(`new-plans.geojson: ${res.status}`);
       newPlansFc = await res.json();
-      setNewPlansData(map, newPlansFc, newPlanPoints(newPlansFc), windowColors(planWindowList(newPlansFc)));
       newPlansLoaded = true;
     } catch (err) {
       console.warn('New Plans overlay failed', err);
@@ -2376,7 +2419,7 @@ async function toggleNewPlans() {
       $newPlansToggle.textContent = 'New Plans';
     }
   }
-  renderNewPlansLegend(newPlansFc);
+  if (newPlansLoaded) applyNewPlansData(); else renderNewPlansLegend(null);
 }
 
 async function toggleContam() {

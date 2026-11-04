@@ -132,7 +132,9 @@ On the map: lot outlines from zoom 13, a dot per plan below that, coloured
 by window (darker = newer). Grey plans are numbered below the baseline's
 highest plan: registered earlier and added to the City data late, not new
 registrations. A new plan can also be a consolidation or re-survey; the data
-does not say which. URL param `np=1`. Code: `web/src/lib/newPlans.js`.
+does not say which. **Lots** min / max inputs under the button cut the layer
+by lot count (blank = no limit; 2 to 2 = lot splits). URL params `np=1`,
+`nl=<min>`, `nx=<max>`. Code: `web/src/lib/newPlans.js`.
 
 ## Address aliases
 
