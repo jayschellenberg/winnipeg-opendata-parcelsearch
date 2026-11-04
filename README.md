@@ -109,6 +109,31 @@ in its number) and the notice's filing date. Separate from the Zoning
 Changes pill, which highlights parcels and fills the Rezoned column. URL
 params: `nz=1` (on), `py=<years>`, `ps=notice|bylaw` (Show; both is the default). Code: `web/src/lib/publicNoticesLayer.js`.
 
+## New Plans layer
+
+Planning → **New Plans** shows survey plans registered since 14 March 2025,
+the oldest archived survey snapshot: completed subdivisions, which no City
+source dates directly (DMIS lists a subdivision only when it carries a
+rezoning by-law; Survey Parcels `sjjm-nj47` has lot / block / plan but no
+date).
+
+`web/scripts/build-new-plans.mjs` (`npm run refresh:new-plans`) diffs plan
+numbers: the archived survey snapshots in wpg-parcel-history (read from
+raw.githubusercontent.com at the commit `HISTORICAL_CDN` pins; jsDelivr
+refuses uncached files from that repo, which is over its 50 MB limit)
+against today's Survey Parcels. A plan absent from the baseline is new, and
+is dated to the window it first appeared in: between two snapshots, or
+between the last build and today. The output `web/public/new-plans.geojson`
+keeps each plan's window across rebuilds, so the quarterly
+`r/refresh_assets.ps1` run (non-fatal there) dates later plans to about a
+quarter.
+
+On the map: lot outlines from zoom 13, a dot per plan below that, coloured
+by window (darker = newer). Grey plans are numbered below the baseline's
+highest plan: registered earlier and added to the City data late, not new
+registrations. A new plan can also be a consolidation or re-survey; the data
+does not say which. URL param `np=1`. Code: `web/src/lib/newPlans.js`.
+
 ## Address aliases
 
 A parcel carries many civic addresses; the assessment roll records one. Roll

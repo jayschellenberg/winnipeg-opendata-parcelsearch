@@ -1260,6 +1260,11 @@
               <option value="all">All years</option>
             </select>
           </label>
+          <!-- New Plans: survey plans that were not in the oldest archived
+               survey snapshot (2025-03-14), dated to the window they first
+               appeared in. Built offline by web/scripts/build-new-plans.mjs
+               into public/new-plans.geojson (lib/newPlans.js). -->
+          <button id="new-plans-toggle" type="button" class="secondary" data-layer-set="planning" aria-pressed="false" title="New Plans — survey plans registered since 14 March 2025, the oldest archived survey snapshot: completed subdivisions (and consolidations / re-surveys; the City data does not say which). Each is dated to the window it first appeared in the City's Survey Parcels; darker green = more recent. Grey = an older plan the City added late. Lot outlines from zoom 13, a dot per plan below that. Click for the plan number and lot count.">New Plans</button>
             </div>
           </details>
 
@@ -1398,6 +1403,12 @@
               <strong id="public-notices-legend-title">Public Notices &amp; Rezonings</strong>
               <ul id="public-notices-legend-rows"></ul>
               <p class="legend-note" id="public-notices-legend-note"></p>
+            </div>
+            <!-- New Plans. Rows filled by main.js (renderNewPlansLegend). -->
+            <div id="new-plans-legend" class="map-legend new-plans-legend" hidden>
+              <strong>New Plans (first seen in City data)</strong>
+              <ul id="new-plans-legend-rows"></ul>
+              <p class="legend-note">Survey plans not in the 2025-03-14 snapshot. Subdivision, consolidation or re-survey; verify at Land Titles.</p>
             </div>
             <div id="airport-legend" class="map-legend airport-legend" hidden>
               <strong>Airport Area</strong>
