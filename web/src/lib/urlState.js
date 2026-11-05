@@ -136,6 +136,21 @@ export const SCHEMA = {
   mfToggle:             { param: 'mf', validate: cleanBool, format: formatBool },
   // Multi-Family threshold (floor 3, lib/multiFamily.js); emitted only off the default.
   mfMinDu:              { param: 'mn', validate: cleanInt(3, 9999), format: (v) => String(v) },
+  // Public Notices & Rezonings point layer + its years-back window (default 5, not emitted).
+  publicNoticesToggle:  { param: 'nz', validate: cleanBool, format: formatBool },
+  publicNoticesYears:   { param: 'py', validate: oneOf(['1', '2', '3', '10', 'all']), format: (v) => v },
+  // Which sources it draws (default both, not emitted).
+  publicNoticesSource:  { param: 'ps', validate: oneOf(['notice', 'bylaw']), format: (v) => v },
+  // By-law parcel-count range; blank (no limit) is not emitted.
+  publicNoticesParcelsMin: { param: 'pa', validate: cleanInt(1, 9999), format: (v) => String(v) },
+  publicNoticesParcelsMax: { param: 'pb', validate: cleanInt(1, 9999), format: (v) => String(v) },
+  // New Plans overlay (survey plans registered since the oldest survey snapshot).
+  newPlansToggle:       { param: 'np', validate: cleanBool, format: formatBool },
+  // New Plans lot-count range; blank (no limit) is not emitted.
+  newPlansLotsMin:      { param: 'nl', validate: cleanInt(1, 9999), format: (v) => String(v) },
+  newPlansLotsMax:      { param: 'nx', validate: cleanInt(1, 9999), format: (v) => String(v) },
+  // New Plans years-back window (default all, not emitted).
+  newPlansYears:        { param: 'ny', validate: oneOf(['1', '2', '3', '5', '10']), format: (v) => v },
 
   // --- Neighbourhoods mode (1) ---
   neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },

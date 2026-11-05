@@ -95,6 +95,8 @@ import {
   purgeHistoricalZoningCache,
   fetchZoningAmendments,
   fetchRezoningNotices,
+  fetchRezoningNoticePoints,
+  fetchRollCentroids,
   searchAddresses,
   parcelsOverlap,
 } from './soda.js';
@@ -103,6 +105,14 @@ import { historicalTilesUrl, sizeChangeSummaryText } from './lib/historicalTiles
 import {
   ZONING_CHANGE_MODES, buildAmendmentIndex, amendmentCellText, latestAmendmentYear, dmisRecordUrl,
 } from './lib/zoningAmendments.js';
+import {
+  NOTICE_CATEGORIES, DEFAULT_NOTICE_YEARS, cleanNoticeYears, noticeFeatures, bylawFeatures, bylawRolls,
+  filterByYears, categoryCounts, DEFAULT_NOTICE_SOURCE, cleanNoticeSource, filterBySource,
+  filterByParcels, parcelRangeLabel, noticeCutoff,
+} from './lib/publicNoticesLayer.js';
+import {
+  newPlanPoints, planWindowList, windowColors, LATE_PLAN_COLOR, cleanLotBound, filterByLots, filterByCutoff,
+} from './lib/newPlans.js';
 import {
   initMap, showResults, setZoningData, setZoningMode, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
@@ -114,6 +124,8 @@ import {
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
   setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
+  setPublicNoticesData, setPublicNoticesVisible,
+  setNewPlansData, setNewPlansVisible,
   setClusterSelection, wireClusterPicker,
 } from './map.js';
 import {
@@ -238,6 +250,15 @@ const $mfToggle             = document.getElementById('mf-toggle');
 const $mfMinDu              = document.getElementById('mf-min-du');
 const $mfLegend             = document.getElementById('mf-legend');
 const $contamToggle         = document.getElementById('contam-toggle');
+const $publicNoticesToggle  = document.getElementById('public-notices-toggle');
+const $publicNoticesYears   = document.getElementById('public-notices-years');
+const $publicNoticesSource  = document.getElementById('public-notices-source');
+const $publicNoticesParcelsMin = document.getElementById('public-notices-parcels-min');
+const $publicNoticesParcelsMax = document.getElementById('public-notices-parcels-max');
+const $newPlansToggle       = document.getElementById('new-plans-toggle');
+const $newPlansLotsMin      = document.getElementById('new-plans-lots-min');
+const $newPlansLotsMax      = document.getElementById('new-plans-lots-max');
+const $newPlansYears        = document.getElementById('new-plans-years');
 const $mlsToggle            = document.getElementById('mls-toggle');
 const $transitToggle        = document.getElementById('transit-toggle');
 const $neighbourhoodsToggle = document.getElementById('neighbourhoods-toggle');
@@ -476,6 +497,13 @@ let trafficEnabled = false;
 let trafficLoaded = false;
 let contamEnabled = false;
 let contamLoaded = false;
+// Public Notices & Rezonings: all features (uncut) once loaded, and the
+// in-flight load so quick clicks share one fetch.
+let newPlansEnabled = false;
+let newPlansLoaded = false;
+let publicNoticesEnabled = false;
+let publicNoticesAll = null;
+let publicNoticesLoad = null;
 let mlsEnabled = false;
 let mlsLoaded = false;
 let transitEnabled = false;
@@ -798,6 +826,13 @@ if ($dwellingUnitsToggle) $dwellingUnitsToggle.addEventListener('click', toggleD
 if ($mfToggle) $mfToggle.addEventListener('click', toggleMultiFamily);
 if ($mfMinDu) $mfMinDu.addEventListener('change', onMfMinDuChange);
 if ($contamToggle) $contamToggle.addEventListener('click', toggleContam);
+if ($publicNoticesToggle) $publicNoticesToggle.addEventListener('click', togglePublicNotices);
+if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', onPublicNoticesFilterChange);
+if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', onPublicNoticesFilterChange);
+for (const el of [$publicNoticesParcelsMin, $publicNoticesParcelsMax]) if (el) el.addEventListener('change', onPublicNoticesParcelsChange);
+if ($newPlansToggle) $newPlansToggle.addEventListener('click', toggleNewPlans);
+for (const el of [$newPlansLotsMin, $newPlansLotsMax]) if (el) el.addEventListener('change', onNewPlansLotsChange);
+if ($newPlansYears) $newPlansYears.addEventListener('change', onNewPlansLotsChange);
 if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
 if ($transitToggle) $transitToggle.addEventListener('click', toggleTransit);
 if ($neighbourhoodsToggle) $neighbourhoodsToggle.addEventListener('click', cycleNeighbourhoods);
@@ -1494,6 +1529,20 @@ function captureUrlState() {
   if (Number.isFinite(duMinNum) && duMinNum >= 1) s.duMin = duMinNum;
   const mfMin = clampMfMinDu(v($mfMinDu));
   if (mfMin !== MF_MIN_DU) s.mfMinDu = mfMin;
+  const pnYears = cleanNoticeYears($publicNoticesYears?.value);
+  if (pnYears !== DEFAULT_NOTICE_YEARS) s.publicNoticesYears = pnYears;
+  const pnSource = cleanNoticeSource($publicNoticesSource?.value);
+  if (pnSource !== DEFAULT_NOTICE_SOURCE) s.publicNoticesSource = pnSource;
+  const npMin = cleanLotBound($newPlansLotsMin?.value);
+  const npMax = cleanLotBound($newPlansLotsMax?.value);
+  if (npMin != null) s.newPlansLotsMin = npMin;
+  const npYears = newPlansYearsValue();
+  if (npYears !== 'all') s.newPlansYears = npYears;
+  const ppMin = cleanLotBound($publicNoticesParcelsMin?.value);
+  const ppMax = cleanLotBound($publicNoticesParcelsMax?.value);
+  if (ppMin != null) s.publicNoticesParcelsMin = ppMin;
+  if (ppMax != null) s.publicNoticesParcelsMax = ppMax;
+  if (npMax != null) s.newPlansLotsMax = npMax;
 
   // Toggle defaults: assess is the only one that ships ON.
   const defaults = {
@@ -1502,7 +1551,7 @@ function captureUrlState() {
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     airportToggle: false, transitWalkshedToggle: false, districtPlannersToggle: false,
     transitToggle: false, contamToggle: false, mlsToggle: false, dimensionsToggle: false,
-    streetsToggle: false,
+    streetsToggle: false, publicNoticesToggle: false, newPlansToggle: false,
   };
   const buttons = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
@@ -1514,7 +1563,8 @@ function captureUrlState() {
     districtPlannersToggle: $districtPlannersToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
-    streetsToggle: $streetsToggle,
+    streetsToggle: $streetsToggle, publicNoticesToggle: $publicNoticesToggle,
+    newPlansToggle: $newPlansToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
     if (!btn) continue;
@@ -1595,6 +1645,17 @@ function applyUrlState(state) {
     $duMode.dispatchEvent(new Event('change'));
   }
   if ('duMin' in state) $duMin.value = String(state.duMin);
+  if ('publicNoticesYears' in state && $publicNoticesYears) {
+    $publicNoticesYears.value = cleanNoticeYears(state.publicNoticesYears);
+  }
+  if ('publicNoticesParcelsMin' in state && $publicNoticesParcelsMin) $publicNoticesParcelsMin.value = String(state.publicNoticesParcelsMin);
+  if ('publicNoticesParcelsMax' in state && $publicNoticesParcelsMax) $publicNoticesParcelsMax.value = String(state.publicNoticesParcelsMax);
+  if ('newPlansYears' in state && $newPlansYears) $newPlansYears.value = state.newPlansYears;
+  if ('newPlansLotsMin' in state && $newPlansLotsMin) $newPlansLotsMin.value = String(state.newPlansLotsMin);
+  if ('newPlansLotsMax' in state && $newPlansLotsMax) $newPlansLotsMax.value = String(state.newPlansLotsMax);
+  if ('publicNoticesSource' in state && $publicNoticesSource) {
+    $publicNoticesSource.value = cleanNoticeSource(state.publicNoticesSource);
+  }
   if ('mfMinDu' in state && $mfMinDu) {
     $mfMinDu.value = String(state.mfMinDu);
     $mfMinDu.dispatchEvent(new Event('change'));
@@ -1610,7 +1671,8 @@ function applyUrlState(state) {
     districtPlannersToggle: $districtPlannersToggle,
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
-    streetsToggle: $streetsToggle,
+    streetsToggle: $streetsToggle, publicNoticesToggle: $publicNoticesToggle,
+    newPlansToggle: $newPlansToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
     if (!btn || !(key in state)) continue;
@@ -1721,9 +1783,12 @@ for (const btn of [
   $neighbourhoodsToggle,
   $streetsToggle,
   $contamToggle, $mlsToggle, $dimensionsToggle,
+  $publicNoticesToggle, $newPlansToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
 }
+if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', queueUrlWrite);
+if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', queueUrlWrite);
 
 // Wire sortable column headers.
 const SORTABLE_KEYS = new Set(COLUMNS.filter((c) => c.sortable).map((c) => c.key));
@@ -2179,6 +2244,236 @@ async function toggleMls() {
     $mlsToggle.disabled = false;
     $mlsToggle.textContent = 'MLS Areas';
   }
+}
+
+// Public Notices & Rezonings (lib/publicNoticesLayer.js): adopted DMIS
+// rezoning by-laws (zoning-amendments.json, one point per by-law at the
+// centre of its parcels' Assessment centroids) plus live rezoning-type
+// Public Notices at the City's own location. Everything loads once; the
+// years dropdown only re-cuts the loaded features.
+async function ensurePublicNotices() {
+  if (publicNoticesAll) return publicNoticesAll;
+  if (!publicNoticesLoad) {
+    publicNoticesLoad = (async () => {
+      const [json, rows] = await Promise.all([
+        fetchZoningAmendments(),
+        fetchRezoningNoticePoints().catch((e) => { console.warn('rezoning notice points failed (non-fatal)', e); return []; }),
+      ]);
+      let bylaws = { features: [], unplaced: 0 };
+      if (json) {
+        try {
+          const centroids = await fetchRollCentroids(bylawRolls(json), json.generated || '');
+          bylaws = bylawFeatures(json, centroids);
+        } catch (e) { console.warn('by-law centroids failed (non-fatal)', e); }
+      }
+      const notices = noticeFeatures(rows);
+      if (!json && !rows.length) throw new Error('no Public Notices or by-law data');
+      publicNoticesAll = {
+        features: [...bylaws.features, ...notices.features],
+        unplaced: { bylaw: bylaws.unplaced, notice: notices.unplaced },
+        hasBylaws: !!json,
+      };
+      return publicNoticesAll;
+    })();
+    publicNoticesLoad.catch(() => { publicNoticesLoad = null; });
+  }
+  return publicNoticesLoad;
+}
+
+function renderPublicNoticesLegend(shown, years, source = 'both') {
+  const $legend = document.getElementById('public-notices-legend');
+  const $rows = document.getElementById('public-notices-legend-rows');
+  const $title = document.getElementById('public-notices-legend-title');
+  const $note = document.getElementById('public-notices-legend-note');
+  if (!$legend || !$rows) return;
+  $legend.hidden = !publicNoticesEnabled;
+  if (!publicNoticesEnabled) return;
+  const counts = categoryCounts(shown);
+  if ($title) {
+    const what = source === 'notice' ? 'Rezoning notices' : source === 'bylaw' ? 'Adopted rezonings' : 'Public Notices & Rezonings';
+    $title.textContent = `${what} — ${years === 'all' ? 'all years' : `last ${years} yr${years === '1' ? '' : 's'}`}`;
+  }
+  $rows.replaceChildren(...NOTICE_CATEGORIES.filter((c) => counts[c.key] > 0).map((c) => {
+    const li = document.createElement('li');
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.backgroundColor = c.color;
+    li.append(sw, `${c.label} (${counts[c.key]})`);
+    return li;
+  }));
+  if ($note) {
+    const bits = [];
+    const range = parcelRangeLabel($publicNoticesParcelsMin?.value, $publicNoticesParcelsMax?.value);
+    if (range && source !== 'notice') bits.push(`By-laws on ${range}; notices have no parcel count and are all shown.`);
+    if (!shown.length) bits.push(range ? 'Nothing in this period and parcel range.' : 'Nothing in this period.');
+    if (source !== 'notice') bits.push('By-laws: City DMIS, 1997 on.');
+    if (source !== 'bylaw') bits.push('Notices: Open Data, 2025 on.');
+    const u = publicNoticesAll?.unplaced || {};
+    const unplaced = (source !== 'notice' ? u.bylaw || 0 : 0) + (source !== 'bylaw' ? u.notice || 0 : 0);
+    if (unplaced) bits.push(`${unplaced} could not be placed.`);
+    if (publicNoticesAll && !publicNoticesAll.hasBylaws && source !== 'notice') bits.push('By-law index not built — notices only.');
+    $note.textContent = bits.join(' ');
+  }
+}
+
+function applyPublicNoticesYears() {
+  if (!publicNoticesAll) return;
+  const years = cleanNoticeYears($publicNoticesYears?.value);
+  const source = cleanNoticeSource($publicNoticesSource?.value);
+  const shown = filterByParcels(
+    filterBySource(filterByYears(publicNoticesAll.features, years), source),
+    $publicNoticesParcelsMin?.value, $publicNoticesParcelsMax?.value,
+  );
+  setPublicNoticesData(map, shown);
+  renderPublicNoticesLegend(shown, years, source);
+}
+
+function onPublicNoticesFilterChange() {
+  if (publicNoticesEnabled) applyPublicNoticesYears();
+}
+
+function onPublicNoticesParcelsChange() {
+  for (const el of [$publicNoticesParcelsMin, $publicNoticesParcelsMax]) {
+    if (el && el.value !== '' && cleanLotBound(el.value) == null) el.value = '';   // junk → no limit
+  }
+  queueUrlWrite();
+  onPublicNoticesFilterChange();
+}
+
+async function togglePublicNotices() {
+  publicNoticesEnabled = !publicNoticesEnabled;
+  $publicNoticesToggle.setAttribute('aria-pressed', String(publicNoticesEnabled));
+  $publicNoticesToggle.classList.toggle('active', publicNoticesEnabled);
+  await mapReady;
+  setPublicNoticesVisible(map, publicNoticesEnabled);
+  if (!publicNoticesEnabled) { renderPublicNoticesLegend([], ''); return; }
+  if (!publicNoticesAll) {
+    $publicNoticesToggle.disabled = true;
+    $publicNoticesToggle.textContent = 'Loading...';
+    try {
+      await ensurePublicNotices();
+    } catch (err) {
+      console.warn('Public Notices & Rezonings overlay failed', err);
+      publicNoticesEnabled = false;
+      $publicNoticesToggle.classList.remove('active');
+      $publicNoticesToggle.setAttribute('aria-pressed', 'false');
+      setPublicNoticesVisible(map, false);
+    } finally {
+      $publicNoticesToggle.disabled = false;
+      $publicNoticesToggle.textContent = 'Public Notices & Rezonings';
+    }
+    if (!publicNoticesEnabled) { renderPublicNoticesLegend([], ''); return; }
+  }
+  applyPublicNoticesYears();
+}
+
+// New Plans (lib/newPlans.js): survey plans that were not in the oldest
+// archived survey snapshot, from the static public/new-plans.geojson built
+// by scripts/build-new-plans.mjs. Fetched on first toggle, then a
+// visibility flip.
+// The New Plans years dropdown: '1'…'10' or 'all' (the default here, unlike
+// Public Notices, because coverage only starts at the 2025-03-14 snapshot).
+function newPlansYearsValue() {
+  const v = String($newPlansYears?.value || 'all');
+  return ['1', '2', '3', '5', '10'].includes(v) ? v : 'all';
+}
+
+// The loaded plans cut to the Within dropdown and the Lots min / max inputs.
+// `straddling` = plans kept because their window straddles the cutoff.
+function newPlansShown() {
+  const years = newPlansYearsValue();
+  const { fc, straddling } = filterByCutoff(newPlansFc, years === 'all' ? null : noticeCutoff(years));
+  return { shown: filterByLots(fc, $newPlansLotsMin?.value, $newPlansLotsMax?.value), straddling };
+}
+
+function applyNewPlansData() {
+  if (!newPlansFc) return;
+  const { shown, straddling } = newPlansShown();
+  // Colours come from every plan, so a window keeps its shade when the
+  // lot filter empties another one.
+  setNewPlansData(map, shown, newPlanPoints(shown), windowColors(planWindowList(newPlansFc)));
+  renderNewPlansLegend(shown, straddling);
+}
+
+async function onNewPlansLotsChange() {
+  for (const el of [$newPlansLotsMin, $newPlansLotsMax]) {
+    if (!el) continue;
+    const v = cleanLotBound(el.value);
+    if (el.value !== '' && v == null) el.value = '';   // junk / out of range → no limit
+  }
+  queueUrlWrite();
+  if (!newPlansLoaded) return;
+  await mapReady;
+  applyNewPlansData();
+}
+
+function renderNewPlansLegend(fc, straddling = 0) {
+  const $legend = document.getElementById('new-plans-legend');
+  const $rows = document.getElementById('new-plans-legend-rows');
+  if (!$legend || !$rows) return;
+  $legend.hidden = !newPlansEnabled;
+  if (!newPlansEnabled || !fc) return;
+  const list = planWindowList(fc);
+  const colors = windowColors(planWindowList(newPlansFc || fc));
+  const late = (fc.features || []).filter((f) => Number(f?.properties?.late) === 1).length;
+  const row = (color, text) => {
+    const li = document.createElement('li');
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.backgroundColor = color;
+    li.append(sw, text);
+    return li;
+  };
+  const lo = cleanLotBound($newPlansLotsMin?.value);
+  const hi = cleanLotBound($newPlansLotsMax?.value);
+  const range = lo == null && hi == null ? null
+    : lo != null && hi != null ? (lo === hi ? `${lo} lot${lo === 1 ? '' : 's'}` : `${Math.min(lo, hi)}–${Math.max(lo, hi)} lots`)
+      : lo != null ? `${lo}+ lots` : `up to ${hi} lots`;
+  const years = newPlansYearsValue();
+  const shownWhat = [years === 'all' ? null : `last ${years} yr${years === '1' ? '' : 's'}`, range].filter(Boolean).join(', ');
+  const empty = document.createElement('li');
+  empty.textContent = 'No plans in this period and lot range.';
+  const straddle = years !== 'all' && straddling
+    ? [Object.assign(document.createElement('li'), {
+      textContent: `Includes plans whose window straddles the cutoff (dated to a window, not a day).`,
+    })]
+    : [];
+  $rows.replaceChildren(
+    ...(shownWhat ? [Object.assign(document.createElement('li'), { textContent: `Showing ${shownWhat}` })] : []),
+    ...list.slice().reverse().map((w) => row(colors.get(w.key), `${w.after} → ${w.by} (${w.count})`)),
+    ...(late ? [row(LATE_PLAN_COLOR, `Older plan added late (${late})`)] : []),
+    ...(fc.features?.length ? [] : [empty]),
+    ...straddle,
+  );
+}
+
+let newPlansFc = null;
+async function toggleNewPlans() {
+  newPlansEnabled = !newPlansEnabled;
+  $newPlansToggle.setAttribute('aria-pressed', String(newPlansEnabled));
+  $newPlansToggle.classList.toggle('active', newPlansEnabled);
+  await mapReady;
+  setNewPlansVisible(map, newPlansEnabled);
+  if (newPlansEnabled && !newPlansLoaded) {
+    $newPlansToggle.disabled = true;
+    $newPlansToggle.textContent = 'Loading...';
+    try {
+      const res = await fetch('/new-plans.geojson', { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`new-plans.geojson: ${res.status}`);
+      newPlansFc = await res.json();
+      newPlansLoaded = true;
+    } catch (err) {
+      console.warn('New Plans overlay failed', err);
+      newPlansEnabled = false;
+      $newPlansToggle.classList.remove('active');
+      $newPlansToggle.setAttribute('aria-pressed', 'false');
+      setNewPlansVisible(map, false);
+    } finally {
+      $newPlansToggle.disabled = false;
+      $newPlansToggle.textContent = 'New Plans';
+    }
+  }
+  if (newPlansLoaded) applyNewPlansData(); else renderNewPlansLegend(null);
 }
 
 async function toggleContam() {

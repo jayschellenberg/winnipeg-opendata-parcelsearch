@@ -35,6 +35,8 @@ import {
 import { isMeasuring, setMeasuring } from './lib/measuring.js';
 import { parseSeries, annualizedGrowth, formatGrowth, FULL_YEAR_MIN_DAYS } from './lib/trafficSeries.js';
 import { amendmentLines } from './lib/zoningAmendments.js';
+import { categoryColorExpression, noticePopupParts } from './lib/publicNoticesLayer.js';
+import { newPlanPopupParts, windowColorExpression } from './lib/newPlans.js';
 
 /**
  * True when a map TOOL already owns this click, so the layer handlers —
@@ -2026,6 +2028,88 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         },
       });
 
+      // Public Notices & Rezonings (lib/publicNoticesLayer.js): adopted
+      // DMIS rezoning by-laws and live rezoning Public Notices as points,
+      // coloured by type, already cut to the chosen years by main.js.
+      // Clustered below zoom 13 so a citywide view stays readable.
+      map.addSource('public-notices', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        cluster: true,
+        clusterMaxZoom: 12,
+        clusterRadius: 40,
+      });
+      map.addLayer({
+        id: 'public-notices-cluster',
+        type: 'circle',
+        source: 'public-notices',
+        filter: ['has', 'point_count'],
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-color': '#78350f',
+          'circle-opacity': 0.8,
+          'circle-radius': ['step', ['get', 'point_count'], 11, 10, 15, 50, 20],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+        },
+      });
+      map.addLayer({
+        id: 'public-notices-cluster-count',
+        type: 'symbol',
+        source: 'public-notices',
+        filter: ['has', 'point_count'],
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-size': 11,
+          'text-font': ['Open Sans Semibold'],
+          'text-allow-overlap': true,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+      map.addLayer({
+        id: 'public-notices-point',
+        type: 'circle',
+        source: 'public-notices',
+        filter: ['!', ['has', 'point_count']],
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 5, 16, 8],
+          'circle-color': categoryColorExpression(),
+          'circle-stroke-color': ['case', ['==', ['get', 'source'], 'notice'], '#111827', '#ffffff'],
+          'circle-stroke-width': ['case', ['==', ['get', 'source'], 'notice'], 2, 1.25],
+          'circle-opacity': 0.92,
+        },
+      });
+
+      // New Plans (lib/newPlans.js, public/new-plans.geojson): survey plans
+      // registered since the oldest archived survey snapshot. Lot outlines
+      // from zoom 13; a dot per plan below that so they can be found
+      // citywide. Colour = the window the plan first appeared in.
+      map.addSource('new-plans', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('new-plans-points', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'new-plans-fill', type: 'fill', source: 'new-plans', minzoom: 13,
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': '#059669', 'fill-opacity': 0.35 },
+      });
+      map.addLayer({
+        id: 'new-plans-line', type: 'line', source: 'new-plans', minzoom: 13,
+        layout: { visibility: 'none' },
+        paint: { 'line-color': '#064e3b', 'line-width': 1.25 },
+      });
+      map.addLayer({
+        id: 'new-plans-point', type: 'circle', source: 'new-plans-points', maxzoom: 13,
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['get', 'lots'], 1, 4, 20, 7, 100, 11],
+          'circle-color': '#059669',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1,
+          'circle-opacity': 0.9,
+        },
+      });
+
       // MLS area boundaries (lib/mlsAreas.js, shared with the Manitoba app).
       addMlsAreaLayers(map);
 
@@ -2309,6 +2393,47 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       map.on('mouseleave', 'contam-circle', () => {
         map.getCanvas().style.cursor = '';
       });
+
+      // Public Notices & Rezonings: a point opens its popup; a cluster
+      // zooms in to split.
+      const noticePopup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
+      onLayerClick(map, 'public-notices-point', (e) => {
+        if (map.getLayoutProperty('public-notices-point', 'visibility') !== 'visible') return;
+        const f = e.features?.[0];
+        if (!f) return;
+        noticePopup.setLngLat(f.geometry.coordinates).setHTML(publicNoticeHtml(f.properties)).addTo(map);
+      });
+      onLayerClick(map, 'public-notices-cluster', async (e) => {
+        if (map.getLayoutProperty('public-notices-cluster', 'visibility') !== 'visible') return;
+        const f = e.features?.[0];
+        const id = f?.properties?.cluster_id;
+        if (id == null) return;
+        try {
+          const zoom = await map.getSource('public-notices').getClusterExpansionZoom(id);
+          map.easeTo({ center: f.geometry.coordinates, zoom });
+        } catch { /* source replaced mid-click */ }
+      });
+      for (const id of ['public-notices-point', 'public-notices-cluster']) {
+        map.on('mouseenter', id, () => {
+          if (map.getLayoutProperty(id, 'visibility') === 'visible') map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+      }
+
+      // New Plans: click a plan (outline or dot) for its number and window.
+      const newPlanPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
+      for (const id of ['new-plans-fill', 'new-plans-point']) {
+        onLayerClick(map, id, (e) => {
+          if (map.getLayoutProperty(id, 'visibility') !== 'visible') return;
+          const p = e.features?.[0]?.properties;
+          if (!p) return;
+          newPlanPopup.setLngLat(e.lngLat).setHTML(newPlanHtml(p)).addTo(map);
+        });
+        map.on('mouseenter', id, () => {
+          if (map.getLayoutProperty(id, 'visibility') === 'visible') map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+      }
 
       // Click an MLS area -> its code and board.
       const mlsPopup = new maplibregl.Popup({ closeButton: true });
@@ -3761,6 +3886,53 @@ export function setContamData(map, fc) {
 export function setContamVisible(map, visible) {
   const v = visible ? 'visible' : 'none';
   if (map.getLayer('contam-circle')) map.setLayoutProperty('contam-circle', 'visibility', v);
+}
+
+/** Push the year-cut Public Notices & Rezonings points onto the map. */
+export function setPublicNoticesData(map, features) {
+  map.getSource('public-notices')?.setData({ type: 'FeatureCollection', features: features || [] });
+}
+
+const PUBLIC_NOTICE_LAYERS = ['public-notices-cluster', 'public-notices-cluster-count', 'public-notices-point'];
+
+/** Toggle the Public Notices & Rezonings layers. */
+export function setPublicNoticesVisible(map, visible) {
+  const v = visible ? 'visible' : 'none';
+  for (const id of PUBLIC_NOTICE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+}
+
+const NEW_PLAN_LAYERS = ['new-plans-fill', 'new-plans-line', 'new-plans-point'];
+
+/** Push the New Plans outlines + label points and their window colours. */
+export function setNewPlansData(map, fc, points, colors) {
+  map.getSource('new-plans')?.setData(fc);
+  map.getSource('new-plans-points')?.setData(points);
+  const expr = windowColorExpression(colors);
+  if (map.getLayer('new-plans-fill')) map.setPaintProperty('new-plans-fill', 'fill-color', expr);
+  if (map.getLayer('new-plans-point')) map.setPaintProperty('new-plans-point', 'circle-color', expr);
+}
+
+/** Toggle the New Plans layers. */
+export function setNewPlansVisible(map, visible) {
+  const v = visible ? 'visible' : 'none';
+  for (const id of NEW_PLAN_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+}
+
+function newPlanHtml(p) {
+  const { heading, lines } = newPlanPopupParts(p);
+  return `<div style="max-width:300px;line-height:1.4"><strong>${escapeHtml(heading)}</strong><br>${lines.map(escapeHtml).join('<br>')}</div>`;
+}
+
+// Click-popup body for a Public Notices & Rezonings point.
+function publicNoticeHtml(p) {
+  const { heading, lines, links } = noticePopupParts(p);
+  const out = [`<strong>${escapeHtml(heading)}</strong>`];
+  for (const l of lines) out.push(escapeHtml(l));
+  for (const { label, url } of links) {
+    const safe = safeExternalUrl(url);
+    if (safe) out.push(`<a href="${escapeHtml(safe)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`);
+  }
+  return `<div style="max-width:320px;line-height:1.4">${out.join('<br>')}</div>`;
 }
 
 // Click-popup body for zoning polygons. Shows the zone code, the short

@@ -12,6 +12,7 @@ AssessmentParcels_*.csv
 !web/public/frequent-transit-walkshed.geojson
 !web/public/district-planners.geojson
 !web/public/infill-guideline-areas.geojson
+!web/public/new-plans.geojson
 
 # Web build outputs
 web/node_modules/

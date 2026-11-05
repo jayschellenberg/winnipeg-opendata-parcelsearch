@@ -9,9 +9,10 @@ for commercial-appraisal workflows.
 
 Search parcels by legal description (Lot / Block / Plan) or by roll number,
 civic address, zoning, and dwelling-unit count; see survey lots and assessment
-parcels together on a MapLibre map (street, satellite, or 7.5 cm City aerial basemaps); toggle ~15 reference overlays (citywide
+parcels together on a MapLibre map (street, satellite, or 7.5 cm City aerial basemaps); toggle ~25 overlays (citywide
 zoning, traffic volumes, transit, OurWinnipeg policy areas, contaminated
-sites, neighbourhoods, parcel dimensions); browse **historical as-of-date
+sites, neighbourhoods, parcel dimensions, MLS areas, rezoning by-laws and
+notices, newly registered survey plans); browse **historical as-of-date
 parcels** with inferred lineage and size-change highlighting; analyse
 comparable sales from SABRE exports (drop a file, paste a block, or connect a
 folder as a local sales database); export results to CSV.
@@ -43,7 +44,7 @@ Deploys are automatic: every push to `main` rebuilds on Vercel
 |---|---|
 | `web/src/` | The app — `main.js` (UI wiring), `soda.js` (all SODA queries/joins), `map.js` (MapLibre layers), `lib/` (reusable modules) |
 | `web/test/` | Unit tests, run by `npm test` |
-| `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods) |
+| `web/scripts/` | Builders for the committed static overlays (transit GTFS, neighbourhoods, legacy Property Map layers, infill areas, new survey plans) |
 | `web/public/` | Static GeoJSON overlays. `parcels.pmtiles` (citywide parcel polygons z8–z18, address labels, and derived dwelling-unit totals; ~100 MB) is not in git — deploys fetch it from the `parcels-pmtiles` GitHub release (see vercel.json); keep a local copy for dev. Rebuilt and republished automatically every month (see [Data freshness](#data-freshness)). |
 | `r/` | Offline R/PowerShell pipeline: scheduled Open Data downloads, provenance-stamped snapshot archive, historical shard + lineage builders, citywide-parcels, per-snapshot historical, and aerial-ortho PMTiles builds, the DMIS zoning-amendment scrape |
 | `tools/` | Standalone command-line tools, outside the web build. `address_aliases.py` — civic-address aliases for a property, Winnipeg or Manitoba (see [Address aliases](#address-aliases)). Python stdlib only, no dependencies. |
@@ -85,6 +86,63 @@ Two Winnipeg-only phone rules sit at the end of `style.css`: the From # /
 To # fields share the row (their 80px desktop slots clipped "From #" at the
 16px phone font), and the results header and its pinned first column stack
 beneath the tab strip instead of painting over it as the table scrolls under.
+
+## Public Notices & Rezonings layer
+
+Planning → **Public Notices & Rezonings** draws one point per rezoning item,
+coloured by type, with a **Show** dropdown (Both / Notices only / Rezonings
+only) and a **Within** dropdown (1 / 2 / 3 / 5 / 10 years or
+all; default 5, counted back from today). Click a point for the by-law or
+notice and its DMIS link; clusters below zoom 13 zoom in on click.
+
+- **Adopted by-laws** come from `web/public/zoning-amendments.json` (the DMIS
+  scrape, `r/build_zoning_amendments.R`; 1997 on). A by-law becomes one
+  point at the mean of its parcels' Assessment Parcels centroids, fetched by
+  roll and cached 30 days per index build. Text and area amendments, and
+  by-laws not placed on a parcel, are not drawn. Corner-placed ones say so.
+- **Notices** are live Public Notices (`gnxp-9hpt`) of type REZONING,
+  SUBDIVISION AND REZONING and ZONING AGREEMENT AMENDMENT (2025 on), at the
+  City's own location, cached a day. Variances, conditional uses and appeals
+  are left out on purpose.
+
+The cut uses the by-law's passed date (else effective date, else the year
+in its number) and the notice's filing date. Separate from the Zoning
+Changes pill, which highlights parcels and fills the Rezoned column. URL
+params: `nz=1` (on), `py=<years>`, `ps=notice|bylaw` (Show; both is the default),
+`pa` / `pb` (Parcels min / max). **Parcels** min / max filters adopted by-laws by
+the number of assessment parcels they were placed on; notices are always shown,
+because the City ties each notice to one roll even when it covers a whole
+subdivision phase. Code: `web/src/lib/publicNoticesLayer.js`.
+
+## New Plans layer
+
+Planning → **New Plans** shows survey plans registered since 14 March 2025,
+the oldest archived survey snapshot: completed subdivisions, which no City
+source dates directly (DMIS lists a subdivision only when it carries a
+rezoning by-law; Survey Parcels `sjjm-nj47` has lot / block / plan but no
+date).
+
+`web/scripts/build-new-plans.mjs` (`npm run refresh:new-plans`) diffs plan
+numbers: the archived survey snapshots in wpg-parcel-history (read from
+raw.githubusercontent.com at the commit `HISTORICAL_CDN` pins; jsDelivr
+refuses uncached files from that repo, which is over its 50 MB limit)
+against today's Survey Parcels. A plan absent from the baseline is new, and
+is dated to the window it first appeared in: between two snapshots, or
+between the last build and today. The output `web/public/new-plans.geojson`
+keeps each plan's window across rebuilds, so the quarterly
+`r/refresh_assets.ps1` run (non-fatal there) dates later plans to about a
+quarter.
+
+On the map: lot outlines from zoom 13, a dot per plan below that, coloured
+by window (darker = newer). Grey plans are numbered below the baseline's
+highest plan: registered earlier and added to the City data late, not new
+registrations. A new plan can also be a consolidation or re-survey; the data
+does not say which. **Lots** min / max inputs under the button cut the layer
+by lot count (blank = no limit; 2 to 2 = lot splits). **Within** (1 / 2 / 3 / 5 /
+10 years / all; default all) keeps plans whose window ends after the cutoff;
+a window that straddles the cutoff is kept whole and the legend says so.
+Until narrower windows accumulate, short cutoffs keep most plans. URL params
+`np=1`, `nl=<min>`, `nx=<max>`, `ny=<years>`. Code: `web/src/lib/newPlans.js`.
 
 ## Address aliases
 
@@ -725,7 +783,7 @@ principal back and says loudly which one it got.
 |---|---|---|---|
 | `WpgParcelTilesMonthly` | 2nd of each month, 03:00 | `parcels.pmtiles` — the Show All Parcels / Dwelling Units overlays. Fetches d4mq-wa44 live, tiles via WSL tippecanoe, publishes the release asset, commits the checksum, auto-deploys. Then `wpg-survey-parcels.pmtiles` (All Survey Parcels), on even months the historical per-snapshot archives, and the District Planners / Transit Walkshed GeoJSON from the legacy Property Map (planner names change). | No |
 | `WpgOpenDataSemiAnnualDownload` | Jun 1 + Dec 1, 03:00 | Downloads the `r/wpg_datasets.R` layers into the WpgSnapshots archive. | **Yes** — the only job that does |
-| `WpgAssetRefreshQuarterly` | Jan/Apr/Jul/Oct 1, 03:30 | Transit + neighbourhood GeoJSON, and runs both staleness heartbeats. | No |
+| `WpgAssetRefreshQuarterly` | Jan/Apr/Jul/Oct 1, 03:30 | Transit + neighbourhood GeoJSON, the legacy-map layers, the infill-area trace, the DMIS zoning-amendment index (`zoning-amendments.json`) and New Plans (`new-plans.geojson`); runs the staleness heartbeats. | No; New Plans carries its own first-seen windows forward |
 
 Tiles refresh on their own faster cadence than the snapshot archive on
 purpose: the overlay should track the current roll, while history stays
@@ -886,10 +944,11 @@ start the dev server on `localhost`.
 
 ## Documentation
 
-- **[SESSION-HANDOFF-2026-09-18.md](SESSION-HANDOFF-2026-09-18.md)** — the
-  current resume point: the address importer, the decisions that will
-  silently regress if you change them, and what is still open. The previous
-  two ([09-16](SESSION-HANDOFF-2026-09-16.md),
+- **[SESSION-HANDOFF-2026-11-04.md](SESSION-HANDOFF-2026-11-04.md)** — the
+  current resume point: the Public Notices & Rezonings and New Plans layers,
+  their filters, the sidebar icon / layout changes, and what is still open.
+  The previous three ([09-18](SESSION-HANDOFF-2026-09-18.md),
+  [09-16](SESSION-HANDOFF-2026-09-16.md),
   [08-22](SESSION-HANDOFF-2026-08-22.md)) stay beside it; anything older sits
   in `.claude/`, which is gitignored, so those are local-only history rather
   than part of the repo.
@@ -916,6 +975,12 @@ monthly with the parcel tiles (the planner names change as staff move),
 and, rebuilt quarterly, the Infill Guideline Area 1 / 2 split (WMS-only there) traced from the
 raster by `web/scripts/build-infill-areas.py` under the OSGeo4W Python, so it
 is approximate to about one metre.
+Rezoning by-laws: the City's
+[DMIS](https://dmis.winnipeg.ca/) amending Land Development by-law list,
+scraped quarterly by `r/build_zoning_amendments.R`; rezoning notices: Open Data
+Public Notices (`gnxp-9hpt`). New Plans: survey plan numbers diffed between the
+archived [wpg-parcel-history](https://github.com/jayschellenberg/wpg-parcel-history)
+survey snapshots and live Survey Parcels (`sjjm-nj47`).
 Environmentally tracked sites: Manitoba Contaminated/Impacted Sites Registry.
 Streets basemap © OpenStreetMap contributors, via Protomaps; satellite imagery © Esri and partners; aerial ortho imagery © City of Winnipeg (Open Government Licence – Winnipeg).
 

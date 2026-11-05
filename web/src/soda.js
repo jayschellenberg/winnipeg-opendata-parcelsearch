@@ -2455,6 +2455,60 @@ export async function fetchRezoningNotices() {
   return rows;
 }
 
+// ---------- Public Notices & Rezonings point layer ----------
+//
+// lib/publicNoticesLayer.js turns these into points. Notices carry their own
+// City-supplied location, so unlike fetchRezoningNotices this does not need
+// a roll number. By-laws are placed at Assessment Parcels centroids.
+const ROLL_CENTROIDS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const ROLL_CENTROID_BATCH = 150;
+
+/** Every rezoning-type Public Notice with its location, cached a day. */
+export async function fetchRezoningNoticePoints() {
+  const key = 'rezoningNoticePointsV1';
+  try {
+    const cached = await idbReadCache(key, NOTICES_TTL_MS);
+    if (Array.isArray(cached)) return cached;
+  } catch { /* fall through to the fetch */ }
+  const params = new URLSearchParams({
+    $select: 'notice_id,notice_type,address,description,plain_language,in_date,meeting_date,order_date,decision,dmis_decision,report_plan_url,point,location',
+    $where: "notice_type in ('REZONING','SUBDIVISION AND REZONING','ZONING AGREEMENT AMENDMENT')",
+    $order: 'in_date DESC',
+  });
+  const { rows } = await fetchSodaRowsPaged(PUBLIC_NOTICES_URL, params, { label: 'Public Notices rezonings (points)' });
+  idbWriteCache(key, rows).catch(() => {});
+  return rows;
+}
+
+/**
+ * roll → [lon, lat] from Assessment Parcels centroids, for the by-law
+ * index's rolls. Batched `roll_number in (...)`; cached 30 days under the
+ * index's build stamp so a rebuilt index refetches.
+ */
+export async function fetchRollCentroids(rolls, stamp = '') {
+  const key = `rollCentroidsV1:${stamp}`;
+  try {
+    const cached = await idbReadCache(key, ROLL_CENTROIDS_TTL_MS);
+    if (cached && typeof cached === 'object') return cached;
+  } catch { /* fall through */ }
+  const out = {};
+  const list = [...new Set((rolls || []).map(String).filter((r) => /^\d+$/.test(r)))];
+  for (let i = 0; i < list.length; i += ROLL_CENTROID_BATCH) {
+    const chunk = list.slice(i, i + ROLL_CENTROID_BATCH);
+    const params = new URLSearchParams({
+      $select: 'roll_number,centroid_lat,centroid_lon',
+      $where: `roll_number in (${chunk.map((r) => `'${r}'`).join(',')})`,
+    });
+    const { rows } = await fetchSodaRowsPaged(ASSESS_ROWS_URL, params, { label: 'By-law parcel centroids' });
+    for (const r of rows) {
+      const lon = Number(r.centroid_lon); const lat = Number(r.centroid_lat);
+      if (r.roll_number && Number.isFinite(lon) && Number.isFinite(lat) && !out[r.roll_number]) out[r.roll_number] = [lon, lat];
+    }
+  }
+  idbWriteCache(key, out).catch(() => {});
+  return out;
+}
+
 // ---------- Contaminated-Sites Registry overlay -----------------
 //
 // Manitoba's Sustainable Development Contaminated Sites Registry

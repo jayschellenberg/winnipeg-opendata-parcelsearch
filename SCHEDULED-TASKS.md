@@ -63,8 +63,19 @@ history. Ends by emailing a "shard rebuild pending" reminder for the manual
 
 **WpgAssetRefreshQuarterly.** Heartbeats (all three tasks still S4U, newest snapshot
 covers the last capture, tiles under 45 days old, release asset SHA matches `origin/main`,
-ortho years vs R2), then regenerates transit and neighbourhood GeoJSON and pushes if
-changed. Delete the `git push` line for commit-only.
+ortho years vs R2), then regenerates transit and neighbourhood GeoJSON and the
+legacy-map layers (these three are fatal: a failure commits nothing), then, each
+non-fatal, the infill-area trace (OSGeo4W Python), the DMIS zoning-amendment index
+(`Rscript r/build_zoning_amendments.R --refresh`) and New Plans
+(`npm run refresh:new-plans`, which reads the history repo's survey shards from
+raw.githubusercontent.com and live Survey Parcels). Commits and pushes the changed
+assets in one commit. Delete the `git push` line for commit-only.
+
+New Plans dates each new survey plan to the window it first appeared in and keeps
+those windows in `web/public/new-plans.geojson`. Plans found on a run get the window
+(previous run, today), so a skipped or failed quarter only widens the next window;
+do not hand-edit or delete the file, or every plan falls back to the coarse
+snapshot windows.
 
 **WpgParcelTilesMonthly.** Renamed from WpgParcelTilesBiMonthly on 2026-09-24, when it moved from even months to every month; `r\setup_schedule.ps1` deletes the old task if it finds it. Rebuilds the citywide parcel and All Survey Parcels archives every month; the historical per-snapshot archives (step 7) still rebuild on even months only. Fetches parcels live, tiles via WSL tippecanoe, publishes to
 the GitHub release with a staged swap, copies to R2 and verifies size, pushes the meta and
