@@ -1213,6 +1213,32 @@ export async function fetchDemoPermits() {
 }
 
 /*
+ * Every open-data building permit at one civic address, for the
+ * parcel card's Permits dialog (permitsDialog.js). Number + street name
+ * only; lib/ppdPermits.js#sameStreet trims type/direction mismatches
+ * client-side, because the table's street_type is sometimes blank.
+ */
+const ADDRESS_PERMITS_SELECT = [
+  'issue_date', 'permit_number', 'parent_permit_number', 'permit_group',
+  'permit_type', 'sub_type', 'work_type', 'street_number', 'street_name',
+  'street_type', 'street_direction', 'unit_number', 'applicant_business_name',
+  'dwelling_units_created', 'dwelling_units_lost', 'type_of_structure',
+  'application_received_date', 'status', 'final_date', 'major_project', 'address',
+].join(',');
+
+export async function fetchPermitsAtAddress({ number, name }) {
+  if (!number || !name) return [];
+  const params = new URLSearchParams({
+    $select: ADDRESS_PERMITS_SELECT,
+    $where: `street_number = '${escapeSoql(number)}' AND upper(street_name) = '${escapeSoql(String(name).toUpperCase())}'`,
+    $order: 'issue_date DESC',
+    $limit: '2000',
+  });
+  const rows = await fetchSoda(`${DEMO_PERMITS_URL}?${params}`);
+  return Array.isArray(rows) ? rows : [];
+}
+
+/*
  * New-construction permits, for the "already built" evidence column.
  *
  * Construct New, minus Accessory Structures — a shed or a detached

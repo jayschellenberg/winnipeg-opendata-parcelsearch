@@ -133,6 +133,7 @@ const PERSISTENT = {
   publicNoticesLoad: 'the in-flight load of those points, shared by concurrent toggle clicks',
   newPlansFc: 'session memo of the static new-plans.geojson; citywide, not tied to a search',
   addressFromBefore: "the From # field's previous value, so To can follow it; input bookkeeping, not a result",
+  parcelSummaryRecord: "the parcel card's record for its Permits button; every search hides the card and the next row click overwrites it, so the button cannot reach a stale parcel",
   searchGeneration: 'the monotonic counter a search bumps to supersede the one before it; resetting it would let a stale search land (searchSuperseded)',
 };
 

@@ -1,6 +1,6 @@
 # Winnipeg Parcel Search
 
-Status: Active | Next: tbd | Blocked: none | Updated: 2026-11-04
+Status: Active | Next: deploy and check the parcel-card Permits dialog through the Vercel /proxy/ppd/ rewrite | Blocked: none | Updated: 2026-11-05
 
 A free, client-only parcel-research tool for City of Winnipeg properties, built
 for commercial-appraisal workflows.

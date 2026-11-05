@@ -57,6 +57,15 @@ export default defineConfig({
     // silently answers for the other.
     port: Number(process.env.PORT) || 5173,
     proxy: {
+      // City of Winnipeg PP&D permit portal (JSP, no CORS) for the
+      // parcel card's Permits dialog. Same path as the vercel.json
+      // rewrite: /proxy/ppd/<Search>/<page> -> /Permits/<Search>/<page>.
+      '/proxy/ppd/': {
+        target: 'https://ppdportal.winnipeg.ca',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p) => p.replace(/^\/proxy\/ppd\//, '/Permits/'),
+      },
       '/proxy/contam-sites.csv': {
         target: 'https://manitoba.ca',
         changeOrigin: true,

@@ -195,6 +195,7 @@ import {
 // The DOM constructors td/badgeTd/linkTd/etc are consumed inside the registry
 // render functions and never need to be imported here.
 import { stripZoningCode, formatPct, formatDollars, formatCoord } from './lib/cells.js';
+import { openPermitsDialog } from './permitsDialog.js';
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');
@@ -1413,6 +1414,11 @@ initSalesDbPanel({
 // Wire the parcel-summary close button. The card is populated on
 // row click below; the X dismisses without clearing the results.
 const $parcelSummary = document.getElementById('parcel-summary');
+// The assessment record the card is showing, for its Permits button.
+let parcelSummaryRecord = null;
+document.getElementById('ps-open-permits')?.addEventListener('click', () => {
+  openPermitsDialog(parcelSummaryRecord);
+});
 const $psClose = document.getElementById('ps-close');
 if ($psClose && $parcelSummary) {
   $psClose.addEventListener('click', () => { $parcelSummary.hidden = true; });
@@ -4191,6 +4197,7 @@ function wireRowSelection() {
 function showParcelSummary(a, s) {
   if (!$parcelSummary) return;
   const roll = a?.roll_number ?? s?.roll_number ?? '';
+  parcelSummaryRecord = a ?? null;
   const $title    = document.getElementById('ps-roll');
   const $address  = document.getElementById('ps-address');
   const $area     = document.getElementById('ps-area');

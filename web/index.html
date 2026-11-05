@@ -1515,6 +1515,7 @@
             </dl>
             <div class="parcel-summary-actions">
               <a id="ps-open-assessment" class="ps-action" href="#" target="_blank" rel="noreferrer">Open Assessment</a>
+              <button id="ps-open-permits" class="ps-action" type="button" title="Building, trade and occupancy permits at this address (City PP&amp;D portal + open data)">Permits</button>
               <a id="ps-open-ppd" class="ps-action" href="https://legacy.winnipeg.ca/ppd/Mapping/PropertyMap/default.stm" target="_blank" rel="noreferrer">PP&amp;D Property Map</a>
               <a id="ps-open-dmis" class="ps-action" href="https://dmis.winnipeg.ca/" target="_blank" rel="noreferrer">DMIS</a>
               <a id="ps-open-zoning" class="ps-action" href="https://legacy.winnipeg.ca/ppd/zoning/bylaws.stm" target="_blank" rel="noreferrer">Zoning By-Laws</a>
@@ -1861,6 +1862,69 @@
          PUBLIC data vintages — the SABRE sales database is subscriber data
          and its coverage renders exclusively in the sales panel's own
          Coverage dialog, never here. -->
+    <!-- Permits at an address: City PP&D portal (building/trade and
+         occupancy searches, via the /proxy/ppd/ rewrite) cross-referenced
+         with open-data Detailed Building Permit Data (it4w-cpf4).
+         Filled by permitsDialog.js. -->
+    <dialog id="permits-modal" class="sales-modal permits-modal" aria-labelledby="permits-title">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title" id="permits-title">Permits</h2>
+          <button type="button" id="permits-close" class="sales-modal-close" aria-label="Close permits dialog">×</button>
+        </header>
+        <form id="permits-form" class="permits-form" autocomplete="off">
+          <label>No. <input id="permits-number" type="text" inputmode="numeric" maxlength="8" size="6" /></label>
+          <label>Street <input id="permits-street" type="text" maxlength="32" size="22" /></label>
+          <label>Type <select id="permits-type"><option value="">Any</option></select></label>
+          <button type="submit" class="sales-modal-btn primary" id="permits-search">Search</button>
+        </form>
+        <div class="permits-disclaimer" id="permits-disclaimer" hidden>
+          <p>The City's permit search lists issued building and trade permits (since 2000), development permits
+            (since Nov 14, 2022) and occupancy permits (since Dec 1998). It omits cancelled and in-application permits and
+            demolition of a whole primary structure, and the City makes no warranty as to its accuracy or completeness.
+            See the <a href="https://ppdportal.winnipeg.ca/Permits/PropertyPermitSearch/Start.jsp" target="_blank" rel="noreferrer">City's search page</a>
+            and <a href="https://www.winnipeg.ca/connect/conditions-use" target="_blank" rel="noreferrer">Conditions of Use</a>.</p>
+          <label><input type="checkbox" id="permits-disclaimer-ack" /> I acknowledge the City's permit-search disclaimer.</label>
+        </div>
+        <p class="permits-status" id="permits-status" role="status" aria-live="polite"></p>
+        <details class="data-status-block" id="permits-building-block" open>
+          <summary><strong>Building &amp; trade permits</strong> <span class="permits-count" id="permits-building-count"></span></summary>
+          <label class="permits-filter">Show
+            <select id="permits-building-filter">
+              <option value="building">Building &amp; development (hide electrical, plumbing, mechanical)</option>
+              <option value="all">All permits</option>
+              <option value="trade">Trade permits only</option>
+            </select>
+          </label>
+          <div class="permits-choices" id="permits-building-choices" hidden></div>
+          <div class="data-status-scroll permits-scroll">
+            <table class="data-status-table permits-table">
+              <thead><tr><th>Issued</th><th>Number</th><th>Description</th><th>Classification (open data)</th><th>Status</th></tr></thead>
+              <tbody id="permits-building-rows"></tbody>
+            </table>
+          </div>
+        </details>
+        <details class="data-status-block" id="permits-occupancy-block" open>
+          <summary><strong>Occupancy permits</strong> <span class="permits-count" id="permits-occupancy-count"></span></summary>
+          <div class="permits-choices" id="permits-occupancy-choices" hidden></div>
+          <div class="data-status-scroll permits-scroll">
+            <table class="data-status-table permits-table">
+              <thead><tr><th>Issued</th><th>Number</th><th>Use / major group</th><th>Occupant · unit</th><th>Description</th><th>Expires</th><th>Load</th></tr></thead>
+              <tbody id="permits-occupancy-rows"></tbody>
+            </table>
+          </div>
+        </details>
+        <p class="permits-foot">
+          Sources: City of Winnipeg PP&amp;D
+          <a href="https://ppdportal.winnipeg.ca/Permits/PropertyPermitSearch/Start.jsp" target="_blank" rel="noreferrer">permit search</a> and
+          <a href="https://ppdportal.winnipeg.ca/Permits/OccupancyPermitSearch/Start.jsp" target="_blank" rel="noreferrer">occupancy search</a>;
+          <a href="https://data.winnipeg.ca/Development-Approvals-Building-Permits-Inspections/Detailed-Building-Permit-Data/it4w-cpf4" target="_blank" rel="noreferrer">Detailed Building Permit Data</a>
+          (open data, building permits since 2010, joined on permit number).
+          <button type="button" class="sales-modal-btn" id="permits-copy-csv">Copy as CSV</button>
+        </p>
+      </div>
+    </dialog>
+
     <dialog id="data-status-modal" class="sales-modal data-status-modal">
       <div class="sales-modal-inner">
         <header class="sales-modal-header">

@@ -11,6 +11,10 @@
   },
   "rewrites": [
     {
+      "source": "/proxy/ppd/:path*",
+      "destination": "https://ppdportal.winnipeg.ca/Permits/:path*"
+    },
+    {
       "source": "/proxy/contam-sites.csv",
       "destination": "https://manitoba.ca/sd/waste_management/contaminated_sites/registry/cs-data.csv"
     }
