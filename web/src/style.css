@@ -4856,6 +4856,67 @@ button.topbar-link {
 }
 
 /* -----------------------------------------------------------------
+   Permits dialog (permitsDialog.js) — PPD portal + open data.
+   ----------------------------------------------------------------- */
+.permits-modal { width: min(1100px, calc(100vw - 32px)); }
+.permits-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px 12px;
+  margin: 4px 0 8px;
+  font-size: 12px;
+}
+.permits-form label { display: flex; flex-direction: column; gap: 2px; color: var(--ui-muted); }
+.permits-form input,
+.permits-form select {
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+  color: var(--color-primary-500, #1e293b);
+}
+.permits-disclaimer {
+  font-size: 12px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.permits-disclaimer[hidden] { display: none; }
+.permits-disclaimer p { margin: 0 0 6px; }
+.permits-disclaimer label { font-weight: 600; }
+.permits-status { font-size: 12px; color: var(--ui-muted); min-height: 1.2em; margin: 4px 0; }
+.permits-filter { display: block; font-size: 12px; margin: 6px 0 2px; color: var(--ui-muted); }
+.permits-filter select { font: inherit; font-size: 12px; margin-left: 4px; }
+.permits-count { font-weight: 400; color: var(--ui-muted); font-size: 12px; }
+.permits-scroll { max-height: 360px; }
+.permits-table td:first-child,
+.permits-table td:nth-child(2) { white-space: nowrap; }
+.permits-table td:nth-child(3) { min-width: 260px; }
+.permits-table tr.permits-od-only td { background: #fef2f2; }
+.permits-src {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--ui-panel-muted);
+  color: var(--ui-muted);
+}
+.permits-src-both { background: #dcfce7; color: #166534; }
+.permits-src-opendata { background: #fee2e2; color: #991b1b; }
+.permits-related { font-size: 11px; color: #1d4ed8; }
+.permits-choices { margin: 6px 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.permits-choices[hidden] { display: none; }
+.permits-note { width: 100%; margin: 0 0 4px; font-size: 12px; }
+.permits-choice { font-size: 11px; padding: 3px 8px; }
+.permits-foot { font-size: 11px; color: var(--ui-muted); margin: 8px 0 0; }
+.permits-foot .sales-modal-btn { margin-left: 8px; font-size: 11px; padding: 3px 8px; }
+
+/* -----------------------------------------------------------------
    SABRE sales database panel.
    ----------------------------------------------------------------- */
 .sidebar details.sales-db {
