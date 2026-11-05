@@ -195,6 +195,7 @@ import { assessFillOpacity } from './lib/assessFillOpacity.js';
 import { properCaseAddress } from './lib/addressFormat.js';
 import { openPermitsDialog } from './permitsDialog.js';
 import { parseCivicAddress } from './lib/ppdPermits.js';
+import { reachZone } from './lib/hoverReach.js';
 import {
   INLINE_SLOT, badgeRadius, calloutOffset, inlineBadgeFits, solveCalloutSlots,
 } from './lib/calloutPlacement.js';
@@ -2132,28 +2133,31 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       // mousemove, so it could be read but never clicked: any move toward
       // it either dragged it along or swapped it for the parcel the
       // pointer crossed on the way. Now (Jason, 2026-11-05):
-      //   - moving TOWARD the popup holds it still and keeps its content;
-      //     it waits up to HOVER_LINGER_MS for the pointer to arrive
-      //   - moving any other way behaves as before (follows, swaps
+      //   - within HOVER_REACH_PX of the popup it holds still and keeps
+      //     its content for as long as the pointer stays that close
+      //   - anywhere in the funnel between where it was placed and the
+      //     popup (lib/hoverReach.js) it holds for HOVER_LINGER_MS, so a
+      //     wobbly or diagonal path still arrives
+      //   - outside both it behaves as before (follows, swaps
       //     instantly), so scanning across parcels stays immediate
       //   - leaving every parcel, or the map, keeps it HOVER_LINGER_MS
       //   - with the pointer on it, it stays until the pointer leaves
       // and it carries the click popup's action row (Copy Roll, GPS,
       // Permits), wired on every rebuild.
       const HOVER_LINGER_MS = 1000;
+      const HOVER_REACH_PX = 32;
       let hoverHtml = '';       // what the popup is showing now
       let overPopup = false;
       let lingerTimer = null;
       let pendingHover = null;  // latest target seen while held
-      let lastHoverPt = null;
-      const popupRectDist = (pt) => {
+      let hoverOrigin = null;   // canvas point the popup was last placed at
+      /** The popup's box in map-canvas pixels, or null when closed. */
+      const popupCanvasRect = () => {
         const el = popup.isOpen() ? popup.getElement() : null;
-        if (!el || !pt) return Infinity;
+        if (!el) return null;
         const r = el.getBoundingClientRect();
         const c = map.getCanvas().getBoundingClientRect();
-        const x = pt.x + c.left;
-        const y = pt.y + c.top;
-        return Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
+        return { left: r.left - c.left, top: r.top - c.top, right: r.right - c.left, bottom: r.bottom - c.top };
       };
       const clearLinger = () => {
         if (lingerTimer) clearTimeout(lingerTimer);
@@ -2207,39 +2211,47 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           if (overPopup) return;
           const next = pendingHover;
           pendingHover = null;
-          if (next) placeHover(next);
-          else { hoverHtml = ''; popup.remove(); }
+          if (next) {
+            placeHover(next);
+            hoverOrigin = map.project(next.lngLat);
+          } else { hoverHtml = ''; popup.remove(); }
         }, HOVER_LINGER_MS);
       }
       /** Route one mousemove: `next` is { html, lngLat, geom } for what is
        *  under the pointer, or null for nothing. */
       const hoverTo = (next, pt) => {
-        const toward = lastHoverPt != null && popupRectDist(pt) < popupRectDist(lastHoverPt) - 0.5;
-        lastHoverPt = pt;
         if (overPopup) return;
         if (!popup.isOpen()) {
           clearLinger();
           pendingHover = null;
-          if (next) placeHover(next);
+          if (next) { placeHover(next); hoverOrigin = pt; }
           return;
         }
+        const zone = reachZone(pt, popupCanvasRect(), hoverOrigin, HOVER_REACH_PX);
         if (next && next.html === hoverHtml) {
-          // Same parcel: follow the cursor unless it is heading for us.
+          // Same parcel: follow the cursor unless it is on its way over.
           clearLinger();
           pendingHover = null;
-          if (!toward) fitHover(next.lngLat);
+          if (zone === 'out') { fitHover(next.lngLat); hoverOrigin = pt; }
           return;
         }
-        if (next && !toward) {
-          clearLinger();
+        if (zone === 'out') {
           pendingHover = null;
-          placeHover(next);
+          if (next) {
+            clearLinger();
+            placeHover(next);
+            hoverOrigin = pt;
+          } else {
+            startLinger();   // off every parcel: linger, then close
+          }
           return;
         }
-        // Heading for the popup across another parcel, or off every
-        // parcel: hold what is shown, and settle after the linger.
+        // On its way to the popup across another parcel (or bare map):
+        // hold what is shown. Right beside it, hold for as long as the
+        // pointer stays; further out in the funnel, for the linger time.
         pendingHover = next;
-        startLinger();
+        if (zone === 'near') clearLinger();
+        else startLinger();
       };
       // ---- Multi-parcel-sale group highlight -------------------------
       // Hovering any parcel of a sale lights up every parcel in the same
