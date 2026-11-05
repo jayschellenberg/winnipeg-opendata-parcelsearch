@@ -6033,6 +6033,14 @@ body.phone .sidebar .result-card-more {
    sheet, under the sticky handle + tab strip, and flashes its outline
    the way a desktop row flashes .row-highlight. */
 body.phone .maplibregl-popup.hover-popup { display: none; }
+/* The parcel hover popup is reachable (map.js holds it still while the
+   pointer heads for it), so a tall one — a park with 150 civic
+   addresses — scrolls instead of running past the map's bottom edge and
+   hiding its Copy Roll / Permits row. */
+.maplibregl-popup.hover-popup:not(.hood-hover-popup) .maplibregl-popup-content {
+  max-height: min(340px, 45vh);   /* map.js sets the real cap from the map height */
+  overflow-y: auto;
+}
 .result-card { scroll-margin-top: 92px; }
 .result-card.card-highlight { animation: card-highlight 1.6s ease-out; }
 @keyframes card-highlight {

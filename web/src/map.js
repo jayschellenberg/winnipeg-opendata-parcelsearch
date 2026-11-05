@@ -2127,6 +2127,120 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         closeButton: false,
         closeOnClick: false,
       });
+      // ---- Reachable hover popup ---------------------------------------
+      // The popup used to follow the cursor and be rebuilt on every
+      // mousemove, so it could be read but never clicked: any move toward
+      // it either dragged it along or swapped it for the parcel the
+      // pointer crossed on the way. Now (Jason, 2026-11-05):
+      //   - moving TOWARD the popup holds it still and keeps its content;
+      //     it waits up to HOVER_LINGER_MS for the pointer to arrive
+      //   - moving any other way behaves as before (follows, swaps
+      //     instantly), so scanning across parcels stays immediate
+      //   - leaving every parcel, or the map, keeps it HOVER_LINGER_MS
+      //   - with the pointer on it, it stays until the pointer leaves
+      // and it carries the click popup's action row (Copy Roll, GPS,
+      // Permits), wired on every rebuild.
+      const HOVER_LINGER_MS = 1000;
+      let hoverHtml = '';       // what the popup is showing now
+      let overPopup = false;
+      let lingerTimer = null;
+      let pendingHover = null;  // latest target seen while held
+      let lastHoverPt = null;
+      const popupRectDist = (pt) => {
+        const el = popup.isOpen() ? popup.getElement() : null;
+        if (!el || !pt) return Infinity;
+        const r = el.getBoundingClientRect();
+        const c = map.getCanvas().getBoundingClientRect();
+        const x = pt.x + c.left;
+        const y = pt.y + c.top;
+        return Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
+      };
+      const clearLinger = () => {
+        if (lingerTimer) clearTimeout(lingerTimer);
+        lingerTimer = null;
+      };
+      const hideHover = () => {
+        clearLinger();
+        pendingHover = null;
+        hoverHtml = '';
+        overPopup = false;
+        popup.remove();
+      };
+      const fitHover = (lngLat) => {
+        const content = popup.getElement()?.querySelector('.maplibregl-popup-content');
+        if (!content) { popup.setLngLat(lngLat); return; }
+        const pos = map.project(lngLat);
+        const H = map.getCanvas().clientHeight;
+        const W = map.getCanvas().clientWidth;
+        const below = H - pos.y;
+        content.style.maxHeight = `${Math.max(120, Math.max(below, pos.y) - 16)}px`;
+        popup.options.anchor = `${below >= pos.y ? 'top' : 'bottom'}-${pos.x < W / 2 ? 'left' : 'right'}`;
+        popup.setLngLat(lngLat);
+      };
+      const placeHover = ({ html, lngLat, geom }) => {
+        hoverHtml = html;
+        popup.setLngLat(lngLat).setHTML(html).addTo(map);
+        const el = popup.getElement();
+        // Fit inside the map, whose height varies with the layout: a tall
+        // popup scrolls (style.css) instead of running past the map's edge
+        // with its action row out of reach. MapLibre's auto-anchor puts it
+        // below the point whenever it fits neither way, so the side is
+        // picked here — whichever of above/below has more room — and the
+        // height capped to that room. Popup has no setAnchor; options.
+        // anchor is what its _update reads, and setLngLat re-runs it.
+        fitHover(lngLat);
+        // remove() discards the container, so a re-added popup has a
+        // fresh element; the flag keeps one listener pair per element.
+        if (el && !el.dataset.hoverWired) {
+          el.dataset.hoverWired = '1';
+          el.addEventListener('mouseenter', () => { overPopup = true; clearLinger(); });
+          el.addEventListener('mouseleave', () => { overPopup = false; pendingHover = null; startLinger(); });
+        }
+        wireRollCopy(popup);
+        wirePermitLinks(popup);
+        wireCoordsCopy(popup, polygonBboxMidpoint(geom) ?? [lngLat.lng, lngLat.lat]);
+      };
+      function startLinger() {
+        if (lingerTimer) return;
+        lingerTimer = setTimeout(() => {
+          lingerTimer = null;
+          if (overPopup) return;
+          const next = pendingHover;
+          pendingHover = null;
+          if (next) placeHover(next);
+          else { hoverHtml = ''; popup.remove(); }
+        }, HOVER_LINGER_MS);
+      }
+      /** Route one mousemove: `next` is { html, lngLat, geom } for what is
+       *  under the pointer, or null for nothing. */
+      const hoverTo = (next, pt) => {
+        const toward = lastHoverPt != null && popupRectDist(pt) < popupRectDist(lastHoverPt) - 0.5;
+        lastHoverPt = pt;
+        if (overPopup) return;
+        if (!popup.isOpen()) {
+          clearLinger();
+          pendingHover = null;
+          if (next) placeHover(next);
+          return;
+        }
+        if (next && next.html === hoverHtml) {
+          // Same parcel: follow the cursor unless it is heading for us.
+          clearLinger();
+          pendingHover = null;
+          if (!toward) fitHover(next.lngLat);
+          return;
+        }
+        if (next && !toward) {
+          clearLinger();
+          pendingHover = null;
+          placeHover(next);
+          return;
+        }
+        // Heading for the popup across another parcel, or off every
+        // parcel: hold what is shown, and settle after the linger.
+        pendingHover = next;
+        startLinger();
+      };
       // ---- Multi-parcel-sale group highlight -------------------------
       // Hovering any parcel of a sale lights up every parcel in the same
       // transaction (outline 2→3 px, fill 0.3→0.5) so an assembly reads
@@ -2178,7 +2292,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         // Stand down while an area-selection tool is armed: the hover
         // popup would sit on top of the exact point being aimed at.
         if (isShapeDrawing() || isMeasuring()) {
-          popup.remove();
+          hideHover();
           clearGroupHover();
           return;
         }
@@ -2187,7 +2301,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           .flatMap((id) => map.queryRenderedFeatures(e.point, { layers: [id] }));
         if (dwellingHits.length) {
           map.getCanvas().style.cursor = 'pointer';
-          popup.setLngLat(e.lngLat).setHTML(dwellingUnitHtml(dwellingHits[0].properties)).addTo(map);
+          hoverTo({ html: dwellingUnitHtml(dwellingHits[0].properties), lngLat: e.lngLat, geom: null }, e.point);
           return;
         }
         const primaryHits = map.getLayer('parcel-fill')
@@ -2220,7 +2334,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           if (surveyLot && citywideHits.length) surveyLot._hideAsmt = true;
         }
         if (!primaryHits.length && !contextHits.length && !citywideHits.length && !surveyLot) {
-          popup.remove();
+          hoverTo(null, e.point);
           map.getCanvas().style.cursor = '';
           return;
         }
@@ -2230,14 +2344,20 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           ?? (contextHits.length ? null : citywideHits[0]?.properties);
         const contextProps = contextHits[0]?.properties
           ?? (surveyLot ? citywideHits[0]?.properties : undefined);
-        popup
-          .setLngLat(e.lngLat)
-          .setHTML(combinedPopupHtml(primaryProps, contextProps))
-          .addTo(map);
+        hoverTo({
+          html: combinedPopupHtml(primaryProps, contextProps, { actions: true }),
+          lngLat: e.lngLat,
+          geom: (primaryHits[0] ?? contextHits[0] ?? citywideHits[0])?.geometry,
+        }, e.point);
       });
-      map.on('mouseout', () => {
-        popup.remove();
+      map.on('mouseout', (e) => {
         map.getCanvas().style.cursor = '';
+        // Moving onto the popup itself is not leaving: its mouseenter
+        // takes over. Anything else lingers, then closes.
+        const to = e.originalEvent?.relatedTarget;
+        if (to && popup.getElement()?.contains(to)) return;
+        pendingHover = null;
+        if (popup.isOpen()) startLinger();
       });
 
       // Click a parcel → scroll the results table to the matching row AND
@@ -2267,9 +2387,12 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         // when it found and revealed the card; otherwise (another page, a
         // parcel outside the results) the popup below still opens.
         if (isPhone() && key != null && onFeatureClick && onFeatureClick(key) === true) {
-          popup.remove();
+          hideHover();
           return;
         }
+        // The sticky popup replaces the hover one; both at once would be
+        // the same parcel twice.
+        hideHover();
         if (key != null && onFeatureClick) onFeatureClick(key);
 
         const primaryHits = map.getLayer('parcel-fill')
@@ -2332,6 +2455,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         if (!f) return;
         const surveyLot = citywideSurveyAt(map, e.point);
         if (surveyLot) surveyLot._hideAsmt = true;   // the assessment block follows
+        hideHover();
         citywideClickPopup
           .setLngLat(e.lngLat)
           .setHTML(surveyLot
@@ -4422,14 +4546,11 @@ function combinedPopupHtml(primary, context, { actions: withActions = false } = 
   // parcel in the other program": the roll goes into SABRE, N1 or the
   // City's own search, the coordinates into a report exhibit or a phone.
   //
-  // `withActions` is the whole reason this row is a parameter rather than
-  // part of popupHtml: the HOVER popup is drawn by this same builder, and
-  // nothing wires its anchors. Manitoba emits the markup in both and wires
-  // only the sticky one; this is a DELIBERATE divergence, because the hover
-  // popup here is reachable — the pointer can leave the canvas and enter
-  // it, at which point an unwired `href="#"` is a link that scrolls the
-  // page instead of copying anything. A link that cannot work is better
-  // not drawn.
+  // `withActions` stays a parameter so a caller that does not wire the
+  // anchors never draws them — an unwired `href="#"` scrolls the page
+  // instead of copying anything. Since 2026-11-05 the hover popup is
+  // reachable on purpose (it holds still while the pointer heads for it)
+  // and wires them too; see placeHover in the mousemove block.
   //
   // When a click lands on two DIFFERENT rolls (a survey parcel over an
   // assessment one, or two stacked assessment records) each gets its own
