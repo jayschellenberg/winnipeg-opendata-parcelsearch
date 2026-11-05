@@ -193,6 +193,8 @@ import { pucOverrideUrl } from './lib/links.js';
 import { buildingLines, saleLines } from './lib/salePopupLines.js';
 import { assessFillOpacity } from './lib/assessFillOpacity.js';
 import { properCaseAddress } from './lib/addressFormat.js';
+import { openPermitsDialog } from './permitsDialog.js';
+import { parseCivicAddress } from './lib/ppdPermits.js';
 import {
   INLINE_SLOT, badgeRadius, calloutOffset, inlineBadgeFits, solveCalloutSlots,
 } from './lib/calloutPlacement.js';
@@ -2292,6 +2294,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         // the same point for the same parcel; the click point is the
         // fallback for a geometry that renders empty.
         wireRollCopy(resultClickPopup);
+        wirePermitLinks(resultClickPopup);
         const clickedGeom = primaryHits[0]?.geometry ?? contextHits[0]?.geometry;
         wireCoordsCopy(resultClickPopup,
           polygonBboxMidpoint(clickedGeom) ?? [e.lngLat.lng, e.lngLat.lat]);
@@ -2344,6 +2347,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           ?? [e.lngLat.lng, e.lngLat.lat];
         wireCoordsCopy(citywideClickPopup, center);
         wireRollCopy(citywideClickPopup);
+        wirePermitLinks(citywideClickPopup);
       };
       onLayerClick(map, 'citywide-parcels-fill', citywideClick('citywide-parcels-fill'));
       onLayerClick(map, 'mf-fill', citywideClick('mf-fill'));
@@ -4121,6 +4125,8 @@ function citywideParcelHtml(p) {
   if (actions.length) {
     lines.push(actions.join(' &nbsp;·&nbsp; '));
   }
+  const permits = permitLinksHtml(address);
+  if (permits) lines.push(permits);
   // Tiles are an offline-built snapshot, not live SODA data — date it so a
   // stale address/PUCS here isn't mistaken for the current record.
   if (_citywideBuiltDate) {
@@ -4252,6 +4258,30 @@ function wireCoordsCopy(popup, lngLat) {
  * popup HTML is the only thing that knows which parcels it drew — and a
  * click over two stacked rolls draws two links.
  */
+/**
+ * "Construction permits · Occupancy permits" for a civic address, or ''
+ * when the address has no civic number (the permit searches need one).
+ * Click popups only — the hover popup closes before a pointer can reach
+ * it. wirePermitLinks makes them open the Permits dialog.
+ */
+function permitLinksHtml(fullAddress) {
+  if (!parseCivicAddress(fullAddress)) return '';
+  const a = escapeHtml(String(fullAddress));
+  return `<strong>Permits:</strong> <a href="#" class="parcel-permits-link" role="button" data-permits="building" data-address="${a}"`
+    + ' title="Building and trade permits at this address (City PP&amp;D portal + open data)">Construction</a>'
+    + ` &nbsp;·&nbsp; <a href="#" class="parcel-permits-link" role="button" data-permits="occupancy" data-address="${a}"`
+    + ' title="Occupancy permits at this address (City PP&amp;D portal)">Occupancy</a>';
+}
+
+function wirePermitLinks(popup) {
+  for (const anchor of popup?.getElement?.()?.querySelectorAll('.parcel-permits-link') || []) {
+    anchor.addEventListener('click', (e) => {
+      e.preventDefault();
+      openPermitsDialog({ full_address: anchor.dataset.address }, { focus: anchor.dataset.permits });
+    });
+  }
+}
+
 function wireRollCopy(popup) {
   for (const anchor of popup?.getElement?.()?.querySelectorAll('.parcel-roll-copy') || []) {
     wireCopyAnchor(anchor, anchor.dataset.roll || '');
@@ -4425,7 +4455,12 @@ function combinedPopupHtml(primary, context, { actions: withActions = false } = 
         + ' title="Correct this sale’s SABRE use code in the local override tool'
         + ' (run wpg-puc-override.bat in mao-scrape first)">Override PUCS</a>');
     }
-    blocks.push(`<div style="margin-top:4px">${actions.join(' &nbsp;·&nbsp; ')}</div>`);
+    // Permit links for the parcel's civic address (first assessment-side
+    // record that has one). Survey lots carry no address, so a click on a
+    // survey lot alone draws no permit line.
+    const address = [primary, context].map((p) => p?.full_address).find((a) => a);
+    const permits = permitLinksHtml(address);
+    blocks.push(`<div style="margin-top:4px">${actions.join(' &nbsp;·&nbsp; ')}${permits ? `<br>${permits}` : ''}</div>`);
   }
   return blocks.join(POPUP_RULE);
 }

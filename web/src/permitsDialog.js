@@ -416,12 +416,21 @@ function wire() {
 
 /**
  * Open the dialog for an assessment record (its full_address) and start
- * the lookups.
+ * the lookups. `focus` ('building' | 'occupancy'), from the map popup's
+ * Construction / Occupancy links, expands that section and collapses the
+ * other; without it (the parcel card's button) both are open.
  */
-export function openPermitsDialog(assessment) {
+export function openPermitsDialog(assessment, { focus = null } = {}) {
   const $modal = $('permits-modal');
   if (!$modal) return;
   wire();
+  const $b = $('permits-building-block');
+  const $o = $('permits-occupancy-block');
+  $b.open = focus !== 'occupancy';
+  $o.open = focus !== 'building';
+  if (focus) {
+    requestAnimationFrame(() => (focus === 'occupancy' ? $o : $b).scrollIntoView({ block: 'start' }));
+  }
   const addr = parseCivicAddress(assessment?.full_address);
   $('permits-disclaimer').hidden = acked();
   $('permits-disclaimer-ack').checked = acked();
