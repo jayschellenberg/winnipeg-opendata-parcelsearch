@@ -1,6 +1,6 @@
 # Winnipeg Parcel Search
 
-Status: Active | Next: tbd | Blocked: none | Updated: 2026-11-05
+Status: Active | Next: merge mls-label-centring (MLS label spots refreshed from the Manitoba app) | Blocked: none | Updated: 2026-11-06
 
 A free, client-only parcel-research tool for City of Winnipeg properties, built
 for commercial-appraisal workflows.
