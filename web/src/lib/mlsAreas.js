@@ -25,8 +25,9 @@ const RED = '#b91c1c';
 
 const emptyFc = () => ({ type: 'FeatureCollection', features: [] });
 
-/** One label point per area, at the spot the boards label it (lx/ly);
- *  areas without one are skipped. */
+/** One label point per area at its lx/ly: the boards' own spot, or an
+ *  interior point where that hugs an edge (build_mls_areas.py); areas
+ *  without one are skipped. */
 export function mlsLabelPoints(fc) {
   return {
     type: 'FeatureCollection',
