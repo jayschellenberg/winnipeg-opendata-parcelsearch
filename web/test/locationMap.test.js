@@ -15,6 +15,7 @@ import {
   BASE_MAPS, DIRECTIONS, PIN,
   locateOnMap, placeCallout, placeTwinCallout, estimateTextWidth,
   pinBox, pinOutline, arrowTipAtPin, placeTitle, titleLines, titleSize,
+  clusterOnMap, placeMultiCallout, CLUSTER_UNITS, MAX_ARROWS,
 } from '../src/lib/locationMap.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -237,6 +238,35 @@ const maps = main.match(/maps: \[([^\]]*)\]/);
 assert.ok(maps, 'the app names the maps it offers');
 for (const id of maps[1].match(/'([a-z]+)'/g).map((s) => s.slice(1, -1))) {
   assert.ok(existsSync(path.join(dir, '../public', BASE_MAPS[id].svgUrl)), `offered map ${id} ships its SVG`);
+}
+
+// ---- Several parcels: clusters and one box with an arrow to each ---------
+
+{
+  // Two adjoining quarters 800 m apart and a third parcel near Brandon.
+  const pts = [{ lng: -96.70, lat: 49.53 }, { lng: -96.69, lat: 49.53 }, { lng: -99.95, lat: 49.85 }];
+  const cl = clusterOnMap(MB, pts);
+  assert.equal(cl.length, 2, 'Manitoba map: nearby parcels share an arrow, a far one gets its own');
+  assert.deepEqual(cl.map((c) => c.count).sort(), [1, 2], 'cluster sizes');
+  // 30 km apart: under 1.5 pin widths (~85 km) on the Manitoba page.
+  assert.equal(clusterOnMap(MB, [{ lng: -97, lat: 50 }, { lng: -97, lat: 50.27 }]).length, 1,
+    'Manitoba map: 30 km apart is one arrow');
+  assert.ok(CLUSTER_UNITS > 2 * PIN.radius, 'pins in different clusters never touch');
+  // Off-page points are dropped.
+  assert.equal(clusterOnMap(MB, [{ lng: -120, lat: 50 }]).length, 0, 'off-page points dropped');
+  // More than MAX_ARROWS clusters merge down.
+  const many = [-101, -99.5, -98, -96.5, -95.2].map((lng) => ({ lng, lat: 50 + (lng + 101) * 0.6 }));
+  assert.equal(clusterOnMap(MB, many).length, MAX_ARROWS, 'at most MAX_ARROWS clusters');
+
+  const targets = cl.map((c) => c.main);
+  const r = placeMultiCallout(targets, w, { map: MB });
+  assert.ok(r, 'multi callout placed');
+  assert.equal(r.tails.length, 2, 'one arrow per cluster');
+  assert.ok(inside(r.box, MB), 'multi box on the page');
+  for (const p of targets) {
+    assert.ok(!covers(r.box, p), 'box clear of each subject');
+    assert.equal(overlap(r.box, pinBox(p)), 0, 'box clear of each pin');
+  }
 }
 
 // The shared files must not drift between the two apps. Skipped (not

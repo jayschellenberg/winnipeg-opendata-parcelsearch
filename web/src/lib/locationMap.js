@@ -47,6 +47,13 @@
 // circles with an arrow to each (Jason, 2026-10-01); everywhere else gets
 // the usual single arrow.
 //
+// SEVERAL PARCELS (Jason, 2026-11-11). A subject made of parcels far apart
+// gets ONE box with an arrow and pin to each cluster. Parcels share an
+// arrow when their pins would crowd: within CLUSTER_UNITS (about 1.5 pin
+// widths) on the page. Measured on the page, not the ground, so the same
+// rule means ~85 km on the Manitoba map and a few hundred metres on a city
+// page. At most MAX_ARROWS; past that the closest clusters merge.
+//
 // Pure apart from renderLocationMap(), which needs a canvas — everything
 // else unit-tests in node (test/locationMap.test.js).
 
@@ -435,6 +442,122 @@ export function placeTwinCallout(pMain, pInset, width, { map = BASE_MAPS.winnipe
   return best && { box: best.box, tails: best.tails, targets: [pMain, pInset] };
 }
 
+/** Parcels closer than this on the page (page points / map units) share
+ *  one arrow: 1.5 pin widths, so two pins never touch or crowd. */
+export const CLUSTER_UNITS = 1.5 * 2 * PIN.radius;
+/** Most arrows one SUBJECT box carries. */
+export const MAX_ARROWS = 4;
+
+const middleOf = (pts) => {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of pts) {
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  }
+  return [(x0 + x1) / 2, (y0 + y1) / 2];
+};
+
+/**
+ * Group subject points ([{ lng, lat }]) into the clusters `map` draws an
+ * arrow to. Points off the page are dropped. Points within `gap` page
+ * units of each other (chained) share a cluster; more than `max` clusters
+ * merge closest-first. Each cluster is { lng, lat, main, count }: the
+ * middle of its members (in lng/lat, then projected) and how many points
+ * it holds. [] when no point is on the page.
+ */
+export function clusterOnMap(map, points, { gap = CLUSTER_UNITS, max = MAX_ARROWS } = {}) {
+  const on = [];
+  for (const pt of points || []) {
+    const where = pt && locateOnMap(map, pt.lng, pt.lat);
+    if (where) on.push({ ll: [pt.lng, pt.lat], p: where.main });
+  }
+  // Single-linkage on page distance (a handful of points, so O(n^2) is fine).
+  const parent = on.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < on.length; i++) {
+    for (let j = i + 1; j < on.length; j++) {
+      if (Math.hypot(on[i].p[0] - on[j].p[0], on[i].p[1] - on[j].p[1]) <= gap) parent[find(i)] = find(j);
+    }
+  }
+  const groups = new Map();
+  on.forEach((o, i) => {
+    const r = find(i);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(o);
+  });
+  let clusters = [...groups.values()];
+  const centre = (members) => map.project(...middleOf(members.map((m) => m.ll)));
+  while (clusters.length > max) {
+    let best = null;
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        const a = centre(clusters[i]);
+        const b = centre(clusters[j]);
+        const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (!best || d < best.d) best = { d, i, j };
+      }
+    }
+    clusters[best.i] = clusters[best.i].concat(clusters[best.j]);
+    clusters.splice(best.j, 1);
+  }
+  return clusters.map((members) => {
+    const [lng, lat] = middleOf(members.map((m) => m.ll));
+    return { lng, lat, main: map.project(lng, lat), count: members.length };
+  });
+}
+
+/** Does segment a→b pass through `box`? (Liang–Barsky clip.) */
+function segmentHitsBox(a, b, box) {
+  let t0 = 0, t1 = 1;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  for (const [p, q] of [[-dx, a[0] - box[0]], [dx, box[2] - a[0]], [-dy, a[1] - box[1]], [dy, box[3] - a[1]]]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const r = q / p;
+    if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
+  }
+  return true;
+}
+
+/**
+ * ONE box with an arrow to each of several subject points `targets`
+ * (page points) — the multi-parcel version of placeTwinCallout. Candidates
+ * are a grid over the page; the score is label cover plus the arrows'
+ * total length, with a heavy charge for an arrow that runs through another
+ * target's pin. Returns { box, tails, targets } or null.
+ */
+export function placeMultiCallout(targets, width, { map = BASE_MAPS.manitoba, height = CALLOUT.height } = {}) {
+  const step = 4;
+  const pins = targets.map(pinBox);
+  let best = null;
+  for (let cy = height / 2 + MARGIN; cy <= map.height - height / 2 - MARGIN; cy += step) {
+    for (let cx = width / 2 + MARGIN; cx <= map.width - width / 2 - MARGIN; cx += step) {
+      const box = [cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2];
+      if (inKeepOut(box, map) || targets.some((p) => contains(box, p))) continue;
+      if (pins.some((pb) => overlapArea(box, pb) > 0)) continue;
+      const tails = [];
+      let total = 0;
+      let crossings = 0;
+      let ok = true;
+      for (let i = 0; i < targets.length && ok; i++) {
+        const t = boxExit(box, targets[i]);
+        if (!clearOfPin(t, targets[i])) { ok = false; break; }
+        const e = arrowTipAtPin(t, targets[i]);
+        const len = Math.hypot(e[0] - t[0], e[1] - t[1]);
+        if (len < MIN_ARROW) { ok = false; break; }
+        for (let j = 0; j < targets.length; j++) {
+          if (j !== i && segmentHitsBox(t, e, pins[j])) crossings++;
+        }
+        tails.push(t);
+        total += len;
+      }
+      if (!ok) continue;
+      const score = coveredArea(box, map.obstacles) * 2 + total * 0.1 + crossings * 400;
+      if (!best || score < best.score) best = { score, box, tails };
+    }
+  }
+  return best && { box: best.box, tails: best.tails, targets };
+}
+
 const imageCache = new Map();
 /** Load a base map once per page. */
 function loadBaseMap(url) {
@@ -456,9 +579,22 @@ function loadBaseMap(url) {
  * `title`, the "Subject Property Location within <map>" box goes in a corner
  * first and the callout is placed around it. Returns null when the property
  * is off this map.
+ *
+ * `points` ([{ lng, lat }], optional) is a subject of several parcels: they
+ * are clustered (clusterOnMap) and, when more than one cluster is on the
+ * page, the box gets an arrow to each — the side choice and the downtown
+ * inset then do not apply. One cluster draws as a single subject at its
+ * middle. Points off this page are left out.
  */
-export async function renderLocationMap({ map = BASE_MAPS.manitoba, lng, lat, label = 'SUBJECT', direction = 'auto', title = false }) {
-  const where = locateOnMap(map, lng, lat);
+export async function renderLocationMap({ map = BASE_MAPS.manitoba, lng, lat, points = null, label = 'SUBJECT', direction = 'auto', title = false }) {
+  let multi = null;
+  if (points && points.length > 1) {
+    const clusters = clusterOnMap(map, points);
+    if (!clusters.length) return null;
+    if (clusters.length === 1) ({ lng, lat } = clusters[0]);
+    else multi = clusters.map((c) => c.main);
+  }
+  const where = multi ? { main: multi[0], inset: null } : locateOnMap(map, lng, lat);
   if (!where) return null;
   const img = await loadBaseMap(map.svgUrl);
   const scale = map.scale;
@@ -476,7 +612,7 @@ export async function renderLocationMap({ map = BASE_MAPS.manitoba, lng, lat, la
     const lines = titleLines(map);
     ctx.font = TITLE.font;
     const size = titleSize(map, Math.max(...lines.map((l) => ctx.measureText(l).width)), lines.length);
-    const box = placeTitle(size, where.inset ? [where.main, where.inset] : [where.main], { map });
+    const box = placeTitle(size, multi || (where.inset ? [where.main, where.inset] : [where.main]), { map });
     if (box) {
       drawTitle(ctx, box, lines);
       placeOn = { ...map, keepOut: [...(map.keepOut || []), box] };
@@ -485,7 +621,9 @@ export async function renderLocationMap({ map = BASE_MAPS.manitoba, lng, lat, la
   ctx.font = CALLOUT.font;
   const text = String(label || 'SUBJECT').trim() || 'SUBJECT';
   const width = Math.ceil(ctx.measureText(text).width + CALLOUT.padX * 2);
-  const placed = where.inset
+  const placed = multi
+    ? placeMultiCallout(multi, width, { map: placeOn })
+    : where.inset
     ? placeTwinCallout(where.main, where.inset, width, { map: placeOn })
     : placeCallout(where.main, width, { map: placeOn, direction });
   if (placed) drawCallout(ctx, placed, text);
