@@ -1,9 +1,29 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// The build's git commit + time, baked in for the build stamp after the page
+// title (lib/buildStamp.js). On Vercel, VERCEL_GIT_COMMIT_SHA is the deployed
+// commit; locally ask git; 'unknown' rather than fail the build. Same as the
+// Manitoba app.
+function resolveCommit() {
+  const fromEnv = process.env.VERCEL_GIT_COMMIT_SHA;
+  if (fromEnv) return fromEnv.slice(0, 12);
+  try {
+    return execSync('git rev-parse --short=12 HEAD', {
+      // This app's own repo, whatever folder the dev server was started from.
+      cwd: __dirname,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString().trim() || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
 
 export default defineConfig({
   // Tailwind v4's Vite integration scans source files for utility
@@ -16,6 +36,10 @@ export default defineConfig({
   // so the app never starts. Same escape hatch as the Manitoba app; the
   // default is unchanged.
   cacheDir: process.env.VITE_CACHE_DIR || 'node_modules/.vite',
+  define: {
+    __APP_COMMIT__: JSON.stringify(resolveCommit()),
+    __APP_BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   build: {
     target: 'es2020',
     // MapLibre alone is ~700 kB minified; without splitting it the

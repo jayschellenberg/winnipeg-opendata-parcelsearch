@@ -6331,3 +6331,8 @@ button[data-icon]::before {
 .sidebar .overlay-grid .overlay-group-body {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
+
+/* Build stamp under the title (lib/buildStamp.js): small, muted, its own
+   line so it never widens the crowded top bar. */
+.topbar-title .app-build { display: block; margin-top: 2px; line-height: 1.1; font-size: 10px; font-weight: 400; opacity: 0.65; letter-spacing: 0; text-transform: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+body.phone .topbar-title .app-build { display: none; }

@@ -196,6 +196,9 @@ import {
 // render functions and never need to be imported here.
 import { stripZoningCode, formatPct, formatDollars, formatCoord } from './lib/cells.js';
 import { openPermitsDialog } from './permitsDialog.js';
+import { showBuildStamp } from './lib/buildStamp.js';
+// The commit + build time after the title, to tell which build Vercel serves.
+showBuildStamp();
 
 const $lot = document.getElementById('lot');
 const $block = document.getElementById('block');

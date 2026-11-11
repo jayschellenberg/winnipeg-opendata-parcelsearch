@@ -22,6 +22,9 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.node,
+        // Baked in by vite.config.js `define` (lib/buildStamp.js).
+        __APP_COMMIT__: 'readonly',
+        __APP_BUILD_TIME__: 'readonly',
       },
     },
     rules: {
