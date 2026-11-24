@@ -1,6 +1,6 @@
 # Winnipeg Parcel Search
 
-Status: Active | Next: commit the shared locationMap.js sync (multi-parcel arrows, unused here until the app passes points) | Blocked: none | Updated: 2026-11-11
+Status: Active | Next: tbd | Blocked: none | Updated: 2026-11-24
 
 A free, client-only parcel-research tool for City of Winnipeg properties, built
 for commercial-appraisal workflows.

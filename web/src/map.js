@@ -11,6 +11,7 @@
 // The hover popup figures out which schema the feature is carrying.
 
 import { addMlsAreaLayers, mlsAreaHtml } from './lib/mlsAreas.js';
+import { loadMlsAreaLookup, mlsAreaAt } from './lib/mlsAreaLookup.js';
 import { addMultiFamilyLayers, MF_MIN_DU } from './lib/multiFamily.js';
 import maplibregl from 'maplibre-gl';
 import { addLocateControl } from './lib/locateControl.js';
@@ -2115,6 +2116,9 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
 
       // MLS area boundaries (lib/mlsAreas.js, shared with the Manitoba app).
       addMlsAreaLayers(map);
+      // Load the areas now, overlay on or off, so every parcel popup can
+      // name its MLS area (lib/mlsAreaLookup.js).
+      loadMlsAreaLookup();
 
       // Combined hover popup. Wherever the cursor is on the map, query
       // both the primary (parcel-fill) and the assessment-context layers
@@ -2356,10 +2360,17 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           ?? (contextHits.length ? null : citywideHits[0]?.properties);
         const contextProps = contextHits[0]?.properties
           ?? (surveyLot ? citywideHits[0]?.properties : undefined);
+        const hoverGeom = (primaryHits[0] ?? contextHits[0] ?? citywideHits[0])?.geometry;
         hoverTo({
-          html: combinedPopupHtml(primaryProps, contextProps, { actions: true }),
+          // MLS area from the parcel's own midpoint, not the pointer, so
+          // the html stays identical while the pointer moves within one
+          // parcel (hoverTo compares html to spot "same parcel").
+          html: combinedPopupHtml(primaryProps, contextProps, {
+            actions: true,
+            point: polygonBboxMidpoint(hoverGeom) ?? [e.lngLat.lng, e.lngLat.lat],
+          }),
           lngLat: e.lngLat,
-          geom: (primaryHits[0] ?? contextHits[0] ?? citywideHits[0])?.geometry,
+          geom: hoverGeom,
         }, e.point);
       });
       map.on('mouseout', (e) => {
@@ -2416,9 +2427,13 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         const primaryProps = primaryHits[0]?.properties ?? null;
         const contextProps = contextHits[0]?.properties;
         if (!primaryProps && !contextProps) return;
+        const clickGeom = (primaryHits[0] ?? contextHits[0])?.geometry;
         resultClickPopup
           .setLngLat(e.lngLat)
-          .setHTML(combinedPopupHtml(primaryProps, contextProps, { actions: true }))
+          .setHTML(combinedPopupHtml(primaryProps, contextProps, {
+            actions: true,
+            point: polygonBboxMidpoint(clickGeom) ?? [e.lngLat.lng, e.lngLat.lat],
+          }))
           .addTo(map);
         // The two copy links, wired only on THIS sticky popup. The hover
         // popup draws the same parcel through the same builder but never
@@ -2468,19 +2483,20 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         const surveyLot = citywideSurveyAt(map, e.point);
         if (surveyLot) surveyLot._hideAsmt = true;   // the assessment block follows
         hideHover();
-        citywideClickPopup
-          .setLngLat(e.lngLat)
-          .setHTML(surveyLot
-            ? `${surveyBlockHtml(surveyLot)}${POPUP_RULE}<strong style="color:#8a6500">Assessment Parcel</strong><br>${citywideParcelHtml(f.properties)}`
-            : citywideParcelHtml(f.properties))
-          .addTo(map);
         // Compute the popup's coordinate-copy target from the actual
         // polygon (bbox midpoint is a stable approximation of centroid
         // that doesn't need turf). Falls back to the click point on
-        // the rare case the rendered geometry is empty.
+        // the rare case the rendered geometry is empty. The MLS area
+        // line is looked up at the same point.
         const rendered = map.queryRenderedFeatures(e.point, { layers: [layerId] })[0];
         const center = polygonBboxMidpoint(rendered?.geometry)
           ?? [e.lngLat.lng, e.lngLat.lat];
+        citywideClickPopup
+          .setLngLat(e.lngLat)
+          .setHTML((surveyLot
+            ? `${surveyBlockHtml(surveyLot)}${POPUP_RULE}<strong style="color:#8a6500">Assessment Parcel</strong><br>${citywideParcelHtml(f.properties)}`
+            : citywideParcelHtml(f.properties)) + mlsAreaLineHtml(center))
+          .addTo(map);
         wireCoordsCopy(citywideClickPopup, center);
         wireRollCopy(citywideClickPopup);
         wirePermitLinks(citywideClickPopup);
@@ -2496,7 +2512,9 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         if (clickOwnedByTool(map, e)) return;
         const surveyLot = citywideSurveyAt(map, e.point);
         if (!surveyLot || parcelAt(map, e.point, ['citywide-survey-fill'])) return;
-        citywideClickPopup.setLngLat(e.lngLat).setHTML(surveyBlockHtml(surveyLot)).addTo(map);
+        citywideClickPopup.setLngLat(e.lngLat)
+          .setHTML(surveyBlockHtml(surveyLot) + mlsAreaLineHtml([e.lngLat.lng, e.lngLat.lat]))
+          .addTo(map);
       });
       onLayerClick(map, 'zoning-changes-citywide-fill', citywideClick('zoning-changes-citywide-fill'));
 
@@ -4538,7 +4556,16 @@ function assessmentClassLine(p) {
   return `<em>${escapeHtml(text)}</em>`;
 }
 
-function combinedPopupHtml(primary, context, { actions: withActions = false } = {}) {
+/** One "MLS Area 1A" line for the parcel at [lng, lat]; '' until the areas
+ *  have loaded, or for a point outside every area. Said once per popup,
+ *  after the parcel block(s), since two stacked records share one spot. */
+function mlsAreaLineHtml(point) {
+  const a = mlsAreaAt(point);
+  if (!a?.area) return '';
+  return `<div title="${escapeHtml(a.board || '')}"><strong>MLS Area</strong> ${escapeHtml(a.area)}</div>`;
+}
+
+function combinedPopupHtml(primary, context, { actions: withActions = false, point = null } = {}) {
   const blocks = [];
   // Determine which schema `primary` is carrying.
   const primaryIsAssess = primary && (primary.roll_number != null || primary.full_address != null);
@@ -4553,6 +4580,8 @@ function combinedPopupHtml(primary, context, { actions: withActions = false } = 
   if (context && (!primaryIsAssess || context.roll_number !== primary?.roll_number)) {
     blocks.push(`<div><strong style="color:#8a6500">Assessment Parcel</strong><br>${popupHtml(context)}</div>`);
   }
+  const mls = point ? mlsAreaLineHtml(point) : '';
+  if (mls && blocks.length) blocks[blocks.length - 1] += mls;
   // Copy Roll + GPS Coordinates, on the CLICK popup only (Jason,
   // 2026-09-16). Both are the plainest possible answer to "I need this
   // parcel in the other program": the roll goes into SABRE, N1 or the
