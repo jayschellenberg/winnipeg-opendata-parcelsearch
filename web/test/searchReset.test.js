@@ -96,7 +96,7 @@ const isAssignedIn = (v, text) => new RegExp(`(^|[^.\\w])${v}\\s*=[^=]`).test(te
 // ---------------------------------------------------------------------------
 const PER_RESULT = [
   'currentRows', 'fullRows', 'shapeShown', 'shapeTotal',
-  'numberable', 'pinPoint', 'propertyRollOrder',
+  'numberable', 'pinPoints', 'pinFeatureCount', 'propertyRollOrder',
   'lastFullSurveyFc', 'lastFullAssessFc', 'lastSurveyFc', 'lastCountBase',
   'lastDimAssessFc',   // the assessment parcels the Dimensions overlay groups lots by
   'drawCapped',

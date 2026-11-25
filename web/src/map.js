@@ -5455,18 +5455,22 @@ export function setCommunityMask(map, feature) {
 }
 
 /**
- * Show the locator pin at `point` ({lng, lat}) in place of the result
- * parcel's shape, or pass null to take it away and bring the shape back.
- * The shapes are faded to 0 rather than hidden, so a click on the parcel
- * still opens it; their own opacities are kept and put back as they were.
+ * Show the locator pins in place of the result parcels' shapes, or pass
+ * null / [] to take them away and bring the shapes back. `points` is one
+ * {lng, lat} or an array of them (one pin per cluster of a multi-parcel
+ * result, lib/pinClusters.js — the Manitoba app's form). The shapes are
+ * faded to 0 rather than hidden, so a click on a parcel still opens it;
+ * their own opacities are kept and put back as they were.
  */
-export function setResultPin(map, point) {
+export function setResultPin(map, points) {
   const src = map.getSource('result-pin');
   if (!src) return;
-  const on = !!point;
+  const list = (Array.isArray(points) ? points : points ? [points] : [])
+    .filter((p) => Number.isFinite(p?.lng) && Number.isFinite(p?.lat));
+  const on = list.length > 0;
   src.setData(on ? {
     type: 'FeatureCollection',
-    features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [point.lng, point.lat] } }],
+    features: list.map((p) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [p.lng, p.lat] } })),
   } : emptyFc());
   if (on === !!map._resultPinOn) return;
   if (on) {

@@ -260,7 +260,8 @@ test('the Addenda Pack button builds the pack and always restores the map', () =
 
 test('the addenda maps carry the Manitoba app\'s marks (Jason, 2026-10-08)', () => {
   const body = fnBodyOf('buildAddendaPack');
-  assert.match(body, /locatorMarks = pinPoint\s*\?\s*\{ pin: true/, 'a lone parcel no longer gets the locator pin');
+  assert.match(body, /locatorMarks = pinFeatureCount === 1 \|\| \(pinOn && pinPoints\.length\)\s*\?\s*\{ pin: true/,
+    'a lone parcel (or a group with Locator: Pin on) no longer gets the locator pin');
   assert.match(body, /numbers: numberingOn && numberable/, 'several parcels are no longer numbered on the locator maps');
   // 2026-11-25, as in the Manitoba pack: wide + close-up aerials without
   // dimensions, then a streets site map that carries them.

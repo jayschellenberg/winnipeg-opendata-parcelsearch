@@ -150,6 +150,7 @@ import { BASE_MAPS, locateOnMap, renderLocationMap, clusterOnMap } from './lib/l
 import { haversineMeters, drawScaleBar, drawNorthArrow, framedBounds, frameWidthM, localDateStamp } from './lib/mapFurniture.js';
 import { suggestMerges, applyMerges, packBaseName, uniqueName, boxGapMeters } from './lib/parcelPackGroups.js';
 import { buildStoreZip } from './lib/zipStore.js';
+import { clusterPinPoints } from './lib/pinClusters.js';
 import { assessmentPerDu } from './lib/assessmentRates.js';
 import { initParcelListImport } from './lib/parcelListImport.js';
 import {
@@ -444,13 +445,16 @@ let shapeTotal = 0;
 // hidden until it would do something.
 let numberingOn = false;
 let numberable = false;
-// "Locator: Pin" — Numbering's counterpart for a ONE-parcel result: a
-// Google-style pin in place of the parcel shape, which vanishes at the
-// cluster or city zoom. `pinOn` is the user's choice (kept while hidden,
-// like numberingOn); `pinPoint` is where the single result sits, or null
-// whenever the set is not exactly one parcel.
+// "Locator: Pin" — Google-style pins in place of the parcel shapes, which
+// vanish at the cluster or city zoom. Since 2026-11-25 (the Manitoba app's
+// form) it covers several parcels too: one pin per group of parcels that sit
+// together (lib/pinClusters.js), so a two-lot subject at city zoom reads as
+// one pin. `pinOn` is the user's choice (kept while hidden, like
+// numberingOn); `pinPoints` are the pins for the parcels on the map ([] when
+// there are none), and `pinFeatureCount` how many parcels they stand for.
 let pinOn = false;
-let pinPoint = null;
+let pinPoints = [];
+let pinFeatureCount = 0;
 // "Entry order" beside it — number in the order the rolls were ENTERED
 // rather than by roll number. Opt-in, and only offered when the result
 // set on screen came from an entered list: the Roll # chips (property) or
@@ -866,7 +870,7 @@ if ($numberingToggle) {
 if ($pinToggle) {
   $pinToggle.addEventListener('change', () => {
     pinOn = $pinToggle.checked;
-    mapReady.then(() => setResultPin(map, pinOn ? pinPoint : null));
+    mapReady.then(() => setResultPin(map, pinOn ? pinPoints : null));
     queueUrlWrite();
   });
 }
@@ -2080,8 +2084,20 @@ function setParcels(surveyFc, assessFc = EMPTY_FC, { fit = true } = {}) {
   // (so the polygon is drawn once) while the TABLE keeps every row.
   const mapAssessFc = dedupeByGeometryHash(assessFc);
   lastDimAssessFc = mapAssessFc;
+  // Parcels on the map: offer the locator pins, one per group. Taken from
+  // the drawn set (area filter and unticked rows already out, condo units
+  // deduped), so a culled parcel takes its pin away. The survey lots stand
+  // in when a flow drew no assessment parcels.
+  const pinFeats = (mapAssessFc.features?.length ? mapAssessFc.features : surveyFc.features || [])
+    .filter((f) => f?.geometry);
+  pinFeatureCount = pinFeats.length;
+  pinPoints = pinFeats.length === 1
+    ? [shapeFeatureCentroid(pinFeats[0])].filter(Boolean)
+    : clusterPinPoints(pinFeats);
+  if ($pinRow) $pinRow.hidden = !pinPoints.length;
   mapReady.then(() => {
     showResults(map, surveyFc, mapAssessFc, { fit });
+    setResultPin(map, pinOn ? pinPoints : null);
     refreshZoning();
     refreshDimensions();
   });
@@ -4001,7 +4017,8 @@ function clearTable() {
   // next one.
   numberable = false;
   if ($numberingRow) $numberingRow.hidden = true;
-  pinPoint = null;
+  pinPoints = [];
+  pinFeatureCount = 0;
   if ($pinRow) $pinRow.hidden = true;
   document.body.classList.remove('numbering-on');
   mapReady.then(() => {
@@ -4102,19 +4119,12 @@ function applyParcelNumbering(fullRows, shownRows) {
   const active = numberingOn && numberable;
   document.body.classList.toggle('numbering-on', active);
 
-  // Exactly one subject: offer the locator pin instead. Placed from the
-  // SHOWN rows, so a drawn shape that filters the parcel out takes the pin
-  // with it.
-  const single = subjects === 1;
-  if ($pinRow) $pinRow.hidden = !single;
-  const shownOne = single ? shownRows.map(rowFeature).find(Boolean) : null;
-  pinPoint = shownOne ? shapeFeatureCentroid(shownOne) : null;
+  // The locator pins are placed in setParcels, from what the map draws.
 
   const shownFeatures = numberable ? shownRows.map(rowFeature).filter(Boolean) : [];
   mapReady.then(() => {
     setParcelNumberData(map, shownFeatures);
     setParcelNumbersVisible(map, active);
-    setResultPin(map, pinOn ? pinPoint : null);
   });
 }
 
@@ -5132,7 +5142,7 @@ async function addendaNeighbourhood(feat) {
 /** Switch the result-parcel marks for one addenda map: the Locator pin, the
  *  number callouts, the side-length labels. */
 async function setAddendaMarks({ pin, numbers, dims }) {
-  setResultPin(map, pin ? pinPoint : null);
+  setResultPin(map, pin ? pinPoints : null);
   setParcelNumbersVisible(map, numbers);
   if (dimensionsEnabled !== dims) await toggleDimensions();
 }
@@ -5171,11 +5181,12 @@ async function buildAddendaPack() {
   const withLegend = captureLegendWanted() && anyLegendVisible();
   const allFeats = addendaResultFeatures();
   // The neighbourhood and zoning maps' marks: the Locator pin on a lone
-  // parcel, numbered shapes when the map holds several and Number parcels
-  // is on (Jason, 2026-10-22: off means off in the pack too) — up to
-  // ADDENDA_NUMBER_MAX. Past that the callouts bury the map, so the shapes
-  // go unnumbered.
-  const locatorMarks = pinPoint
+  // parcel, and on a group too when Locator: Pin is on (one pin per cluster,
+  // as in the Manitoba pack); otherwise numbered shapes when the map holds
+  // several and Number parcels is on (Jason, 2026-10-22: off means off in
+  // the pack too) — up to ADDENDA_NUMBER_MAX. Past that the callouts bury
+  // the map, so the shapes go unnumbered.
+  const locatorMarks = pinFeatureCount === 1 || (pinOn && pinPoints.length)
     ? { pin: true, numbers: false, dims: false }
     : { pin: false, numbers: numberingOn && numberable && allFeats.length <= ADDENDA_NUMBER_MAX, dims: false };
   const neighbourhoodsWas = neighbourhoodsMode;
@@ -5235,7 +5246,10 @@ async function buildAddendaPack() {
       }
     }
     if (subject.specific) {
-      const marked = locatorMarks.pin ? ', locator pin' : locatorMarks.numbers ? ', parcels numbered' : '';
+      // Pins on these maps: the ones for the framed parcels (a split
+      // subject's outliers are off the frame).
+      const framedPins = subject.feats.length > 1 ? clusterPinPoints(subject.feats).length : 1;
+      const marked = locatorMarks.pin ? (framedPins > 1 ? `, ${framedPins} locator pins` : ', locator pin') : locatorMarks.numbers ? ', parcels numbered' : '';
       // Neighbourhood — streets, wide enough to show the surroundings, a
       // taller frame, the neighbourhood named top-left, no parcel wash.
       step('neighbourhood');

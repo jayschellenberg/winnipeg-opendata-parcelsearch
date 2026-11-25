@@ -500,17 +500,18 @@
             </div>
           </div>
         </div>
-        <!-- Numbering's counterpart: shown only when the results are exactly
-             ONE parcel. Pin swaps the parcel shape for a Google-style map pin,
-             which still reads when zoomed out to the cluster or city. -->
+        <!-- Numbering's counterpart, shown whenever parcels are on the map. Pin
+             swaps the parcel shapes for Google-style map pins, one per group of
+             parcels that sit together, which still read when zoomed out to the
+             cluster or city (the Manitoba app's form, 2026-11-25). -->
         <div id="pin-row" class="numbering-row" hidden>
           <input type="checkbox" id="pin-toggle" class="pill-backing" hidden />
           <div
             class="mode-pill-row numbering-toggle"
-            title="Show the one parcel found as a map pin instead of its shape — easier to find when zoomed out to the cluster or city. Clicking where the parcel is still opens it, and the pin is included in the Current Map View image."
+            title="Show the parcels found as map pins instead of their shapes — easier to find when zoomed out to the cluster or city. Parcels that sit together (within about 100 m) share one pin. Clicking where a parcel is still opens it, and the pins are included in the Capture Map image and, for a multi-parcel subject, in the Addenda Pack neighbourhood and zoning maps."
           >
             <span class="mode-pill-prefix">Locator:</span>
-            <div class="mode-pill" role="radiogroup" aria-label="Single-parcel locator" data-pill="locator">
+            <div class="mode-pill" role="radiogroup" aria-label="Parcel locator" data-pill="locator">
               <button type="button" class="mode-btn active mode-btn-off" data-mode="shape" aria-pressed="true">Shape</button>
               <button type="button" class="mode-btn" data-mode="pin" aria-pressed="false">Pin</button>
             </div>
