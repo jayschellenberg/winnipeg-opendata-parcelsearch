@@ -10,6 +10,7 @@
 //   - Roll-number search pushes Assessment Parcels geometry into it
 // The hover popup figures out which schema the feature is carrying.
 
+import { DIMS_MIN_ZOOM, dimsSideFilter } from './lib/dimensionLabels.js';
 import { addMlsAreaLayers, mlsAreaHtml } from './lib/mlsAreas.js';
 import { loadMlsAreaLookup, mlsAreaAt } from './lib/mlsAreaLookup.js';
 import { addMultiFamilyLayers, MF_MIN_DU } from './lib/multiFamily.js';
@@ -1920,7 +1921,9 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         id: 'dimensions-label',
         type: 'symbol',
         source: 'dimensions',
-        minzoom: 17,
+        // Long sides from z14, every side from z17 (lib/dimensionLabels.js).
+        minzoom: DIMS_MIN_ZOOM,
+        filter: dimsSideFilter(),
         layout: {
           visibility: 'none',
           'text-field': ['get', 'length_label'],

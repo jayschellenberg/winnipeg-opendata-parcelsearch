@@ -1380,7 +1380,10 @@
           <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view as a 1950 × 1050 image (6.5 × 3.5 in at 300 dpi), whatever size the map is on screen. Opens a preview with Include legend, Copy image and Download. Shortcut: Alt+C copies the view straight to the clipboard.">📸 Capture Map <span class="kbd-hint">Alt+C</span></button>
           <button id="location-map-btn" type="button" class="generate-map-btn generate-map-btn-location" title="Render the Winnipeg map with a pin at the searched property and a SUBJECT callout pointing at it — the location figure for a report. A downtown property gets one box between the downtown circle and the inset, with an arrow to each. Opens in a pop-up as a sharp PNG with Copy and Download; the callout text and side can be changed there.">🗺️ Wpg Overall Map</button>
         </div>
-        <button id="addenda-pack-btn" type="button" class="generate-map-btn generate-map-btn-pack" title="Download a ZIP of the standard report addenda maps for the current search: the Winnipeg location map, a neighbourhood map, an aerial of the subject (newest City aerial) and (with more than one parcel) a map of all the results. Each map is 1950 × 1050 with the credit, scale bar and north arrow; the legend follows the Capture Map panel setting. Click a parcel row first to centre the neighbourhood and aerial on it. Your map view and basemap are put back afterwards.">📦 Addenda Pack (ZIP)</button>
+        <button id="addenda-pack-btn" type="button" class="generate-map-btn generate-map-btn-pack" title="Download a ZIP of the standard report addenda maps for the current search: the Winnipeg location map, a neighbourhood map (1950 × 1500), a wide aerial and a close-up aerial of the subject (newest City aerial), a site map (streets and assessment parcels, with the subject's dimensions), a zoning map with its legend and (with more than one parcel) a map of all the results. The other maps are 1950 × 1050; all carry the credit, scale bar and north arrow, and the legend follows the Capture Map panel setting except on the zoning map. Click a parcel row first to build the pack around it. Your map view, basemap and layers are put back afterwards.">📦 Addenda Pack (ZIP)</button>
+        <!-- Parcel Pack, under the Addenda Pack (Manitoba port, 2026-11-25): three
+             close-up maps per result parcel; multi-parcel searches only. -->
+        <button id="parcel-pack-btn" type="button" class="generate-map-btn generate-map-btn-pack" disabled title="Multi-parcel searches only: needs two or more parcels in the results. Close-up maps of EACH parcel (site map, site map with dimensions, aerial). For a single parcel, the Addenda Pack already covers these maps.">🧩 Parcel Pack (ZIP)</button>
         <!-- Export CSV, below Current Map View (the Manitoba pattern). It
              used to sit beside Search / Clear, which put an OUTPUT action
              in the row that starts a search. Both ways of getting the
@@ -1572,15 +1575,11 @@
                  where the capture is triggered. -->
             <!-- Roll summary: distinct rolls among the ticked rows, their
                  total land area (sf + acres), and a button that copies the
-                 rolls joined by the chosen separator. main.js
+                 rolls joined by | (e.g. 140...|140...). main.js
                  updateRollSummary() owns it; hidden when no row has a roll. -->
             <div class="roll-summary" id="roll-summary" hidden>
               <span class="roll-summary-text" id="roll-summary-text"></span>
-              <select id="roll-copy-sep" aria-label="Separator between copied roll numbers" title="Separator between copied roll numbers">
-                <option value="&amp;">&amp;</option>
-                <option value="|">|</option>
-              </select>
-              <button type="button" id="roll-copy-btn" class="secondary roll-copy-btn" title="Copy every roll number in the ticked rows">Copy rolls</button>
+              <button type="button" id="roll-copy-btn" class="secondary roll-copy-btn" title="Copy every roll number in the ticked rows, separated by |">Copy rolls</button>
             </div>
             <div class="results-toolbar-spacer"></div>
             <div class="columns-popover-wrap">
@@ -1691,6 +1690,30 @@
           <button type="button" id="map-capture-download-jpg" class="sales-modal-btn" title="JPEG is a fraction of the PNG file size for satellite imagery — lighter in a report, with no visible loss.">Download JPG (smaller)</button>
         </div>
         <p class="map-capture-tip">Tip: <kbd>Alt</kbd>+<kbd>C</kbd> copies the current map view straight to the clipboard, using this legend setting.</p>
+      </div>
+    </dialog>
+
+    <!-- Parcel Pack: which parcels share a set of maps. Rows are built by
+         main.js openParcelPackDialog() (Manitoba port). -->
+    <dialog id="parcel-pack-modal" class="sales-modal map-capture-modal parcel-pack-modal" aria-labelledby="parcel-pack-title">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title" id="parcel-pack-title">Parcel Pack <span class="map-capture-size">3 maps per parcel · 1950 × 1050 px</span></h2>
+          <button type="button" class="sales-modal-close" data-close aria-label="Close">×</button>
+        </header>
+        <p class="map-capture-tip">Each parcel gets a site map, a site map with dimensions and a close-up aerial. To leave a small parcel without maps of its own, choose the parcel it should be shown with: both are then highlighted on that parcel's three maps.</p>
+        <div class="parcel-pack-scroll">
+          <table class="parcel-pack-table">
+            <thead><tr><th>Roll</th><th>Address</th><th class="num">Area</th><th>Map with</th></tr></thead>
+            <tbody id="parcel-pack-rows"></tbody>
+          </table>
+        </div>
+        <div class="map-capture-actions">
+          <span id="parcel-pack-summary" class="parcel-pack-summary"></span>
+          <span class="map-capture-spacer"></span>
+          <button type="button" class="sales-modal-btn" data-close>Cancel</button>
+          <button type="button" id="parcel-pack-build" class="sales-modal-btn primary">Build pack</button>
+        </div>
       </div>
     </dialog>
 

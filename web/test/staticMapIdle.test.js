@@ -262,7 +262,10 @@ test('the addenda maps carry the Manitoba app\'s marks (Jason, 2026-10-08)', () 
   const body = fnBodyOf('buildAddendaPack');
   assert.match(body, /locatorMarks = pinPoint\s*\?\s*\{ pin: true/, 'a lone parcel no longer gets the locator pin');
   assert.match(body, /numbers: numberingOn && numberable/, 'several parcels are no longer numbered on the locator maps');
-  assert.match(body, /dims: true[\s\S]{0,200}aerialKey/, 'the aerial no longer carries dimensions');
+  // 2026-11-25, as in the Manitoba pack: wide + close-up aerials without
+  // dimensions, then a streets site map that carries them.
+  assert.match(body, /'subject-aerial-close\.png'/, 'the close-up aerial is never added to the pack');
+  assert.match(body, /dims: true[\s\S]{0,400}'site-parcel-map\.png'/, 'the site map no longer carries dimensions');
   assert.match(body, /cycleZoningTo\('shading'\)[\s\S]{0,300}withLegend: true/, 'the zoning map is not shaded with its legend');
   assert.match(body, /'zoning-map\.png'/, 'the zoning map is never added to the pack');
   assert.match(body, /title: true/, 'the location map has lost its title box');

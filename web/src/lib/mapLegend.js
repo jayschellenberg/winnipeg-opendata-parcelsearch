@@ -41,6 +41,10 @@ export function readMapLegends(root, computed) {
           return {
             color: sw && computed ? computed(sw).backgroundColor : null,
             label: li.textContent.replace(/\s+/g, ' ').trim(),
+            // data-subject: a zone the subject is in (the Addenda Pack
+            // zoning map, or the ticked results' zones) — drawn bold in an
+            // outline box, as in the Manitoba app.
+            ...(li.dataset?.subject ? { emphasis: true } : {}),
           };
         })
         .filter((item) => item.label),
@@ -96,7 +100,7 @@ export function layoutMapLegends(legends, {
     if (rows.length < 2) break;
 
     let textW = measureText(legend.title, true);
-    for (const r of rows) textW = Math.max(textW, measureText(r.label, false) + swatch + gap);
+    for (const r of rows) textW = Math.max(textW, measureText(r.label, !!r.emphasis) + swatch + gap);
     if (more > 0) textW = Math.max(textW, measureText(`+${more} more`, false));
     const w = Math.min(maxBoxW, Math.ceil(textW + pad * 2));
     const h = pad * 2 + lineH * (rows.length + 1 + (more > 0 ? 1 : 0));
@@ -141,7 +145,18 @@ export function paintMapLegends(ctx, boxes, fontSize) {
         ctx.strokeRect(box.x + box.pad + 0.5, y - Math.round(box.swatch / 2) + 0.5, box.swatch - 1, box.swatch - 1);
       }
       ctx.fillStyle = '#1a1a1a';
+      if (row.emphasis) {
+        // The subject's zone: bold, in a dark outline box around the row.
+        const inset = Math.max(2, Math.round(box.pad * 0.35));
+        ctx.save();
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = Math.max(1.5, fontSize / 9);
+        ctx.strokeRect(box.x + box.pad - inset, y - box.lineH / 2 + 1, box.w - (box.pad - inset) * 2, box.lineH - 2);
+        ctx.restore();
+        ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+      }
       ctx.fillText(row.label, box.x + box.pad + box.swatch + box.gap, y);
+      if (row.emphasis) ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
       y += box.lineH;
     }
     if (box.more > 0) {

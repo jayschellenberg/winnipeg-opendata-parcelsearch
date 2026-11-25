@@ -1804,14 +1804,6 @@ body {
 }
 .roll-summary[hidden] { display: none; }
 .roll-summary-text { color: var(--color-primary-500, #1e293b); }
-.roll-summary select {
-  padding: 3px 4px;
-  font-size: 12px;
-  border: 1px solid var(--color-neutral-300, #d4d4d8);
-  border-radius: 4px;
-  background: #fff;
-  font-family: inherit;
-}
 /* Matches the Columns gear button beside it. */
 .roll-copy-btn {
   padding: 4px 10px;
@@ -6376,3 +6368,51 @@ button[data-icon]::before {
    line so it never widens the crowded top bar. */
 .topbar-title .app-build { display: block; margin-top: 2px; line-height: 1.1; font-size: 10px; font-weight: 400; opacity: 0.65; letter-spacing: 0; text-transform: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
 body.phone .topbar-title .app-build { display: none; }
+
+/* ---------- MB parity: button heights (Jason, 2026-11-25) ----------
+   Search / Clear at Manitoba's 32px (they were 39px from .controls
+   button's 8px padding + 14px type), and every report-figure button at a
+   true 32px: the 1.5 line-height took Addenda Pack to 34px. Scoped to
+   body:not(.phone): the #ids would otherwise outrank the 40px phone tap
+   targets (body.phone .sidebar button). */
+body:not(.phone) .sidebar .action-row > #search,
+body:not(.phone) .sidebar .action-row > #clear {
+  min-height: 32px;
+  padding: 6px 8px;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.sidebar .generate-map-btn { line-height: 1.2; }
+
+/* Parcel Pack dialog (Manitoba port, 2026-11-25). */
+.parcel-pack-modal { width: min(760px, 94vw); }
+.parcel-pack-scroll {
+  max-height: min(55vh, 520px);
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+.parcel-pack-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.parcel-pack-table th,
+.parcel-pack-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid #eef2f6;
+  text-align: left;
+  vertical-align: middle;
+}
+.parcel-pack-table th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  font-weight: 600;
+}
+.parcel-pack-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.parcel-pack-table select { max-width: 260px; font: inherit; padding: 2px 4px; }
+.parcel-pack-suggested { margin-left: 8px; font-size: 12px; color: #64748b; }
+.parcel-pack-summary { font-size: 13px; color: #334155; }

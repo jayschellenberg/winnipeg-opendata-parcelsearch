@@ -232,9 +232,37 @@ export function buildDimensionLabels(surveyFc, groupOf = (f, i) => i) {
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: anchor.point },
-        properties: { length_label: formatFeet(ft), rot: anchor.rot },
+        properties: { length_label: formatFeet(ft), rot: anchor.rot, ft: Math.round(ft) },
       });
     }
   }
   return { type: 'FeatureCollection', features };
+}
+
+/** From this zoom every labelled side shows (the layer's old minzoom). */
+export const DIMS_ALL_SIDES_ZOOM = 17;
+/** Lowest zoom any side label draws at. Below DIMS_ALL_SIDES_ZOOM only the
+ *  sides long enough to hold their label show (the Manitoba app's rule,
+ *  2026-11-25), so a big lot framed whole in an addenda site map still gets
+ *  its dimensions while small lots do not turn into a pile of labels. */
+export const DIMS_MIN_ZOOM = 14;
+/** Screen length a side needs below DIMS_ALL_SIDES_ZOOM: room for a
+ *  "1234.5 ft" label at this layer's 20 px text, plus some air. */
+export const DIMS_MIN_SIDE_PX = 120;
+// Metres per screen pixel at zoom 0 (512 px world) at Winnipeg's latitude.
+const DIMS_M_PER_PX_Z0 = (40075016.686 * Math.cos((49.9 * Math.PI) / 180)) / 512;
+
+/** Shortest side (whole feet) labelled at integer zoom `z`; 0 = every side. */
+export function dimsMinSideFt(z) {
+  if (z >= DIMS_ALL_SIDES_ZOOM) return 0;
+  return Math.ceil(((DIMS_MIN_SIDE_PX * DIMS_M_PER_PX_Z0) / 2 ** z) * 3.28084);
+}
+
+/** The map layer filter applying dimsMinSideFt per zoom. A label from an
+ *  older build with no `ft` reads as 0 and only shows from the full zoom. */
+export function dimsSideFilter() {
+  const at = (z) => ['>=', ['coalesce', ['get', 'ft'], 0], dimsMinSideFt(z)];
+  const expr = ['step', ['zoom'], at(DIMS_MIN_ZOOM)];
+  for (let z = DIMS_MIN_ZOOM + 1; z <= DIMS_ALL_SIDES_ZOOM; z++) expr.push(z, at(z));
+  return expr;
 }

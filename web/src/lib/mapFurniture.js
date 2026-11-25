@@ -187,6 +187,16 @@ export function localDateStamp(d = new Date()) {
  * of its size on every side. Used to frame the Exhibit Pack views: a lone
  * small lot still gets enough context, a big result set keeps a margin.
  */
+/** Width in metres of the frame a map shows when fitted to `bounds`
+ *  ([[w, s], [e, n]]) at `aspect` (width / height): the bounds' own width,
+ *  or more when the height is what fills the frame. (Manitoba copy.) */
+export function frameWidthM([[w, s], [e, n]], aspect = 1950 / 1050) {
+  const midLat = (s + n) / 2;
+  const width = haversineMeters([w, midLat], [e, midLat]);
+  const height = haversineMeters([(w + e) / 2, s], [(w + e) / 2, n]);
+  return Math.max(width, height * aspect);
+}
+
 export function framedBounds([minX, minY, maxX, maxY], { padFrac = 0.15, minWidthM = 0 } = {}) {
   const midLat = (minY + maxY) / 2;
   const midLng = (minX + maxX) / 2;

@@ -124,6 +124,8 @@ const PERSISTENT = {
   allClusterNames: 'the 23 cluster names off the static geojson, built once; a property search neither changes nor consumes them',
   zoningMode: 'an overlay preference (shaded / selection / labels / off), not a property of the results',
   zoningCodesByCat: 'zone codes per category from the citywide zoning layer; the same for every search',
+  parcelPackRunning: 'a pack build in progress; it restores the map itself when it ends',
+  parcelPackAbort: 'the cancel flag for that build; cleared when the build ends',
   captureInFlight: 'transient guard around a Capture Map capture',
   captureFrame: 'the last Capture Map frame, read only while its modal panel is open and replaced by every capture; a search cannot leave it on screen',
   urlWritePending: 'transient rAF throttle for the URL writer',
