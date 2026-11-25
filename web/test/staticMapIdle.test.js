@@ -267,7 +267,7 @@ test('the addenda maps carry the Manitoba app\'s marks (Jason, 2026-10-08)', () 
   // dimensions, then a streets site map that carries them.
   assert.match(body, /'subject-aerial-close\.png'/, 'the close-up aerial is never added to the pack');
   assert.match(body, /dims: true[\s\S]{0,400}'site-parcel-map\.png'/, 'the site map no longer carries dimensions');
-  assert.match(body, /cycleZoningTo\('shading'\)[\s\S]{0,300}withLegend: true/, 'the zoning map is not shaded with its legend');
+  assert.match(body, /cycleZoningTo\('shading'\)[\s\S]{0,600}withLegend: true/, 'the zoning map is not shaded with its legend');
   assert.match(body, /'zoning-map\.png'/, 'the zoning map is never added to the pack');
   assert.match(body, /title: true/, 'the location map has lost its title box');
   const hood = body.slice(body.indexOf("step('neighbourhood')"), body.indexOf("'neighbourhood-map.png'"));

@@ -3368,6 +3368,21 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       // and overlay layer, under only the drawn area-selection shapes. A GL
       // symbol, not a maplibregl.Marker, so Generate Map (which copies the
       // canvas) captures it — the same reason the number badges are GL.
+      // The subject's perimeter on the Addenda Pack zoning map
+      // (setSubjectPerimeter): red over a white halo so it reads on every
+      // zone colour, with the Locator pin above it (the Manitoba app's,
+      // ported 2026-11-25).
+      map.addSource('subject-perimeter', { type: 'geojson', data: emptyFc() });
+      map.addLayer({
+        id: 'subject-perimeter-halo', type: 'line', source: 'subject-perimeter',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 3.5, 'line-opacity': 0.95 },
+      });
+      map.addLayer({
+        id: 'subject-perimeter-line', type: 'line', source: 'subject-perimeter',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#d32f2f', 'line-width': 1.5 },
+      });
       map.addImage('result-pin', resultPinImage(), { pixelRatio: 2 });
       map.addSource('result-pin', { type: 'geojson', data: emptyFc() });
       map.addLayer({
@@ -5462,6 +5477,17 @@ export function setCommunityMask(map, feature) {
  * faded to 0 rather than hidden, so a click on a parcel still opens it;
  * their own opacities are kept and put back as they were.
  */
+/** Draw (or, with null/empty, clear) a red perimeter round the subject
+ *  parcels — used by the Addenda Pack zoning map, where the Locator pin
+ *  alone left a split-zoned lot's extent unclear. */
+export function setSubjectPerimeter(map, feats) {
+  const src = map.getSource('subject-perimeter');
+  if (!src) return;
+  const features = (feats || []).filter((f) => f?.geometry)
+    .map((f) => ({ type: 'Feature', properties: {}, geometry: f.geometry }));
+  src.setData(features.length ? { type: 'FeatureCollection', features } : emptyFc());
+}
+
 export function setResultPin(map, points) {
   const src = map.getSource('result-pin');
   if (!src) return;

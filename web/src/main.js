@@ -120,7 +120,7 @@ import {
   setCitywideParcelsVisible, setCitywideSurveyVisible, CITYWIDE_SURVEY_MIN_ZOOM, surveyTilesUrl, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
   setContamData, setContamVisible, setWaterInfluenceVisible,
   setSubjectData, setSubjectRadiusData, setSalesPointsData,
-  setParcelNumberData, setParcelNumbersVisible, setResultPin, setCommunityMask,
+  setParcelNumberData, setParcelNumbersVisible, setResultPin, setSubjectPerimeter, setCommunityMask,
   setHistoricalTileSnapshot, setHistoricalVisible, setHistoricalLineageProvider,
   setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
@@ -5316,6 +5316,9 @@ async function buildAddendaPack() {
       if (await cycleZoningTo('shading')) {
         await setAddendaMarks(locatorMarks);
         const cityZoning = await fetchCityZoning();
+        // The subject's outline in red, so a split-zoned lot's extent reads
+        // against the district colours (as in the Manitoba pack).
+        setSubjectPerimeter(map, subject.feats);
         try {
           const zoning = await captureAddendaView(
             framedBounds(subjectBox, { padFrac: 0.2, minWidthM: ADDENDA_ZONING_MIN_M }), 'streets',
@@ -5324,6 +5327,7 @@ async function buildAddendaPack() {
                 { onlyListed: true, highlight: subjectZoneCodes(subject.feats) }) });
           add('zoning-map.png', zoning.bytes, `Zoning around ${subject.note}${marked}`, zoning.stale);
         } finally {
+          setSubjectPerimeter(map, null);
           buildZoningLegend(zoningCodesByCategory(cityZoning));
         }
       } else {
@@ -5345,6 +5349,7 @@ async function buildAddendaPack() {
     // Put the user's map back exactly as it was, whatever happened above.
     if (zoningMode !== zoningWas) await cycleZoningTo(zoningWas).catch(() => {});
     setCommunityMask(map, null);
+    setSubjectPerimeter(map, null);
     if (neighbourhoodsMode !== neighbourhoodsWas) await setNeighbourhoodsMode(neighbourhoodsWas).catch(() => {});
     await setCitywideParcels(citywideWas).catch(() => {});
     await setAddendaMarks(userMarks).catch(() => {});
