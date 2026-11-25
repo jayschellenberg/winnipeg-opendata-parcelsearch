@@ -308,13 +308,42 @@ const ASSESS_LINE_WIDTH = [
 // Shaded (a faint wash, so the district colours read through the result
 // parcels instead of being swamped by the highlight). Module state here;
 // setWaterInfluenceVisible / setZoningMode update it and re-apply.
-const assessFillState = { waterOn: false, zoningShaded: false };
+const assessFillState = { waterOn: false, zoningShaded: false, zoningSelection: false };
+// Zoning: Selection paints the result parcels in their district colour, so
+// the fill has to be strong enough to read as that colour (the normal 30%
+// yellow wash would tint every swatch toward the basemap).
+const ASSESS_FILL_ZONE_SELECTION = 0.7;
 function applyAssessFillOpacity(map) {
   if (!map.getLayer('assess-context-fill')) return;
   // The single-result pin stands in for the shape, so the fill stays out
   // of sight while it is up, whatever the overlays would otherwise want.
-  map.setPaintProperty('assess-context-fill', 'fill-opacity',
-    map._resultPinOn ? 0 : assessFillOpacity(assessFillState));
+  let opacity;
+  if (map._resultPinOn) opacity = 0;
+  else if (assessFillState.zoningSelection && !assessFillState.waterOn) opacity = ASSESS_FILL_ZONE_SELECTION;
+  else opacity = assessFillOpacity(assessFillState);
+  map.setPaintProperty('assess-context-fill', 'fill-opacity', opacity);
+}
+
+// The result-parcel fill's normal colour: the sale category on a sale, the
+// Manitoba yellow on everything else. Shared by the layer definition and
+// setParcelZoneColoring's reset so the two cannot drift.
+const ASSESS_FILL_COLOR = ['coalesce', ['get', '_catColor'], '#ffea00'];
+
+/**
+ * Zoning: Selection. Paint each result parcel in the colour of its own
+ * zoning district (`zoning_top1`, the area-dominant code the enrichment
+ * join stamps on), or restore the normal fill when `pairs` is empty/null.
+ * `pairs` is a flat [code, colour, code, colour, ...] list built from
+ * ZONING_PALETTE, so parcel colours match the legend swatches.
+ */
+export function setParcelZoneColoring(map, pairs) {
+  const on = Array.isArray(pairs) && pairs.length >= 2;
+  assessFillState.zoningSelection = on;
+  if (!map.getLayer('assess-context-fill')) return;
+  map.setPaintProperty('assess-context-fill', 'fill-color', on
+    ? ['match', ['to-string', ['get', 'zoning_top1']], ...pairs, '#ffea00']
+    : ASSESS_FILL_COLOR);
+  applyAssessFillOpacity(map);
 }
 
 // Categorical fill colors keyed off the dataset's `map_colour` field. Values
@@ -1509,7 +1538,7 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
           // separate at all-pairs distance, with a legend and the hover
           // popup naming the category. What the note rules out is telling
           // sale GROUPS apart by fill, and that is still not attempted.
-          'fill-color': ['coalesce', ['get', '_catColor'], '#ffea00'],
+          'fill-color': ASSESS_FILL_COLOR,
           'fill-opacity': assessFillOpacity(assessFillState),
         },
       });
@@ -3763,12 +3792,16 @@ export function setZoningData(map, fc) {
  * flips). Three modes:
  *   'off'     — everything hidden.
  *   'shading' — coloured fill + district outlines + zone-code labels.
+ *   'selection' — no district polygons at all; the caller paints the result
+ *               parcels themselves by zone (setParcelZoneColoring).
  *   'labels'  — outlines + zone-code labels only, NO colour fill, so the zones
  *               read without the fill obscuring the basemap / parcels beneath.
+ * Any mode but 'selection' restores the parcels' normal fill colour.
  */
 export function setZoningMode(map, mode) {
   const fill = mode === 'shading' ? 'visible' : 'none';
-  const lineLabel = mode === 'off' ? 'none' : 'visible';
+  const lineLabel = mode === 'off' || mode === 'selection' ? 'none' : 'visible';
+  if (mode !== 'selection') setParcelZoneColoring(map, null);
   if (map.getLayer('zoning-fill')) map.setLayoutProperty('zoning-fill', 'visibility', fill);
   if (map.getLayer('zoning-line')) map.setLayoutProperty('zoning-line', 'visibility', lineLabel);
   if (map.getLayer('zoning-label')) map.setLayoutProperty('zoning-label', 'visibility', lineLabel);

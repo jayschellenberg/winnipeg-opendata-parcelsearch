@@ -1206,7 +1206,7 @@
           <button id="assess-toggle" type="button" class="secondary active" data-layer-set="parcel" aria-pressed="true" title="Show / hide the red assessment-parcel polygons of the current search results. Dark = shown. Not the citywide grey wash — that is All Assessment Parcels, which highlights the same results in yellow.">Assessment Results</button>
           <button id="all-survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show every survey lot (legal lot) in the city as thin blue lines, from zoom 15 in. Hover for Lot / Block / Plan plus the assessment roll and address under it. Rebuilt monthly with the citywide parcel tiles; not live data.">All Survey Parcels</button>
           <button id="survey-toggle" type="button" class="secondary" data-layer-set="parcel" aria-pressed="false" title="Show / hide the blue survey-lot (legal lot) polygons of the current search results. Dark = shown.">Survey Parcel Results</button>
-          <button id="zoning-toggle" type="button" data-icon="🗺️" class="secondary" data-layer-set="planning" aria-pressed="false" title="City-wide zoning by-law districts (cached 7 days). Click to cycle three states: 1st click = coloured shading (fill + outlines + zone-code labels); 2nd click = labels only (zone codes + district outlines, no colour fill, so it doesn't obscure the map); 3rd click = off. The colour legend shows in the shaded state.">Zoning</button>
+          <button id="zoning-toggle" type="button" data-icon="🗺️" class="secondary" data-layer-set="planning" aria-pressed="false" title="City-wide zoning by-law districts (cached 7 days). Click to cycle: 1st click = coloured shading (fill + outlines + zone-code labels); 2nd click = Selection (only the ticked result parcels, each painted in its zone colour, and only their zones in the legend; skipped when no result is loaded); 3rd click = labels only (zone codes + district outlines, no colour fill); 4th click = off. The legend shows in the Shaded and Selection states, with the result parcels' zones in bold.">Zoning</button>
           <button id="neighbourhoods-toggle" type="button" data-icon="🏘️" class="secondary" data-layer-set="reference" aria-pressed="false" title="Winnipeg neighbourhood boundaries. Click cycles: Off to Clusters to Neighbourhoods to Off. Click a polygon for the name and cluster.">Neighbourhoods</button>
           <button id="dimensions-toggle" type="button" data-icon="📏" class="secondary" data-layer-set="reference" aria-pressed="false" title="Label each parcel edge with its length in feet (visible at zoom 17+). Dimensions only show once a search is performed, and are approximate (based on survey parcel, which may not align with assessment parcel). Provided for general information only but should be verified and not relied upon.">Dimensions*</button>
           <button id="mls-toggle" type="button" data-icon="🏷️" class="secondary" data-layer-set="reference" aria-pressed="false" title="MLS Areas — the real-estate boards' MLS area boundaries: Winnipeg Regional Real Estate Board city (1A … 9A) and rural (R02 … R44) areas, plus Brandon's and Portage's. Click an area for its code and board.">MLS Areas</button>
@@ -1570,6 +1570,18 @@
                  It is now the sidebar's "📸 Map w/Legend" button beside
                  Current Map View (the Manitoba pattern), so the choice is made
                  where the capture is triggered. -->
+            <!-- Roll summary: distinct rolls among the ticked rows, their
+                 total land area (sf + acres), and a button that copies the
+                 rolls joined by the chosen separator. main.js
+                 updateRollSummary() owns it; hidden when no row has a roll. -->
+            <div class="roll-summary" id="roll-summary" hidden>
+              <span class="roll-summary-text" id="roll-summary-text"></span>
+              <select id="roll-copy-sep" aria-label="Separator between copied roll numbers" title="Separator between copied roll numbers">
+                <option value="&amp;">&amp;</option>
+                <option value="|">|</option>
+              </select>
+              <button type="button" id="roll-copy-btn" class="secondary roll-copy-btn" title="Copy every roll number in the ticked rows">Copy rolls</button>
+            </div>
             <div class="results-toolbar-spacer"></div>
             <div class="columns-popover-wrap">
               <button

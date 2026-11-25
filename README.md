@@ -1,6 +1,6 @@
 # Winnipeg Parcel Search
 
-Status: Active | Next: tbd | Blocked: none | Updated: 2026-11-24
+Status: Active | Next: tbd | Blocked: none | Updated: 2026-11-25
 
 A free, client-only parcel-research tool for City of Winnipeg properties, built
 for commercial-appraisal workflows.

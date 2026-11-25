@@ -114,7 +114,7 @@ import {
   newPlanPoints, planWindowList, windowColors, LATE_PLAN_COLOR, cleanLotBound, filterByLots, filterByCutoff,
 } from './lib/newPlans.js';
 import {
-  initMap, showResults, setZoningData, setZoningMode, flyToFeature,
+  initMap, showResults, setZoningData, setZoningMode, setParcelZoneColoring, flyToFeature,
   setOverlayData, setOverlayVisible, ZONING_PALETTE, setCivicAddresses,
   setDimensions, setDimensionsVisible, setTrafficData, setTrafficVisible,
   setCitywideParcelsVisible, setCitywideSurveyVisible, CITYWIDE_SURVEY_MIN_ZOOM, surveyTilesUrl, setDwellingUnitsVisible, probeCitywideParcels, parcelTilesUrl,
@@ -275,6 +275,7 @@ const $tbody = document.querySelector('#results tbody');
 // would be attached to the dynamically-built ths.
 buildThead(document.querySelector('#results thead tr'));
 wireRowSelection();   // header tick-all + delegated row boxes (needs the thead)
+wireRollSummary();    // toolbar: total land area + Copy rolls (& or |)
 
 const $mapEl = document.getElementById('map');
 const $staticMapBtn = document.getElementById('static-map-btn');
@@ -486,12 +487,16 @@ let locationMapRowFeature = null;
 // carries across searches.
 let locationMapState = { label: 'SUBJECT', direction: 'auto', base: 'winnipeg' };
 
-// Zoning overlay state. `zoningMode` cycles 'off' -> 'shading' -> 'labels' ->
-// 'off' via the Zoning button. Deferred sales-mode zoning enrichment reads
+// Zoning overlay state. `zoningMode` cycles 'off' -> 'shading' -> 'selection'
+// -> 'labels' -> 'off' via the Zoning button ('selection' is skipped when no
+// ticked result parcel carries a zone code). Deferred sales-mode zoning enrichment reads
 // `lastFullAssessFc` (the unfiltered parcel FC most recently pushed through
 // setParcels) so it can fetch zones for the current results without
 // re-running the search.
 let zoningMode = 'off';
+// Category -> sorted zone codes from the citywide layer, kept once
+// refreshZoning has it so the legend can be rebuilt on every selection change.
+let zoningCodesByCat = null;
 let lastSurveyFc = { type: 'FeatureCollection', features: [] };
 // The assessment parcels drawn with lastSurveyFc. The Dimensions overlay
 // groups survey lots by the property they fall in.
@@ -2159,9 +2164,16 @@ function toggleLayer(which) {
  * fetched once on the first activation (off -> shading) and reused for the
  * label state and re-toggles; the colour legend only shows in shading mode.
  */
-const ZONING_LABELS = { off: 'Zoning', shading: 'Zoning: Shaded', labels: 'Zoning: Labels' };
+const ZONING_LABELS = { off: 'Zoning', shading: 'Zoning: Shaded', selection: 'Zoning: Selection', labels: 'Zoning: Labels' };
 async function toggleZoning() {
-  const next = zoningMode === 'off' ? 'shading' : zoningMode === 'shading' ? 'labels' : 'off';
+  // Selection (the Manitoba portal's "selected only" state) needs ticked
+  // result parcels with a zone code joined on; without them the cycle goes
+  // straight from Shaded to Labels rather than landing on an empty map.
+  let next;
+  if (zoningMode === 'off') next = 'shading';
+  else if (zoningMode === 'shading') next = selectedZoneCodes({ top1Only: true }).size ? 'selection' : 'labels';
+  else if (zoningMode === 'selection') next = 'labels';
+  else next = 'off';
   const wasOff = zoningMode === 'off';
   zoningMode = next;
   const on = next !== 'off';
@@ -2170,11 +2182,15 @@ async function toggleZoning() {
   $zoningToggle.dataset.mode = next;
   await mapReady;
   setZoningMode(map, next);
-  // The colour legend is only meaningful when the fill is shown.
-  if ($zoningLegend) $zoningLegend.hidden = next !== 'shading';
+  // The colour legend is only meaningful when colour is on the map.
+  if ($zoningLegend) $zoningLegend.hidden = next !== 'shading' && next !== 'selection';
   if (!on) { $zoningToggle.textContent = ZONING_LABELS.off; return; }
-  // shading -> labels reuses the already-loaded data; no fetch.
-  if (!wasOff) { $zoningToggle.textContent = ZONING_LABELS[next]; return; }
+  // Later states reuse the already-loaded data; no fetch.
+  if (!wasOff) {
+    $zoningToggle.textContent = ZONING_LABELS[next];
+    refreshZoningForSelection();
+    return;
+  }
   // First activation (off -> shading): fetch the citywide zoning. Cold
   // IndexedDB cache is ~10-15s; subsequent toggles read from disk in ms.
   $zoningToggle.disabled = true;
@@ -2995,7 +3011,61 @@ async function refreshZoning() {
   setZoningData(map, zoningFc);
   // Now that the real codes are in hand, re-render the legend with the
   // C1/C2/R1-M... list under each colour band.
-  buildZoningLegend(zoningCodesByCategory(zoningFc));
+  zoningCodesByCat = zoningCodesByCategory(zoningFc);
+  refreshZoningForSelection();
+}
+
+/**
+ * Zone codes of the ticked result rows (the same set the map and export
+ * carry). `zoning_top1` is the area-dominant district from the enrichment
+ * join; `zoning_top2` is added for the legend highlight, since a parcel
+ * straddling two districts sits in both. The Selection paint uses top-1
+ * only: one parcel, one colour.
+ */
+function selectedZoneCodes({ top1Only = false } = {}) {
+  const out = new Set();
+  const keys = top1Only ? ['zoning_top1'] : ['zoning_top1', 'zoning_top2'];
+  for (const r of currentRows || []) {
+    if (!rowIsSelected(r)) continue;
+    const a = r.assess?.properties;
+    if (!a) continue;
+    for (const k of keys) {
+      const c = a[k] != null ? String(a[k]).trim() : '';
+      if (c) out.add(c);
+    }
+  }
+  return out;
+}
+
+/**
+ * Bring the zoning legend (and, in Selection, the parcel colouring) in line
+ * with the current results and ticks. Runs from renderCount, which fires on
+ * every new result set, selection change and area filter. Shaded / Labels:
+ * the full legend with the selected parcels' zones bold and boxed (the
+ * Manitoba legend-subject look). Selection: only those zones, and the
+ * parcels painted in their district colour.
+ */
+function refreshZoningForSelection() {
+  if (zoningMode === 'off' || !zoningCodesByCat) return;
+  const highlight = selectedZoneCodes();
+  if (zoningMode !== 'selection') {
+    buildZoningLegend(zoningCodesByCat, { highlight });
+    return;
+  }
+  const paintCodes = selectedZoneCodes({ top1Only: true });
+  const colorByCat = new Map();
+  for (let i = 0; i < ZONING_PALETTE.length; i += 2) colorByCat.set(ZONING_PALETTE[i], ZONING_PALETTE[i + 1]);
+  const pairs = [];
+  const listed = new Map();
+  for (const [cat, codes] of zoningCodesByCat) {
+    const mine = codes.filter((c) => highlight.has(c));
+    if (mine.length) listed.set(cat, mine);
+    const color = colorByCat.get(cat);
+    if (!color) continue;
+    for (const c of codes) if (paintCodes.has(c)) pairs.push(c, color);
+  }
+  mapReady.then(() => setParcelZoneColoring(map, pairs));
+  buildZoningLegend(listed, { onlyListed: true, highlight: new Set() });
 }
 
 // POLICY_OVERLAY_CONFIG is hoisted to the top of the module beside
@@ -3109,7 +3179,7 @@ function zoningCodesByCategory(fc) {
  * Addenda Pack's zoning map lists just the zones in its frame, since the
  * full 13-row list covered a third of the image and ran off its edge.
  */
-function buildZoningLegend(codesByCategory, { onlyListed = false } = {}) {
+function buildZoningLegend(codesByCategory, { onlyListed = false, highlight = selectedZoneCodes() } = {}) {
   if (!$zoningLegend || !ZONING_PALETTE) return;
   const ul = $zoningLegend.querySelector('ul');
   if (!ul) return;
@@ -3119,6 +3189,13 @@ function buildZoningLegend(codesByCategory, { onlyListed = false } = {}) {
     const color = ZONING_PALETTE[i + 1];
     if (onlyListed && !codesByCategory?.has(name)) continue;
     const li = document.createElement('li');
+    const codesHere = codesByCategory?.get(name) || [];
+    // The selected parcels' zones: row bold and boxed, the matching codes
+    // bold within it (the Manitoba legend-subject look).
+    if (highlight?.size && codesHere.some((c) => highlight.has(c))) {
+      li.classList.add('legend-subject');
+      li.dataset.subject = '1';
+    }
     const sw = document.createElement('span');
     sw.className = 'swatch';
     sw.style.background = color;
@@ -3144,7 +3221,16 @@ function buildZoningLegend(codesByCategory, { onlyListed = false } = {}) {
       text.appendChild(sep);
       const codeEl = document.createElement('span');
       codeEl.className = 'zl-codes';
-      codeEl.textContent = codes.join(', ');
+      codes.forEach((c, idx) => {
+        if (idx) codeEl.appendChild(document.createTextNode(', '));
+        if (highlight?.has(c)) {
+          const b = document.createElement('b');
+          b.textContent = c;
+          codeEl.appendChild(b);
+        } else {
+          codeEl.appendChild(document.createTextNode(c));
+        }
+      });
       text.appendChild(codeEl);
     }
     li.appendChild(text);
@@ -3747,6 +3833,8 @@ function setCount(text) {
 }
 
 function renderCount() {
+  refreshZoningForSelection();
+  updateRollSummary();
   // Culled rows are stated, always: the grid still lists them (dimmed), so
   // without this clause the map and the export would be quietly narrower
   // than the row count sitting right next to them.
@@ -3765,6 +3853,96 @@ function renderCount() {
       status.textContent = text;
     }
   }
+}
+
+// ---------- Roll summary (toolbar) ----------
+// Distinct roll numbers among the rows the grid shows AND has ticked (the
+// same set the map and the export carry), their total assessed land area,
+// and a Copy rolls button. Deduped on roll so a survey-first search, which
+// can list one assessment parcel against several lots, counts its land once.
+
+function rollSummaryRows() {
+  const seen = new Map();
+  for (const r of currentRows) {
+    if (!rowIsSelected(r)) continue;
+    const a = r.assess?.properties;
+    const roll = a?.roll_number != null ? String(a.roll_number).trim() : '';
+    if (!roll || seen.has(roll)) continue;
+    seen.set(roll, Number(a.assessed_land_area));
+  }
+  return seen;
+}
+
+function updateRollSummary() {
+  const box = document.getElementById('roll-summary');
+  const text = document.getElementById('roll-summary-text');
+  if (!box || !text) return;
+  const rolls = rollSummaryRows();
+  if (rolls.size === 0) {
+    box.hidden = true;
+    return;
+  }
+  let sf = 0;
+  let missing = 0;
+  for (const v of rolls.values()) {
+    if (Number.isFinite(v) && v > 0) sf += v;
+    else missing += 1;
+  }
+  const n = rolls.size;
+  const parts = [`${n} roll${n === 1 ? '' : 's'}`];
+  // Two decimals on acres: the shared formatAcres rounds to one, which
+  // turns a typical 18,000 sf assembly into "0.4 ac".
+  const ac = (sf / 43560).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (sf > 0) parts.push(`land ${formatSqFt(sf)} sf (${ac} ac)`);
+  if (missing > 0) parts.push(`${missing} without land area`);
+  text.textContent = parts.join(' · ');
+  text.title = missing > 0
+    ? `Total of the assessed land area for ${n - missing} of ${n} rolls; ${missing} carry no land area in the assessment data.`
+    : `Total assessed land area of the ${n} distinct rolls in the ticked rows.`;
+  box.hidden = false;
+}
+
+function wireRollSummary() {
+  const sel = document.getElementById('roll-copy-sep');
+  const btn = document.getElementById('roll-copy-btn');
+  if (!sel || !btn) return;
+  // Local, not module-level: this runs from the init block near the top of
+  // the module, before a const declared down here would be initialised.
+  const ROLL_SEP_KEY = 'wpg-parcelsearch.rollCopySep';
+  try {
+    const saved = localStorage.getItem(ROLL_SEP_KEY);
+    if (saved === '&' || saved === '|') sel.value = saved;
+  } catch { /* storage blocked: keep the default */ }
+  sel.addEventListener('change', () => {
+    try { localStorage.setItem(ROLL_SEP_KEY, sel.value); } catch { /* ignore */ }
+  });
+  btn.addEventListener('click', () => {
+    const rolls = [...rollSummaryRows().keys()];
+    if (!rolls.length) return;
+    const textOut = rolls.join(sel.value);
+    const flash = (msg) => {
+      btn.textContent = msg;
+      setTimeout(() => { btn.textContent = 'Copy rolls'; }, 1400);
+    };
+    const legacy = () => {
+      const ta = document.createElement('textarea');
+      ta.value = textOut;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok;
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
+      flash(ok ? `Copied ${rolls.length}` : 'Copy failed');
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(textOut).then(() => flash(`Copied ${rolls.length}`), legacy);
+    } else {
+      legacy();
+    }
+  });
 }
 
 /** Re-render both count lines against the current shape state. */
@@ -3981,6 +4159,7 @@ function renderTable(rows) {
   shapeTotal = rows.length;
   $tbody.innerHTML = '';
   currentRows = shown;
+  updateRollSummary();
   rowFeatureMap.clear();
   locationMapRowFeature = null;
   showEmptyState(shown.length === 0);
@@ -4905,7 +5084,7 @@ async function setAddendaMarks({ pin, numbers, dims }) {
 /** Click the Zoning button round its off -> shading -> labels cycle until it
  *  reads `mode`. False when it never got there (the fetch failed). */
 async function cycleZoningTo(mode) {
-  for (let i = 0; i < 3 && zoningMode !== mode; i++) await toggleZoning();
+  for (let i = 0; i < 4 && zoningMode !== mode; i++) await toggleZoning();
   return zoningMode === mode;
 }
 
