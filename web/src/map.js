@@ -461,6 +461,13 @@ const BASEMAP_STYLE = {
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       ],
       tileSize: 256,
+      // Deepest tile level fetched; past it MapLibre stretches z19 tiles
+      // (the Manitoba app's fix, 2026-11-25). Esri serves z20 beyond the
+      // built-up city as grey "Map data not yet available" placeholders, and
+      // with 256 px tiles on MapLibre's 512 px grid a camera at z19 already
+      // asks for z20. The city itself has real z20-21, so satellite there is
+      // a little softer past z19; the City aerials are the sharp close-up.
+      maxzoom: 19,
       attribution:
         'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
     },
@@ -497,7 +504,10 @@ const BASEMAP_STYLE = {
       type: 'raster',
       source: 'esri-imagery',
       minzoom: 0,
-      maxzoom: 20,
+      // The map's own max zoom. At 20 the layer switched off, so Satellite
+      // went blank when zoomed right in (2026-11-25); the source's maxzoom
+      // above stretches z19 tiles instead.
+      maxzoom: 22,
       layout: { visibility: 'none' },
     },
     {
