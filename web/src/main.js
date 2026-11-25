@@ -146,7 +146,7 @@ import { parseSalesText, describeHeaderProblem } from './lib/salesImport.js';
 import { initSalesPasteImport } from './lib/salesPasteImport.js';
 import { showLocationMapPanel } from './lib/locationMapPanel.js';
 import { waitForMapIdle, MapRenderTimeoutError } from './lib/snapshotCapture.js';
-import { BASE_MAPS, locateOnMap, renderLocationMap } from './lib/locationMap.js';
+import { BASE_MAPS, locateOnMap, renderLocationMap, clusterOnMap } from './lib/locationMap.js';
 import { haversineMeters, drawScaleBar, drawNorthArrow, framedBounds, frameWidthM, localDateStamp } from './lib/mapFurniture.js';
 import { suggestMerges, applyMerges, packBaseName, uniqueName, boxGapMeters } from './lib/parcelPackGroups.js';
 import { buildStoreZip } from './lib/zipStore.js';
@@ -5201,15 +5201,37 @@ async function buildAddendaPack() {
   try {
     // Location map — the Winnipeg map with the SUBJECT callout and title.
     step('location map');
-    const loc = resolveLocationMapSubject();
-    if (loc && locateOnMap(BASE_MAPS.winnipeg, loc.lng, loc.lat)) {
+    // A group subject's location map points at every parcel: one arrow per
+    // cluster (lib/locationMap.js clusterOnMap), as in the Manitoba pack, so
+    // a spread-out set is not marked by one arrow at the empty middle.
+    // `loc` is then the middle of the main cluster.
+    const locPoints = subject.group
+      ? subject.all.map(addendaFeatureCentre).filter(Boolean).map(([lng, lat]) => ({ lng, lat }))
+      : null;
+    const loc = subject.group
+      ? (() => { const [lng, lat] = [(subjectBox[0] + subjectBox[2]) / 2, (subjectBox[1] + subjectBox[3]) / 2]; return { lng, lat, note: subject.note }; })()
+      : resolveLocationMapSubject();
+    const arrowNote = () => {
+      if (!locPoints) return `arrow at ${loc.note}`;
+      const cl = clusterOnMap(BASE_MAPS.winnipeg, locPoints);
+      const shown = cl.reduce((acc, c) => acc + c.count, 0);
+      const off = locPoints.length - shown;
+      return (cl.length > 1
+        ? `arrows at ${cl.length} groups of the ${shown} subject parcels`
+        : `arrow at the ${shown} subject parcel${shown === 1 ? '' : 's'}`)
+        + (off ? ` (${off} off this map)` : '');
+    };
+    const onMap = loc && (locPoints
+      ? clusterOnMap(BASE_MAPS.winnipeg, locPoints).length > 0
+      : locateOnMap(BASE_MAPS.winnipeg, loc.lng, loc.lat));
+    if (onMap) {
       const canvas = await renderLocationMap({
-        map: BASE_MAPS.winnipeg, lng: loc.lng, lat: loc.lat,
+        map: BASE_MAPS.winnipeg, lng: loc.lng, lat: loc.lat, points: locPoints,
         label: locationMapState.label, direction: locationMapState.direction, title: true,
       });
       if (canvas) {
         add('location-map.png', await blobBytes(await canvasToBlob(canvas)),
-          `Winnipeg location map, arrow at ${loc.note}`);
+          `Winnipeg location map, ${arrowNote()}`);
       }
     }
     if (subject.specific) {
