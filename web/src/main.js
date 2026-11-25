@@ -4894,9 +4894,12 @@ const ADDENDA_NEIGHBOURHOOD_MIN_M = 1125;
 const ADDENDA_ZONING_LABEL = 'Zoning Map — By-law 200/2006';
 // Most result parcels the neighbourhood and zoning maps will number.
 const ADDENDA_NUMBER_MAX = 25;
-// Several results with none picked still make one subject when there are
-// at most ADDENDA_GROUP_MAX of them within ADDENDA_GROUP_SPAN_M — a property
-// assessed under more than one roll (Jason, 2026-10-13).
+// Several results with none picked make one subject when there are at most
+// ADDENDA_GROUP_MAX of them — a property assessed under more than one roll
+// (Jason, 2026-10-13). When they are spread out, the close-up maps frame only
+// the main cluster: the largest parcel and the others within
+// ADDENDA_GROUP_SPAN_M of it, and the rest go on the results map (the
+// Manitoba app's rule, ported 2026-11-25; Manitoba spans 2 km for farms).
 const ADDENDA_GROUP_MAX = 10;
 const ADDENDA_GROUP_SPAN_M = 500;
 
@@ -4945,22 +4948,70 @@ function addendaSubjectFeatures() {
   const feats = addendaResultFeatures();
   if (!feats.length) return null;
   if (feats.length === 1) return { feats, note: 'the search result', specific: true };
-  if (addendaResultsAreOneProperty(feats)) {
-    return { feats, note: `the ${feats.length} subject parcels`, specific: true, group: true };
+  // A small set of results is the subject as a group. `all` is every
+  // parcel; `feats` is the main cluster, largest parcel first (the
+  // neighbourhood, aerial, site and zoning maps).
+  if (feats.length <= ADDENDA_GROUP_MAX) {
+    const main = addendaMainCluster(feats);
+    const split = main.length < feats.length;
+    return {
+      feats: main,
+      all: feats,
+      note: split
+        ? `${main.length === 1 ? 'the largest' : `the main ${main.length}`} of the ${feats.length} subject parcels`
+        : `the ${feats.length} subject parcels`,
+      specific: true,
+      group: true,
+      split,
+    };
   }
   return { feats, note: `all ${feats.length} result parcels`, specific: false };
 }
 
-/** True when the results read as one multi-roll property rather than a
- *  scattered search: at most ADDENDA_GROUP_MAX parcels spanning no more
- *  than ADDENDA_GROUP_SPAN_M either way. */
-function addendaResultsAreOneProperty(feats) {
-  if (feats.length < 2 || feats.length > ADDENDA_GROUP_MAX) return false;
-  const box = bboxOfFeatures(feats);
+/** Does `box` ([minX, minY, maxX, maxY], degrees) fit within
+ *  ADDENDA_GROUP_SPAN_M both ways? */
+function addendaBoxFitsSpan(box) {
   if (!box) return false;
   const midLat = (box[1] + box[3]) / 2;
   return haversineMeters([box[0], midLat], [box[2], midLat]) <= ADDENDA_GROUP_SPAN_M
     && haversineMeters([box[0], box[1]], [box[0], box[3]]) <= ADDENDA_GROUP_SPAN_M;
+}
+
+/** A parcel's centre: the assessment centroid, else its bbox middle. */
+function addendaFeatureCentre(f) {
+  const p = f?.properties || {};
+  const pt = [Number(p.centroid_lon), Number(p.centroid_lat)];
+  if (pt.every(Number.isFinite)) return pt;
+  const b = bboxOfFeatures([f]);
+  return b ? [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2] : null;
+}
+
+/** Land area used to pick the largest parcel: the assessed land area, else
+ *  the bbox's footprint (a rough stand-in, only for ranking). */
+function addendaFeatureSize(f) {
+  const sf = Number(f?.properties?.assessed_land_area);
+  if (Number.isFinite(sf) && sf > 0) return sf;
+  const b = bboxOfFeatures([f]);
+  if (!b) return 0;
+  const midLat = (b[1] + b[3]) / 2;
+  return haversineMeters([b[0], midLat], [b[2], midLat]) * haversineMeters([b[0], b[1]], [b[0], b[3]]) * 10.7639;
+}
+
+/** A group subject's main cluster: the largest parcel, then the others
+ *  nearest it for as long as the lot still fits ADDENDA_GROUP_SPAN_M either
+ *  way. The largest comes first, so it names the neighbourhood. */
+function addendaMainCluster(feats) {
+  const largest = feats.reduce((a, b) => (addendaFeatureSize(b) > addendaFeatureSize(a) ? b : a));
+  const c0 = addendaFeatureCentre(largest);
+  const others = feats.filter((f) => f !== largest).map((f) => {
+    const c = addendaFeatureCentre(f);
+    return { f, d: c0 && c ? haversineMeters(c0, c) : Infinity };
+  }).sort((a, b) => a.d - b.d);
+  const main = [largest];
+  for (const { f, d } of others) {
+    if (Number.isFinite(d) && addendaBoxFitsSpan(bboxOfFeatures([...main, f]))) main.push(f);
+  }
+  return main;
 }
 
 /** [minX, minY, maxX, maxY] over several features; null when unusable. */
@@ -5128,9 +5179,10 @@ async function buildAddendaPack() {
     ? { pin: true, numbers: false, dims: false }
     : { pin: false, numbers: numberingOn && numberable && allFeats.length <= ADDENDA_NUMBER_MAX, dims: false };
   const neighbourhoodsWas = neighbourhoodsMode;
-  // A grouped subject is the whole result set, which the aerial and zoning
-  // maps already frame, so it gets no separate results map.
-  const wantResults = allFeats.length > 1 && !subject.group;
+  // A grouped subject that is the whole result set is already framed by the
+  // aerial and zoning maps, so it gets no separate results map; a split one
+  // does, since the close-ups leave the outlying parcels out.
+  const wantResults = allFeats.length > 1 && (!subject.group || subject.split);
   const total = 1 + (subject.specific ? 5 : 0) + (wantResults ? 1 : 0);
   let n = 0;
   const step = (what) => { btn.textContent = `Addenda ${++n}/${total}: ${what}…`; };
@@ -5277,6 +5329,9 @@ async function buildAddendaPack() {
     `neighbourhood map ${ADDENDA_NEIGHBOURHOOD_SIZE.width} x ${ADDENDA_NEIGHBOURHOOD_SIZE.height} (6.5 x 5 in) -- with a scale bar`,
     '(measured at the map centre) and a north arrow.',
     ...notes,
+    ...(subject.split
+      ? [`The ${subject.all.length} subject parcels are spread out: the neighbourhood, aerial, site and zoning maps show`,
+        `${subject.note} (within ${ADDENDA_GROUP_SPAN_M} m of the largest), and the results map shows all of them.`] : []),
     ...(!subject.specific
       ? ['No single subject was picked, so the neighbourhood, aerial and zoning maps were left out.',
         'Click a parcel row in the grid and build the pack again to include them.'] : []),
@@ -5287,7 +5342,7 @@ async function buildAddendaPack() {
     '',
   ].join('\r\n');
   files.push({ name: 'README.txt', data: new TextEncoder().encode(readme) });
-  downloadLocationBlob(buildStoreZip(files), `${packFileStem(subject.specific ? subject.feats : [])}addenda-${stamp}.zip`);
+  downloadLocationBlob(buildStoreZip(files), `${packFileStem(subject.specific ? (subject.all || subject.feats) : [])}addenda-${stamp}.zip`);
 }
 
 /** The subject's zone codes (area-dominant and second zone), for the
