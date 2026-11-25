@@ -1070,6 +1070,7 @@ if ($addendaPackBtn) {
 }
 wireCapturePanel();
 wireParcelPack();
+wirePackReview();
 if ($locationMapModal) {
   for (const el of $locationMapModal.querySelectorAll('[data-close]')) {
     el.addEventListener('click', () => $locationMapModal.close());
@@ -3891,7 +3892,11 @@ function rollSummaryRows() {
     const a = r.assess?.properties;
     const roll = a?.roll_number != null ? String(a.roll_number).trim() : '';
     if (!roll || seen.has(roll)) continue;
-    seen.set(roll, Number(a.assessed_land_area));
+    seen.set(roll, {
+      land: Number(a.assessed_land_area),
+      du: Number(a.dwelling_units),
+      value: Number(a.total_assessed_value),
+    });
   }
   return seen;
 }
@@ -3907,9 +3912,13 @@ function updateRollSummary() {
   }
   let sf = 0;
   let missing = 0;
+  let du = 0;
+  let value = 0;
   for (const v of rolls.values()) {
-    if (Number.isFinite(v) && v > 0) sf += v;
+    if (Number.isFinite(v.land) && v.land > 0) sf += v.land;
     else missing += 1;
+    if (Number.isFinite(v.du) && v.du > 0) du += v.du;
+    if (Number.isFinite(v.value) && v.value > 0) value += v.value;
   }
   const n = rolls.size;
   const parts = [`${n} roll${n === 1 ? '' : 's'}`];
@@ -3918,10 +3927,15 @@ function updateRollSummary() {
   const ac = (sf / 43560).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (sf > 0) parts.push(`land ${formatSqFt(sf)} sf (${ac} ac)`);
   if (missing > 0) parts.push(`${missing} without land area`);
+  // Dwelling units and total assessed value of the same rolls (Jason,
+  // 2026-11-25). Each roll carries its own, so condo units add up properly.
+  parts.push(`${du.toLocaleString('en-CA')} DU`);
+  if (value > 0) parts.push(`assessed ${formatDollars(value)}`);
   text.textContent = parts.join(' · ');
   text.title = missing > 0
     ? `Total of the assessed land area for ${n - missing} of ${n} rolls; ${missing} carry no land area in the assessment data.`
     : `Total assessed land area of the ${n} distinct rolls in the ticked rows.`;
+  text.title += ' Dwelling units and assessed value are the totals of the same rolls.';
   box.hidden = false;
 }
 
@@ -5383,7 +5397,12 @@ async function buildAddendaPack() {
     '',
   ].join('\r\n');
   files.push({ name: 'README.txt', data: new TextEncoder().encode(readme) });
-  downloadLocationBlob(buildStoreZip(files), `${packFileStem(subject.specific ? (subject.all || subject.feats) : [])}addenda-${stamp}.zip`);
+  openPackReview({
+    title: 'Addenda Pack',
+    files,
+    zipName: `${packFileStem(subject.specific ? (subject.all || subject.feats) : [])}addenda-${stamp}.zip`,
+    stale,
+  });
 }
 
 /** The subject's zone codes (area-dominant and second zone), for the
@@ -5724,8 +5743,101 @@ async function runParcelPack(sets) {
   const files = subjects.flatMap((s) => s.files);
   files.push({ name: 'README.txt', data: new TextEncoder().encode(readme) });
   const zipName = `${packFileStem(sets.flat())}parcel-pack-${stamp}.zip`;
-  downloadLocationBlob(buildStoreZip(files), zipName);
-  setCount(`Saved ${total} parcel pack maps (${subjects.length} parcel set${subjects.length === 1 ? '' : 's'}) to ${zipName}.`);
+  openPackReview({ title: 'Parcel Pack', files, zipName, stale });
+  setCount(`Built ${total} parcel pack maps (${subjects.length} parcel set${subjects.length === 1 ? '' : 's'}): review them in the pop-up, then download.`);
+}
+
+// ---------- Pack review ----------
+//
+// Both packs open here instead of saving the ZIP straight away (Jason,
+// 2026-11-25): a thumbnail of every map, so a blank or half-loaded one is
+// caught before it reaches a report, with Download all (ZIP) as the main
+// action and a Download on each map for when only one is wanted. Clicking a
+// thumbnail shows it full size. The ZIP is built only when asked for; the
+// object URLs are released when the window closes.
+
+function openPackReview({ title, files, zipName, stale = [] }) {
+  const modal = document.getElementById('pack-review-modal');
+  if (!modal) { downloadLocationBlob(buildStoreZip(files), zipName); return; }
+  const grid = document.getElementById('pack-review-grid');
+  const sum = document.getElementById('pack-review-summary');
+  const zoom = document.getElementById('pack-review-zoom');
+  const zoomImg = document.getElementById('pack-review-zoom-img');
+  const zoomCap = document.getElementById('pack-review-zoom-cap');
+  const allBtn = document.getElementById('pack-review-all');
+  document.getElementById('pack-review-title').firstChild.textContent = `${title} `;
+  document.getElementById('pack-review-zip').textContent = zipName;
+  const staleSet = new Set(stale);
+  const images = files.filter((f) => /\.png$/i.test(f.name));
+  const urls = [];
+  grid.replaceChildren();
+  for (const f of images) {
+    const url = URL.createObjectURL(new Blob([f.data], { type: 'image/png' }));
+    urls.push(url);
+    const card = document.createElement('figure');
+    card.className = 'pack-review-card';
+    if (staleSet.has(f.name)) card.classList.add('is-stale');
+    const thumb = document.createElement('button');
+    thumb.type = 'button';
+    thumb.className = 'pack-review-thumb';
+    thumb.title = 'Show full size';
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = f.name;
+    img.loading = 'lazy';
+    thumb.appendChild(img);
+    thumb.addEventListener('click', () => {
+      zoomImg.src = url;
+      zoomCap.textContent = f.name;
+      zoom.hidden = false;
+    });
+    const cap = document.createElement('figcaption');
+    const name = document.createElement('span');
+    name.className = 'pack-review-name';
+    name.textContent = f.name;
+    cap.appendChild(name);
+    if (staleSet.has(f.name)) {
+      const warn = document.createElement('span');
+      warn.className = 'pack-review-warn';
+      warn.textContent = 'may be incomplete';
+      warn.title = 'A layer was still loading when this map was captured. Check it, and rebuild the pack if it looks wrong.';
+      cap.appendChild(warn);
+    }
+    const dl = document.createElement('button');
+    dl.type = 'button';
+    dl.className = 'sales-modal-btn pack-review-dl';
+    dl.textContent = 'Download';
+    dl.addEventListener('click', () => downloadLocationBlob(new Blob([f.data], { type: 'image/png' }), f.name));
+    cap.appendChild(dl);
+    card.append(thumb, cap);
+    grid.appendChild(card);
+  }
+  const mb = files.reduce((n, f) => n + (f.data?.length || 0), 0) / 1048576;
+  sum.textContent = `${images.length} map${images.length === 1 ? '' : 's'}, ${mb.toFixed(1)} MB`
+    + (stale.length ? ` · ${stale.length} may be incomplete` : '');
+  allBtn.onclick = () => downloadLocationBlob(buildStoreZip(files), zipName);
+  zoom.hidden = true;
+  zoom.onclick = () => { zoom.hidden = true; };
+  const release = () => {
+    for (const u of urls) URL.revokeObjectURL(u);
+    grid.replaceChildren();
+    zoomImg.removeAttribute('src');
+    modal.removeEventListener('close', release);
+  };
+  modal.addEventListener('close', release);
+  if (!modal.open) modal.showModal();
+  allBtn.focus();
+}
+
+function wirePackReview() {
+  const modal = document.getElementById('pack-review-modal');
+  if (!modal) return;
+  for (const el of modal.querySelectorAll('[data-close]')) el.addEventListener('click', () => modal.close());
+  // Escape closes the full-size view first, then the window.
+  modal.addEventListener('cancel', (e) => {
+    const zoom = document.getElementById('pack-review-zoom');
+    if (zoom && !zoom.hidden) { e.preventDefault(); zoom.hidden = true; }
+  });
 }
 
 /**

@@ -1381,10 +1381,14 @@
           <button id="static-map-btn" type="button" class="generate-map-btn" title="Capture the current map view as a 1950 × 1050 image (6.5 × 3.5 in at 300 dpi), whatever size the map is on screen. Opens a preview with Include legend, Copy image and Download. Shortcut: Alt+C copies the view straight to the clipboard.">📸 Capture Map <span class="kbd-hint">Alt+C</span></button>
           <button id="location-map-btn" type="button" class="generate-map-btn generate-map-btn-location" title="Render the Winnipeg map with a pin at the searched property and a SUBJECT callout pointing at it — the location figure for a report. A downtown property gets one box between the downtown circle and the inset, with an arrow to each. Opens in a pop-up as a sharp PNG with Copy and Download; the callout text and side can be changed there.">🗺️ Wpg Overall Map</button>
         </div>
-        <button id="addenda-pack-btn" type="button" class="generate-map-btn generate-map-btn-pack" title="Download a ZIP of the standard report addenda maps for the current search: the Winnipeg location map, a neighbourhood map (1950 × 1500), a wide aerial and a close-up aerial of the subject (newest City aerial), a site map (streets and assessment parcels, with the subject's dimensions), a zoning map with its legend and (with more than one parcel) a map of all the results. The other maps are 1950 × 1050; all carry the credit, scale bar and north arrow, and the legend follows the Capture Map panel setting except on the zoning map. Click a parcel row first to build the pack around it. Your map view, basemap and layers are put back afterwards.">📦 Addenda Pack (ZIP)</button>
-        <!-- Parcel Pack, under the Addenda Pack (Manitoba port, 2026-11-25): three
-             close-up maps per result parcel; multi-parcel searches only. -->
-        <button id="parcel-pack-btn" type="button" class="generate-map-btn generate-map-btn-pack" disabled title="Multi-parcel searches only: needs two or more parcels in the results. Close-up maps of EACH parcel (site map, site map with dimensions, aerial). For a single parcel, the Addenda Pack already covers these maps.">🧩 Parcel Pack (ZIP)</button>
+        <!-- Addenda Pack and Parcel Pack share one row, half the width each
+             (Jason, 2026-11-25; the Manitoba pack-row). -->
+        <div class="capture-row pack-row">
+          <button id="addenda-pack-btn" type="button" class="generate-map-btn generate-map-btn-pack" title="Download a ZIP of the standard report addenda maps for the current search: the Winnipeg location map, a neighbourhood map (1950 × 1500), a wide aerial and a close-up aerial of the subject (newest City aerial), a site map (streets and assessment parcels, with the subject's dimensions), a zoning map with its legend and (with more than one parcel) a map of all the results. The other maps are 1950 × 1050; all carry the credit, scale bar and north arrow, and the legend follows the Capture Map panel setting except on the zoning map. Click a parcel row first to build the pack around it. Your map view, basemap and layers are put back afterwards.">📦 Addenda Pack (ZIP)</button>
+          <!-- Parcel Pack, under the Addenda Pack (Manitoba port, 2026-11-25): three
+               close-up maps per result parcel; multi-parcel searches only. -->
+          <button id="parcel-pack-btn" type="button" class="generate-map-btn generate-map-btn-pack" disabled title="Multi-parcel searches only: needs two or more parcels in the results. Close-up maps of EACH parcel (site map, site map with dimensions, aerial). For a single parcel, the Addenda Pack already covers these maps.">🧩 Parcel Pack (ZIP)</button>
+        </div>
         <!-- Export CSV, below Current Map View (the Manitoba pattern). It
              used to sit beside Search / Clear, which put an OUTPUT action
              in the row that starts a search. Both ways of getting the
@@ -1714,6 +1718,29 @@
           <span class="map-capture-spacer"></span>
           <button type="button" class="sales-modal-btn" data-close>Cancel</button>
           <button type="button" id="parcel-pack-build" class="sales-modal-btn primary">Build pack</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Pack review: every map an Addenda / Parcel Pack built, before it is
+         saved. Filled by main.js openPackReview(). -->
+    <dialog id="pack-review-modal" class="sales-modal map-capture-modal pack-review-modal" aria-labelledby="pack-review-title">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title" id="pack-review-title">Pack <span class="map-capture-size" id="pack-review-summary"></span></h2>
+          <button type="button" class="sales-modal-close" data-close aria-label="Close">×</button>
+        </header>
+        <p class="map-capture-tip">Check each map, then download them all as one ZIP or just the ones you need. Click a map to see it full size.</p>
+        <div class="pack-review-grid" id="pack-review-grid"></div>
+        <div class="pack-review-zoom" id="pack-review-zoom" hidden title="Click to close">
+          <img id="pack-review-zoom-img" alt="">
+          <span class="pack-review-zoom-cap" id="pack-review-zoom-cap"></span>
+        </div>
+        <div class="map-capture-actions">
+          <span class="pack-review-zipname">ZIP: <code id="pack-review-zip"></code></span>
+          <span class="map-capture-spacer"></span>
+          <button type="button" class="sales-modal-btn" data-close>Close</button>
+          <button type="button" id="pack-review-all" class="sales-modal-btn primary">Download all (ZIP)</button>
         </div>
       </div>
     </dialog>

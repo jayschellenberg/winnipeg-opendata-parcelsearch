@@ -6416,3 +6416,61 @@ body:not(.phone) .sidebar .action-row > #clear {
 .parcel-pack-table select { max-width: 260px; font: inherit; padding: 2px 4px; }
 .parcel-pack-suggested { margin-left: 8px; font-size: 12px; color: #64748b; }
 .parcel-pack-summary { font-size: 13px; color: #334155; }
+
+/* Pack review window (2026-11-25): thumbnails of every map a pack built. */
+.pack-review-modal { width: min(1100px, 96vw); }
+.pack-review-modal .sales-modal-inner { position: relative; }
+.pack-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+  max-height: min(62vh, 640px);
+  overflow-y: auto;
+  margin: 8px 0 10px;
+  padding: 2px;
+}
+.pack-review-card {
+  margin: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+.pack-review-card.is-stale { border-color: #f59e0b; }
+.pack-review-thumb {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: #f1f5f9;
+  cursor: zoom-in;
+}
+.pack-review-thumb img { display: block; width: 100%; height: auto; }
+.pack-review-card figcaption {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.pack-review-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: #1e293b; }
+.pack-review-warn { color: #b45309; font-weight: 600; }
+.pack-review-dl { padding: 3px 9px; font-size: 12px; }
+.pack-review-zipname { font-size: 12px; color: #475569; overflow-wrap: anywhere; }
+.pack-review-zoom {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.97);
+  cursor: zoom-out;
+}
+.pack-review-zoom[hidden] { display: none; }
+.pack-review-zoom img { max-width: 100%; max-height: calc(100% - 28px); object-fit: contain; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
+.pack-review-zoom-cap { font-size: 12px; color: #334155; }
