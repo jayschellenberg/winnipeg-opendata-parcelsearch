@@ -71,7 +71,7 @@ test('vercel.json lets other origins read the index and the public data files', 
     .filter((h) => h.headers.some((x) => x.key === 'Access-Control-Allow-Origin' && x.value === '*'))
     .map((h) => h.source);
   // Vercel sources are path-to-regexp; "/(.*).json" covers /agents.json too.
-  const covers = (file) => sources.some((s) => new RegExp(`^${s.replace(/\./g, '\\.')}$`).test(file));
+  const covers = (file) => sources.some((s) => new RegExp(`^${s.replace(/\.(?=[a-z])/g, '\\.')}$`).test(file));
   for (const f of ['/agents.json', '/openapi.json', '/zoning-amendments.json', '/wpg-neighbourhoods.geojson']) {
     assert.ok(covers(f), `no CORS rule covers ${f}`);
   }
