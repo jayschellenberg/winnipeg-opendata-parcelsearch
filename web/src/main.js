@@ -4438,6 +4438,12 @@ function showParcelSummary(a, s) {
       $openAsmt.setAttribute('aria-disabled', 'true');
     }
   }
+  // Preliminary Report: report.html builds a printable one-pager for the roll.
+  const $report = document.getElementById('ps-report');
+  if ($report) {
+    $report.hidden = !roll;
+    if (roll) $report.href = `./report.html?${new URLSearchParams({ roll })}`;
+  }
 
   // Verify-this checklist: restore the saved ticks for this roll,
   // and persist on change. Storage key includes the roll so each

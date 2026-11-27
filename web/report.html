@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Preliminary Report — Winnipeg Parcel Search</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+    <link rel="stylesheet" href="./src/report/report.css" />
+  </head>
+  <body>
+    <div class="rp-toolbar">
+      <a href="./index.html">&larr; Back to the search</a>
+      <button id="rp-print" type="button" disabled>Print or save as PDF</button>
+    </div>
+    <article class="rp-page">
+      <header class="rp-header">
+        <p class="rp-kicker">Preliminary property report</p>
+        <h1 id="rp-title">Loading&hellip;</h1>
+        <p class="rp-sub" id="rp-sub"></p>
+        <p class="rp-meta">Prepared <span id="rp-date"></span> from public data by Winnipeg Parcel Search.</p>
+      </header>
+      <p id="rp-status" class="rp-status">Loading&hellip;</p>
+      <figure class="rp-figure"><div id="rp-map" class="rp-map"></div></figure>
+      <section id="rp-parcel" hidden></section>
+      <section id="rp-assessment" hidden></section>
+      <section id="rp-zoning" hidden></section>
+      <section id="rp-flood" hidden></section>
+      <section id="rp-land" hidden></section>
+      <section id="rp-nearby" hidden></section>
+      <section id="rp-census" hidden></section>
+      <section id="rp-sources" hidden></section>
+      <footer class="rp-disclaimer">
+        Screening and research only. This is not an appraisal, survey, legal
+        opinion or planning determination. Figures come from public sources
+        as of the dates shown and can be out of date or wrong; confirm
+        assessment with the City of Winnipeg assessment page, zoning with the
+        City of Winnipeg (Planning, Property and Development), and title at the Land Titles Office
+        before relying on any of it.
+      </footer>
+    </article>
+    <script type="module" src="./src/report/main.js"></script>
+  </body>
+</html>
