@@ -192,7 +192,7 @@ server <- function(input, output, session) {
     if (is.null(r) || nrow(r) == 0) {
       return(
         leaflet() %>%
-          addProviderTiles("CartoDB.Positron") %>%
+          addTiles(urlTemplate = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2r5c_1_12c531426d9aa092a601b7da", attribution = "&copy; OpenStreetMap contributors &copy; CARTO", options = tileOptions(subdomains = "abcd", maxZoom = 20)) %>%
           setView(lng = -97.14, lat = 49.89, zoom = 11)
       )
     }
@@ -206,7 +206,7 @@ server <- function(input, output, session) {
     )
 
     leaflet(r) %>%
-      addProviderTiles("CartoDB.Positron") %>%
+      addTiles(urlTemplate = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2r5c_1_12c531426d9aa092a601b7da", attribution = "&copy; OpenStreetMap contributors &copy; CARTO", options = tileOptions(subdomains = "abcd", maxZoom = 20)) %>%
       addPolygons(
         fillColor   = "steelblue",
         fillOpacity = 0.4,

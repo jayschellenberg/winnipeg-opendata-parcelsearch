@@ -10,7 +10,7 @@ matched <- st_read(
 )
 
 leaflet(matched) %>%
-  addProviderTiles("CartoDB.Positron") %>%
+  addTiles(urlTemplate = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2r5c_1_12c531426d9aa092a601b7da", attribution = "&copy; OpenStreetMap contributors &copy; CARTO", options = tileOptions(subdomains = "abcd", maxZoom = 20)) %>%
   addPolygons(
     fillColor = "steelblue",
     fillOpacity = 0.4,
