@@ -29,6 +29,7 @@ const MLS_TO_CANONICAL = {
   datesold: 'Sale Dates',
   pricesold: 'Sold Price',
   streetnumber: 'Street Number',
+  streetnum: 'Street Number', // the residential (VL/VLWB) export's name for it
   streetname: 'Street Name',
   sqft: 'Living Area',
   yrblt: 'Year Built',
@@ -74,9 +75,11 @@ export function lincToRoll(linc) {
   return digits.length >= 11 ? digits.slice(-11) : null;
 }
 
-/** MM-DD-YYYY → ISO. MLS writes dates the same way SABRE does. */
+/** MM-DD-YYYY or MM/DD/YYYY → ISO. The commercial export writes dashes,
+ *  the residential (VL/VLWB) export slashes; left as-is a slashed date
+ *  never sorts or groups by year with the ISO SABRE dates. */
 function isoDate(v) {
-  const m = String(v ?? '').trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  const m = String(v ?? '').trim().match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (!m) return String(v ?? '').trim();
   const p2 = (n) => String(n).padStart(2, '0');
   return `${m[3]}-${p2(m[1])}-${p2(m[2])}`;
