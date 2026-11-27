@@ -140,7 +140,7 @@ async function main() {
     near.push(`<h3>Contaminated and impacted sites within 1 km</h3>${hits.length
       ? table(['Site', 'Address', 'Group', 'Distance'], hits.map((h) => [esc(h.properties['OPERATION NAME']), esc(h.properties.ADDRESS), esc(h.properties.CSGroup), fmtDistance(h._m)]))
       : '<p>None listed in the provincial registry.</p>'}`);
-    cite('Contaminated sites', 'Manitoba Contaminated Sites Registry (live CSV).');
+    cite('Contaminated sites', 'Manitoba Contaminated Sites Registry (live CSV). Contains information from the Government of Manitoba, licensed under the OpenMB Information and Data Use Licence.');
   }
   if (stops?.features) {
     const sHits = nearby(stops.features, at, 400, 5);
@@ -149,7 +149,7 @@ async function main() {
       ['Frequent-transit walkshed', walkshed ? (inWalkshed ? 'Inside (Zoning By-law Schedule AC Map 2)' : 'Outside') : null],
       ['Stops within 400 m', sHits.length ? sHits.map((s) => esc(`${s.properties.stop_name} (${fmtDistance(s._m)}; routes ${s.properties.routes || '—'})`)).join('<br>') : 'None'],
     ])}`);
-    cite('Transit', 'Winnipeg Transit GTFS stops; frequent-transit walkshed from Zoning By-law Schedule AC Map 2.');
+    cite('Transit', 'Winnipeg Transit GTFS stops (Open Data Commons PDDL 1.0); frequent-transit walkshed from Zoning By-law Schedule AC Map 2.');
   }
   section('rp-nearby', 'Nearby', near.join(''));
 

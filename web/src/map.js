@@ -1017,8 +1017,11 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       // Transit GTFS feed by web/scripts/build-transit-geojson.mjs.
       // Routes carry an official route_color property; stops carry
       // stop_code / stop_name / routes for the click popup.
-      map.addSource('transit-routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addSource('transit-stops', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      // Winnipeg Transit publishes its GTFS feed under the Open Data Commons
+      // PDDL 1.0 (LICENCE file in the zip): no credit required, given anyway.
+      const transitCredit = 'Transit: Winnipeg Transit GTFS (<a href="https://opendatacommons.org/licenses/pddl/" target="_blank" rel="noreferrer">PDDL</a>)';
+      map.addSource('transit-routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, attribution: transitCredit });
+      map.addSource('transit-stops', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, attribution: transitCredit });
       map.addLayer({
         id: 'transit-routes-line', type: 'line', source: 'transit-routes',
         layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
@@ -2054,6 +2057,8 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       map.addSource('contam', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
+        // OpenMB Information and Data Use Licence (gov.mb.ca/legal/copyright.html).
+        attribution: 'Contaminated Sites Registry: Government of Manitoba, <a href="https://www.gov.mb.ca/legal/copyright.html" target="_blank" rel="noreferrer">OpenMB licence</a>',
       });
       map.addLayer({
         id: 'contam-circle',
