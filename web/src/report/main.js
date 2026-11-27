@@ -21,6 +21,7 @@ import {
   centreOf, nearby, clean, fmtDistance, fmtMoney, fmtInt, CENSUS_FIELDS, censusColumns,
 } from '../lib/reportData.js';
 import { renderAssessmentHistory } from './assessmentHistory.js';
+import { censusArea } from '../lib/censusArea.js';
 
 const CENSUS_SUMMARY_URL = import.meta.env?.VITE_CENSUS_SUMMARY_URL
   || 'https://housing-economic-data.vercel.app/data/housing/census-summary.json';
@@ -152,15 +153,20 @@ async function main() {
   }
   section('rp-nearby', 'Nearby', near.join(''));
 
-  // Census: neighbourhood, its cluster isn't in the feed by name, so compare
-  // with the City (CMA) and Manitoba.
+  // Census: the neighbourhood's profile, else its cluster's (lib/censusArea.js),
+  // compared with the City (CMA) and Manitoba.
   if (!census) {
     section('rp-census', 'Community (census)', '<p class="rp-muted">Census figures could not be loaded.</p>');
   } else {
-    const byName = new Map(census.regions.filter((r) => r.level === 'WPG_Nbhd').map((r) => [r.name.toUpperCase(), r.uid]));
-    const uid = nbhdName ? byName.get(String(nbhdName).toUpperCase()) : null;
-    const { columns } = censusColumns(census, uid ? [uid] : []);
-    section('rp-census', 'Community (census)', `${uid ? '' : `<p>No census profile matched the neighbourhood ${esc(nbhdName || '')}; Winnipeg and Manitoba figures follow.</p>`}<table class="rp-table rp-census"><thead><tr><th></th>${columns.map((c) => `<th>${esc(c.name)}</th>`).join('')}</tr></thead><tbody>${CENSUS_FIELDS.map(([k, label, fmt]) => `<tr><th>${esc(label)}</th>${columns.map((c) => `<td>${esc(fmt(c[k]))}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+    const area = censusArea(census.regions, nbhdName, nbhd?.properties?.cluster);
+    const { columns } = censusColumns(census, area ? [area.uid] : []);
+    const note = !area
+      ? `<p>No census profile matched the neighbourhood ${esc(nbhdName || '')}; Winnipeg and Manitoba figures follow.</p>`
+      : area.level === 'cluster'
+        ? `<p class="rp-note">Statistics Canada's Winnipeg tables have no separate profile for ${esc(nbhdName)}; figures are for its neighbourhood cluster, ${esc(area.name)}.</p>`
+        : '';
+    if (area?.level === 'cluster' && columns[0]) columns[0] = { ...columns[0], name: `${columns[0].name} (cluster)` };
+    section('rp-census', 'Community (census)', `${note}<table class="rp-table rp-census"><thead><tr><th></th>${columns.map((c) => `<th>${esc(c.name)}</th>`).join('')}</tr></thead><tbody>${CENSUS_FIELDS.map(([k, label, fmt]) => `<tr><th>${esc(label)}</th>${columns.map((c) => `<td>${esc(fmt(c[k]))}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
     cite('Census', `${census.source}. Statistics Canada Open Licence.`);
   }
 
