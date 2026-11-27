@@ -6483,3 +6483,16 @@ body:not(.phone) .sidebar .action-row > #clear {
 .oblique-status.is-error { color: #b91c1c; font-weight: 600; }
 .oblique-modal .pack-review-grid:empty { display: none; }
 .oblique-modal .pack-review-card.is-other { opacity: 0.6; }
+/* Open viewer is step one and as much a main action as Capture, so it is
+   filled too; blue where Capture is green, so the two do not read as one. */
+.sales-modal-btn.oblique-open-btn {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+  font-weight: 500;
+}
+.sales-modal-btn.oblique-open-btn:hover:not(:disabled) { background: #1e40af; border-color: #1e40af; }
+/* Parcel Pack beside Export CSV: the row is a capture-row now, so Export
+   takes the same box as the pack button next to it. */
+.sidebar .capture-row.export-row { margin-bottom: 2px; }
+.sidebar .capture-row.export-row > #export.export-btn { margin-top: 0; flex: 1 1 0; min-width: 0; }

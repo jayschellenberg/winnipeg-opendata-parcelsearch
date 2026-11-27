@@ -5012,7 +5012,7 @@ function renderObliqueDialog() {
   const subject = obliqueSubject();
   const mine = subject?.centre ? heldForSubject(heldObliques, subject.centre, haversineMeters) : [];
   const btn = document.getElementById('oblique-btn');
-  if (btn) btn.textContent = `🦅 45° Air Photo${heldObliques.length ? ` (${heldObliques.length} held)` : ''}`;
+  if (btn) btn.textContent = `🦅 45° Air Photo${heldObliques.length ? ` (${heldObliques.length})` : ''}`;
   const subjectEl = document.getElementById('oblique-subject');
   if (subjectEl) {
     subjectEl.textContent = subject?.centre
