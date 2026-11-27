@@ -25,11 +25,44 @@ function resolveCommit() {
   }
 }
 
+// /agents.json and /openapi.json: the machine-readable data index
+// (src/lib/agentsIndex.js). Generated so the wpg-parcel-history pin it names
+// is always the one src/soda.js reads; emitted at build, served in dev.
+// Same plugin as the Manitoba app's.
+function agentsIndexPlugin() {
+  const files = async () => {
+    const { readFile } = await import('node:fs/promises');
+    const { readPins, buildAgentsIndex, buildOpenApi } = await import('./src/lib/agentsIndex.js');
+    const pins = readPins(await readFile(resolve(__dirname, 'src/soda.js'), 'utf8'));
+    const builtAt = new Date().toISOString();
+    return {
+      'agents.json': JSON.stringify(buildAgentsIndex(pins, builtAt), null, 2),
+      'openapi.json': JSON.stringify(buildOpenApi(pins), null, 2),
+    };
+  };
+  return {
+    name: 'agents-index',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const name = (req.url || '').split('?')[0].replace(/^\//, '');
+        if (name !== 'agents.json' && name !== 'openapi.json') return next();
+        res.setHeader('Content-Type', 'application/json');
+        res.end((await files())[name]);
+      });
+    },
+    async generateBundle() {
+      for (const [fileName, source] of Object.entries(await files())) {
+        this.emitFile({ type: 'asset', fileName, source });
+      }
+    },
+  };
+}
+
 export default defineConfig({
   // Tailwind v4's Vite integration scans source files for utility
   // classes and emits the generated stylesheet for the
   // `web/src/lib/tailwind.css` entry. Plain ES modules otherwise.
-  plugins: [tailwindcss()],
+  plugins: [tailwindcss(), agentsIndexPlugin()],
   // Dev cache outside Dropbox when VITE_CACHE_DIR is set. Dropbox locks
   // node_modules/.vite while Vite renames deps_temp_* into place (EBUSY),
   // and the server then answers every dep with "504 Outdated Optimize Dep"
@@ -56,6 +89,8 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         charts: resolve(__dirname, 'charts.html'),
+        // Human view of /agents.json (the data index for agents).
+        agents: resolve(__dirname, 'agents.html'),
       },
       output: {
         manualChunks(id) {

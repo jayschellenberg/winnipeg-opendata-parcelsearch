@@ -1,0 +1,211 @@
+/* agents.html page styles: a copy of the Manitoba app's src/dataSources.css
+ * (its data-sources & methods page), so the two agents pages look alike.
+ * The notes below are from that file. */
+/*
+ * data-sources.html — the full data-sources & methods reference.
+ *
+ * Self-contained on purpose. src/style.css is the app shell (map, grid,
+ * sidebar, twelve overlay legends) and nothing in it describes a document
+ * page; importing it here would drag ~6,000 lines of irrelevant rules into a
+ * page that is text, lists and two tables.
+ *
+ * Colours are the app's, restated as local tokens rather than reached for
+ * through Tailwind's generated variables — this page loads no Tailwind entry,
+ * so `var(--color-primary-500)` would resolve to nothing here.
+ */
+
+:root {
+  --ds-ink: #1a1a1a;
+  --ds-ink-soft: #52525b;
+  --ds-primary: #1e293b;
+  --ds-link: #1d4ed8;
+  --ds-rule: #e4e4e7;
+  --ds-rule-strong: #d4d4d8;
+  --ds-surface: #ffffff;
+  --ds-surface-soft: #f4f4f5;
+  --ds-measure: 68ch;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 20px 64px;
+  background: var(--ds-surface-soft);
+  color: var(--ds-ink);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* One column, centred, capped at a readable measure. The wall of text this
+   page replaced was unreadable partly because it ran the full width of a
+   640 px panel with no headings to break the fall. */
+.ds-header,
+.ds-toc,
+.ds-main,
+.ds-footer {
+  max-width: var(--ds-measure);
+  margin: 0 auto;
+}
+
+.ds-header {
+  padding: 32px 0 8px;
+}
+
+.ds-back {
+  display: inline-block;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ds-link);
+  text-decoration: none;
+}
+.ds-back:hover { text-decoration: underline; }
+
+.ds-header h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+  line-height: 1.2;
+  color: var(--ds-primary);
+}
+
+.ds-lede {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ds-ink-soft);
+}
+
+/* Table of contents. Numbered so the page reads as a document with an order,
+   and boxed so it is plainly navigation rather than the first section. */
+.ds-toc {
+  margin-top: 24px;
+  padding: 14px 18px;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-rule-strong);
+  border-radius: 6px;
+}
+.ds-toc h2 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ds-primary);
+}
+.ds-toc ol {
+  margin: 0;
+  padding-left: 20px;
+  columns: 2;
+  column-gap: 28px;
+  font-size: 14px;
+}
+.ds-toc a { color: var(--ds-link); text-decoration: none; }
+.ds-toc a:hover { text-decoration: underline; }
+
+.ds-main section {
+  margin-top: 20px;
+  padding: 20px 22px;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-rule-strong);
+  border-radius: 6px;
+  /* Anchor jumps land with the heading clear of the top edge. */
+  scroll-margin-top: 16px;
+}
+
+.ds-main h2 {
+  margin: 0 0 10px;
+  font-size: 19px;
+  color: var(--ds-primary);
+}
+
+.ds-main h3 {
+  margin: 20px 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ds-primary);
+}
+
+.ds-main p { margin: 10px 0; }
+
+.ds-main ul,
+.ds-main ol {
+  margin: 10px 0;
+  padding-left: 22px;
+}
+.ds-main li { margin: 5px 0; }
+
+.ds-main a { color: var(--ds-link); }
+
+/* Qualifications and pointers — the sentences that say "read it this way".
+   Quieter than the claim they qualify, and marked with a rule so the eye can
+   skip them on a second read. */
+.ds-note {
+  margin: 12px 0 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--ds-rule);
+  font-size: 14px;
+  color: var(--ds-ink-soft);
+}
+
+.ds-sources { list-style: none; padding-left: 0; }
+.ds-sources li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--ds-rule);
+}
+.ds-sources li:last-child { border-bottom: 0; }
+
+.ds-table {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.ds-table th,
+.ds-table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--ds-rule);
+}
+.ds-table thead th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ds-primary);
+  border-bottom: 2px solid var(--ds-rule-strong);
+}
+.ds-table tbody tr:last-child td { border-bottom: 0; }
+.ds-sub {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--ds-ink-soft);
+}
+
+/* Scoped under .ds-main to outrank `.ds-main section`, which sets the white
+   card surface every other section wears. */
+.ds-main .ds-disclaimer {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.ds-footer {
+  padding-top: 24px;
+  font-size: 13px;
+}
+.ds-footer a { color: var(--ds-link); text-decoration: none; }
+.ds-footer a:hover { text-decoration: underline; }
+
+/* Phone: single-column contents, and the tables scroll sideways rather than
+   squeezing four columns into 360 px. */
+@media (max-width: 640px) {
+  body { padding: 0 14px 48px; font-size: 14px; }
+  .ds-header h1 { font-size: 24px; }
+  .ds-toc ol { columns: 1; }
+  .ds-main section { padding: 16px; }
+  .ds-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .ds-table td, .ds-table th { white-space: normal; min-width: 120px; }
+}

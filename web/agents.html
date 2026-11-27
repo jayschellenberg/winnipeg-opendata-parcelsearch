@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Data Index for Agents — Winnipeg Parcel Search</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+    <link rel="stylesheet" href="./src/agentsPage.css" />
+  </head>
+  <body>
+    <header class="ds-header">
+      <a class="ds-back" href="./index.html">&larr; Back to the search</a>
+      <h1>Data index for agents</h1>
+      <p class="ds-lede">
+        The same data the search uses, described for scripts and AI agents:
+        where each file lives, how to find a parcel in it, what the fields
+        mean, how current it is and on what terms it can be used. The
+        machine-readable version is <a href="./agents.json">agents.json</a>
+        (with an <a href="./openapi.json">OpenAPI description</a>).
+      </p>
+    </header>
+    <main class="ds-main" id="agents-root">
+      <section><p>Loading the index&hellip;</p></section>
+    </main>
+    <footer class="ds-footer">
+      <a href="https://manitoba-opendata-parcelsearch.vercel.app/agents.html">Manitoba (outside Winnipeg) index</a>
+    </footer>
+    <script type="module" src="./src/agentsPage.js"></script>
+  </body>
+</html>

@@ -21,6 +21,14 @@
   ],
   "headers": [
     {
+      "source": "/(.*).json",
+      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+    },
+    {
+      "source": "/(.*).geojson",
+      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {
