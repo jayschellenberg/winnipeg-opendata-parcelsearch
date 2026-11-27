@@ -39,6 +39,7 @@ import { parseSeries, annualizedGrowth, formatGrowth, FULL_YEAR_MIN_DAYS } from 
 import { amendmentLines } from './lib/zoningAmendments.js';
 import { categoryColorExpression, noticePopupParts } from './lib/publicNoticesLayer.js';
 import { redevColorExpression, redevPopupParts } from './lib/redevelopmentPermits.js';
+import { flowPopupParts } from './lib/trafficFlowMap.js';
 import { newPlanPopupParts, windowColorExpression } from './lib/newPlans.js';
 
 /**
@@ -4363,6 +4364,11 @@ function safeExternalUrl(raw) {
 }
 
 function trafficPopupHtml(p) {
+  if (p.traffic_kind === 'flow') {
+    const { heading, lines } = flowPopupParts(p);
+    return `<div style="max-width:300px;line-height:1.4"><strong>${escapeHtml(heading)}</strong><br>`
+      + lines.map((l, i) => (i === lines.length - 1 ? `<small>${escapeHtml(l)}</small>` : escapeHtml(l))).join('<br>') + '</div>';
+  }
   const isStation = p.traffic_kind === 'station';
   const title = isStation
     ? (p.site || 'Permanent count station')

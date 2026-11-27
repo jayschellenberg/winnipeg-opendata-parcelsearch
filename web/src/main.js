@@ -184,6 +184,9 @@ import {
   assignCategoryColors, colorForSlot, legendRows,
 } from './lib/categoryColors.js';
 import { radiusCircleFc } from './lib/radiusCircle.js';
+import {
+  TRAFFIC_FLOW_YEAR, DEFAULT_TRAFFIC_SOURCE, cleanTrafficSource, fetchTrafficFlow,
+} from './lib/trafficFlowMap.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures, saleKey } from './lib/sales.js';
 import {
@@ -338,6 +341,7 @@ const $infillLegend = document.getElementById('infill-legend');
 const $airportLegend = document.getElementById('airport-legend');
 const $transitWalkshedLegend = document.getElementById('transit-walkshed-legend');
 const $trafficLegend = document.getElementById('traffic-legend');
+const $trafficSource = document.getElementById('traffic-source');
 const $historicalToggle = document.getElementById('historical-toggle');
 const $historicalDate   = document.getElementById('historical-date');
 const $historicalBanner = document.getElementById('historical-banner');
@@ -846,6 +850,7 @@ document.getElementById('criteria-file')?.addEventListener('change', async (e) =
 });
 $zoningToggle.addEventListener('click', toggleZoning);
 $trafficToggle.addEventListener('click', toggleTraffic);
+if ($trafficSource) $trafficSource.addEventListener('change', onTrafficSourceChange);
 $surveyToggle.addEventListener('click', () => toggleLayer('survey'));
 $assessToggle.addEventListener('click', () => toggleLayer('assess'));
 $secondaryPlansToggle.addEventListener('click', () => togglePolicyOverlay('secondaryPlans'));
@@ -1573,6 +1578,8 @@ function captureUrlState() {
   if (pnYears !== DEFAULT_NOTICE_YEARS) s.publicNoticesYears = pnYears;
   const pnSource = cleanNoticeSource($publicNoticesSource?.value);
   if (pnSource !== DEFAULT_NOTICE_SOURCE) s.publicNoticesSource = pnSource;
+  const tSource = cleanTrafficSource($trafficSource?.value);
+  if (tSource !== DEFAULT_TRAFFIC_SOURCE) s.trafficSource = tSource;
   const rdYears = cleanRedevYears($redevYears?.value);
   if (rdYears !== DEFAULT_REDEV_YEARS) s.redevYears = rdYears;
   const rdHomes = cleanRedevHomes($redevHomes?.value);
@@ -1697,6 +1704,7 @@ function applyUrlState(state) {
   if ('newPlansYears' in state && $newPlansYears) $newPlansYears.value = state.newPlansYears;
   if ('newPlansLotsMin' in state && $newPlansLotsMin) $newPlansLotsMin.value = String(state.newPlansLotsMin);
   if ('newPlansLotsMax' in state && $newPlansLotsMax) $newPlansLotsMax.value = String(state.newPlansLotsMax);
+  if ('trafficSource' in state && $trafficSource) $trafficSource.value = cleanTrafficSource(state.trafficSource);
   if ('redevYears' in state && $redevYears) $redevYears.value = cleanRedevYears(state.redevYears);
   if ('redevHomes' in state && $redevHomes) $redevHomes.value = cleanRedevHomes(state.redevHomes);
   if ('publicNoticesSource' in state && $publicNoticesSource) {
@@ -2821,6 +2829,63 @@ async function toggleContam() {
   }
 }
 
+// Traffic has two sources (Source dropdown under the button):
+//   flow   — the City's yearly Traffic Flow Map (lib/trafficFlowMap.js): one
+//            year, every major street, a static file. The default.
+//   counts — the live midblock count studies + permanent stations
+//            (soda.js fetchTrafficVolumes): each block at its latest study,
+//            with history in the popup; slow to build the first time.
+// Each source loads once per page; switching only swaps the data.
+const trafficData = { flow: null, counts: null };
+
+async function loadTrafficSource(source) {
+  if (trafficData[source]) return trafficData[source];
+  if (source === 'flow') {
+    const lines = await fetchTrafficFlow();
+    trafficData.flow = { lines, stations: { type: 'FeatureCollection', features: [] } };
+  } else {
+    trafficData.counts = await fetchTrafficVolumes();
+  }
+  return trafficData[source];
+}
+
+function trafficLegendTitle(source, { lines, stations }) {
+  if (source === 'flow') return `24h Traffic · City flow map ${TRAFFIC_FLOW_YEAR}`;
+  // Corridors show their latest study; stations their latest complete year.
+  const years = [...(lines.features || []), ...(stations.features || [])]
+    .map((f) => Number(f.properties?.latest_year))
+    .filter((y) => Number.isFinite(y));
+  return years.length ? `24h Traffic · counts to ${Math.max(...years)}` : '24h Traffic · count studies';
+}
+
+async function showTrafficSource() {
+  const source = cleanTrafficSource($trafficSource?.value);
+  // The Source dropdown stays live: the counts can take minutes to build,
+  // and switching back to the flow map must not wait for them. A load that
+  // finishes after the source changed is dropped below.
+  $trafficToggle.disabled = true;
+  $trafficToggle.textContent = source === 'counts' ? 'Loading counts...' : 'Loading traffic...';
+  try {
+    const data = await loadTrafficSource(source);
+    if (!trafficEnabled || cleanTrafficSource($trafficSource?.value) !== source) return;
+    setTrafficData(map, data.lines, data.stations);
+    // The title rides into the Map w/Legend export, so it names the source.
+    const title = $trafficLegend?.querySelector('strong');
+    if (title) title.textContent = trafficLegendTitle(source, data);
+    trafficLoaded = true;
+  } catch (err) {
+    console.warn('traffic overlay failed', err);
+    trafficEnabled = false;
+    $trafficToggle.classList.remove('active');
+    $trafficToggle.setAttribute('aria-pressed', 'false');
+    setTrafficVisible(map, false);
+    if ($trafficLegend) $trafficLegend.hidden = true;
+  } finally {
+    $trafficToggle.disabled = false;
+    $trafficToggle.textContent = trafficEnabled ? 'Hide Traffic' : 'Traffic';
+  }
+}
+
 async function toggleTraffic() {
   trafficEnabled = !trafficEnabled;
   $trafficToggle.setAttribute('aria-pressed', String(trafficEnabled));
@@ -2828,43 +2893,18 @@ async function toggleTraffic() {
   await mapReady;
   setTrafficVisible(map, trafficEnabled);
   if ($trafficLegend) $trafficLegend.hidden = !trafficEnabled;
-
-  if (trafficEnabled) {
-    if (trafficLoaded) {
-      $trafficToggle.textContent = 'Hide Traffic';
-      return;
-    }
-    $trafficToggle.disabled = true;
-    $trafficToggle.textContent = 'Loading traffic...';
-    try {
-      const { lines, stations } = await fetchTrafficVolumes();
-      setTrafficData(map, lines, stations);
-      trafficLoaded = true;
-      // Print the count year on the legend title, so it rides into the Map
-      // w/Legend export the way the Manitoba app's does. Corridors show
-      // their latest study; stations their latest complete year.
-      const years = [...(lines.features || []), ...(stations.features || [])]
-        .map((f) => Number(f.properties?.latest_year))
-        .filter((y) => Number.isFinite(y));
-      const title = $trafficLegend?.querySelector('strong');
-      if (title && years.length) {
-        title.textContent = `24h Traffic · counts to ${Math.max(...years)}`;
-      }
-      $trafficToggle.textContent = 'Hide Traffic';
-    } catch (err) {
-      console.warn('traffic overlay failed', err);
-      trafficEnabled = false;
-      $trafficToggle.classList.remove('active');
-      $trafficToggle.setAttribute('aria-pressed', 'false');
-      $trafficToggle.textContent = 'Traffic';
-      setTrafficVisible(map, false);
-      if ($trafficLegend) $trafficLegend.hidden = true;
-    } finally {
-      $trafficToggle.disabled = false;
-    }
-  } else {
+  if (!trafficEnabled) {
     $trafficToggle.textContent = 'Traffic';
+    return;
   }
+  await showTrafficSource();
+}
+
+async function onTrafficSourceChange() {
+  queueUrlWrite();
+  if (!trafficEnabled) return;
+  await mapReady;
+  await showTrafficSource();
 }
 
 /**

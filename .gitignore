@@ -13,6 +13,8 @@ AssessmentParcels_*.csv
 !web/public/district-planners.geojson
 !web/public/infill-guideline-areas.geojson
 !web/public/new-plans.geojson
+# City Traffic Flow Map extracted by tools/traffic-flow/extract_flow_map.py.
+!web/public/traffic-flow-*.geojson
 
 # Web build outputs
 web/node_modules/
@@ -66,3 +68,8 @@ web/.env.local
 # the sidecar survey-pmtiles-meta.json is tracked. survey-build/ is scratch.
 web/public/wpg-survey-parcels*.pmtiles*
 web/public/survey-build/
+
+# Traffic flow map extractor: local review pages (they embed crops of the
+# City PDF) and Python caches.
+tools/traffic-flow/review/
+__pycache__/
