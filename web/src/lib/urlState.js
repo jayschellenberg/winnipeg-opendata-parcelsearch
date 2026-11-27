@@ -121,7 +121,7 @@ export const SCHEMA = {
   zoningToggle:         { param: 'zo', validate: cleanBool, format: formatBool },
   trafficToggle:        { param: 'tr', validate: cleanBool, format: formatBool },
   // Traffic source: the City flow map is the default (not emitted).
-  trafficSource:        { param: 'ts', validate: oneOf(['counts']), format: (v) => v },
+  trafficSource:        { param: 'ts', validate: oneOf(['flow-2023', 'flow-2022', 'flow-2019', 'counts']), format: (v) => v },
   secondaryPlansToggle: { param: 'sp', validate: cleanBool, format: formatBool },
   infillToggle:         { param: 'if', validate: cleanBool, format: formatBool },
   mallsCorridorsToggle: { param: 'mc', validate: cleanBool, format: formatBool },

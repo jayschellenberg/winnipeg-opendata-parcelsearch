@@ -126,7 +126,7 @@ import {
   setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
   setPublicNoticesData, setPublicNoticesVisible,
-  setRedevPermitsData, setRedevPermitsVisible, setRedevAreaData,
+  setRedevPermitsData, setRedevPermitsVisible, setRedevAreaData, setFlowHistoryProvider,
   setNewPlansData, setNewPlansVisible,
   setClusterSelection, wireClusterPicker,
 } from './map.js';
@@ -185,7 +185,7 @@ import {
 } from './lib/categoryColors.js';
 import { radiusCircleFc } from './lib/radiusCircle.js';
 import {
-  TRAFFIC_FLOW_YEAR, DEFAULT_TRAFFIC_SOURCE, cleanTrafficSource, fetchTrafficFlow,
+  DEFAULT_TRAFFIC_SOURCE, cleanTrafficSource, sourceYear, fetchTrafficFlow, fetchAllTrafficFlow, flowHistory,
 } from './lib/trafficFlowMap.js';
 import { waterOf, waterLoaded, waterColor, waterSortRank } from './lib/water.js';
 import { normalizeRoll, dedupAndGroupSales, buildSaleFeatures, saleKey } from './lib/sales.js';
@@ -2836,21 +2836,24 @@ async function toggleContam() {
 //            (soda.js fetchTrafficVolumes): each block at its latest study,
 //            with history in the popup; slow to build the first time.
 // Each source loads once per page; switching only swaps the data.
-const trafficData = { flow: null, counts: null };
+const trafficData = {};
 
 async function loadTrafficSource(source) {
   if (trafficData[source]) return trafficData[source];
-  if (source === 'flow') {
-    const lines = await fetchTrafficFlow();
-    trafficData.flow = { lines, stations: { type: 'FeatureCollection', features: [] } };
-  } else {
-    trafficData.counts = await fetchTrafficVolumes();
-  }
+  const year = sourceYear(source);
+  trafficData[source] = year
+    ? { lines: await fetchTrafficFlow(year), stations: { type: 'FeatureCollection', features: [] } }
+    : await fetchTrafficVolumes();
   return trafficData[source];
 }
 
+// A flow-map popup lists the same street in every year's map; the years
+// load on the first such click (about 300 KB each, then cached).
+setFlowHistoryProvider(async (lngLat, bearing) => flowHistory(await fetchAllTrafficFlow(), lngLat, bearing));
+
 function trafficLegendTitle(source, { lines, stations }) {
-  if (source === 'flow') return `24h Traffic · City flow map ${TRAFFIC_FLOW_YEAR}`;
+  const year = sourceYear(source);
+  if (year) return `24h Traffic · City flow map ${year}`;
   // Corridors show their latest study; stations their latest complete year.
   const years = [...(lines.features || []), ...(stations.features || [])]
     .map((f) => Number(f.properties?.latest_year))

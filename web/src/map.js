@@ -39,7 +39,7 @@ import { parseSeries, annualizedGrowth, formatGrowth, FULL_YEAR_MIN_DAYS } from 
 import { amendmentLines } from './lib/zoningAmendments.js';
 import { categoryColorExpression, noticePopupParts } from './lib/publicNoticesLayer.js';
 import { redevColorExpression, redevPopupParts } from './lib/redevelopmentPermits.js';
-import { flowPopupParts } from './lib/trafficFlowMap.js';
+import { flowPopupParts, bearingNear } from './lib/trafficFlowMap.js';
 import { newPlanPopupParts, windowColorExpression } from './lib/newPlans.js';
 
 /**
@@ -3205,10 +3205,21 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
       }
 
       const trafficPopup = new maplibregl.Popup({ closeButton: true });
+      let trafficClickSeq = 0;
       const trafficClick = (e) => {
-        const p = e.features?.[0]?.properties;
+        const f = e.features?.[0];
+        const p = f?.properties;
         if (!p) return;
         trafficPopup.setLngLat(e.lngLat).setHTML(trafficPopupHtml(p)).addTo(map);
+        // Flow map: fill in the same street in every year's map.
+        if (p.traffic_kind !== 'flow' || !flowHistoryProvider) return;
+        const seq = ++trafficClickSeq;
+        const at = [e.lngLat.lng, e.lngLat.lat];
+        flowHistoryProvider(at, bearingNear(f.geometry, at))
+          .then((history) => {
+            if (seq === trafficClickSeq && trafficPopup.isOpen()) trafficPopup.setHTML(trafficPopupHtml(p, history));
+          })
+          .catch((err) => console.warn('traffic flow history failed', err));
       };
       onLayerClick(map, 'traffic-lines', trafficClick);
       onLayerClick(map, 'traffic-stations-circle', trafficClick);
@@ -4363,11 +4374,21 @@ function safeExternalUrl(raw) {
   }
 }
 
-function trafficPopupHtml(p) {
+function trafficPopupHtml(p, history = null) {
   if (p.traffic_kind === 'flow') {
-    const { heading, lines } = flowPopupParts(p);
-    return `<div style="max-width:300px;line-height:1.4"><strong>${escapeHtml(heading)}</strong><br>`
-      + lines.map((l, i) => (i === lines.length - 1 ? `<small>${escapeHtml(l)}</small>` : escapeHtml(l))).join('<br>') + '</div>';
+    const { heading, lines, rows, growth, source } = flowPopupParts(p, history);
+    const out = [`<strong>${escapeHtml(heading)}</strong>`, ...lines.map(escapeHtml)];
+    if (!history) {
+      out.push('<small>Loading other years…</small>');
+    } else if (rows.length) {
+      out.push('<table style="border-collapse:collapse;margin-top:2px">'
+        + rows.map((r) => `<tr${r.current ? ' style="font-weight:600"' : ''}><td style="padding:0 10px 0 0">${r.year}</td>`
+          + `<td style="text-align:right">${escapeHtml(r.text)}</td></tr>`).join('')
+        + '</table>');
+      if (growth) out.push(`Change ${escapeHtml(growth)}`);
+    }
+    out.push(`<small>${escapeHtml(source)}</small>`);
+    return `<div style="max-width:300px;line-height:1.4">${out.join('<br>')}</div>`;
   }
   const isStation = p.traffic_kind === 'station';
   const title = isStation
@@ -5400,6 +5421,13 @@ export function setHistoricalTileSnapshot(map, url, snap) {
  * roll number or survey id. Tiles carry only the neighbourhood slug; the
  * lineage file for that neighbourhood is fetched on demand and cached.
  */
+/** main.js supplies (lngLat, bearing) -> Promise<[{year, volume, exact}]>
+ *  for the flow-map popup's year-by-year table. */
+let flowHistoryProvider = null;
+export function setFlowHistoryProvider(fn) {
+  flowHistoryProvider = typeof fn === 'function' ? fn : null;
+}
+
 let historicalLineageProvider = null;
 export function setHistoricalLineageProvider(fn) {
   historicalLineageProvider = typeof fn === 'function' ? fn : null;
