@@ -91,6 +91,8 @@ export default defineConfig({
         charts: resolve(__dirname, 'charts.html'),
         // Human view of /agents.json (the data index for agents).
         agents: resolve(__dirname, 'agents.html'),
+        // One-parcel printable preliminary report (src/report/).
+        report: resolve(__dirname, 'report.html'),
       },
       output: {
         manualChunks(id) {
