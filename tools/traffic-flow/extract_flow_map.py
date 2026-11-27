@@ -380,7 +380,7 @@ def end_angle(pts, at_start):
     return math.atan2(b[1] - a[1], b[0] - a[0])
 
 
-def assign(labels, pieces, max_label_dist=16.0, max_turn=math.radians(40)):
+def assign(labels, pieces, max_label_dist=16.0, max_turn=math.radians(40), w_tol=0.0):
     """Seed each label on its nearest parallel piece, then spread each seed
     along connected pieces of the same stroke width that carry straight on
     (multi-source Dijkstra by drawn length, so a piece takes the nearest
@@ -422,7 +422,7 @@ def assign(labels, pieces, max_label_dist=16.0, max_turn=math.radians(40)):
             node = key(p['pts'][0] if at_start else p['pts'][-1])
             back = end_angle(p['pts'], at_start)       # from the junction back into p
             for qi, q_start in ends[node]:
-                if qi == pi or qi in owner or pieces[qi]['w'] != p['w']:
+                if qi == pi or qi in owner or abs(pieces[qi]['w'] - p['w']) > w_tol:
                     continue
                 fwd = end_angle(pieces[qi]['pts'], q_start)   # from the junction into q
                 # Carrying straight on, q leaves opposite to the way p came in.

@@ -1,6 +1,6 @@
 # Winnipeg Parcel Search
 
-Status: Active | Next: check the flow-map Traffic layer (2019-2024, with per-street history) on the live site; try the Redevelopment Permits overlay on a real HBU file | Blocked: none | Updated: 2026-11-27
+Status: Active | Next: check the flow-map Traffic layer (2008-2024, with per-street history) on the live site; try the Redevelopment Permits overlay on a real HBU file | Blocked: none | Updated: 2026-11-27
 
 A free, client-only parcel-research tool for City of Winnipeg properties, built
 for commercial-appraisal workflows.
@@ -10,7 +10,7 @@ for commercial-appraisal workflows.
 Search parcels by legal description (Lot / Block / Plan) or by roll number,
 civic address, zoning, and dwelling-unit count; see survey lots and assessment
 parcels together on a MapLibre map (street, satellite, or 7.5 cm City aerial basemaps); toggle ~25 overlays (citywide
-zoning, traffic volumes (the City's Traffic Flow Maps for 2019 and 2022-2024, newest by
+zoning, traffic volumes (the City's Traffic Flow Maps for 2008-2024 (nine years), newest by
 default, with each street's history in the popup; or the live count studies; see
 tools/traffic-flow), transit, OurWinnipeg policy areas, contaminated
 sites, neighbourhoods, parcel dimensions, MLS areas, rezoning by-laws and

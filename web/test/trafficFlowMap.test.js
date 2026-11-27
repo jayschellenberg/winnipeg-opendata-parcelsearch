@@ -19,7 +19,7 @@ async function test(name, fn) {
 console.log('trafficFlowMap');
 
 await test('sources: newest flow map by default, earlier years, live counts', () => {
-  assert.deepEqual(TRAFFIC_SOURCES, ['flow', 'flow-2023', 'flow-2022', 'flow-2019', 'counts']);
+  assert.deepEqual(TRAFFIC_SOURCES, ['flow', 'flow-2023', 'flow-2022', 'flow-2019', 'flow-2018', 'flow-2015', 'flow-2012', 'flow-2009', 'flow-2008', 'counts']);
   assert.equal(cleanTrafficSource('counts'), 'counts');
   assert.equal(cleanTrafficSource('FLOW-2019'), 'flow-2019');
   assert.equal(cleanTrafficSource('flow-2020'), 'flow');

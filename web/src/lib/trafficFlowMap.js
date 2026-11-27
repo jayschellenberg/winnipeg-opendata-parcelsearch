@@ -12,8 +12,9 @@
  * directions) and `exact` (1 = the value printed on the map for that
  * section, 0 = no label reached that piece of line, so the volume is the
  * typical value for its line width). The City published no maps for 2020
- * or 2021 (pandemic counts are excluded), and the 2008-2018 PDFs are a
- * different, ungeoreferenced kind (see tools/traffic-flow/README.md).
+ * or 2021 (pandemic counts are excluded). 2008-2018 come from older,
+ * ungeoreferenced PDFs fitted onto the 2019 map (extract_flow_map_old.py,
+ * ~5 m median); see tools/traffic-flow/README.md.
  *
  * Pure apart from the memoised fetch. toTrafficFeatures maps a file onto
  * the properties the existing traffic layers style and label
@@ -21,7 +22,7 @@
  */
 
 /** Newest first. The first is the default source. */
-export const TRAFFIC_FLOW_YEARS = [2024, 2023, 2022, 2019];
+export const TRAFFIC_FLOW_YEARS = [2024, 2023, 2022, 2019, 2018, 2015, 2012, 2009, 2008];
 export const TRAFFIC_FLOW_YEAR = TRAFFIC_FLOW_YEARS[0];
 export const trafficFlowUrl = (year) => `/traffic-flow-${year}.geojson`;
 

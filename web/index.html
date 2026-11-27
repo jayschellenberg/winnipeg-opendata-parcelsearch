@@ -1338,12 +1338,17 @@
             <div class="overlay-group-body">
           <button id="traffic-toggle" type="button" data-icon="🚗" class="secondary" data-layer-set="reference" aria-pressed="false" title="24-hour traffic volumes. City flow map (default): the City of Winnipeg 2024 Traffic Flow Map, average weekday traffic on every major street for one year, loads instantly. Count studies: the City's individual midblock counts and permanent stations, each block at its latest study year, with count history in the popup (slow to load the first time each month).">Traffic</button>
           <label class="overlay-select-field overlay-field-wide" data-layer-set="reference">
-            <span title="City flow maps: one consistent year for every major street (2024 map published November 2025; 2023, 2022 and 2019 also; the City made none for 2020 or 2021). Clicking a flow-map street lists it in every year. Count studies: the latest individual count on each block, any year, with history.">Source</span>
+            <span title="City flow maps: one consistent year for every major street (2024 map published November 2025; also 2023, 2022, 2019, 2018, 2015, 2012, 2009 and 2008; the City made none for 2020 or 2021). Clicking a flow-map street lists it in every year. Count studies: the latest individual count on each block, any year, with history.">Source</span>
             <select id="traffic-source" aria-label="Traffic: data source">
               <option value="flow" selected>City flow map 2024</option>
               <option value="flow-2023">City flow map 2023</option>
               <option value="flow-2022">City flow map 2022</option>
               <option value="flow-2019">City flow map 2019</option>
+              <option value="flow-2018">City flow map 2018</option>
+              <option value="flow-2015">City flow map 2015</option>
+              <option value="flow-2012">City flow map 2012</option>
+              <option value="flow-2009">City flow map 2009</option>
+              <option value="flow-2008">City flow map 2008</option>
               <option value="counts">Count studies (live)</option>
             </select>
           </label>
