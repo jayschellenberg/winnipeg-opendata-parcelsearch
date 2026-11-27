@@ -1,6 +1,6 @@
 # Winnipeg Parcel Search
 
-Status: Active | Next: decide whether the 2024 Traffic Flow Map layer may go on the public site, then commit; try the Redevelopment Permits overlay on a real HBU file | Blocked: none | Updated: 2026-11-27
+Status: Active | Next: check the 2024 Traffic Flow Map layer on the live site; try the Redevelopment Permits overlay on a real HBU file | Blocked: none | Updated: 2026-11-27
 
 A free, client-only parcel-research tool for City of Winnipeg properties, built
 for commercial-appraisal workflows.
