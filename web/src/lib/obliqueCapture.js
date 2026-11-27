@@ -114,12 +114,74 @@ export async function grabDisplayFrame({
     const canvas = doc.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
-    canvas.getContext('2d').drawImage(video, 0, 0, width, height);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, width, height);
     video.srcObject = null;
-    return { canvas, surface, width, height };
+    // The City page is wider and taller than its window, so the tab comes
+    // with scroll bars down the right and along the bottom. Cut them off.
+    let inset = { left: 0, top: 0, right: 0, bottom: 0 };
+    try {
+      if (typeof ctx.getImageData === 'function') {
+        inset = flatEdgeInsets(ctx.getImageData(0, 0, width, height).data, width, height);
+      }
+    } catch { /* unreadable canvas: keep the whole frame */ }
+    const w = width - inset.left - inset.right;
+    const h = height - inset.top - inset.bottom;
+    if (w === width && h === height) return { canvas, surface, width, height, trimmed: false };
+    const cut = doc.createElement('canvas');
+    cut.width = w;
+    cut.height = h;
+    cut.getContext('2d').drawImage(canvas, inset.left, inset.top, w, h, 0, 0, w, h);
+    return { canvas: cut, surface, width: w, height: h, trimmed: true };
   } finally {
     for (const t of stream.getTracks()) t.stop();
   }
+}
+
+/**
+ * How many pixels to cut off each side of a captured frame to lose scroll
+ * bars and window borders. `data` is RGBA, row by row (ImageData.data).
+ *
+ * A scroll bar is drawn in two or three flat colours (track, thumb, arrows);
+ * a line of air photo never is. So a line of pixels along an edge counts as
+ * furniture when 60% of it falls in its three commonest colours (measured
+ * on a real capture: bar lines score 0.7 to 1.0, the softened edge of the
+ * thumb lowest; photo lines 0.1 to 0.3), and each
+ * side is trimmed inward until the first line that does not. A side that is
+ * still flat at the cap (4% of the frame) is something else, a blank frame
+ * say, and is left alone.
+ */
+export function flatEdgeInsets(data, width, height) {
+  const none = { left: 0, top: 0, right: 0, bottom: 0 };
+  if (!data || width < 50 || height < 50 || data.length < width * height * 4) return none;
+  const cap = Math.max(24, Math.round(Math.min(width, height) * 0.04));
+
+  // Is the run of `n` pixels starting at (x, y) and stepping (dx, dy) flat?
+  const flat = (x, y, dx, dy, n) => {
+    const counts = new Map();
+    for (let i = 0; i < n; i += 1) {
+      const p = ((y + i * dy) * width + (x + i * dx)) * 4;
+      const key = ((data[p] >> 3) << 10) | ((data[p + 1] >> 3) << 5) | (data[p + 2] >> 3);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    const top3 = [...counts.values()].sort((a, b) => b - a).slice(0, 3).reduce((a, b) => a + b, 0);
+    return top3 >= n * 0.6;
+  };
+  // Count flat lines inward from an edge; 0 if they run to the cap.
+  const depth = (isFlat) => {
+    let d = 0;
+    while (d <= cap && isFlat(d)) d += 1;
+    return d > cap ? 0 : d;
+  };
+
+  // Columns first, then rows measured between them, so the square where the
+  // two scroll bars meet does not count against the bottom one.
+  const right = depth((d) => flat(width - 1 - d, 0, 0, 1, height));
+  const left = depth((d) => flat(d, 0, 0, 1, height));
+  const span = width - left - right;
+  const bottom = depth((d) => flat(left, height - 1 - d, 1, 0, span));
+  const top = depth((d) => flat(left, d, 1, 0, span));
+  return { left, top, right, bottom };
 }
 
 function withTimeout(promise, ms) {

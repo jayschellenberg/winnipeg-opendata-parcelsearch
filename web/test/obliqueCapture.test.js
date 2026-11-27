@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   obliqueViewerUrl, viewerWindowFeatures, displayMediaOptions, grabDisplayFrame,
   captureErrorMessage, CaptureCancelled, surfaceWarning, heldForSubject,
-  obliqueFileBase, obliqueListingNote, HELD_MATCH_M,
+  obliqueFileBase, obliqueListingNote, HELD_MATCH_M, flatEdgeInsets,
 } from '../src/lib/obliqueCapture.js';
 import { haversineMeters } from '../src/lib/mapFurniture.js';
 
@@ -96,6 +96,64 @@ await test('grabDisplayFrame — stops the stream when the frame is empty', asyn
 
 await test('grabDisplayFrame — no API is NotSupportedError', async () => {
   await assert.rejects(grabDisplayFrame({ mediaDevices: {}, doc: {} }), { name: 'NotSupportedError' });
+});
+
+// A frame of noisy "photo" with flat bars painted on: `bars` gives the
+// thickness of each side's bar in pixels.
+function framePixels(width, height, bars = {}) {
+  const { left = 0, top = 0, right = 0, bottom = 0 } = bars;
+  const data = new Uint8ClampedArray(width * height * 4);
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return (seed >> 16) & 0xff; };
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const p = (y * width + x) * 4;
+      const inRight = x >= width - right;
+      const inBottom = y >= height - bottom;
+      if (inRight || inBottom || x < left || y < top) {
+        // Track, with a lighter thumb over the middle 60% of the bar's length.
+        const along = inRight ? y / height : x / width;
+        const v = along > 0.2 && along < 0.8 ? 160 : 43;
+        data[p] = v; data[p + 1] = v; data[p + 2] = v;
+      } else {
+        data[p] = rnd(); data[p + 1] = rnd(); data[p + 2] = rnd();
+      }
+      data[p + 3] = 255;
+    }
+  }
+  return data;
+}
+
+await test('flatEdgeInsets — finds scroll bars on the right and bottom, leaves photo alone', () => {
+  assert.deepEqual(flatEdgeInsets(framePixels(400, 300, { right: 15, bottom: 15 }), 400, 300),
+    { left: 0, top: 0, right: 15, bottom: 15 });
+  assert.deepEqual(flatEdgeInsets(framePixels(400, 300), 400, 300), { left: 0, top: 0, right: 0, bottom: 0 });
+  assert.deepEqual(flatEdgeInsets(framePixels(400, 300, { left: 3, top: 3, right: 15 }), 400, 300),
+    { left: 3, top: 3, right: 15, bottom: 0 });
+});
+
+await test('flatEdgeInsets — a side flat past the cap is not a scroll bar', () => {
+  assert.equal(flatEdgeInsets(framePixels(400, 300, { right: 120 }), 400, 300).right, 0);
+  assert.deepEqual(flatEdgeInsets(null, 400, 300), { left: 0, top: 0, right: 0, bottom: 0 });
+});
+
+await test('grabDisplayFrame — hands back the frame with its scroll bars cut off', async () => {
+  const b = fakeBrowser({ width: 400, height: 300 });
+  const pixels = framePixels(400, 300, { right: 15, bottom: 15 });
+  const made = [];
+  const createElement = b.doc.createElement;
+  b.doc.createElement = (tag) => {
+    if (tag === 'video') return createElement(tag);
+    const c = { draws: [], getContext: () => ({ drawImage: (...a) => c.draws.push(a), getImageData: () => ({ data: pixels }) }) };
+    made.push(c);
+    return c;
+  };
+  const out = await grabDisplayFrame({ mediaDevices: b.mediaDevices, doc: b.doc, Controller: null });
+  assert.equal(out.trimmed, true);
+  assert.equal(out.width, 385);
+  assert.equal(out.height, 285);
+  assert.equal(out.canvas, made[1]);
+  assert.deepEqual(made[1].draws[0].slice(1), [0, 0, 385, 285, 0, 0, 385, 285]);
 });
 
 await test('captureErrorMessage — a dismissed prompt is silent, the rest is plain', () => {

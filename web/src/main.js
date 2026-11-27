@@ -4974,7 +4974,7 @@ async function captureOblique() {
   if (btn) btn.disabled = true;
   setObliqueStatus('Choose the viewer under “Chrome Tab” in the share prompt…');
   try {
-    const { canvas, surface, width, height } = await grabDisplayFrame();
+    const { canvas, surface, width, height, trimmed } = await grabDisplayFrame();
     const bytes = await blobBytes(await canvasToBlob(canvas));
     heldObliques.push({
       id: ++obliqueSeq,
@@ -4988,7 +4988,7 @@ async function captureOblique() {
       capturedAt: `${localDateStamp()} ${new Date().toTimeString().slice(0, 5)}`,
     });
     const warn = surfaceWarning(surface);
-    setObliqueStatus(warn || `Captured ${width} × ${height} px. It will go into the next Addenda Pack for ${subject.label}.`, !!warn);
+    setObliqueStatus(warn || `Captured ${width} × ${height} px${trimmed ? ', scroll bars trimmed' : ''}. It will go into the next Addenda Pack for ${subject.label}.`, !!warn);
   } catch (err) {
     const msg = captureErrorMessage(err);
     if (msg) console.warn('45° air photo capture failed', err);
