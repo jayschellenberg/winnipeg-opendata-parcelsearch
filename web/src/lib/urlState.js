@@ -152,6 +152,13 @@ export const SCHEMA = {
   // New Plans years-back window (default all, not emitted).
   newPlansYears:        { param: 'ny', validate: oneOf(['1', '2', '3', '5', '10']), format: (v) => v },
 
+  // Redevelopment permits (Reference) + its years-back window (default 5)
+  // and new-homes mode (default auto = fade in new subdivisions); defaults
+  // are not emitted.
+  redevToggle:          { param: 'rd', validate: cleanBool, format: formatBool },
+  redevYears:           { param: 'ry', validate: oneOf(['3', '10']), format: (v) => v },
+  redevHomes:           { param: 'rh', validate: oneOf(['all', 'hide']), format: (v) => v },
+
   // --- Neighbourhoods mode (1) ---
   neighbourhoodsMode: { param: 'nh', validate: oneOf(['clusters', 'individual']), format: (v) => v },
 

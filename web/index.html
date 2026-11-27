@@ -1336,6 +1336,26 @@
           </label>
           <button id="streets-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Current City of Winnipeg street centrelines and names (Open Data Road Network). Automatically shown over City aerial imagery; turn off for a clean historical image. Street names appear from zoom 13.">Current Winnipeg Streets</button>
           <button id="water-toggle" type="button" class="secondary" data-layer-set="reference" aria-pressed="false" title="Paint the result parcels by water influence — dark blue = adjacent to a river, creek or retention pond (frontage), pale blue = near water without frontage. From the City assessment record's property influences; a screening aid, not a measured distance.">Water Influence</button>
+          <!-- Redevelopment permits (lib/redevelopmentPermits.js): Construct New
+               and Demolish building permits as points, with a summary card
+               for the subject's neighbourhood cluster and a 1 km ring. -->
+          <button id="redev-toggle" type="button" data-icon="🏗️" class="secondary" data-layer-set="reference" aria-pressed="false" title="Redevelopment permits: new-construction and demolition building permits (City Open Data; sheds and garages excluded). Purple = teardown rebuild (a demolition and a new building at the same address), red = demolition not yet rebuilt, green = new house / duplex / row, blue = multi-family (bigger = more units), orange = commercial and other. The summary card counts them for the selected parcel's (or the results') neighbourhood cluster and within 1 km. Click a point for the permit.">Redevelopment Permits</button>
+          <label class="overlay-select-field overlay-field-wide" data-layer-set="reference">
+            <span title="Show only permits issued within this many years of today.">Within</span>
+            <select id="redev-years" aria-label="Redevelopment permits: years back">
+              <option value="3">3 years</option>
+              <option value="5" selected>5 years</option>
+              <option value="10">10 years</option>
+            </select>
+          </label>
+          <label class="overlay-select-field overlay-field-wide" data-layer-set="reference">
+            <span title="New houses, duplexes and row houses in developing subdivisions (neighbourhoods with 25+ new homes and more than 10 per demolition) are greenfield growth, not redevelopment. Fade draws them muted, Hide leaves them off the map and out of the counts. New homes in established neighbourhoods are always shown in full.">New homes</span>
+            <select id="redev-homes" aria-label="Redevelopment permits: new homes in developing subdivisions">
+              <option value="auto" selected>Fade in new subdivisions</option>
+              <option value="all">Show all</option>
+              <option value="hide">Hide in new subdivisions</option>
+            </select>
+          </label>
             </div>
           </details>
 
@@ -1456,6 +1476,15 @@
               <strong id="public-notices-legend-title">Public Notices &amp; Rezonings</strong>
               <ul id="public-notices-legend-rows"></ul>
               <p class="legend-note" id="public-notices-legend-note"></p>
+            </div>
+            <!-- Redevelopment permits: key + summary card for the subject's
+                 cluster and 1 km ring. Filled by main.js (renderRedevCard).
+                 Takes pointer events for its Copy button. -->
+            <div id="redev-legend" class="map-legend redev-legend" hidden>
+              <strong id="redev-legend-title">Redevelopment permits</strong>
+              <ul id="redev-legend-rows"></ul>
+              <div id="redev-summary" class="redev-summary"></div>
+              <p class="legend-note" id="redev-legend-note"></p>
             </div>
             <!-- New Plans. Rows filled by main.js (renderNewPlansLegend). -->
             <div id="new-plans-legend" class="map-legend new-plans-legend" hidden>

@@ -96,6 +96,7 @@ import {
   fetchZoningAmendments,
   fetchRezoningNotices,
   fetchRezoningNoticePoints,
+  fetchRedevelopmentPermits,
   fetchRollCentroids,
   searchAddresses,
   parcelsOverlap,
@@ -125,6 +126,7 @@ import {
   setHistoricalZoningVisible,
   setZoningAmendments, setZoningChangesVisible,
   setPublicNoticesData, setPublicNoticesVisible,
+  setRedevPermitsData, setRedevPermitsVisible, setRedevAreaData,
   setNewPlansData, setNewPlansVisible,
   setClusterSelection, wireClusterPicker,
 } from './map.js';
@@ -154,8 +156,13 @@ import { clusterPinPoints } from './lib/pinClusters.js';
 import { assessmentPerDu } from './lib/assessmentRates.js';
 import { initParcelListImport } from './lib/parcelListImport.js';
 import {
-  buildClusterIndex, clusterForFeature, clusterForPoint, nearestCluster,
+  buildClusterIndex, clusterForFeature, clusterForPoint, nearestCluster, clusterForPointOrNearest,
 } from './lib/clusters.js';
+import {
+  REDEV_CATEGORIES, REDEV_RADIUS_KM, DEFAULT_REDEV_YEARS, DEFAULT_REDEV_HOMES, cleanRedevYears, cleanRedevHomes,
+  redevFetchSince, permitEvents, developingNeighbourhoods, redevFeatures, filterRedev, summariseRedev,
+  redevSummaryText, distanceKm as redevDistanceKm,
+} from './lib/redevelopmentPermits.js';
 import { createMultiSelectFilter } from './lib/multiSelectFilter.js';
 import { createStreetSuggest, buildStreetIndex, isExactStreetPick } from './lib/streetSuggest.js';
 import { createMapAddressSearch } from './lib/mapAddressSearch.js';
@@ -260,6 +267,9 @@ const $mfMinDu              = document.getElementById('mf-min-du');
 const $mfLegend             = document.getElementById('mf-legend');
 const $contamToggle         = document.getElementById('contam-toggle');
 const $publicNoticesToggle  = document.getElementById('public-notices-toggle');
+const $redevToggle          = document.getElementById('redev-toggle');
+const $redevYears           = document.getElementById('redev-years');
+const $redevHomes           = document.getElementById('redev-homes');
 const $publicNoticesYears   = document.getElementById('public-notices-years');
 const $publicNoticesSource  = document.getElementById('public-notices-source');
 const $publicNoticesParcelsMin = document.getElementById('public-notices-parcels-min');
@@ -523,6 +533,10 @@ let contamLoaded = false;
 let newPlansEnabled = false;
 let newPlansLoaded = false;
 let publicNoticesEnabled = false;
+// Redevelopment permits: all features (ten years, uncut) once loaded.
+let redevEnabled = false;
+let redevAll = null;
+let redevLoad = null;
 let publicNoticesAll = null;
 let publicNoticesLoad = null;
 let mlsEnabled = false;
@@ -852,6 +866,8 @@ if ($publicNoticesYears) $publicNoticesYears.addEventListener('change', onPublic
 if ($publicNoticesSource) $publicNoticesSource.addEventListener('change', onPublicNoticesFilterChange);
 for (const el of [$publicNoticesParcelsMin, $publicNoticesParcelsMax]) if (el) el.addEventListener('change', onPublicNoticesParcelsChange);
 if ($newPlansToggle) $newPlansToggle.addEventListener('click', toggleNewPlans);
+if ($redevToggle) $redevToggle.addEventListener('click', toggleRedev);
+for (const el of [$redevYears, $redevHomes]) if (el) el.addEventListener('change', () => { queueUrlWrite(); refreshRedev(); });
 for (const el of [$newPlansLotsMin, $newPlansLotsMax]) if (el) el.addEventListener('change', onNewPlansLotsChange);
 if ($newPlansYears) $newPlansYears.addEventListener('change', onNewPlansLotsChange);
 if ($mlsToggle) $mlsToggle.addEventListener('click', toggleMls);
@@ -1445,7 +1461,7 @@ document.getElementById('ps-open-permits')?.addEventListener('click', () => {
 });
 const $psClose = document.getElementById('ps-close');
 if ($psClose && $parcelSummary) {
-  $psClose.addEventListener('click', () => { $parcelSummary.hidden = true; });
+  $psClose.addEventListener('click', () => { $parcelSummary.hidden = true; refreshRedev(); });
 }
 
 // Hide-map toggle. Adds .map-collapsed to the workspace so the
@@ -1557,6 +1573,10 @@ function captureUrlState() {
   if (pnYears !== DEFAULT_NOTICE_YEARS) s.publicNoticesYears = pnYears;
   const pnSource = cleanNoticeSource($publicNoticesSource?.value);
   if (pnSource !== DEFAULT_NOTICE_SOURCE) s.publicNoticesSource = pnSource;
+  const rdYears = cleanRedevYears($redevYears?.value);
+  if (rdYears !== DEFAULT_REDEV_YEARS) s.redevYears = rdYears;
+  const rdHomes = cleanRedevHomes($redevHomes?.value);
+  if (rdHomes !== DEFAULT_REDEV_HOMES) s.redevHomes = rdHomes;
   const npMin = cleanLotBound($newPlansLotsMin?.value);
   const npMax = cleanLotBound($newPlansLotsMax?.value);
   if (npMin != null) s.newPlansLotsMin = npMin;
@@ -1575,7 +1595,7 @@ function captureUrlState() {
     secondaryPlansToggle: false, infillToggle: false, mallsCorridorsToggle: false,
     airportToggle: false, transitWalkshedToggle: false, districtPlannersToggle: false,
     transitToggle: false, contamToggle: false, mlsToggle: false, dimensionsToggle: false,
-    streetsToggle: false, publicNoticesToggle: false, newPlansToggle: false,
+    streetsToggle: false, publicNoticesToggle: false, newPlansToggle: false, redevToggle: false,
   };
   const buttons = {
     surveyToggle: $surveyToggle, assessToggle: $assessToggle,
@@ -1588,7 +1608,7 @@ function captureUrlState() {
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle, publicNoticesToggle: $publicNoticesToggle,
-    newPlansToggle: $newPlansToggle,
+    newPlansToggle: $newPlansToggle, redevToggle: $redevToggle,
   };
   for (const [key, btn] of Object.entries(buttons)) {
     if (!btn) continue;
@@ -1677,6 +1697,8 @@ function applyUrlState(state) {
   if ('newPlansYears' in state && $newPlansYears) $newPlansYears.value = state.newPlansYears;
   if ('newPlansLotsMin' in state && $newPlansLotsMin) $newPlansLotsMin.value = String(state.newPlansLotsMin);
   if ('newPlansLotsMax' in state && $newPlansLotsMax) $newPlansLotsMax.value = String(state.newPlansLotsMax);
+  if ('redevYears' in state && $redevYears) $redevYears.value = cleanRedevYears(state.redevYears);
+  if ('redevHomes' in state && $redevHomes) $redevHomes.value = cleanRedevHomes(state.redevHomes);
   if ('publicNoticesSource' in state && $publicNoticesSource) {
     $publicNoticesSource.value = cleanNoticeSource(state.publicNoticesSource);
   }
@@ -1696,7 +1718,7 @@ function applyUrlState(state) {
     transitToggle: $transitToggle,
     contamToggle: $contamToggle, mlsToggle: $mlsToggle, dimensionsToggle: $dimensionsToggle,
     streetsToggle: $streetsToggle, publicNoticesToggle: $publicNoticesToggle,
-    newPlansToggle: $newPlansToggle,
+    newPlansToggle: $newPlansToggle, redevToggle: $redevToggle,
   };
   for (const [key, btn] of Object.entries(toggles)) {
     if (!btn || !(key in state)) continue;
@@ -1807,7 +1829,7 @@ for (const btn of [
   $neighbourhoodsToggle,
   $streetsToggle,
   $contamToggle, $mlsToggle, $dimensionsToggle,
-  $publicNoticesToggle, $newPlansToggle,
+  $publicNoticesToggle, $newPlansToggle, $redevToggle,
 ]) {
   if (btn) btn.addEventListener('click', queueUrlWrite);
 }
@@ -2412,6 +2434,248 @@ async function togglePublicNotices() {
     if (!publicNoticesEnabled) { renderPublicNoticesLegend([], ''); return; }
   }
   applyPublicNoticesYears();
+}
+
+// Redevelopment permits (lib/redevelopmentPermits.js, Reference group):
+// Construct New + Demolish permits for ten years load once; the period and
+// new-homes dropdowns only re-cut them. The card summarises the subject's
+// neighbourhood cluster and a 1 km ring. The subject is the parcel on the
+// summary card when it is open, else the centre of the results when they
+// sit close together (a citywide zoning search has no single subject).
+const REDEV_RESULTS_SPREAD_KM = 2;
+
+async function ensureRedev() {
+  if (redevAll) return redevAll;
+  if (!redevLoad) {
+    redevLoad = (async () => {
+      const rows = await fetchRedevelopmentPermits(redevFetchSince());
+      const { events, unplaced } = permitEvents(rows);
+      if (!events.length) throw new Error('no redevelopment permits returned');
+      const developing = developingNeighbourhoods(events);
+      redevAll = { features: redevFeatures(events, developing), unplaced };
+      return redevAll;
+    })();
+    redevLoad.catch(() => { redevLoad = null; });
+  }
+  return redevLoad;
+}
+
+/** {pt: [lon, lat], label} for the summary, or {reason} when there is none. */
+function redevSubject() {
+  const a = parcelSummaryRecord;
+  if ($parcelSummary && !$parcelSummary.hidden && a) {
+    const lat = Number(a.centroid_lat);
+    const lon = Number(a.centroid_lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon) && lat && lon) {
+      return { pt: [lon, lat], label: properCaseAddress(a.full_address) || (a.roll_number ? `Roll ${a.roll_number}` : 'Selected parcel') };
+    }
+  }
+  const pts = [];
+  for (const r of currentRows || []) {
+    const c = shapeRowCentroid(r);
+    if (c && Number.isFinite(c.lng) && Number.isFinite(c.lat)) pts.push([c.lng, c.lat]);
+  }
+  if (!pts.length) return { reason: 'Search for a property, or click a result, to summarise its area.' };
+  const mid = [pts.reduce((t, p) => t + p[0], 0) / pts.length, pts.reduce((t, p) => t + p[1], 0) / pts.length];
+  if (pts.some((p) => redevDistanceKm(mid, p) > REDEV_RESULTS_SPREAD_KM)) {
+    return { reason: 'The results are spread out; click one result to summarise its area.' };
+  }
+  const label = pts.length === 1
+    ? (properCaseAddress(currentRows[0]?.assess?.properties?.full_address) || 'the result')
+    : `centre of ${pts.length} results`;
+  return { pt: mid, label };
+}
+
+let redevSummaryTextCache = '';
+
+function renderRedevCard(shown, years, subject, clusterName, summary) {
+  const $legend = document.getElementById('redev-legend');
+  const $rows = document.getElementById('redev-legend-rows');
+  const $title = document.getElementById('redev-legend-title');
+  const $summary = document.getElementById('redev-summary');
+  const $note = document.getElementById('redev-legend-note');
+  if (!$legend || !$rows) return;
+  $legend.hidden = !redevEnabled;
+  if (!redevEnabled) return;
+  const homes = cleanRedevHomes($redevHomes?.value);
+  if ($title) $title.textContent = `Redevelopment permits — last ${years} years`;
+  $rows.replaceChildren(...REDEV_CATEGORIES.map((c) => {
+    const li = document.createElement('li');
+    const dot = document.createElement('span');
+    dot.className = 'redev-dot';
+    dot.style.backgroundColor = c.color;
+    li.append(dot, c.label);
+    return li;
+  }));
+  if (homes === 'auto') {
+    const li = document.createElement('li');
+    const dot = document.createElement('span');
+    dot.className = 'redev-dot faded';
+    dot.style.backgroundColor = REDEV_CATEGORIES.find((c) => c.key === 'new-home').color;
+    li.append(dot, 'New home, new subdivision');
+    $rows.append(li);
+  }
+
+  redevSummaryTextCache = '';
+  if ($summary) {
+    $summary.replaceChildren();
+    if (!subject?.pt) {
+      const p = document.createElement('p');
+      p.className = 'redev-subject';
+      p.textContent = subject?.reason || '';
+      $summary.append(p);
+    } else {
+      const { cluster, ring } = summary;
+      const p = document.createElement('p');
+      p.className = 'redev-subject';
+      p.textContent = `Around ${subject.label}${clusterName ? ` · ${clusterName} cluster` : ''}`;
+      $summary.append(p);
+      const cols = [cluster ? 'Cluster' : null, `${REDEV_RADIUS_KM} km`].filter(Boolean);
+      const sets = [cluster, ring].filter(Boolean);
+      const table = document.createElement('table');
+      const head = document.createElement('thead');
+      head.innerHTML = '<tr><th></th></tr>';
+      for (const c of cols) { const th = document.createElement('th'); th.textContent = c; head.firstChild.append(th); }
+      table.append(head);
+      const body = document.createElement('tbody');
+      const fmt = (n) => Number(n || 0).toLocaleString('en-CA');
+      const rowsDef = [
+        ['Teardown rebuilds', (c) => c.rebuild],
+        ['Demolitions, not rebuilt', (c) => c.demo],
+        ['New homes', (c) => c.newHome],
+        ...(homes === 'auto' ? [['in new subdivisions', (c) => c.newHomeDeveloping, 'redev-sub']] : []),
+        ['Multi-family projects', (c) => c.newMulti],
+        ['units', (c) => c.multiUnits, 'redev-sub'],
+        ['Commercial / other', (c) => c.newNonres],
+        ['Net dwelling units', (c) => (c.net > 0 ? `+${fmt(c.net)}` : fmt(c.net)), null, 'redev-net'],
+      ];
+      for (const [label, get, cls, rowCls] of rowsDef) {
+        const tr = document.createElement('tr');
+        if (rowCls) tr.className = rowCls;
+        const td0 = document.createElement('td');
+        td0.textContent = label;
+        if (cls) td0.className = cls;
+        tr.append(td0);
+        for (const c of sets) {
+          const td = document.createElement('td');
+          const v = get(c);
+          td.textContent = typeof v === 'string' ? v : fmt(v);
+          tr.append(td);
+        }
+        body.append(tr);
+      }
+      table.append(body);
+      $summary.append(table);
+      // Demolitions + rebuilds by year, for the cluster (else the ring):
+      // is the turnover recent or tailing off?
+      const yearsOf = (cluster || ring).byYear;
+      const ys = Object.keys(yearsOf).sort();
+      if (ys.length) {
+        const line = document.createElement('p');
+        line.className = 'redev-years-line';
+        line.textContent = `Demolitions by year (${cluster ? 'cluster' : `${REDEV_RADIUS_KM} km`}): `
+          + ys.map((y) => `${y} ${yearsOf[y].demo + yearsOf[y].rebuild}`).join(' · ');
+        $summary.append(line);
+      }
+      redevSummaryTextCache = redevSummaryText(summary, { clusterName, years });
+      const actions = document.createElement('div');
+      actions.className = 'redev-actions';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondary';
+      btn.textContent = 'Copy summary';
+      btn.title = redevSummaryTextCache;
+      const done = document.createElement('span');
+      done.className = 'redev-copied';
+      btn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(redevSummaryTextCache);
+          done.textContent = 'Copied';
+        } catch {
+          done.textContent = 'Copy failed';
+        }
+        setTimeout(() => { done.textContent = ''; }, 1800);
+      });
+      actions.append(btn, done);
+      $summary.append(actions);
+    }
+  }
+  if ($note) {
+    const bits = [`${shown.length.toLocaleString('en-CA')} permits citywide.`];
+    if (homes === 'hide') bits.push('New homes in new subdivisions hidden and not counted.');
+    bits.push('City Open Data building permits, sheds and garages excluded.');
+    if (redevAll?.unplaced) bits.push(`${redevAll.unplaced} without a location not shown.`);
+    $note.textContent = bits.join(' ');
+  }
+}
+
+async function applyRedev() {
+  if (!redevAll || !redevEnabled) return;
+  const years = cleanRedevYears($redevYears?.value);
+  const homes = cleanRedevHomes($redevHomes?.value);
+  const shown = filterRedev(redevAll.features, years, homes);
+  setRedevPermitsData(map, shown);
+  const subject = redevSubject();
+  let clusterName = null;
+  let clusterPolygons = [];
+  if (subject.pt) {
+    try {
+      const index = await clusterIndex();
+      clusterName = clusterForPointOrNearest(index, subject.pt[0], subject.pt[1], 1) || null;
+      if (clusterName) clusterPolygons = index.filter((e) => e.cluster === clusterName).map((e) => e.feature);
+    } catch (err) {
+      console.warn('neighbourhood clusters failed (redevelopment card shows the ring only)', err);
+    }
+  }
+  if (!redevEnabled) return;   // switched off while the clusters loaded
+  const summary = subject.pt
+    ? summariseRedev(shown, { subject: subject.pt, clusterPolygons, radiusKm: REDEV_RADIUS_KM })
+    : null;
+  const area = [];
+  for (const f of clusterPolygons) area.push({ type: 'Feature', geometry: f.geometry, properties: { kind: 'cluster' } });
+  const ring = subject.pt ? radiusCircleFc(subject.pt, REDEV_RADIUS_KM) : null;
+  for (const f of ring?.features || []) area.push({ ...f, properties: { ...f.properties, kind: 'ring' } });
+  setRedevAreaData(map, area);
+  renderRedevCard(shown, years, subject, clusterName, summary);
+}
+
+// Called whenever the subject can have changed (results, parcel card) or
+// a dropdown moved. Cheap when the overlay is off.
+let redevRefreshQueued = false;
+function refreshRedev() {
+  if (!redevEnabled || !redevAll || redevRefreshQueued) return;
+  redevRefreshQueued = true;
+  setTimeout(() => {
+    redevRefreshQueued = false;
+    applyRedev().catch((err) => console.warn('redevelopment refresh failed', err));
+  }, 0);
+}
+
+async function toggleRedev() {
+  redevEnabled = !redevEnabled;
+  $redevToggle.setAttribute('aria-pressed', String(redevEnabled));
+  $redevToggle.classList.toggle('active', redevEnabled);
+  await mapReady;
+  setRedevPermitsVisible(map, redevEnabled);
+  if (!redevEnabled) { renderRedevCard([], '', null, null, null); return; }
+  if (!redevAll) {
+    $redevToggle.disabled = true;
+    $redevToggle.textContent = 'Loading...';
+    try {
+      await ensureRedev();
+    } catch (err) {
+      console.warn('Redevelopment permits overlay failed', err);
+      redevEnabled = false;
+      $redevToggle.classList.remove('active');
+      $redevToggle.setAttribute('aria-pressed', 'false');
+      setRedevPermitsVisible(map, false);
+    } finally {
+      $redevToggle.disabled = false;
+      $redevToggle.textContent = 'Redevelopment Permits';
+    }
+    if (!redevEnabled) { renderRedevCard([], '', null, null, null); return; }
+  }
+  await applyRedev();
 }
 
 // New Plans (lib/newPlans.js): survey plans that were not in the oldest
@@ -4185,6 +4449,7 @@ function renderTable(rows) {
   $tbody.innerHTML = '';
   currentRows = shown;
   updateRollSummary();
+  refreshRedev();
   rowFeatureMap.clear();
   locationMapRowFeature = null;
   showEmptyState(shown.length === 0);
@@ -4475,6 +4740,7 @@ function showParcelSummary(a, s) {
   }
 
   $parcelSummary.hidden = false;
+  refreshRedev();
 }
 
 /**

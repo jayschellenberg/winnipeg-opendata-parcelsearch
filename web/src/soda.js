@@ -1284,6 +1284,49 @@ export async function fetchBuildPermits() {
   return _buildPermitsPromise;
 }
 
+/*
+ * Redevelopment permits overlay (lib/redevelopmentPermits.js): every
+ * Construct New and Demolish permit for the last ten calendar years, with
+ * the City's own point. Accessory structures out, but rows with no
+ * permit_type kept (the demolition fetch above explains why). ~25,000
+ * rows, one request, cached a week. The since-date is 1 January, so the
+ * cache key only rolls over once a year.
+ */
+const REDEV_PERMITS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+let _redevPermitsPromise = null;
+
+export async function fetchRedevelopmentPermits(since) {
+  if (_redevPermitsPromise) return _redevPermitsPromise;
+  const cacheKey = `wpgRedevPermits:${since}`;
+  _redevPermitsPromise = (async () => {
+    try {
+      const cached = await idbReadCache(cacheKey, REDEV_PERMITS_TTL_MS);
+      if (cached) return cached;
+    } catch (err) {
+      console.warn('IndexedDB read failed for redevelopment permits; refetching', err);
+    }
+    const where = "work_type in('Construct New','Demolish')"
+      + " AND ((permit_type!='Accessory Structures') OR permit_type IS NULL)"
+      + ` AND issue_date >= '${since}'`;
+    const params = new URLSearchParams({
+      $select: 'issue_date,permit_number,work_type,permit_type,sub_type,street_number,street_name,'
+        + 'street_type,street_direction,address,neighbourhood_name,dwelling_units_created,dwelling_units_lost,point',
+      $where: where,
+      $order: 'issue_date',
+      $limit: '60000',
+    });
+    const rows = await fetchSoda(`${DEMO_PERMITS_URL}?${params}`);
+    if (Array.isArray(rows) && rows.length) {
+      idbWriteCache(cacheKey, rows).catch((err) =>
+        console.warn('IndexedDB write failed for redevelopment permits', err)
+      );
+    }
+    return rows || [];
+  })();
+  _redevPermitsPromise.catch(() => { _redevPermitsPromise = null; });
+  return _redevPermitsPromise;
+}
+
 const WPG_STREETS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const WPG_STREETS_CACHE_KEY = 'wpgStreets';
 let _wpgStreetsPromise = null;

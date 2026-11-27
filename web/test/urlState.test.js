@@ -323,8 +323,8 @@ test('SCHEMA — param keys are unique', () => {
   }
 });
 
-test('SCHEMA — has exactly 55 entries (16 inputs + 20 toggles + 1 Multi-Family threshold + 2 new-plans lot bounds + 1 new-plans years + 2 public-notices parcel bounds + 1 public-notices years + 1 public-notices source + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
-  assert.equal(Object.keys(SCHEMA).length, 55);
+test('SCHEMA — has exactly 58 entries (16 inputs + 21 toggles + 1 Multi-Family threshold + 2 new-plans lot bounds + 1 new-plans years + 2 public-notices parcel bounds + 1 public-notices years + 1 public-notices source + 1 redevelopment years + 1 redevelopment homes + 1 neighbourhoods-mode + 1 zoning-changes-mode + 2 sort + 1 tab + 2 numbering + 1 locator pin + 1 subjectRoll + 1 salesN1 + 1 salesRadiusKm)', () => {
+  assert.equal(Object.keys(SCHEMA).length, 58);
 });
 
 test('encodeState / decodeState — Public Notices & Rezonings toggle and years round-trip (nz, py)', () => {

@@ -6496,3 +6496,60 @@ body:not(.phone) .sidebar .action-row > #clear {
    takes the same box as the pack button next to it. */
 .sidebar .capture-row.export-row { margin-bottom: 2px; }
 .sidebar .capture-row.export-row > #export.export-btn { margin-top: 0; flex: 1 1 0; min-width: 0; }
+
+/* Redevelopment permits: key + the subject-area summary card. Wider than
+   the other legends because of the two-column table, and it takes
+   pointer events for the Copy button (legends are click-through). */
+.map-legend.redev-legend {
+  max-width: 300px;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  pointer-events: auto;
+}
+.redev-legend ul {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.redev-legend .redev-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.redev-legend .redev-dot.faded { opacity: 0.35; box-shadow: none; }
+.redev-summary { margin-top: 6px; }
+.redev-summary:empty { display: none; }
+.redev-summary .redev-subject {
+  font-size: 11px;
+  margin: 0 0 3px;
+  color: #374151;
+}
+.redev-summary table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11px;
+}
+.redev-summary th,
+.redev-summary td {
+  padding: 1px 4px;
+  text-align: right;
+  white-space: nowrap;
+}
+.redev-summary th:first-child,
+.redev-summary td:first-child { text-align: left; white-space: normal; }
+.redev-summary thead th { border-bottom: 1px solid #d1d5db; font-weight: 600; }
+.redev-summary tr.redev-net td { border-top: 1px solid #d1d5db; font-weight: 600; }
+.redev-summary td.redev-sub { padding-left: 12px; color: #6b7280; }
+.redev-summary .redev-years-line {
+  font-size: 10.5px;
+  color: #4b5563;
+  margin: 4px 0 0;
+}
+.redev-summary .redev-actions { margin-top: 5px; display: flex; gap: 6px; align-items: center; }
+.redev-summary .redev-actions button { font-size: 11px; padding: 2px 8px; }
+.redev-summary .redev-copied { font-size: 10.5px; color: #15803d; }

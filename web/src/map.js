@@ -38,6 +38,7 @@ import { isMeasuring, setMeasuring } from './lib/measuring.js';
 import { parseSeries, annualizedGrowth, formatGrowth, FULL_YEAR_MIN_DAYS } from './lib/trafficSeries.js';
 import { amendmentLines } from './lib/zoningAmendments.js';
 import { categoryColorExpression, noticePopupParts } from './lib/publicNoticesLayer.js';
+import { redevColorExpression, redevPopupParts } from './lib/redevelopmentPermits.js';
 import { newPlanPopupParts, windowColorExpression } from './lib/newPlans.js';
 
 /**
@@ -2134,6 +2135,93 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         },
       });
 
+      // Redevelopment permits (lib/redevelopmentPermits.js): new-construction
+      // and demolition permits as points, cut to 3 / 5 / 10 years by main.js.
+      // Clustered to zoom 11 only, so the area view (zoom 12+) shows every
+      // dot. The subject's cluster outline and 1 km ring sit underneath.
+      map.addSource('redev-area', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'redev-area-cluster',
+        type: 'line',
+        source: 'redev-area',
+        filter: ['==', ['get', 'kind'], 'cluster'],
+        layout: { visibility: 'none', 'line-join': 'round' },
+        paint: { 'line-color': '#4c1d95', 'line-width': 2, 'line-dasharray': [3, 2], 'line-opacity': 0.8 },
+      });
+      map.addLayer({
+        id: 'redev-area-ring',
+        type: 'line',
+        source: 'redev-area',
+        filter: ['==', ['get', 'kind'], 'ring'],
+        layout: { visibility: 'none' },
+        paint: { 'line-color': '#111827', 'line-width': 1.5, 'line-opacity': 0.8 },
+      });
+      map.addSource('redev-permits', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        cluster: true,
+        clusterMaxZoom: 11,
+        clusterRadius: 40,
+      });
+      map.addLayer({
+        id: 'redev-permits-cluster',
+        type: 'circle',
+        source: 'redev-permits',
+        filter: ['has', 'point_count'],
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-color': '#475569',
+          'circle-opacity': 0.75,
+          'circle-radius': ['step', ['get', 'point_count'], 11, 25, 15, 200, 20],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+        },
+      });
+      map.addLayer({
+        id: 'redev-permits-cluster-count',
+        type: 'symbol',
+        source: 'redev-permits',
+        filter: ['has', 'point_count'],
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-size': 11,
+          'text-font': ['Open Sans Semibold'],
+          'text-allow-overlap': true,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+      // Size: multi-family scales with units created; everything else is
+      // one size by kind. Faded = a new home in a developing subdivision.
+      const redevSize = ['case',
+        ['==', ['get', 'category'], 'new-multi'],
+        ['step', ['coalesce', ['get', 'unitsCreated'], 0], 6, 20, 8, 60, 10, 150, 12],
+        ['==', ['get', 'category'], 'new-nonres'], 6,
+        ['==', ['get', 'category'], 'rebuild'], 5.5,
+        ['==', ['get', 'faded'], 1], 3.5,
+        5,
+      ];
+      map.addLayer({
+        id: 'redev-permits-point',
+        type: 'circle',
+        source: 'redev-permits',
+        filter: ['!', ['has', 'point_count']],
+        layout: {
+          visibility: 'none',
+          // Faded homes underneath, teardowns and demolitions on top.
+          'circle-sort-key': ['case', ['==', ['get', 'faded'], 1], 0,
+            ['match', ['get', 'category'], 'rebuild', 4, 'demo', 3, 'new-multi', 2, 1]],
+        },
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'],
+            11, ['*', 0.7, redevSize], 16, ['*', 1.4, redevSize]],
+          'circle-color': redevColorExpression(),
+          'circle-opacity': ['case', ['==', ['get', 'faded'], 1], 0.3, 0.92],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': ['case', ['==', ['get', 'faded'], 1], 0, 1.25],
+        },
+      });
+
       // New Plans (lib/newPlans.js, public/new-plans.geojson): survey plans
       // registered since the oldest archived survey snapshot. Lot outlines
       // from zoom 13; a dot per plan below that so they can be found
@@ -2620,6 +2708,31 @@ export function initMap(container, { onFeatureClick, onBasemapChange, onLocate }
         } catch { /* source replaced mid-click */ }
       });
       for (const id of ['public-notices-point', 'public-notices-cluster']) {
+        map.on('mouseenter', id, () => {
+          if (map.getLayoutProperty(id, 'visibility') === 'visible') map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+      }
+
+      // Redevelopment permits: a point opens its popup; a cluster zooms in.
+      const redevPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
+      onLayerClick(map, 'redev-permits-point', (e) => {
+        if (map.getLayoutProperty('redev-permits-point', 'visibility') !== 'visible') return;
+        const f = e.features?.[0];
+        if (!f) return;
+        redevPopup.setLngLat(f.geometry.coordinates).setHTML(redevPermitHtml(f.properties)).addTo(map);
+      });
+      onLayerClick(map, 'redev-permits-cluster', async (e) => {
+        if (map.getLayoutProperty('redev-permits-cluster', 'visibility') !== 'visible') return;
+        const f = e.features?.[0];
+        const id = f?.properties?.cluster_id;
+        if (id == null) return;
+        try {
+          const zoom = await map.getSource('redev-permits').getClusterExpansionZoom(id);
+          map.easeTo({ center: f.geometry.coordinates, zoom });
+        } catch { /* source replaced mid-click */ }
+      });
+      for (const id of ['redev-permits-point', 'redev-permits-cluster']) {
         map.on('mouseenter', id, () => {
           if (map.getLayoutProperty(id, 'visibility') === 'visible') map.getCanvas().style.cursor = 'pointer';
         });
@@ -4126,6 +4239,25 @@ export function setPublicNoticesVisible(map, visible) {
   for (const id of PUBLIC_NOTICE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
 }
 
+/** Push the period-cut redevelopment permit points onto the map. */
+export function setRedevPermitsData(map, features) {
+  map.getSource('redev-permits')?.setData({ type: 'FeatureCollection', features: features || [] });
+}
+
+/** The subject's cluster outline + ring (features with kind 'cluster' | 'ring'). */
+export function setRedevAreaData(map, features) {
+  map.getSource('redev-area')?.setData({ type: 'FeatureCollection', features: features || [] });
+}
+
+const REDEV_LAYERS = ['redev-area-cluster', 'redev-area-ring', 'redev-permits-cluster',
+  'redev-permits-cluster-count', 'redev-permits-point'];
+
+/** Toggle the redevelopment permit layers. */
+export function setRedevPermitsVisible(map, visible) {
+  const v = visible ? 'visible' : 'none';
+  for (const id of REDEV_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);
+}
+
 const NEW_PLAN_LAYERS = ['new-plans-fill', 'new-plans-line', 'new-plans-point'];
 
 /** Push the New Plans outlines + label points and their window colours. */
@@ -4158,6 +4290,13 @@ function publicNoticeHtml(p) {
     if (safe) out.push(`<a href="${escapeHtml(safe)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`);
   }
   return `<div style="max-width:320px;line-height:1.4">${out.join('<br>')}</div>`;
+}
+
+function redevPermitHtml(p) {
+  const { heading, lines } = redevPopupParts(p);
+  const out = [`<strong>${escapeHtml(heading)}</strong>`];
+  for (const l of lines) out.push(escapeHtml(l));
+  return `<div style="max-width:300px;line-height:1.4">${out.join('<br>')}</div>`;
 }
 
 // Click-popup body for zoning polygons. Shows the zone code, the short
