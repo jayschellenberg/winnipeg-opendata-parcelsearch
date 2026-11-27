@@ -4337,6 +4337,7 @@ function citywideParcelHtml(p) {
     actions.push(rollCopyLink(roll, false));
   }
   actions.push(`<a href="#" class="parcel-coords-copy" role="button" title="Copy parcel centroid (lat, lng) to clipboard">GPS Coordinates</a>`);
+  actions.push(OBLIQUE_LINK);
   if (actions.length) {
     lines.push(actions.join(' &nbsp;·&nbsp; '));
   }
@@ -4465,7 +4466,32 @@ function wireCoordsCopy(popup, lngLat) {
     popup.getElement?.()?.querySelector('.parcel-coords-copy'),
     `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
   );
+  // The oblique link rides on the same centroid, so it is pointed here
+  // rather than in the HTML builders, which never see the geometry.
+  const oblique = popup.getElement?.()?.querySelector('.parcel-oblique-link');
+  if (oblique) oblique.href = obliqueViewerUrl(lat, lng);
 }
+
+/**
+ * The City's 45-degree air photo viewer (EagleView imagery under the City's
+ * licence), opened on a parcel. Linked, never embedded: the imagery is not a
+ * tile service and the viewer's key is the City's. The page reads its
+ * starting view from these five parameters (read off its own source,
+ * 2026-11-27); date and rotation are picked inside the viewer.
+ *
+ * rel="noreferrer" is load-bearing, not habit: the City page calls
+ * window.opener.PictometryReady() when it has an opener, which throws across
+ * origins and stops it before it draws the red centre cross that marks the
+ * parcel. No opener, no throw. The cost is a new tab per click.
+ */
+function obliqueViewerUrl(lat, lng) {
+  return 'https://legacy.winnipeg.ca/pictometry/ipa.aspx'
+    + `?lat=${lat.toFixed(6)}&lon=${lng.toFixed(6)}&ex_level=20&ex_type=Ob&ex_orientation=N`;
+}
+
+const OBLIQUE_LINK = '<a href="#" class="parcel-oblique-link" target="_blank" rel="noreferrer"'
+  + ' title="Open the City of Winnipeg 45-degree air photo viewer on this parcel">Oblique Air Photo ↗</a>';
+
 
 /**
  * Wire every `.parcel-roll-copy` anchor in a mounted popup. The roll comes
@@ -4668,6 +4694,7 @@ function combinedPopupHtml(primary, context, { actions: withActions = false, poi
     const actions = rolls.map((roll) => rollCopyLink(roll, rolls.length > 1));
     actions.push('<a href="#" class="parcel-coords-copy" role="button"'
       + ' title="Copy parcel centroid (lat, lng) to clipboard">GPS Coordinates</a>');
+    actions.push(OBLIQUE_LINK);
     // A loaded SABRE sale gets a way into the use-code override tool, opened
     // on this exact sale. Only sales tab features carry _saleInstrument, so
     // the Property tab never shows it.
