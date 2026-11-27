@@ -4490,7 +4490,7 @@ function obliqueViewerUrl(lat, lng) {
 }
 
 const OBLIQUE_LINK = '<a href="#" class="parcel-oblique-link" target="_blank" rel="noreferrer"'
-  + ' title="Open the City of Winnipeg 45-degree air photo viewer on this parcel">Oblique Air Photo ↗</a>';
+  + ' title="Open the City of Winnipeg 45-degree air photo viewer on this parcel">Eagleview 45° Air Photo ↗</a>';
 
 
 /**
