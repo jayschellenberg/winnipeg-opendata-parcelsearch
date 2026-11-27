@@ -125,6 +125,8 @@ const PERSISTENT = {
   zoningMode: 'an overlay preference (shaded / selection / labels / off), not a property of the results',
   zoningCodesByCat: 'zone codes per category from the citywide zoning layer; the same for every search',
   parcelPackRunning: 'a pack build in progress; it restores the map itself when it ends',
+  obliqueSeq: 'id counter for held 45-degree air photos; they outlive a search on purpose, each tagged with the point it was taken for',
+  obliqueBusy: 'transient guard around one 45-degree air photo capture',
   parcelPackAbort: 'the cancel flag for that build; cleared when the build ends',
   captureInFlight: 'transient guard around a Capture Map capture',
   captureFrame: 'the last Capture Map frame, read only while its modal panel is open and replaced by every capture; a search cannot leave it on screen',

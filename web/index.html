@@ -1389,6 +1389,13 @@
                close-up maps per result parcel; multi-parcel searches only. -->
           <button id="parcel-pack-btn" type="button" class="generate-map-btn generate-map-btn-pack" disabled title="Multi-parcel searches only: needs two or more parcels in the results. Close-up maps of EACH parcel (site map, site map with dimensions, aerial). For a single parcel, the Addenda Pack already covers these maps.">🧩 Parcel Pack (ZIP)</button>
         </div>
+        <!-- Eagleview 45° air photo (2026-11-27): opens the City's oblique
+             viewer on the subject and takes one frame of it through the
+             browser's own share prompt; held photos ride in the Addenda Pack.
+             main.js wireObliqueCapture(), lib/obliqueCapture.js. -->
+        <div class="capture-row">
+          <button id="oblique-btn" type="button" class="generate-map-btn generate-map-btn-pack" title="Open the City of Winnipeg 45-degree air photo viewer (Eagleview imagery) on the subject, frame the view, then capture it. Captured photos are held and added to the next Addenda Pack built for the same property. Chrome or Edge on a computer.">🦅 45° Air Photo</button>
+        </div>
         <!-- Export CSV, below Current Map View (the Manitoba pattern). It
              used to sit beside Search / Clear, which put an OUTPUT action
              in the row that starts a search. Both ways of getting the
@@ -1742,6 +1749,32 @@
           <span class="map-capture-spacer"></span>
           <button type="button" class="sales-modal-btn" data-close>Close</button>
           <button type="button" id="pack-review-all" class="sales-modal-btn primary">Download all (ZIP)</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Eagleview 45° air photo: open the City's viewer, capture one frame,
+         hold it for the Addenda Pack. Filled by main.js renderObliqueDialog(). -->
+    <dialog id="oblique-modal" class="sales-modal map-capture-modal pack-review-modal oblique-modal" aria-labelledby="oblique-title">
+      <div class="sales-modal-inner">
+        <header class="sales-modal-header">
+          <h2 class="sales-modal-title" id="oblique-title">Eagleview 45° Air Photo <span class="map-capture-size" id="oblique-summary"></span></h2>
+          <button type="button" class="sales-modal-close" data-close aria-label="Close">×</button>
+        </header>
+        <p class="map-capture-tip" id="oblique-subject"></p>
+        <ol class="oblique-steps">
+          <li><strong>Open viewer</strong> puts the City's viewer in its own window, centred on the property.</li>
+          <li>In that window, pick the date and direction and zoom until the view is the one you want. Leave the window open.</li>
+          <li>Back here, <strong>Capture</strong>. Chrome asks what to share: under <em>Chrome Tab</em> choose <em>IPA (Pictometry)</em>, then Share. One frame is taken and sharing stops.</li>
+        </ol>
+        <p class="oblique-status" id="oblique-status" role="status" aria-live="polite"></p>
+        <div class="pack-review-grid" id="oblique-grid"></div>
+        <div class="map-capture-actions">
+          <span class="pack-review-zipname">Imagery © Eagleview, licensed to the City. Check the City's terms before putting one in a report.</span>
+          <span class="map-capture-spacer"></span>
+          <button type="button" class="sales-modal-btn" data-close>Close</button>
+          <button type="button" id="oblique-open" class="sales-modal-btn">Open viewer</button>
+          <button type="button" id="oblique-capture" class="sales-modal-btn primary">Capture</button>
         </div>
       </div>
     </dialog>

@@ -199,6 +199,10 @@ import {
 import { stripZoningCode, formatPct, formatDollars, formatCoord } from './lib/cells.js';
 import { openPermitsDialog } from './permitsDialog.js';
 import { showBuildStamp } from './lib/buildStamp.js';
+import {
+  obliqueViewerUrl, viewerWindowFeatures, grabDisplayFrame, captureErrorMessage,
+  surfaceWarning, heldForSubject, obliqueFileBase, obliqueListingNote, OBLIQUE_CREDIT,
+} from './lib/obliqueCapture.js';
 // The commit + build time after the title, to tell which build Vercel serves.
 showBuildStamp();
 
@@ -1070,6 +1074,7 @@ if ($addendaPackBtn) {
 }
 wireCapturePanel();
 wireParcelPack();
+wireObliqueCapture();
 wirePackReview();
 if ($locationMapModal) {
   for (const el of $locationMapModal.querySelectorAll('[data-close]')) {
@@ -4895,6 +4900,176 @@ async function generateLocationMap() {
   }
 }
 
+// ---------- Eagleview 45° air photo ----------
+//
+// The City's oblique viewer is another site's page, so the app cannot read
+// it; the user shares the viewer tab through the browser's own prompt and one
+// frame is kept (lib/obliqueCapture.js). Photos are held in memory, tagged
+// with the point they were taken for, and the Addenda Pack picks up the ones
+// taken for its subject. Nothing is stored: a reload drops them.
+
+const heldObliques = [];
+let obliqueSeq = 0;
+let obliqueBusy = false;
+
+/** The property a photo is taken for: its centre ([lng, lat]) and a label.
+ *  The Addenda Pack's own subject, so a photo and a pack agree on it. */
+function obliqueSubject() {
+  const subject = addendaSubjectFeatures();
+  if (!subject?.specific) return null;
+  return { centre: obliqueSubjectCentre(subject), label: obliqueSubjectLabel(subject) };
+}
+
+function obliqueSubjectCentre(subject) {
+  if (subject.feats.length === 1) return addendaFeatureCentre(subject.feats[0]);
+  const b = bboxOfFeatures(subject.feats);
+  return b ? [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2] : null;
+}
+
+function obliqueSubjectLabel(subject) {
+  const p = subject.feats[0]?.properties || {};
+  const one = p.full_address ? properCaseAddress(p.full_address) : (p.roll_number ? `Roll ${p.roll_number}` : '');
+  if (subject.feats.length === 1) return one || subject.note;
+  return one ? `${one} and ${subject.feats.length - 1} more` : subject.note;
+}
+
+function wireObliqueCapture() {
+  const btn = document.getElementById('oblique-btn');
+  const modal = document.getElementById('oblique-modal');
+  if (!btn || !modal) return;
+  btn.addEventListener('click', () => {
+    setObliqueStatus('');
+    renderObliqueDialog();
+    if (!modal.open) modal.showModal();
+  });
+  for (const el of modal.querySelectorAll('[data-close]')) el.addEventListener('click', () => modal.close());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); });
+  document.getElementById('oblique-open')?.addEventListener('click', openObliqueViewer);
+  document.getElementById('oblique-capture')?.addEventListener('click', captureOblique);
+}
+
+function setObliqueStatus(text, isError = false) {
+  const el = document.getElementById('oblique-status');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('is-error', !!isError);
+}
+
+function openObliqueViewer() {
+  const subject = obliqueSubject();
+  if (!subject?.centre) { renderObliqueDialog(); return; }
+  const [lng, lat] = subject.centre;
+  // noopener: window.open returns null whether or not it opened, so there is
+  // nothing to test for a blocked pop-up; the status line says where to look.
+  window.open(obliqueViewerUrl(lat, lng), '_blank', viewerWindowFeatures());
+  setObliqueStatus('Viewer opened in its own window. Frame the view there, then come back and Capture.');
+}
+
+async function captureOblique() {
+  if (obliqueBusy) return;
+  const subject = obliqueSubject();
+  if (!subject?.centre) { renderObliqueDialog(); return; }
+  const btn = document.getElementById('oblique-capture');
+  obliqueBusy = true;
+  if (btn) btn.disabled = true;
+  setObliqueStatus('Choose the viewer under “Chrome Tab” in the share prompt…');
+  try {
+    const { canvas, surface, width, height } = await grabDisplayFrame();
+    const bytes = await blobBytes(await canvasToBlob(canvas));
+    heldObliques.push({
+      id: ++obliqueSeq,
+      bytes,
+      url: URL.createObjectURL(new Blob([bytes], { type: 'image/png' })),
+      width,
+      height,
+      surface,
+      centre: subject.centre,
+      label: subject.label,
+      capturedAt: `${localDateStamp()} ${new Date().toTimeString().slice(0, 5)}`,
+    });
+    const warn = surfaceWarning(surface);
+    setObliqueStatus(warn || `Captured ${width} × ${height} px. It will go into the next Addenda Pack for ${subject.label}.`, !!warn);
+  } catch (err) {
+    const msg = captureErrorMessage(err);
+    if (msg) console.warn('45° air photo capture failed', err);
+    setObliqueStatus(msg || 'Nothing captured.', !!msg);
+  } finally {
+    obliqueBusy = false;
+    renderObliqueDialog();
+  }
+}
+
+function removeOblique(id) {
+  const i = heldObliques.findIndex((h) => h.id === id);
+  if (i < 0) return;
+  URL.revokeObjectURL(heldObliques[i].url);
+  heldObliques.splice(i, 1);
+  renderObliqueDialog();
+}
+
+/** Redraw the window and the sidebar button's count from heldObliques. */
+function renderObliqueDialog() {
+  const subject = obliqueSubject();
+  const mine = subject?.centre ? heldForSubject(heldObliques, subject.centre, haversineMeters) : [];
+  const btn = document.getElementById('oblique-btn');
+  if (btn) btn.textContent = `🦅 45° Air Photo${heldObliques.length ? ` (${heldObliques.length} held)` : ''}`;
+  const subjectEl = document.getElementById('oblique-subject');
+  if (subjectEl) {
+    subjectEl.textContent = subject?.centre
+      ? `Property: ${subject.label}.`
+      : 'Search for a property first (with several results, click the parcel’s row). To just look, use the Eagleview link in any parcel pop-up.';
+  }
+  const ready = !!subject?.centre;
+  const openBtn = document.getElementById('oblique-open');
+  const capBtn = document.getElementById('oblique-capture');
+  if (openBtn) openBtn.disabled = !ready;
+  if (capBtn) capBtn.disabled = !ready || obliqueBusy;
+  const sum = document.getElementById('oblique-summary');
+  if (sum) {
+    sum.textContent = heldObliques.length
+      ? `${heldObliques.length} held${ready ? ` · ${mine.length} for this property` : ''}`
+      : '';
+  }
+  const grid = document.getElementById('oblique-grid');
+  if (!grid) return;
+  grid.replaceChildren();
+  for (const h of heldObliques) {
+    const card = document.createElement('figure');
+    card.className = 'pack-review-card';
+    if (!mine.includes(h)) card.classList.add('is-other');
+    const thumb = document.createElement('a');
+    thumb.className = 'pack-review-thumb';
+    thumb.href = h.url;
+    thumb.target = '_blank';
+    thumb.rel = 'noopener';
+    thumb.title = 'Open full size';
+    const img = document.createElement('img');
+    img.src = h.url;
+    img.alt = `45° air photo of ${h.label}`;
+    thumb.appendChild(img);
+    const cap = document.createElement('figcaption');
+    const name = document.createElement('span');
+    name.className = 'pack-review-name';
+    name.textContent = `${h.label} · ${h.capturedAt} · ${h.width} × ${h.height}`
+      + (mine.includes(h) ? '' : ' · other property, not in this pack');
+    cap.appendChild(name);
+    const dl = document.createElement('button');
+    dl.type = 'button';
+    dl.className = 'sales-modal-btn pack-review-dl';
+    dl.textContent = 'Download';
+    dl.addEventListener('click', () => downloadLocationBlob(
+      new Blob([h.bytes], { type: 'image/png' }), `eagleview-45-air-photo-${h.capturedAt.replace(/[: ]/g, '-')}.png`));
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'sales-modal-btn pack-review-dl';
+    rm.textContent = 'Remove';
+    rm.addEventListener('click', () => removeOblique(h.id));
+    cap.append(dl, rm);
+    card.append(thumb, cap);
+    grid.appendChild(card);
+  }
+}
+
 // ---------- Addenda Pack ----------
 //
 // One click, one ZIP of the standard report addenda maps for the current
@@ -5354,6 +5529,17 @@ async function buildAddendaPack() {
         notes.push('The zoning map was left out: the City zoning layer could not be loaded.');
       }
       await cycleZoningTo(zoningWas);
+    }
+    // 45° air photos captured for this subject (the Eagleview window). Held
+    // photos taken for another property stay out, and the README says so.
+    if (subject.specific) {
+      const mine = heldForSubject(heldObliques, obliqueSubjectCentre(subject), haversineMeters);
+      mine.forEach((h, i) => add(obliqueFileBase(i, mine.length), h.bytes, obliqueListingNote(h)));
+      if (mine.length) notes.push(...OBLIQUE_CREDIT);
+      const others = heldObliques.length - mine.length;
+      if (others) {
+        notes.push(`${others} held 45-degree air photo${others === 1 ? ' was' : 's were'} left out: taken for a different property.`);
+      }
     }
     // Results — every result parcel, when there is more than one, marked
     // the way the user has them.

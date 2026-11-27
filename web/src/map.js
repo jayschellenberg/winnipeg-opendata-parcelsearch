@@ -201,6 +201,7 @@ import { reachZone } from './lib/hoverReach.js';
 import {
   INLINE_SLOT, badgeRadius, calloutOffset, inlineBadgeFits, solveCalloutSlots,
 } from './lib/calloutPlacement.js';
+import { obliqueViewerUrl } from './lib/obliqueCapture.js';
 
 // mapbox-gl-draw was written against the Mapbox GL `mapboxgl-*` DOM
 // class names; MapLibre uses `maplibregl-*`. Patch the lookup table
@@ -4472,23 +4473,12 @@ function wireCoordsCopy(popup, lngLat) {
   if (oblique) oblique.href = obliqueViewerUrl(lat, lng);
 }
 
-/**
- * The City's 45-degree air photo viewer (EagleView imagery under the City's
- * licence), opened on a parcel. Linked, never embedded: the imagery is not a
- * tile service and the viewer's key is the City's. The page reads its
- * starting view from these five parameters (read off its own source,
- * 2026-11-27); date and rotation are picked inside the viewer.
- *
- * rel="noreferrer" is load-bearing, not habit: the City page calls
- * window.opener.PictometryReady() when it has an opener, which throws across
- * origins and stops it before it draws the red centre cross that marks the
- * parcel. No opener, no throw. The cost is a new tab per click.
- */
-function obliqueViewerUrl(lat, lng) {
-  return 'https://legacy.winnipeg.ca/pictometry/ipa.aspx'
-    + `?lat=${lat.toFixed(6)}&lon=${lng.toFixed(6)}&ex_level=20&ex_type=Ob&ex_orientation=N`;
-}
-
+// The City's 45-degree air photo viewer, opened on a parcel: linked, never
+// embedded (lib/obliqueCapture.js has the URL and the reasons).
+// rel="noreferrer" is load-bearing, not habit: the City page calls
+// window.opener.PictometryReady() when it has an opener, which throws across
+// origins and stops it before it draws the red centre cross that marks the
+// parcel. No opener, no throw. The cost is a new tab per click.
 const OBLIQUE_LINK = '<a href="#" class="parcel-oblique-link" target="_blank" rel="noreferrer"'
   + ' title="Open the City of Winnipeg 45-degree air photo viewer on this parcel">Eagleview 45° Air Photo ↗</a>';
 

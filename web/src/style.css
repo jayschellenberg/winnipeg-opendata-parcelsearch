@@ -6474,3 +6474,12 @@ body:not(.phone) .sidebar .action-row > #clear {
 .pack-review-zoom[hidden] { display: none; }
 .pack-review-zoom img { max-width: 100%; max-height: calc(100% - 28px); object-fit: contain; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
 .pack-review-zoom-cap { font-size: 12px; color: #334155; }
+
+/* Eagleview 45° air photo window (2026-11-27). Shares the pack-review grid. */
+.oblique-modal { width: min(900px, 96vw); }
+.oblique-steps { margin: 6px 0 8px; padding-left: 22px; list-style: decimal; font-size: 13px; line-height: 1.5; color: #334155; }
+.oblique-steps li { margin: 2px 0; }
+.oblique-status { min-height: 18px; margin: 4px 0; font-size: 13px; color: #334155; }
+.oblique-status.is-error { color: #b91c1c; font-weight: 600; }
+.oblique-modal .pack-review-grid:empty { display: none; }
+.oblique-modal .pack-review-card.is-other { opacity: 0.6; }

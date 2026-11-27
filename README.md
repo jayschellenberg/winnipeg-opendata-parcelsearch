@@ -1,6 +1,6 @@
 # Winnipeg Parcel Search
 
-Status: Active | Next: try a Preliminary Report on a real job; then try Parcel Pack and the new Addenda Pack maps on a real job | Blocked: none | Updated: 2026-11-27
+Status: Active | Next: try the 45° Air Photo capture against the real City viewer in Chrome; try a Preliminary Report on a real job; then try Parcel Pack and the new Addenda Pack maps on a real job | Blocked: none | Updated: 2026-11-27
 
 A free, client-only parcel-research tool for City of Winnipeg properties, built
 for commercial-appraisal workflows.
