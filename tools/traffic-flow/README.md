@@ -51,7 +51,6 @@ georeferencing and the map's scale and position change from year to year.
 
 ```powershell
 python extract_flow_map_old.py "<path to>\Winnipeg 2015TrafficFlow.pdf" ..\..\web\public\traffic-flow-2015.geojson --year 2015 --reference ..\..\web\public\traffic-flow-2019.geojson --review review\review-2015.html
-eview-2015.html
 ```
 
 Each year is fitted onto the 2019 extraction by its green volume lines (FFT
