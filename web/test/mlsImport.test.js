@@ -110,6 +110,23 @@ test('MLS_ONLY_COLUMNS names every field SABRE has no home for', () => {
   }
 });
 
+test('parseMlsText — the residential export: slashed dates, StreetNum, listings skipped', () => {
+  // Layout of the VL/VLWB (residential vacant land) export, 2026-11-27: MM/DD/YYYY dates,
+  // StreetNum rather than StreetNumber, and expired/withdrawn/active rows alongside sales.
+  const H = 'LINC,Address,Status,DateSold,PriceSold,PriceList,MLS,City,PropType,StreetNum,StreetName';
+  const text = [H,
+    '001R004287200,554 Berkley Street,S,11/02/2026,255000,249900,202626409,Winnipeg,VLWB,554,Berkley',
+    '002R020449000,561 Oakview Avenue,X,,,239900,202626299,Winnipeg,VL,561,Oakview',
+    '003R000000100,1 Test Road,W,,,100000,202600001,Winnipeg,VL,1,Test',
+  ].join('\n');
+  const { rows, skipped } = parseMlsText(text);
+  assert.equal(rows.length, 1);
+  assert.equal(skipped.unsold, 2, 'expired and withdrawn rows are not comps');
+  assert.equal(rows[0]['Sale Dates'], '2026-11-02', 'MM/DD/YYYY becomes ISO');
+  assert.equal(rows[0]['MLS Date'], '2026-11-02');
+  assert.equal(rows[0]['Street Number'], '554');
+});
+
 console.log('');
 console.log(`${passed}/${passed + failed} passed`);
 if (failed > 0) process.exit(1);
